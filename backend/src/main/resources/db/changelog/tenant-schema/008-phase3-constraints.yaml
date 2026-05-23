@@ -1,0 +1,169 @@
+# Phase 3 — post-review constraints (database-blueprint §31.6).
+#
+# Remediates findings from:
+#   docs/mvp1/reviews/phase3-qa-review.md       D-315
+#   docs/mvp1/reviews/phase3-security-review.md F-302, F-303, F-304
+#
+# Scope (composite FKs — DB-level defense in depth):
+#   F-302/D-315 — job_profiles.position_id      → must reference the SAME
+#                 (tenant_id, project_id, id) tuple on positions, not just id.
+#   F-302       — job_analysis_questionnaires.position_id — same upgrade.
+#   F-304       — verify (and add if missing) positions(tenant_id, project_id, id)
+#                 UNIQUE — required to TARGET composite FK.
+#   (extra)     — job_analysis_answers.questionnaire_id — upgrade to composite
+#                 (tenant_id, questionnaire_id) FK to deny cross-tenant
+#                 answer→questionnaire smuggling.
+#
+# F-303 (JSONB unknown-fields hardening) — DEFERRED to application layer.
+# Rationale: a DB CHECK on `jsonb ?| array[...]` would need to encode the
+# 4-locale allowlist (ru-RU, uz-Cyrl-UZ, uz-Latn-UZ, en-US) per multilingual
+# JSONB column on every multilingual table — brittle (each new locale = DDL),
+# and CHECK constraints on JSONB are evaluated row-by-row at write time
+# (slower than Jackson). Primary defense is Jackson `@JsonIgnoreProperties
+# (ignoreUnknown=false)` + Bean Validation `@Size(min=1,max=4)` allowlist
+# (tracked in F-303 fix owned by backend-engineer).
+# See `docs/mvp1/05-database-blueprint.md` §31.6 "Deferred: JSONB structural
+# validation" for the full accepted-risk discussion.
+#
+# Tenancy mode applicability:
+#   mode-shared          — applies as-is (all tables in `public`).
+#   schema-per-tenant    — TenantSchemaProvisioner re-applies the master
+#                          tenant changelog under the per-tenant schema; FK
+#                          targets remain intra-schema, so composite FKs work.
+#
+# ALL changes are additive (no DROP of existing data). DROP of an FK +
+# immediate re-ADD as composite is a NO-OP at row level (no row is mutated;
+# only the catalog changes). Each changeSet has a `rollback:` block that
+# restores the prior single-column FK.
+
+databaseChangeLog:
+
+  # ===================================================================== F-304
+  # Prerequisite: positions(tenant_id, project_id, id) must be UNIQUE so it can
+  # be the TARGET of a composite FK. `id` alone is already PK (unique), so
+  # adding a UNIQUE INDEX on the triple `(tenant_id, project_id, id)` is a
+  # logical no-op — the additional columns do not constrain new rows; they only
+  # make the tuple available as an FK target. Indexed by precondition.
+  - changeSet:
+      id: tenant-008-uq-positions-tenant-project-id
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase3,security-f304
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: uq_positions_tenant_project_id
+      changes:
+        - sql:
+            sql: |
+              CREATE UNIQUE INDEX uq_positions_tenant_project_id
+                ON positions (tenant_id, project_id, id);
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS uq_positions_tenant_project_id;
+
+  # ===================================================================== F-302
+  # Drop the simple FK job_profiles.position_id → positions(id), then re-add
+  # as composite FK (tenant_id, project_id, position_id) → positions(tenant_id,
+  # project_id, id). This makes it structurally impossible for a job_profile
+  # row to reference a position from a different (tenant, project) tuple,
+  # closing D-315.
+  - changeSet:
+      id: tenant-008-fk-job-profiles-position-composite
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase3,security-f302
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE job_profiles
+                DROP CONSTRAINT IF EXISTS fk_job_profiles_position;
+              ALTER TABLE job_profiles
+                ADD CONSTRAINT fk_job_profiles_position
+                FOREIGN KEY (tenant_id, project_id, position_id)
+                REFERENCES positions (tenant_id, project_id, id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE job_profiles
+                DROP CONSTRAINT IF EXISTS fk_job_profiles_position;
+              ALTER TABLE job_profiles
+                ADD CONSTRAINT fk_job_profiles_position
+                FOREIGN KEY (position_id) REFERENCES positions(id);
+
+  # ===================================================================== F-302
+  # Same upgrade for job_analysis_questionnaires.position_id.
+  - changeSet:
+      id: tenant-008-fk-jaq-position-composite
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase3,security-f302
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE job_analysis_questionnaires
+                DROP CONSTRAINT IF EXISTS fk_jaq_position;
+              ALTER TABLE job_analysis_questionnaires
+                ADD CONSTRAINT fk_jaq_position
+                FOREIGN KEY (tenant_id, project_id, position_id)
+                REFERENCES positions (tenant_id, project_id, id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE job_analysis_questionnaires
+                DROP CONSTRAINT IF EXISTS fk_jaq_position;
+              ALTER TABLE job_analysis_questionnaires
+                ADD CONSTRAINT fk_jaq_position
+                FOREIGN KEY (position_id) REFERENCES positions(id);
+
+  # ===================================================================== F-302
+  # job_analysis_answers.questionnaire_id — defense-in-depth composite FK on
+  # (tenant_id, questionnaire_id). Requires (tenant_id, id) UNIQUE on
+  # job_analysis_questionnaires.
+  - changeSet:
+      id: tenant-008-uq-jaq-tenant-id
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase3,security-f302
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: uq_jaq_tenant_id
+      changes:
+        - sql:
+            sql: |
+              CREATE UNIQUE INDEX uq_jaq_tenant_id
+                ON job_analysis_questionnaires (tenant_id, id);
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS uq_jaq_tenant_id;
+
+  - changeSet:
+      id: tenant-008-fk-jaa-questionnaire-composite
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase3,security-f302
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE job_analysis_answers
+                DROP CONSTRAINT IF EXISTS fk_jaa_questionnaire;
+              ALTER TABLE job_analysis_answers
+                ADD CONSTRAINT fk_jaa_questionnaire
+                FOREIGN KEY (tenant_id, questionnaire_id)
+                REFERENCES job_analysis_questionnaires (tenant_id, id)
+                ON DELETE CASCADE ON UPDATE NO ACTION;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE job_analysis_answers
+                DROP CONSTRAINT IF EXISTS fk_jaa_questionnaire;
+              ALTER TABLE job_analysis_answers
+                ADD CONSTRAINT fk_jaa_questionnaire
+                FOREIGN KEY (questionnaire_id)
+                REFERENCES job_analysis_questionnaires(id)
+                ON DELETE CASCADE;

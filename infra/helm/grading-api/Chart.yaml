@@ -1,0 +1,18 @@
+apiVersion: v2
+name: grading-api
+description: grading.hrlab.uz Spring Boot API (modular monolith)
+type: application
+version: 0.1.0
+# appVersion is overridden at deploy time by CI with the release tag/SHA.
+appVersion: "0.1.0"
+keywords:
+  - grading
+  - hrlab
+  - spring-boot
+home: https://grading.hrlab.uz
+sources:
+  - https://github.com/hrlab-uz/grading
+maintainers:
+  - name: HR Laboratories DevOps
+    email: devops@hrlab.uz
+icon: https://grading.hrlab.uz/favicon.ico

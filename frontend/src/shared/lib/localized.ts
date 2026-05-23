@@ -1,0 +1,22 @@
+import type { Locale, LocalizedString } from '@/shared/types/common';
+
+/**
+ * Pick a label from a LocalizedString. Falls back to:
+ *  1. requested locale,
+ *  2. ru-RU (default product locale),
+ *  3. en-US,
+ *  4. first non-empty value,
+ *  5. empty string.
+ */
+export function pickLocalized(value: LocalizedString | undefined, locale: string): string {
+  if (!value) return '';
+  const candidates: (Locale | string)[] = [locale, 'ru-RU', 'en-US'];
+  for (const key of candidates) {
+    const v = value[key as Locale];
+    if (v && v.trim().length > 0) return v;
+  }
+  for (const v of Object.values(value)) {
+    if (v && v.trim().length > 0) return v;
+  }
+  return '';
+}

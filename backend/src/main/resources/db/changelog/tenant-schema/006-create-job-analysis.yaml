@@ -1,0 +1,203 @@
+# Phase 3 — job_analysis_questionnaires + job_analysis_answers
+# (database-blueprint §5.2 "job_analysis_questionnaires" / "answers").
+#
+# MVP 1 simplification: questions are embedded as JSONB on the questionnaire
+# row (denormalized) so we ship without an extra table. Answers are normalized
+# so a per-respondent, per-question answer can be unique-constrained.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-006-create-job-analysis-questionnaires
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase3
+      changes:
+        - createTable:
+            tableName: job_analysis_questionnaires
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: project_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: position_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: template_code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: questionnaire_version
+                  type: INT
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: questions
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE job_analysis_questionnaires
+                ADD CONSTRAINT fk_jaq_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE job_analysis_questionnaires
+                ADD CONSTRAINT fk_jaq_project
+                FOREIGN KEY (project_id) REFERENCES projects(id);
+              ALTER TABLE job_analysis_questionnaires
+                ADD CONSTRAINT fk_jaq_position
+                FOREIGN KEY (position_id) REFERENCES positions(id);
+              ALTER TABLE job_analysis_questionnaires
+                ADD CONSTRAINT chk_jaq_status
+                CHECK (status IN ('DRAFT','COMPLETED','ARCHIVED'));
+              CREATE INDEX idx_jaq_tenant_project_position
+                ON job_analysis_questionnaires (tenant_id, project_id, position_id);
+              CREATE INDEX idx_jaq_status
+                ON job_analysis_questionnaires (tenant_id, project_id, status);
+      rollback:
+        - dropTable:
+            tableName: job_analysis_questionnaires
+
+  - changeSet:
+      id: tenant-006-create-job-analysis-answers
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase3
+      changes:
+        - createTable:
+            tableName: job_analysis_answers
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: project_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: questionnaire_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: question_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: answer_text
+                  type: VARCHAR(20000)
+              - column:
+                  name: answer_choices
+                  type: JSONB
+              - column:
+                  name: answer_number
+                  type: NUMERIC(18,4)
+              - column:
+                  name: respondent_user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: submitted_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE job_analysis_answers
+                ADD CONSTRAINT fk_jaa_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE job_analysis_answers
+                ADD CONSTRAINT fk_jaa_questionnaire
+                FOREIGN KEY (questionnaire_id) REFERENCES job_analysis_questionnaires(id)
+                ON DELETE CASCADE;
+              -- (questionnaire_id, question_id, respondent_user_id) — one answer
+              -- per question per respondent (idempotent upsert key).
+              CREATE UNIQUE INDEX uq_jaa_questionnaire_question_respondent
+                ON job_analysis_answers
+                   (tenant_id, questionnaire_id, question_id, respondent_user_id);
+              CREATE INDEX idx_jaa_questionnaire
+                ON job_analysis_answers (tenant_id, questionnaire_id);
+      rollback:
+        - dropTable:
+            tableName: job_analysis_answers

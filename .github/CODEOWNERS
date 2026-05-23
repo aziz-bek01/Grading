@@ -1,0 +1,37 @@
+# grading.hrlab.uz — CODEOWNERS
+# Anything touching infra, CI, security-sensitive code, or DB role/audit grants
+# requires devops + security review.
+# Replace placeholder team handles with your actual GitHub teams.
+
+# Default fallback — at least one core reviewer required everywhere.
+*                                       @hrlab-uz/core
+
+# Infrastructure / pipelines
+/infra/                                 @hrlab-uz/devops @hrlab-uz/security
+/.github/                               @hrlab-uz/devops @hrlab-uz/security
+/.github/workflows/                     @hrlab-uz/devops @hrlab-uz/security
+/.github/CODEOWNERS                     @hrlab-uz/devops @hrlab-uz/security
+/backend/Dockerfile                     @hrlab-uz/devops @hrlab-uz/security
+/frontend/Dockerfile                    @hrlab-uz/devops @hrlab-uz/security
+/frontend/nginx.conf                    @hrlab-uz/devops @hrlab-uz/security
+/backend/docker-compose.yml             @hrlab-uz/devops
+
+# Database / migrations / role grants
+/backend/src/main/resources/db/         @hrlab-uz/database @hrlab-uz/security
+/backend/db/                            @hrlab-uz/database @hrlab-uz/devops
+
+# Security-sensitive code
+/backend/src/main/java/uz/hrlab/grading/security/      @hrlab-uz/security @hrlab-uz/backend
+/backend/src/main/java/uz/hrlab/grading/audit/         @hrlab-uz/security @hrlab-uz/backend
+/backend/src/main/java/uz/hrlab/grading/tenancy/       @hrlab-uz/security @hrlab-uz/backend
+/backend/src/main/java/uz/hrlab/grading/access/        @hrlab-uz/security @hrlab-uz/backend
+/backend/src/main/java/uz/hrlab/grading/common/logging/ @hrlab-uz/security @hrlab-uz/backend
+/backend/src/main/java/uz/hrlab/grading/common/persistence/ @hrlab-uz/security @hrlab-uz/database
+
+# Architecture / release-gate test packs
+/backend/src/test/java/uz/hrlab/grading/architecture/  @hrlab-uz/security @hrlab-uz/devops
+/backend/src/test/java/uz/hrlab/grading/tenancy/       @hrlab-uz/security @hrlab-uz/qa
+/backend/src/test/java/uz/hrlab/grading/audit/         @hrlab-uz/security @hrlab-uz/qa
+
+# Docs blueprints
+/docs/mvp1/                             @hrlab-uz/architecture

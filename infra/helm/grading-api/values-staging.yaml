@@ -1,0 +1,42 @@
+# grading-api — staging overrides (production-like).
+replicaCount: 2
+
+env:
+  SPRING_PROFILES_ACTIVE: "staging"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+ingress:
+  enabled: true
+  hosts:
+    - host: grading.staging.hrlab.uz
+      paths:
+        - path: /api
+          pathType: Prefix
+  tls:
+    - secretName: grading-api-staging-tls
+      hosts:
+        - grading.staging.hrlab.uz
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+existingSecrets:
+  - grading-api-db
+  - grading-api-redis
+  - grading-api-oauth
+  - grading-api-jwt
+  - grading-api-s3

@@ -1,0 +1,28 @@
+# Test profile — datasource URL is supplied by Testcontainers via
+# Spring's @ServiceConnection / DynamicPropertySource in the test base class.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: public
+  liquibase:
+    enabled: true
+    default-schema: public
+    # `test-roles` enables LOGIN + dev passwords on the grading_migrator /
+    # grading_runtime / grading_audit_reader roles so AuditRoleGrantsTest
+    # can connect as them. NEVER enable this context in production.
+    contexts: control-plane,seeds,test-roles,mode-shared
+
+logging:
+  level:
+    root: WARN
+    uz.hrlab.grading: INFO
+    liquibase: WARN
+
+# Test CORS allowlist — used by CorsAllowlistIntegrationTest.
+grading:
+  security:
+    cors:
+      allowed-origins: http://localhost:5173,https://test.grading.hrlab.uz

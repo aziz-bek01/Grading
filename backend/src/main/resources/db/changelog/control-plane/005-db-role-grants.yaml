@@ -1,0 +1,280 @@
+# Control plane: PostgreSQL role grants for defense-in-depth audit append-only.
+#
+# Remediates security review F-04 (High):
+# Even though SystemAuditLogRepository extends Repository (not JpaRepository) and
+# therefore cannot UPDATE/DELETE at the Java layer, a compromised runtime user
+# or rogue raw-SQL caller could still mutate audit rows via the database.
+# This changelog enforces append-only at the PostgreSQL grant layer.
+#
+# Roles created (idempotent — guarded by pg_roles lookup):
+#   - grading_migrator       : DDL + DML on everything. Used by Liquibase only.
+#   - grading_runtime        : DML on business tables; INSERT + SELECT only on
+#                              audit tables (NO UPDATE, NO DELETE). Used by app
+#                              at runtime (`spring.datasource.username`).
+#   - grading_audit_reader   : SELECT only on audit tables; no access elsewhere.
+#                              Used by audit-query API, gated by AUDIT_READ at
+#                              the application layer.
+#
+# Reversibility: every changeset declares an explicit <rollback>.
+# Idempotency: roles are guarded by pg_roles lookup; grants are repeatable.
+# Re-running this changelog must not fail.
+#
+# IMPORTANT: this changeset only DEFINES grants. It does NOT switch the running
+# application connection over to grading_runtime — that lives in deployment
+# configuration (Vault-managed connection string per environment). See
+# devops-sre handoff in 05-database-blueprint.md §X-post-review.
+databaseChangeLog:
+
+  # --------------------------------------------------------------------------
+  # 005.1 — Create the three roles (NOLOGIN at this layer; LOGIN + password
+  # assignment is owned by devops-sre per environment via Vault).
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 005-create-db-roles
+      author: database-architect
+      context: control-plane
+      labels: mvp1,security-f04
+      runOnChange: false
+      comment: |
+        Create grading_migrator, grading_runtime, grading_audit_reader as
+        NOLOGIN roles. devops-sre attaches LOGIN + password per environment.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_migrator') THEN
+                  CREATE ROLE grading_migrator NOLOGIN;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_runtime') THEN
+                  CREATE ROLE grading_runtime NOLOGIN;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_audit_reader') THEN
+                  CREATE ROLE grading_audit_reader NOLOGIN;
+                END IF;
+              END
+              $$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                -- Reassign owned objects to the bootstrap superuser before
+                -- dropping. We only DROP IF EXISTS so rollback is safe.
+                IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_audit_reader') THEN
+                  EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM grading_audit_reader';
+                  EXECUTE 'REVOKE ALL ON SCHEMA public FROM grading_audit_reader';
+                  DROP ROLE grading_audit_reader;
+                END IF;
+                IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_runtime') THEN
+                  EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM grading_runtime';
+                  EXECUTE 'REVOKE ALL ON SCHEMA public FROM grading_runtime';
+                  DROP ROLE grading_runtime;
+                END IF;
+                IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_migrator') THEN
+                  EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM grading_migrator';
+                  EXECUTE 'REVOKE ALL ON SCHEMA public FROM grading_migrator';
+                  DROP ROLE grading_migrator;
+                END IF;
+              END
+              $$;
+
+  # --------------------------------------------------------------------------
+  # 005.2 — Schema-level grants. Connect + USAGE on `public`.
+  # Revoke PUBLIC default access first (defense-in-depth on PG <15).
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 005-schema-grants
+      author: database-architect
+      context: control-plane
+      labels: mvp1,security-f04
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              REVOKE ALL ON SCHEMA public FROM PUBLIC;
+              GRANT USAGE ON SCHEMA public TO grading_migrator;
+              GRANT USAGE, CREATE ON SCHEMA public TO grading_migrator;
+              GRANT USAGE ON SCHEMA public TO grading_runtime;
+              GRANT USAGE ON SCHEMA public TO grading_audit_reader;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              REVOKE USAGE ON SCHEMA public FROM grading_audit_reader;
+              REVOKE USAGE ON SCHEMA public FROM grading_runtime;
+              REVOKE USAGE, CREATE ON SCHEMA public FROM grading_migrator;
+              GRANT ALL ON SCHEMA public TO PUBLIC;
+
+  # --------------------------------------------------------------------------
+  # 005.3 — grading_migrator: full DDL+DML on all current and future tables
+  # in `public`. Used ONLY by Liquibase (CI/CD + local dev migration runner).
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 005-grant-migrator-all
+      author: database-architect
+      context: control-plane
+      labels: mvp1,security-f04
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO grading_migrator;
+              GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO grading_migrator;
+              GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO grading_migrator;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public
+                GRANT ALL PRIVILEGES ON TABLES TO grading_migrator;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public
+                GRANT ALL PRIVILEGES ON SEQUENCES TO grading_migrator;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public
+                REVOKE ALL PRIVILEGES ON TABLES FROM grading_migrator;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public
+                REVOKE ALL PRIVILEGES ON SEQUENCES FROM grading_migrator;
+              REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM grading_migrator;
+              REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM grading_migrator;
+              REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM grading_migrator;
+
+  # --------------------------------------------------------------------------
+  # 005.4 — grading_runtime: SELECT/INSERT/UPDATE/DELETE on every non-audit
+  # public table, and SELECT/INSERT only on audit tables.
+  #
+  # Strategy: GRANT SELECT,INSERT,UPDATE,DELETE on all current tables, then
+  # explicitly REVOKE UPDATE,DELETE from the two audit tables. Default
+  # privileges for future tables grant the full DML set (audit partitions
+  # added later must EXPLICITLY revoke UPDATE/DELETE in their own changeset;
+  # this is documented in role-grants-matrix.md).
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 005-grant-runtime-business-dml
+      author: database-architect
+      context: control-plane
+      labels: mvp1,security-f04
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE
+                ON ALL TABLES IN SCHEMA public TO grading_runtime;
+              GRANT USAGE, SELECT
+                ON ALL SEQUENCES IN SCHEMA public TO grading_runtime;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public
+                GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO grading_runtime;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public
+                GRANT USAGE, SELECT ON SEQUENCES TO grading_runtime;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public
+                REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM grading_runtime;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public
+                REVOKE USAGE, SELECT ON SEQUENCES FROM grading_runtime;
+              REVOKE SELECT, INSERT, UPDATE, DELETE
+                ON ALL TABLES IN SCHEMA public FROM grading_runtime;
+              REVOKE USAGE, SELECT
+                ON ALL SEQUENCES IN SCHEMA public FROM grading_runtime;
+
+  # --------------------------------------------------------------------------
+  # 005.5 — Lock down audit tables for grading_runtime: revoke UPDATE+DELETE.
+  # This is the core F-04 fix.
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 005-revoke-runtime-audit-mutations
+      author: database-architect
+      context: control-plane
+      labels: mvp1,security-f04
+      runOnChange: false
+      comment: |
+        F-04 core fix. grading_runtime keeps SELECT + INSERT on audit tables
+        but loses UPDATE + DELETE. Any application path that tries
+        DELETE FROM public.system_audit_log fails with permission denied.
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              REVOKE UPDATE, DELETE, TRUNCATE
+                ON public.system_audit_log FROM grading_runtime;
+              REVOKE UPDATE, DELETE, TRUNCATE
+                ON public.tenant_audit_logs FROM grading_runtime;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              GRANT UPDATE, DELETE, TRUNCATE
+                ON public.system_audit_log TO grading_runtime;
+              GRANT UPDATE, DELETE, TRUNCATE
+                ON public.tenant_audit_logs TO grading_runtime;
+
+  # --------------------------------------------------------------------------
+  # 005.6 — grading_audit_reader: SELECT only on audit tables. No access
+  # whatsoever to business tables — gated additionally by AUDIT_READ at the
+  # app layer.
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 005-grant-audit-reader
+      author: database-architect
+      context: control-plane
+      labels: mvp1,security-f04
+      runOnChange: false
+      changes:
+        - sql:
+            splitStatements: true
+            sql: |
+              GRANT SELECT ON public.system_audit_log TO grading_audit_reader;
+              GRANT SELECT ON public.tenant_audit_logs TO grading_audit_reader;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              REVOKE SELECT ON public.system_audit_log FROM grading_audit_reader;
+              REVOKE SELECT ON public.tenant_audit_logs FROM grading_audit_reader;
+
+  # --------------------------------------------------------------------------
+  # 005.7 — Test-only LOGIN attachment.
+  # In deployed environments devops-sre attaches LOGIN + password via Vault.
+  # For local Testcontainers + docker-compose convenience we attach LOGIN
+  # with well-known dev passwords ONLY when the `test-roles` context is
+  # active. NEVER load this context in prod.
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 005-attach-login-test-only
+      author: database-architect
+      context: test-roles
+      labels: mvp1,security-f04,local-dev-only
+      runOnChange: false
+      comment: |
+        TEST + LOCAL ONLY. Adds LOGIN + dev password to the three roles so
+        Testcontainers and docker-compose can exercise role separation.
+        NEVER include `test-roles` in production Liquibase contexts.
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                EXECUTE 'ALTER ROLE grading_migrator LOGIN PASSWORD ''grading_migrator_pwd''';
+                EXECUTE 'ALTER ROLE grading_runtime LOGIN PASSWORD ''grading_runtime_pwd''';
+                EXECUTE 'ALTER ROLE grading_audit_reader LOGIN PASSWORD ''grading_audit_reader_pwd''';
+              END
+              $$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$
+              BEGIN
+                EXECUTE 'ALTER ROLE grading_migrator NOLOGIN PASSWORD NULL';
+                EXECUTE 'ALTER ROLE grading_runtime NOLOGIN PASSWORD NULL';
+                EXECUTE 'ALTER ROLE grading_audit_reader NOLOGIN PASSWORD NULL';
+              END
+              $$;

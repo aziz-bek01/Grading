@@ -1,0 +1,82 @@
+# grading.hrlab.uz — base application config.
+# Profile-specific overrides live in application-{profile}.yml.
+#
+# DATABASE USER (see db/role-grants-matrix.md — F-04 remediation):
+#   In every NON-LOCAL environment (dev, staging, prod) the runtime
+#   `spring.datasource.username` MUST be `grading_runtime`. That role has
+#   SELECT/INSERT/UPDATE/DELETE on business tables, but only SELECT+INSERT
+#   on `public.system_audit_log` and `public.tenant_audit_logs` — UPDATE,
+#   DELETE and TRUNCATE are revoked at the DB grant layer.
+#   Liquibase migrations run under `grading_migrator`; never reuse the
+#   runtime credential for migrations. devops-sre owns the three Vault
+#   secrets (one per role) per environment.
+#   Local dev (application-local.yml) may keep a single superuser as a
+#   convenience but this is explicitly flagged there.
+spring:
+  application:
+    name: grading
+  profiles:
+    default: local
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+  liquibase:
+    enabled: true
+    change-log: classpath:/db/changelog/db.changelog-master.yaml
+    contexts: control-plane,seeds,mode-shared
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# OAuth2 resource-server config is profile-specific (production sets issuer-uri).
+# spring.security.oauth2.resourceserver.jwt.audience — comma-separated list of
+# accepted aud claim values. Defaults to grading.hrlab.uz in SecurityConfig if
+# unset, but production deployments should set this explicitly via env var
+# GRADING_JWT_AUDIENCE.
+
+# grading-specific knobs
+grading:
+  tenancy:
+    # MVP 1 default: shared schema (tenant_id column scopes rows). Production
+    # target is schema-per-tenant (see TenantSchemaProvisioner + database-
+    # blueprint §10). Override via env var GRADING_TENANCY_MODE=schema_per_tenant.
+    mode: ${GRADING_TENANCY_MODE:shared}
+  security:
+    cors:
+      # Comma-separated allowlist of CORS origins. Production MUST set this via
+      # env var GRADING_CORS_ALLOWED_ORIGINS (e.g. "https://grading.hrlab.uz").
+      # Empty list = browsers cannot make cross-origin requests (fail-closed).
+      allowed-origins: ${GRADING_CORS_ALLOWED_ORIGINS:}
+    salary-encryption:
+      # Stub key id/version for SalaryEncryptionConverter (MVP 3 ships real KMS).
+      key-id: ${GRADING_SALARY_KEY_ID:dev-stub}
+      key-version: ${GRADING_SALARY_KEY_VERSION:1}

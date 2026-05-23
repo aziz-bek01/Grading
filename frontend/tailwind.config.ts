@@ -1,0 +1,113 @@
+import type { Config } from 'tailwindcss';
+
+/**
+ * Design tokens — mirror docs/mvp1/07-design-foundation.md §3.
+ * No hardcoded colors anywhere else: only the names exposed here.
+ */
+const config: Config = {
+  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50: '#EFF6FF',
+          100: '#DBE7F5',
+          200: '#B3C7E4',
+          300: '#7C9EC9',
+          400: '#3F6EA8',
+          500: '#1F4F86',
+          600: '#163E6C',
+          700: '#0F2E54',
+          800: '#0A2240',
+          900: '#061833',
+          DEFAULT: '#1F4F86',
+        },
+        accent: {
+          50: '#ECFEFF',
+          100: '#CFFAFE',
+          300: '#67E8F9',
+          500: '#06B6D4',
+          600: '#0891B2',
+          700: '#0E7490',
+          DEFAULT: '#06B6D4',
+        },
+        surface: '#FFFFFF',
+        background: '#F8FAFC',
+        border: '#E2E8F0',
+        'border-strong': '#CBD5E1',
+        divider: '#EDF2F7',
+        'text-primary': '#0F172A',
+        'text-secondary': '#475569',
+        'text-muted': '#64748B',
+        'text-inverse': '#FFFFFF',
+        'text-disabled': '#94A3B8',
+        success: { 50: '#ECFDF5', 500: '#10B981', 600: '#059669', 700: '#047857', DEFAULT: '#10B981' },
+        warning: { 50: '#FFFBEB', 500: '#F59E0B', 600: '#D97706', 700: '#B45309', DEFAULT: '#F59E0B' },
+        danger: { 50: '#FEF2F2', 500: '#EF4444', 600: '#DC2626', 700: '#B91C1C', DEFAULT: '#EF4444' },
+        info: { 50: '#EFF6FF', 500: '#3B82F6', 600: '#2563EB', DEFAULT: '#3B82F6' },
+        locked: '#64748B',
+        'locked-bg': '#F1F5F9',
+        'salary-sensitive': '#7C3AED',
+        'salary-sensitive-bg': '#F5F3FF',
+        'ai-suggestion': '#0EA5E9',
+        'ai-suggestion-bg': '#F0F9FF',
+        'audit-alert': '#DC2626',
+        'audit-alert-bg': '#FEF2F2',
+        'chart-1': '#1F4F86',
+        'chart-2': '#06B6D4',
+        'chart-3': '#10B981',
+        'chart-4': '#F59E0B',
+        'chart-5': '#7C3AED',
+        'chart-6': '#0EA5E9',
+        'chart-7': '#64748B',
+        'chart-8': '#DC2626',
+      },
+      fontFamily: {
+        sans: [
+          'Inter',
+          'ui-sans-serif',
+          '-apple-system',
+          'Segoe UI',
+          'Roboto',
+          '"Helvetica Neue"',
+          'Arial',
+          '"PT Sans"',
+          'sans-serif',
+        ],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        tabular: ['Inter', 'system-ui'],
+      },
+      fontSize: {
+        xs: ['12px', { lineHeight: '16px', fontWeight: '500' }],
+        sm: ['14px', { lineHeight: '20px' }],
+        base: ['15px', { lineHeight: '22px' }],
+        md: ['16px', { lineHeight: '24px', fontWeight: '500' }],
+        lg: ['18px', { lineHeight: '26px', fontWeight: '600' }],
+        xl: ['20px', { lineHeight: '28px', fontWeight: '600' }],
+        '2xl': ['24px', { lineHeight: '32px', fontWeight: '600' }],
+        '3xl': ['30px', { lineHeight: '38px', fontWeight: '600' }],
+        '4xl': ['36px', { lineHeight: '44px', fontWeight: '700' }],
+      },
+      borderRadius: {
+        none: '0',
+        sm: '4px',
+        md: '6px',
+        lg: '8px',
+        xl: '12px',
+        '2xl': '16px',
+        full: '9999px',
+      },
+      boxShadow: {
+        sm: '0 1px 2px rgba(15, 23, 42, 0.04)',
+        DEFAULT:
+          '0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)',
+        md: '0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04)',
+        lg: '0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04)',
+        focus: '0 0 0 3px rgba(31, 79, 134, 0.25)',
+      },
+    },
+  },
+  plugins: [],
+};
+
+export default config;

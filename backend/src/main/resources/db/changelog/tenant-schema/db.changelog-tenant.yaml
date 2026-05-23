@@ -1,0 +1,40 @@
+# Master tenant-schema changelog.
+#
+# Two execution paths (database-blueprint §10, Phase 2 implementation):
+#   1. mode-shared:        included by db.changelog-master.yaml under
+#                          the `mode-shared` context — table DDL lives in
+#                          the `public` schema for local dev / integration
+#                          tests (single Liquibase run, no provisioning saga).
+#   2. schema-per-tenant:  invoked programmatically by
+#                          TenantSchemaProvisioner.provision(tenant) — the
+#                          same YAML, applied against the new tenant schema
+#                          with `default_schema_name` parameter. Reserved
+#                          for production deployment (post-MVP 1).
+databaseChangeLog:
+  - include:
+      file: 001-create-projects.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 002-create-organization.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 003-create-positions.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 004-phase2-constraints.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 005-create-job-profiles.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 006-create-job-analysis.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 007-seed-job-analysis-permissions.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 008-phase3-constraints.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 009-questionnaire-in-progress.yaml
+      relativeToChangelogFile: true

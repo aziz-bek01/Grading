@@ -1,0 +1,60 @@
+# grading-api — production overrides.
+# CI must pin image.digest (preferred) or image.tag to a SemVer release.
+replicaCount: 3
+
+env:
+  SPRING_PROFILES_ACTIVE: "prod"
+  JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/grading"
+
+resources:
+  requests:
+    cpu: 1000m
+    memory: 2Gi
+  limits:
+    cpu: 4000m
+    memory: 4Gi
+
+ingress:
+  enabled: true
+  hosts:
+    - host: grading.hrlab.uz
+      paths:
+        - path: /api
+          pathType: Prefix
+  tls:
+    - secretName: grading-api-prod-tls
+      hosts:
+        - grading.hrlab.uz
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 65
+
+pdb:
+  enabled: true
+  minAvailable: 2
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: grading-api
+
+existingSecrets:
+  - grading-api-db
+  - grading-api-redis
+  - grading-api-oauth
+  - grading-api-jwt
+  - grading-api-s3
+  - grading-api-kms
+
+imagePullSecrets:
+  - name: ghcr-pull-secret
+
+migrator:
+  enabled: true
+  existingSecret: grading-api-db-migrator

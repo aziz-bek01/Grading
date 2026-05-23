@@ -1,0 +1,45 @@
+# Local developer profile — points at docker-compose Postgres.
+# DevAuthFilter is bound automatically because 'local' is in DevAuthFilter.ALLOWED_PROFILES.
+# DO NOT use this profile in any deployed environment.
+#
+# NOTE on datasource user (F-04 / db/role-grants-matrix.md):
+#   The local profile intentionally uses the bootstrap superuser
+#   `grading_app` because it must both run Liquibase migrations AND serve
+#   runtime traffic from a single connection — a developer convenience.
+#   In every deployed environment the runtime app connects as
+#   `grading_runtime` (DML on business tables, INSERT+SELECT only on audit
+#   tables) and Liquibase runs as `grading_migrator`. Local dev can opt
+#   into role separation by switching `username` below to
+#   `grading_runtime` and `password` to `grading_runtime_pwd` after the
+#   `test-roles` Liquibase context has run at least once (see
+#   docker-compose.yml `docker-entrypoint-initdb.d` script).
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/grading_control_db
+    username: grading_app
+    password: grading_app_pwd
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    properties:
+      hibernate:
+        default_schema: public
+  liquibase:
+    default-schema: public
+    # `test-roles` is enabled locally so the three DB roles get LOGIN +
+    # dev passwords. NEVER enable this context in production.
+    contexts: control-plane,seeds,test-roles,mode-shared
+
+logging:
+  level:
+    root: INFO
+    uz.hrlab.grading: DEBUG
+    security.audit: INFO
+
+# No JWT issuer in dev — SecurityConfig falls back to the no-op decoder and
+# requests are authenticated via DevAuthFilter (X-Dev-* headers).
+
+# Local CORS allowlist — Vite dev server only.
+grading:
+  security:
+    cors:
+      allowed-origins: http://localhost:5173

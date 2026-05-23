@@ -1,0 +1,45 @@
+# Seed: canonical role catalog (architecture §8.3 + PRD role matrix).
+# Role-permission grants for MVP 1 will be authored by HR product owner +
+# security engineer in a follow-up changeset.
+databaseChangeLog:
+  - changeSet:
+      id: seed-default-roles
+      author: backend-engineer
+      context: seeds
+      labels: mvp1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.roles (id, code, name, scope, description) VALUES
+                (gen_random_uuid(), 'HRLAB_SUPER_ADMIN',      'HRLab Super Admin',           'PLATFORM',
+                  'Full access across tenants and platform settings'),
+                (gen_random_uuid(), 'HRLAB_PROJECT_MANAGER',  'HRLab Project Manager',       'PLATFORM',
+                  'Manages grading projects, workflow, approvals'),
+                (gen_random_uuid(), 'HRLAB_CONSULTANT',       'HRLab Consultant',            'PLATFORM',
+                  'Assigned to client projects across tenants'),
+                (gen_random_uuid(), 'HRLAB_ANALYST',          'HRLab Analyst',               'PLATFORM',
+                  'Import, analysis, reports — limited salary access'),
+                (gen_random_uuid(), 'CLIENT_COMPANY_ADMIN',   'Client Company Admin',        'TENANT',
+                  'Manages users of own client company'),
+                (gen_random_uuid(), 'CLIENT_HR_DIRECTOR',     'Client HR Director',          'TENANT',
+                  'Positions, profiles, evaluations, reports'),
+                (gen_random_uuid(), 'CLIENT_HR_SPECIALIST',   'Client HR Specialist',        'TENANT',
+                  'Profile maintenance, questionnaires, documents'),
+                (gen_random_uuid(), 'EVALUATION_COMMITTEE_MEMBER','Evaluation Committee Member','TENANT',
+                  'Factor scoring, comments, calibration'),
+                (gen_random_uuid(), 'DEPARTMENT_MANAGER',     'Department Manager',          'TENANT',
+                  'Positions within own department only'),
+                (gen_random_uuid(), 'VIEWER',                 'Viewer (read-only)',          'TENANT',
+                  'Read-only on permitted data'),
+                (gen_random_uuid(), 'EXTERNAL_AUDITOR',       'External Auditor',            'TENANT',
+                  'Read-only access including audit logs, no salary data');
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.roles WHERE code IN (
+                'HRLAB_SUPER_ADMIN','HRLAB_PROJECT_MANAGER','HRLAB_CONSULTANT','HRLAB_ANALYST',
+                'CLIENT_COMPANY_ADMIN','CLIENT_HR_DIRECTOR','CLIENT_HR_SPECIALIST',
+                'EVALUATION_COMMITTEE_MEMBER','DEPARTMENT_MANAGER','VIEWER','EXTERNAL_AUDITOR'
+              );

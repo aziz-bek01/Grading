@@ -1,0 +1,94 @@
+# Control plane: system_audit_log.
+# MVP 1: simple table (non-partitioned). Monthly partitioning is owned by
+# database-architect (database-blueprint §15.3) and lands in a follow-up
+# changeset before production.
+# Hash chain is computed application-side (JpaAuditService). DB-level
+# privilege restriction (INSERT/SELECT only) is owned by database-architect.
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-system-audit-log
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: system_audit_log
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column: { name: tenant_id, type: UUID }
+              - column: { name: project_id, type: UUID }
+              - column: { name: actor_user_id, type: UUID }
+              - column: { name: action, type: VARCHAR(100),
+                          constraints: { nullable: false } }
+              - column: { name: entity_type, type: VARCHAR(100) }
+              - column: { name: entity_id, type: UUID }
+              - column: { name: before_json, type: JSONB }
+              - column: { name: after_json, type: JSONB }
+              - column: { name: reason, type: TEXT }
+              - column: { name: ip_address, type: VARCHAR(64) }
+              - column: { name: user_agent, type: TEXT }
+              - column: { name: correlation_id, type: VARCHAR(100) }
+              - column: { name: trace_id, type: VARCHAR(100) }
+              - column: { name: created_at, type: TIMESTAMPTZ,
+                          defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: hash_prev, type: TEXT }
+              - column: { name: hash_current, type: TEXT,
+                          constraints: { nullable: false } }
+        - sql:
+            sql: |
+              CREATE INDEX idx_system_audit_tenant_created
+                ON public.system_audit_log (tenant_id, created_at DESC);
+              CREATE INDEX idx_system_audit_action
+                ON public.system_audit_log (action);
+              CREATE INDEX idx_system_audit_actor
+                ON public.system_audit_log (actor_user_id);
+              CREATE INDEX idx_system_audit_entity
+                ON public.system_audit_log (entity_type, entity_id);
+
+  - changeSet:
+      id: 003-create-tenant-audit-logs-stub
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      comment: |
+        Stub of tenant_x.audit_logs in the `public` schema so MVP 1 integration
+        tests can exercise tenant audit-event recording before the per-tenant
+        schema template lands in Phase 2. Will be moved to per-tenant schemas
+        by database-architect.
+      changes:
+        - createTable:
+            tableName: tenant_audit_logs
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column: { name: tenant_id, type: UUID,
+                          constraints: { nullable: false } }
+              - column: { name: project_id, type: UUID }
+              - column: { name: actor_user_id, type: UUID }
+              - column: { name: action, type: VARCHAR(100),
+                          constraints: { nullable: false } }
+              - column: { name: entity_type, type: VARCHAR(100) }
+              - column: { name: entity_id, type: UUID }
+              - column: { name: before_json, type: JSONB }
+              - column: { name: after_json, type: JSONB }
+              - column: { name: reason, type: TEXT }
+              - column: { name: ip_address, type: VARCHAR(64) }
+              - column: { name: user_agent, type: TEXT }
+              - column: { name: correlation_id, type: VARCHAR(100) }
+              - column: { name: trace_id, type: VARCHAR(100) }
+              - column: { name: created_at, type: TIMESTAMPTZ,
+                          defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: hash_prev, type: TEXT }
+              - column: { name: hash_current, type: TEXT,
+                          constraints: { nullable: false } }
+        - sql:
+            sql: |
+              CREATE INDEX idx_tenant_audit_tenant_project_created
+                ON public.tenant_audit_logs (tenant_id, project_id, created_at DESC);
+              CREATE INDEX idx_tenant_audit_action
+                ON public.tenant_audit_logs (tenant_id, action);

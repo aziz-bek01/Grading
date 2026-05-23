@@ -1,0 +1,73 @@
+# =============================================================
+# grading.hrlab.uz — Repository-wide .gitignore
+# =============================================================
+
+# --- OS / Editor / IDE ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# --- Logs & runtime ---
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Local env / secrets ---
+.env.local
+.env.*.local
+**/application-secret.yml
+**/application-prod.yml
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --- Java / Maven ---
+backend/target/
+**/*.class
+**/hs_err_pid*
+backend/.gradle/
+backend/build/
+backend/.maven/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# --- Node / Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/.eslintcache
+frontend/playwright-report/
+frontend/test-results/
+
+# --- Docker / Kubernetes local state ---
+**/*.dockerignore.local
+infra/helm/*/charts/
+infra/helm/*/Chart.lock
+
+# --- Test artifacts ---
+**/surefire-reports/
+**/failsafe-reports/
+**/jacoco.exec
+**/jacoco/
+
+# --- Claude / agent runtime state ---
+.claude/launch.json
+**/agentId
+
+# --- Generated documentation ---
+*.tmp.md
+
+# --- Misc ---
+*.bak
+*.orig

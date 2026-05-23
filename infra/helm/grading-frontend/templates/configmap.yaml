@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grading-frontend.fullname" . }}-runtime-config
+  labels:
+    {{- include "grading-frontend.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{ .Values.runtimeConfig | toJson }}

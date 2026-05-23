@@ -1,0 +1,260 @@
+# Phase 2 — post-security-review constraints (database-blueprint §31.5).
+#
+# Remediates findings from `docs/mvp1/reviews/phase2-security-review.md`:
+#   F-203 — tenant_id FOREIGN KEY → public.tenants(id) on projects/
+#           departments/positions (defense-in-depth referential integrity).
+#   F-204 — Cross-FK consistency: positions.(project_id, department_id)
+#           must reference departments.(project_id, id) via composite FK.
+#   F-206 — DB-level multi-step department cycle prevention via trigger.
+#   F-209 — Project status LOCKED→{DRAFT,ACTIVE} downgrade rejected at DB
+#           level (state machine trigger).
+#
+# ALL changes are additive (no DROP of existing data); no rename/destructive
+# operations. Each changeSet declares a `rollback:` block so `liquibase
+# rollback-count N` restores prior state.
+#
+# Tenancy mode applicability:
+#   mode-shared          — applies as-is (all tables in `public`).
+#   schema-per-tenant    — when TenantSchemaProvisioner re-applies
+#                          db.changelog-tenant.yaml under a per-tenant schema,
+#                          the FK to `public.tenants(id)` continues to work
+#                          because `public` is reachable from any schema.
+#                          Cross-FK + cycle trigger remain intra-schema.
+databaseChangeLog:
+
+  # --------------------------------------------------------------------- F-203
+  - changeSet:
+      id: tenant-004-fk-projects-tenant
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase2,security-f203
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - foreignKeyConstraintExists:
+                foreignKeyName: fk_projects_tenant
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE projects
+                ADD CONSTRAINT fk_projects_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+      rollback:
+        - sql:
+            sql: ALTER TABLE projects DROP CONSTRAINT IF EXISTS fk_projects_tenant;
+
+  - changeSet:
+      id: tenant-004-fk-departments-tenant
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase2,security-f203
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - foreignKeyConstraintExists:
+                foreignKeyName: fk_departments_tenant
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE departments
+                ADD CONSTRAINT fk_departments_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+      rollback:
+        - sql:
+            sql: ALTER TABLE departments DROP CONSTRAINT IF EXISTS fk_departments_tenant;
+
+  - changeSet:
+      id: tenant-004-fk-positions-tenant
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase2,security-f203
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - foreignKeyConstraintExists:
+                foreignKeyName: fk_positions_tenant
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE positions
+                ADD CONSTRAINT fk_positions_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+      rollback:
+        - sql:
+            sql: ALTER TABLE positions DROP CONSTRAINT IF EXISTS fk_positions_tenant;
+
+  # --------------------------------------------------------------------- F-204
+  # Composite FK positions.(project_id, department_id) → departments.(project_id, id).
+  # Requires a UNIQUE INDEX on departments(project_id, id) — the column `id`
+  # alone is already PRIMARY KEY (and thus unique) but PostgreSQL requires the
+  # *exact* column tuple referenced by the FK to be unique. The composite
+  # uniqueness is trivially satisfied (id is already unique) but the index is
+  # needed for FK targeting.
+  - changeSet:
+      id: tenant-004-uq-departments-project-id
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase2,security-f204
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: uq_departments_project_id
+      changes:
+        - sql:
+            sql: |
+              CREATE UNIQUE INDEX uq_departments_project_id
+                ON departments (project_id, id);
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS uq_departments_project_id;
+
+  - changeSet:
+      id: tenant-004-fk-positions-department-composite
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase2,security-f204
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE positions DROP CONSTRAINT IF EXISTS fk_positions_department;
+              ALTER TABLE positions
+                ADD CONSTRAINT fk_positions_department
+                FOREIGN KEY (project_id, department_id)
+                REFERENCES departments (project_id, id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE positions DROP CONSTRAINT IF EXISTS fk_positions_department;
+              ALTER TABLE positions
+                ADD CONSTRAINT fk_positions_department
+                FOREIGN KEY (department_id) REFERENCES departments(id);
+
+  # Cross-tenant consistency between positions and departments is NOT enforced
+  # at DB level: tenant_id is already NOT NULL on both rows AND the application
+  # layer (CreatePositionUseCase, UpdatePositionUseCase) validates equality.
+  # Adding a composite FK on (tenant_id, department_id) would require another
+  # unique index and complicates schema-per-tenant migration. Accepted risk —
+  # tracked in 05-database-blueprint.md §31.5.
+
+  # --------------------------------------------------------------------- F-206
+  # Trigger function: walks parent_id chain upward; raises if it loops back to
+  # the row being inserted/updated. Bounded by max_depth=50 as a safety net.
+  - changeSet:
+      id: tenant-004-fn-prevent-department-cycle
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase2,security-f206
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION prevent_department_cycle()
+              RETURNS TRIGGER AS $$
+              DECLARE
+                  current_parent UUID;
+                  depth          INT := 0;
+                  max_depth      CONSTANT INT := 50;
+              BEGIN
+                  IF NEW.parent_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+                  IF NEW.parent_id = NEW.id THEN
+                      RAISE EXCEPTION
+                          'department cycle: self-parent (id=%)', NEW.id
+                          USING ERRCODE = '23514';
+                  END IF;
+                  current_parent := NEW.parent_id;
+                  WHILE current_parent IS NOT NULL LOOP
+                      depth := depth + 1;
+                      IF depth > max_depth THEN
+                          RAISE EXCEPTION
+                              'department parent chain exceeds max depth %', max_depth
+                              USING ERRCODE = '54000';
+                      END IF;
+                      IF current_parent = NEW.id THEN
+                          RAISE EXCEPTION
+                              'department cycle detected on id=% via parent_id=%',
+                              NEW.id, NEW.parent_id
+                              USING ERRCODE = '23514';
+                      END IF;
+                      SELECT parent_id INTO current_parent
+                          FROM departments
+                          WHERE id = current_parent
+                            AND tenant_id = NEW.tenant_id;
+                      EXIT WHEN NOT FOUND;
+                  END LOOP;
+                  RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS prevent_department_cycle();
+
+  - changeSet:
+      id: tenant-004-trg-prevent-department-cycle
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase2,security-f206
+      changes:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_prevent_department_cycle ON departments;
+              CREATE TRIGGER trg_prevent_department_cycle
+                  BEFORE INSERT OR UPDATE OF parent_id ON departments
+                  FOR EACH ROW
+                  EXECUTE FUNCTION prevent_department_cycle();
+      rollback:
+        - sql:
+            sql: DROP TRIGGER IF EXISTS trg_prevent_department_cycle ON departments;
+
+  # --------------------------------------------------------------------- F-209
+  # Trigger function: enforce LOCKED is a one-way state (modulo ARCHIVED).
+  - changeSet:
+      id: tenant-004-fn-enforce-project-lock
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase2,security-f209
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION enforce_project_lock_immutability()
+              RETURNS TRIGGER AS $$
+              BEGIN
+                  IF OLD.status = 'LOCKED'
+                     AND NEW.status NOT IN ('LOCKED', 'ARCHIVED') THEN
+                      RAISE EXCEPTION
+                          'project % is LOCKED; downgrade to % is forbidden',
+                          OLD.id, NEW.status
+                          USING ERRCODE = '23514';
+                  END IF;
+                  RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS enforce_project_lock_immutability();
+
+  - changeSet:
+      id: tenant-004-trg-enforce-project-lock
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase2,security-f209
+      changes:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_enforce_project_lock ON projects;
+              CREATE TRIGGER trg_enforce_project_lock
+                  BEFORE UPDATE OF status ON projects
+                  FOR EACH ROW
+                  EXECUTE FUNCTION enforce_project_lock_immutability();
+      rollback:
+        - sql:
+            sql: DROP TRIGGER IF EXISTS trg_enforce_project_lock ON projects;

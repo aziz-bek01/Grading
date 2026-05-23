@@ -1,0 +1,37 @@
+# grading-api — dev overrides.
+replicaCount: 1
+
+env:
+  SPRING_PROFILES_ACTIVE: "dev"
+  JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0"
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+ingress:
+  enabled: true
+  hosts:
+    - host: grading.dev.hrlab.uz
+      paths:
+        - path: /api
+          pathType: Prefix
+  tls:
+    - secretName: grading-api-dev-tls
+      hosts:
+        - grading.dev.hrlab.uz
+
+autoscaling:
+  enabled: false
+
+pdb:
+  enabled: false
+
+existingSecrets:
+  - grading-api-db
+  - grading-api-redis
+  - grading-api-jwt

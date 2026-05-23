@@ -1,0 +1,90 @@
+# Phase 3 — seed the 3 new permission codes introduced for JobProfile +
+# JobAnalysis modules:
+#   - JOB_PROFILE_APPROVE  (newly split from JOB_PROFILE_EDIT)
+#   - JOB_ANALYSIS_READ
+#   - JOB_ANALYSIS_EDIT
+#
+# Role grants (per role-permissions-matrix.md MVP-3 mapping):
+#   HRLAB_SUPER_ADMIN          → all three
+#   HRLAB_PROJECT_MANAGER      → all three
+#   HRLAB_CONSULTANT           → READ both, EDIT analysis only
+#   HRLAB_ANALYST              → READ both, EDIT analysis only
+#   CLIENT_HR_DIRECTOR         → JOB_PROFILE_APPROVE, JOB_ANALYSIS_READ
+#   CLIENT_HR_SPECIALIST       → JOB_ANALYSIS_READ + EDIT
+#   DEPARTMENT_MANAGER         → JOB_ANALYSIS_READ (scoped via ABAC)
+#   EVALUATION_COMMITTEE       → JOB_ANALYSIS_READ
+databaseChangeLog:
+
+  - changeSet:
+      id: seed-phase3-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp1,phase3
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'JOB_PROFILE_APPROVE', 'JOB_PROFILE',  'APPROVE',
+                 'Approve a job profile (HR Director gate)'),
+                (gen_random_uuid(), 'JOB_ANALYSIS_READ',   'JOB_ANALYSIS', 'READ',
+                 'Read job-analysis questionnaires and answers'),
+                (gen_random_uuid(), 'JOB_ANALYSIS_EDIT',   'JOB_ANALYSIS', 'EDIT',
+                 'Edit job-analysis questionnaires and answers')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions
+                WHERE code IN ('JOB_PROFILE_APPROVE',
+                               'JOB_ANALYSIS_READ',
+                               'JOB_ANALYSIS_EDIT');
+
+  - changeSet:
+      id: seed-phase3-role-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp1,phase3
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Build the cross-product (role, permission) tuples; INSERT only
+              -- those that don't already exist. Uses two CTEs joined on a fixed
+              -- mapping table inlined as a VALUES list for clarity.
+              WITH role_perm_map(role_code, permission_code) AS (
+                VALUES
+                  ('HRLAB_SUPER_ADMIN',          'JOB_PROFILE_APPROVE'),
+                  ('HRLAB_SUPER_ADMIN',          'JOB_ANALYSIS_READ'),
+                  ('HRLAB_SUPER_ADMIN',          'JOB_ANALYSIS_EDIT'),
+                  ('HRLAB_PROJECT_MANAGER',      'JOB_PROFILE_APPROVE'),
+                  ('HRLAB_PROJECT_MANAGER',      'JOB_ANALYSIS_READ'),
+                  ('HRLAB_PROJECT_MANAGER',      'JOB_ANALYSIS_EDIT'),
+                  ('HRLAB_CONSULTANT',           'JOB_ANALYSIS_READ'),
+                  ('HRLAB_CONSULTANT',           'JOB_ANALYSIS_EDIT'),
+                  ('HRLAB_ANALYST',              'JOB_ANALYSIS_READ'),
+                  ('HRLAB_ANALYST',              'JOB_ANALYSIS_EDIT'),
+                  ('CLIENT_HR_DIRECTOR',         'JOB_PROFILE_APPROVE'),
+                  ('CLIENT_HR_DIRECTOR',         'JOB_ANALYSIS_READ'),
+                  ('CLIENT_HR_SPECIALIST',       'JOB_ANALYSIS_READ'),
+                  ('CLIENT_HR_SPECIALIST',       'JOB_ANALYSIS_EDIT'),
+                  ('DEPARTMENT_MANAGER',         'JOB_ANALYSIS_READ'),
+                  ('EVALUATION_COMMITTEE_MEMBER','JOB_ANALYSIS_READ')
+              )
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM role_perm_map m
+                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.permissions p ON p.code = m.permission_code
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p
+                WHERE rp.permission_id = p.id
+                  AND p.code IN ('JOB_PROFILE_APPROVE',
+                                 'JOB_ANALYSIS_READ',
+                                 'JOB_ANALYSIS_EDIT');

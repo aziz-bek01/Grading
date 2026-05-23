@@ -1,0 +1,94 @@
+# Phase 2 — departments table with parent_id self-FK (database-blueprint §5.2 "departments").
+databaseChangeLog:
+  - changeSet:
+      id: tenant-002-create-departments
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase2
+      changes:
+        - createTable:
+            tableName: departments
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: project_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: parent_id
+                  type: UUID
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE departments
+                ADD CONSTRAINT fk_departments_project
+                FOREIGN KEY (project_id) REFERENCES projects(id);
+              ALTER TABLE departments
+                ADD CONSTRAINT fk_departments_parent
+                FOREIGN KEY (parent_id) REFERENCES departments(id);
+              ALTER TABLE departments
+                ADD CONSTRAINT chk_departments_self_parent
+                CHECK (id <> parent_id);
+              ALTER TABLE departments
+                ADD CONSTRAINT chk_departments_type
+                CHECK (type IN ('BRANCH','DEPARTMENT','DIVISION','UNIT'));
+              ALTER TABLE departments
+                ADD CONSTRAINT chk_departments_status
+                CHECK (status IN ('ACTIVE','ARCHIVED'));
+              CREATE UNIQUE INDEX uq_departments_tenant_project_code
+                ON departments (tenant_id, project_id, code);
+              CREATE INDEX idx_departments_tenant_project
+                ON departments (tenant_id, project_id);
+              CREATE INDEX idx_departments_parent ON departments (parent_id);

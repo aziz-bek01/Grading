@@ -1,0 +1,13 @@
+{{- if .Values.pdb.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "grading-frontend.fullname" . }}
+  labels:
+    {{- include "grading-frontend.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "grading-frontend.selectorLabels" . | nindent 6 }}
+{{- end -}}

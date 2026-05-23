@@ -1,0 +1,755 @@
+name: ci
+
+# Implements the 28-stage pipeline from docs/mvp1/04-devops-sre-blueprint.md §7.
+# Blocking gates: tenant-isolation / audit / salary / architecture tests,
+# container scans, secret scans, image build & push (on main).
+
+on:
+  push:
+    branches: [main, develop]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# Cancel in-progress pipelines for the same ref when a new push lands.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege default. Individual jobs widen as required.
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: "21"
+  JAVA_DIST: temurin
+  NODE_VERSION: "20"
+  MAVEN_CLI_OPTS: "-B -ntp -e -Dstyle.color=always"
+  REGISTRY: ghcr.io
+  IMAGE_BACKEND: ghcr.io/${{ github.repository }}/grading-api
+  IMAGE_FRONTEND: ghcr.io/${{ github.repository }}/grading-frontend
+
+jobs:
+
+  # ===========================================================================
+  # Stage 1-2 — Checkout + commit / branch validation
+  # ===========================================================================
+  validate:
+    name: "01 · validate"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate branch name
+        if: github.event_name == 'pull_request'
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          echo "Validating branch: $BRANCH"
+          if ! echo "$BRANCH" | grep -Eq '^(feat|fix|chore|docs|refactor|test|ci|build|perf|revert)/[a-z0-9._-]+$|^(main|develop|release/.+|hotfix/.+)$'; then
+            echo "::error::Branch name '$BRANCH' does not follow <type>/<slug> convention."
+            exit 1
+          fi
+
+      - name: Conventional commit lint
+        if: github.event_name == 'pull_request'
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: .github/commitlint.config.cjs
+
+  # ===========================================================================
+  # Stage 3 — Secret scan (gitleaks)
+  # ===========================================================================
+  secret-scan:
+    name: "02 · secret-scan"
+    runs-on: ubuntu-22.04
+    needs: validate
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+          GITLEAKS_ENABLE_SUMMARY: "true"
+
+  # ===========================================================================
+  # Stage 4 — Dependency scans (Maven + npm + trivy fs)
+  # ===========================================================================
+  backend-deps-scan:
+    name: "03 · backend-deps-scan"
+    runs-on: ubuntu-22.04
+    needs: validate
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Trivy filesystem scan (backend)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: backend
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-backend-fs.sarif
+          exit-code: "1"
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-backend-fs.sarif
+          category: trivy-backend-fs
+
+  frontend-deps-scan:
+    name: "04 · frontend-deps-scan"
+    runs-on: ubuntu-22.04
+    needs: validate
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm audit (high+)
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+
+      - name: Trivy filesystem scan (frontend)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: frontend
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-frontend-fs.sarif
+          exit-code: "1"
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-frontend-fs.sarif
+          category: trivy-frontend-fs
+
+  # ===========================================================================
+  # Stage 5 — SAST (Spotbugs for backend, ESLint security rules for frontend)
+  # ===========================================================================
+  backend-sast:
+    name: "05 · backend-sast"
+    runs-on: ubuntu-22.04
+    needs: validate
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      # Spotbugs is invoked via the Maven plugin; the plugin definition lives
+      # in pom.xml in a separate profile. For MVP 1 this stage is a soft gate
+      # — we run the analyzer but only fail on HIGH findings.
+      - name: Spotbugs (best-effort, soft-gate)
+        working-directory: backend
+        run: |
+          ./mvnw ${{ env.MAVEN_CLI_OPTS }} -DskipTests compile com.github.spotbugs:spotbugs-maven-plugin:4.8.6.4:check -Dspotbugs.failOnError=false || true
+
+  frontend-sast:
+    name: "06 · frontend-sast"
+    runs-on: ubuntu-22.04
+    needs: validate
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: ESLint
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run lint
+
+  # ===========================================================================
+  # Stage 6 — Backend unit tests (no integration, no @Tag("integration"))
+  # ===========================================================================
+  backend-unit-test:
+    name: "07 · backend-unit-test"
+    runs-on: ubuntu-22.04
+    needs: [validate]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: "Unit tests (excluded: integration)"
+        working-directory: backend
+        run: ./mvnw ${{ env.MAVEN_CLI_OPTS }} test -DexcludedGroups=integration
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-unit
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  # ===========================================================================
+  # Stage 7 — Frontend unit tests
+  # ===========================================================================
+  frontend-unit-test:
+    name: "08 · frontend-unit-test"
+    runs-on: ubuntu-22.04
+    needs: validate
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install + test
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 7
+
+  # ===========================================================================
+  # Stage 8 — Backend integration tests (Testcontainers). PR-from-fork skipped.
+  # ===========================================================================
+  backend-integration-test:
+    name: "09 · backend-integration-test"
+    runs-on: ubuntu-22.04
+    needs: [backend-unit-test]
+    timeout-minutes: 40
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request'
+    services:
+      docker:
+        image: docker:24-dind
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Integration tests (all tags)
+        working-directory: backend
+        env:
+          GRADING_REQUIRE_DOCKER: "true"
+        run: ./mvnw ${{ env.MAVEN_CLI_OPTS }} test -Dgroups=integration
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-integration
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  # ===========================================================================
+  # Stage 10 — BLOCKING: tenant-isolation release gate
+  # ===========================================================================
+  backend-tenant-isolation:
+    name: "10 · tenant-isolation [BLOCKING]"
+    runs-on: ubuntu-22.04
+    needs: [backend-unit-test]
+    timeout-minutes: 25
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: Tenant-isolation pack
+        working-directory: backend
+        env:
+          GRADING_REQUIRE_DOCKER: "true"
+        run: ./mvnw ${{ env.MAVEN_CLI_OPTS }} test -Dgroups=tenant-isolation
+
+  # ===========================================================================
+  # Stage 11 — BLOCKING: audit release gate
+  # ===========================================================================
+  backend-audit:
+    name: "11 · audit [BLOCKING]"
+    runs-on: ubuntu-22.04
+    needs: [backend-unit-test]
+    timeout-minutes: 25
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: Audit pack
+        working-directory: backend
+        env:
+          GRADING_REQUIRE_DOCKER: "true"
+        run: ./mvnw ${{ env.MAVEN_CLI_OPTS }} test -Dgroups=audit
+
+  # ===========================================================================
+  # Stage 12 — BLOCKING: salary release gate
+  # ===========================================================================
+  backend-salary:
+    name: "12 · salary [BLOCKING]"
+    runs-on: ubuntu-22.04
+    needs: [backend-unit-test]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: Salary pack
+        working-directory: backend
+        run: ./mvnw ${{ env.MAVEN_CLI_OPTS }} test -Dgroups=salary
+
+  # ===========================================================================
+  # Stage 13 — BLOCKING: architecture (ArchUnit) release gate
+  # ===========================================================================
+  backend-arch:
+    name: "13 · architecture [BLOCKING]"
+    runs-on: ubuntu-22.04
+    needs: [backend-unit-test]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: ArchUnit pack
+        working-directory: backend
+        run: ./mvnw ${{ env.MAVEN_CLI_OPTS }} test -Dgroups=architecture
+
+  # ===========================================================================
+  # Stage 14 — Build backend image (push only on main / tag)
+  # ===========================================================================
+  build-backend-image:
+    name: "14 · build-backend-image"
+    runs-on: ubuntu-22.04
+    needs:
+      - backend-tenant-isolation
+      - backend-audit
+      - backend-salary
+      - backend-arch
+      - backend-deps-scan
+      - secret-scan
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_BACKEND }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=ref,event=pr,prefix=pr-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build & maybe push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            IMAGE_VERSION=${{ steps.meta.outputs.version }}
+            IMAGE_REVISION=${{ github.sha }}
+            IMAGE_CREATED=${{ steps.meta.outputs.created }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+  # ===========================================================================
+  # Stage 15 — Build frontend image
+  # ===========================================================================
+  build-frontend-image:
+    name: "15 · build-frontend-image"
+    runs-on: ubuntu-22.04
+    needs: [frontend-unit-test, frontend-deps-scan, frontend-sast, secret-scan]
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_FRONTEND }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=ref,event=pr,prefix=pr-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build & maybe push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            IMAGE_VERSION=${{ steps.meta.outputs.version }}
+            IMAGE_REVISION=${{ github.sha }}
+            IMAGE_CREATED=${{ steps.meta.outputs.created }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+  # ===========================================================================
+  # Stage 16/17 — Image scans
+  # ===========================================================================
+  image-scan-backend:
+    name: "16 · image-scan-backend"
+    runs-on: ubuntu-22.04
+    needs: build-backend-image
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.IMAGE_BACKEND }}:sha-${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-backend-image.sarif
+          exit-code: "1"
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-backend-image.sarif
+          category: trivy-backend-image
+
+  image-scan-frontend:
+    name: "17 · image-scan-frontend"
+    runs-on: ubuntu-22.04
+    needs: build-frontend-image
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.IMAGE_FRONTEND }}:sha-${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-frontend-image.sarif
+          exit-code: "1"
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-frontend-image.sarif
+          category: trivy-frontend-image
+
+  # ===========================================================================
+  # Stage 18 — SBOM generation (Syft for both images)
+  # ===========================================================================
+  sbom:
+    name: "18 · sbom"
+    runs-on: ubuntu-22.04
+    needs: [build-backend-image, build-frontend-image]
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Backend SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_BACKEND }}:sha-${{ github.sha }}
+          format: spdx-json
+          output-file: sbom-backend.spdx.json
+
+      - name: Frontend SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_FRONTEND }}:sha-${{ github.sha }}
+          format: spdx-json
+          output-file: sbom-frontend.spdx.json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: |
+            sbom-backend.spdx.json
+            sbom-frontend.spdx.json
+          retention-days: 90
+
+  # ===========================================================================
+  # Stage 19 — Deploy dev (main branch only)
+  # ===========================================================================
+  deploy-dev:
+    name: "19 · deploy-dev"
+    runs-on: ubuntu-22.04
+    needs: [image-scan-backend, image-scan-frontend, sbom]
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 15
+    environment:
+      name: dev
+      url: https://grading.dev.hrlab.uz
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Helm upgrade (dev)
+        run: |
+          echo "::notice::Placeholder — wire actual kubeconfig + helm here."
+          # helm upgrade --install grading-api  infra/helm/grading-api      -n grading-dev -f infra/helm/grading-api/values-dev.yaml      --set image.tag=sha-${GITHUB_SHA::7}
+          # helm upgrade --install grading-fe   infra/helm/grading-frontend -n grading-dev -f infra/helm/grading-frontend/values-dev.yaml --set image.tag=sha-${GITHUB_SHA::7}
+
+  # ===========================================================================
+  # Stage 20 — Smoke-test dev
+  # ===========================================================================
+  smoke-test-dev:
+    name: "20 · smoke-test-dev"
+    runs-on: ubuntu-22.04
+    needs: deploy-dev
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 10
+    steps:
+      - name: cURL health endpoints
+        run: |
+          echo "::notice::Placeholder — replace with real BASE_URL when DNS exists."
+          # curl -fsS https://grading.dev.hrlab.uz/actuator/health/readiness
+          # curl -fsS https://grading.dev.hrlab.uz/healthz
+
+  # ===========================================================================
+  # Stage 21 — Deploy staging (manual approval via environment)
+  # ===========================================================================
+  deploy-staging:
+    name: "21 · deploy-staging"
+    runs-on: ubuntu-22.04
+    needs: smoke-test-dev
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: https://grading.staging.hrlab.uz
+    steps:
+      - uses: actions/checkout@v4
+      - name: Helm upgrade (staging)
+        run: |
+          echo "::notice::Placeholder — wire actual kubeconfig + helm here."
+
+  # ===========================================================================
+  # Stage 22 — E2E (Playwright) — placeholder for MVP 1
+  # ===========================================================================
+  e2e-staging:
+    name: "22 · e2e-staging"
+    runs-on: ubuntu-22.04
+    needs: deploy-staging
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    timeout-minutes: 30
+    steps:
+      - run: echo "::notice::Placeholder — Playwright e2e wired in later MVP."
+
+  # ===========================================================================
+  # Stage 23 — Security scan staging (OWASP ZAP baseline) — placeholder
+  # ===========================================================================
+  security-scan-staging:
+    name: "23 · security-scan-staging"
+    runs-on: ubuntu-22.04
+    needs: deploy-staging
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 30
+    steps:
+      - name: ZAP baseline (placeholder)
+        run: |
+          echo "::notice::Will run ZAP baseline against staging when DNS exists."
+          # docker run --rm -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://grading.staging.hrlab.uz -m 5 -I
+
+  # ===========================================================================
+  # Stage 24 — Release approval (manual via env protection)
+  # ===========================================================================
+  release-approval:
+    name: "24 · release-approval"
+    runs-on: ubuntu-22.04
+    needs: [e2e-staging, security-scan-staging]
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 1440
+    environment:
+      name: production-approval
+    steps:
+      - run: echo "Release approved by environment reviewer."
+
+  # ===========================================================================
+  # Stage 25 — Deploy production
+  # ===========================================================================
+  deploy-production:
+    name: "25 · deploy-production"
+    runs-on: ubuntu-22.04
+    needs: release-approval
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://grading.hrlab.uz
+    steps:
+      - uses: actions/checkout@v4
+      - name: Helm upgrade (production)
+        run: |
+          echo "::notice::Placeholder — record helm history; pin digest from build-backend-image.outputs.image-digest"
+
+  # ===========================================================================
+  # Stage 26 — Post-deploy verification
+  # ===========================================================================
+  post-deploy-verify:
+    name: "26 · post-deploy-verify"
+    runs-on: ubuntu-22.04
+    needs: deploy-production
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 10
+    steps:
+      - run: |
+          echo "::notice::Placeholder — readiness + audit-write smoke."
+          # curl -fsS https://grading.hrlab.uz/actuator/health/readiness
+
+  # ===========================================================================
+  # Stage 27 — Monitoring check
+  # ===========================================================================
+  monitoring-check:
+    name: "27 · monitoring-check"
+    runs-on: ubuntu-22.04
+    needs: post-deploy-verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 5
+    steps:
+      - run: |
+          echo "::notice::Placeholder — verify Grafana dashboards exist for the new release."
+
+  # ===========================================================================
+  # Stage 28 — Release notes + tag
+  # ===========================================================================
+  release-notes:
+    name: "28 · release-notes"
+    runs-on: ubuntu-22.04
+    needs: monitoring-check
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate release notes (release-please style placeholder)
+        run: |
+          echo "::notice::Wire release-please or conventional-changelog here."

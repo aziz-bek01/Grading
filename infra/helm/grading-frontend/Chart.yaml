@@ -1,0 +1,17 @@
+apiVersion: v2
+name: grading-frontend
+description: grading.hrlab.uz React SPA served via nginx
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - grading
+  - hrlab
+  - react
+  - nginx
+home: https://grading.hrlab.uz
+sources:
+  - https://github.com/hrlab-uz/grading
+maintainers:
+  - name: HR Laboratories DevOps
+    email: devops@hrlab.uz

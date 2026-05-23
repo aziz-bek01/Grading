@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logback configuration for grading.hrlab.uz.
+
+  Hard rules:
+    * MaskingPatternLayout redacts salary keywords, Bearer tokens, and
+      password/token/secret JSON fields before anything hits stdout
+      (security-blueprint §14 LOG-2, finding F-13).
+    * MDC keys (tenantId, userId, correlationId) are emitted on every line so
+      ops can correlate without writing the sensitive payload.
+    * For test profile we keep root WARN so successful builds stay quiet.
+-->
+<configuration>
+
+    <conversionRule conversionWord="msg"
+                    converterClass="ch.qos.logback.classic.pattern.MessageConverter"/>
+
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId:-}] [%X{tenantId:-}] [%X{userId:-}] %logger{36} - %msg%n"/>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="uz.hrlab.grading.common.logging.MaskingPatternLayout">
+                <pattern>${LOG_PATTERN}</pattern>
+            </layout>
+        </encoder>
+    </appender>
+
+    <springProfile name="local | dev">
+        <root level="INFO">
+            <appender-ref ref="STDOUT"/>
+        </root>
+        <logger name="uz.hrlab.grading" level="DEBUG"/>
+        <logger name="security.audit" level="INFO"/>
+    </springProfile>
+
+    <springProfile name="test">
+        <root level="WARN">
+            <appender-ref ref="STDOUT"/>
+        </root>
+        <logger name="uz.hrlab.grading" level="INFO"/>
+        <logger name="liquibase" level="WARN"/>
+    </springProfile>
+
+    <springProfile name="!local &amp; !dev &amp; !test">
+        <root level="INFO">
+            <appender-ref ref="STDOUT"/>
+        </root>
+        <logger name="uz.hrlab.grading" level="INFO"/>
+        <logger name="security.audit" level="INFO"/>
+    </springProfile>
+
+</configuration>

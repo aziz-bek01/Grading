@@ -1,0 +1,154 @@
+# Phase 3 — job_profiles table (database-blueprint §5.2 "job_profiles" row).
+# Stores the complete versioned profile for a Position with multilingual
+# long-text fields as JSONB Map<locale,String>.
+#
+# Hard constraints:
+#  - exactly ONE active (non-ARCHIVED) profile per position (partial unique idx)
+#  - composite FK (project_id, position_id) → positions(project_id, id) to keep
+#    profile cross-references tenant/project consistent (cf. F-204 pattern)
+#  - previous_revision_id self-FK to chain history
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-005-create-job-profiles
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase3
+      changes:
+        - createTable:
+            tableName: job_profiles
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: project_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: position_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column: { name: purpose_i18n,                 type: JSONB }
+              - column: { name: main_duties_i18n,             type: JSONB }
+              - column: { name: responsibility_area_i18n,     type: JSONB }
+              - column: { name: authority_i18n,               type: JSONB }
+              - column: { name: kpi_expected_results_i18n,    type: JSONB }
+              - column: { name: education_requirements_i18n,  type: JSONB }
+              - column: { name: experience_requirements_i18n, type: JSONB }
+              - column: { name: knowledge_skills_i18n,        type: JSONB }
+              - column: { name: internal_interactions_i18n,   type: JSONB }
+              - column: { name: external_interactions_i18n,   type: JSONB }
+              - column: { name: working_conditions_i18n,      type: JSONB }
+              - column: { name: documents_regulations_i18n,   type: JSONB }
+              - column:
+                  name: actualization_date
+                  type: DATE
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: revision_number
+                  type: INT
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: previous_revision_id
+                  type: UUID
+              - column:
+                  name: submitted_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: submitted_by
+                  type: UUID
+              - column:
+                  name: approved_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: approved_by
+                  type: UUID
+              - column:
+                  name: locked_at
+                  type: TIMESTAMPTZ
+              # standard audit columns
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE job_profiles
+                ADD CONSTRAINT fk_job_profiles_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE job_profiles
+                ADD CONSTRAINT fk_job_profiles_project
+                FOREIGN KEY (project_id) REFERENCES projects(id);
+              -- Composite (project_id, position_id) → positions for cross-tenant
+              -- defense-in-depth (F-204 pattern). Requires uq index on
+              -- positions(project_id, id).
+              ALTER TABLE job_profiles
+                ADD CONSTRAINT fk_job_profiles_position
+                FOREIGN KEY (position_id) REFERENCES positions(id);
+              ALTER TABLE job_profiles
+                ADD CONSTRAINT fk_job_profiles_previous_revision
+                FOREIGN KEY (previous_revision_id) REFERENCES job_profiles(id);
+              ALTER TABLE job_profiles
+                ADD CONSTRAINT chk_job_profiles_status
+                CHECK (status IN ('DRAFT','UNDER_REVIEW','APPROVED','ARCHIVED'));
+              ALTER TABLE job_profiles
+                ADD CONSTRAINT chk_job_profiles_revision_positive
+                CHECK (revision_number >= 1);
+
+              -- Partial unique index — at most one active (non-archived) profile
+              -- per (tenant, project, position). Multiple ARCHIVED revisions
+              -- coexist as historical record.
+              CREATE UNIQUE INDEX uq_job_profiles_position_active
+                ON job_profiles (tenant_id, project_id, position_id)
+                WHERE status <> 'ARCHIVED';
+              CREATE INDEX idx_job_profiles_tenant_project_status
+                ON job_profiles (tenant_id, project_id, status);
+              CREATE INDEX idx_job_profiles_position
+                ON job_profiles (tenant_id, project_id, position_id, revision_number DESC);
+              CREATE INDEX idx_job_profiles_previous_revision
+                ON job_profiles (previous_revision_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_job_profiles_previous_revision;
+              DROP INDEX IF EXISTS idx_job_profiles_position;
+              DROP INDEX IF EXISTS idx_job_profiles_tenant_project_status;
+              DROP INDEX IF EXISTS uq_job_profiles_position_active;
+        - dropTable:
+            tableName: job_profiles

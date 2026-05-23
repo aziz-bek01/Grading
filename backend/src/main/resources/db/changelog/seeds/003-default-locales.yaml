@@ -1,0 +1,26 @@
+# Seed: canonical locale anchors (architecture §20.3 + design-foundation §8).
+# Each row is a UI bootstrap message keyed `locale.<tag>.label` so the locale
+# table is never empty in a fresh tenant.
+databaseChangeLog:
+  - changeSet:
+      id: seed-default-locales
+      author: backend-engineer
+      context: seeds
+      labels: mvp1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.localization_messages (id, key, locale, value, context) VALUES
+                (gen_random_uuid(), 'locale.ru-RU.label',      'ru-RU',      'Русский',     'UI'),
+                (gen_random_uuid(), 'locale.uz-Cyrl-UZ.label', 'uz-Cyrl-UZ', 'Ўзбекча (Кирилл)','UI'),
+                (gen_random_uuid(), 'locale.uz-Latn-UZ.label', 'uz-Latn-UZ', 'O‘zbekcha (Lotin)','UI'),
+                (gen_random_uuid(), 'locale.en-US.label',      'en-US',      'English',     'UI');
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.localization_messages WHERE key IN (
+                'locale.ru-RU.label','locale.uz-Cyrl-UZ.label',
+                'locale.uz-Latn-UZ.label','locale.en-US.label'
+              );

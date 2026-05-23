@@ -1,0 +1,11 @@
+{{- if .Values.config -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grading-api.fullname" . }}-config
+  labels:
+    {{- include "grading-api.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+{{ toYaml .Values.config | indent 4 }}
+{{- end -}}

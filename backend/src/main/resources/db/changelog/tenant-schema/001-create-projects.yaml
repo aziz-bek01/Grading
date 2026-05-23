@@ -1,0 +1,82 @@
+# Phase 2 — projects table (database-blueprint §5.2 "projects").
+# Applied to a tenant schema (or to `public` in shared mode).
+databaseChangeLog:
+  - changeSet:
+      id: tenant-001-create-projects
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase2
+      changes:
+        - createTable:
+            tableName: projects
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: VARCHAR(2000)
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: methodology_version_id
+                  type: UUID
+              - column:
+                  name: start_date
+                  type: DATE
+              - column:
+                  name: end_date
+                  type: DATE
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE projects
+                ADD CONSTRAINT chk_projects_status
+                CHECK (status IN ('DRAFT','ACTIVE','LOCKED','ARCHIVED'));
+              CREATE UNIQUE INDEX uq_projects_tenant_code
+                ON projects (tenant_id, code);
+              CREATE INDEX idx_projects_tenant ON projects (tenant_id);
+              CREATE INDEX idx_projects_tenant_status ON projects (tenant_id, status);
+              CREATE INDEX idx_projects_created_at ON projects (created_at DESC);

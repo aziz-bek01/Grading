@@ -1,0 +1,65 @@
+# Seed: canonical permissions catalog (security-blueprint §7.3 + PRD perm matrix).
+# Kept in sync with uz.hrlab.grading.access.application.PermissionCodes.
+databaseChangeLog:
+  - changeSet:
+      id: seed-default-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'TENANT_READ',         'TENANT',      'READ',     'Read tenant metadata'),
+                (gen_random_uuid(), 'TENANT_CREATE',       'TENANT',      'CREATE',   'Create tenant (HRLab admin)'),
+                (gen_random_uuid(), 'TENANT_EDIT',         'TENANT',      'EDIT',     'Edit tenant metadata'),
+                (gen_random_uuid(), 'PROJECT_READ',        'PROJECT',     'READ',     'Read project'),
+                (gen_random_uuid(), 'PROJECT_CREATE',      'PROJECT',     'CREATE',   'Create project'),
+                (gen_random_uuid(), 'PROJECT_EDIT',        'PROJECT',     'EDIT',     'Edit project'),
+                (gen_random_uuid(), 'ORG_READ',            'ORGANIZATION','READ',     'Read organization structure'),
+                (gen_random_uuid(), 'ORG_EDIT',            'ORGANIZATION','EDIT',     'Edit organization structure'),
+                (gen_random_uuid(), 'POSITION_READ',       'POSITION',    'READ',     'Read positions'),
+                (gen_random_uuid(), 'POSITION_CREATE',     'POSITION',    'CREATE',   'Create positions'),
+                (gen_random_uuid(), 'POSITION_EDIT',       'POSITION',    'EDIT',     'Edit positions'),
+                (gen_random_uuid(), 'JOB_PROFILE_READ',    'JOB_PROFILE', 'READ',     'Read job profiles'),
+                (gen_random_uuid(), 'JOB_PROFILE_EDIT',    'JOB_PROFILE', 'EDIT',     'Edit job profiles'),
+                (gen_random_uuid(), 'METHODOLOGY_READ',    'METHODOLOGY', 'READ',     'Read methodology'),
+                (gen_random_uuid(), 'METHODOLOGY_EDIT',    'METHODOLOGY', 'EDIT',     'Edit methodology'),
+                (gen_random_uuid(), 'METHODOLOGY_APPROVE', 'METHODOLOGY', 'APPROVE',  'Approve methodology'),
+                (gen_random_uuid(), 'METHODOLOGY_LOCK',    'METHODOLOGY', 'LOCK',     'Lock methodology version'),
+                (gen_random_uuid(), 'EVALUATION_READ',     'EVALUATION',  'READ',     'Read evaluations'),
+                (gen_random_uuid(), 'EVALUATION_EDIT',     'EVALUATION',  'EDIT',     'Score / edit evaluations'),
+                (gen_random_uuid(), 'EVALUATION_APPROVE',  'EVALUATION',  'APPROVE',  'Approve evaluations'),
+                (gen_random_uuid(), 'GRADE_READ',          'GRADE',       'READ',     'Read grade structure'),
+                (gen_random_uuid(), 'GRADE_EDIT',          'GRADE',       'EDIT',     'Edit grade structure'),
+                (gen_random_uuid(), 'SALARY_VIEW',         'SALARY',      'VIEW',     'View salary data — granted to no role in MVP 1'),
+                (gen_random_uuid(), 'SALARY_EDIT',         'SALARY',      'EDIT',     'Edit salary data — MVP 3'),
+                (gen_random_uuid(), 'SALARY_EXPORT',       'SALARY',      'EXPORT',   'Export salary data — MVP 3'),
+                (gen_random_uuid(), 'SALARY_SCENARIO_RUN', 'SALARY',      'SCENARIO', 'Run salary scenarios — MVP 3'),
+                (gen_random_uuid(), 'REPORT_READ',         'REPORT',      'READ',     'Read reports'),
+                (gen_random_uuid(), 'REPORT_CREATE',       'REPORT',      'CREATE',   'Create reports'),
+                (gen_random_uuid(), 'REPORT_EXPORT',       'REPORT',      'EXPORT',   'Export reports'),
+                (gen_random_uuid(), 'AUDIT_READ',          'AUDIT',       'READ',     'Read audit log'),
+                (gen_random_uuid(), 'USER_ACCESS_MANAGE',  'USER',        'MANAGE',   'Manage user roles and access'),
+                (gen_random_uuid(), 'FILE_UPLOAD',         'FILE',        'UPLOAD',   'Upload files — MVP 2'),
+                (gen_random_uuid(), 'FILE_DOWNLOAD',       'FILE',        'DOWNLOAD', 'Download files — MVP 2'),
+                (gen_random_uuid(), 'AI_ASSIST_USE',       'AI',          'USE',      'Use AI assistant — MVP 4');
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions WHERE code IN (
+                'TENANT_READ','TENANT_CREATE','TENANT_EDIT',
+                'PROJECT_READ','PROJECT_CREATE','PROJECT_EDIT',
+                'ORG_READ','ORG_EDIT',
+                'POSITION_READ','POSITION_CREATE','POSITION_EDIT',
+                'JOB_PROFILE_READ','JOB_PROFILE_EDIT',
+                'METHODOLOGY_READ','METHODOLOGY_EDIT','METHODOLOGY_APPROVE','METHODOLOGY_LOCK',
+                'EVALUATION_READ','EVALUATION_EDIT','EVALUATION_APPROVE',
+                'GRADE_READ','GRADE_EDIT',
+                'SALARY_VIEW','SALARY_EDIT','SALARY_EXPORT','SALARY_SCENARIO_RUN',
+                'REPORT_READ','REPORT_CREATE','REPORT_EXPORT',
+                'AUDIT_READ','USER_ACCESS_MANAGE',
+                'FILE_UPLOAD','FILE_DOWNLOAD','AI_ASSIST_USE'
+              );

@@ -1,0 +1,99 @@
+# Phase 2 — positions table (database-blueprint §5.2 "positions").
+databaseChangeLog:
+  - changeSet:
+      id: tenant-003-create-positions
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase2
+      changes:
+        - createTable:
+            tableName: positions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: project_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: department_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: title_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: function
+                  type: VARCHAR(200)
+              - column:
+                  name: category
+                  type: VARCHAR(100)
+              - column:
+                  name: job_family
+                  type: VARCHAR(100)
+              - column:
+                  name: job_level
+                  type: VARCHAR(100)
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE positions
+                ADD CONSTRAINT fk_positions_project
+                FOREIGN KEY (project_id) REFERENCES projects(id);
+              ALTER TABLE positions
+                ADD CONSTRAINT fk_positions_department
+                FOREIGN KEY (department_id) REFERENCES departments(id);
+              ALTER TABLE positions
+                ADD CONSTRAINT chk_positions_status
+                CHECK (status IN ('DRAFT','ACTIVE','ARCHIVED'));
+              CREATE UNIQUE INDEX uq_positions_tenant_project_code
+                ON positions (tenant_id, project_id, code);
+              CREATE INDEX idx_positions_tenant_project_status
+                ON positions (tenant_id, project_id, status);
+              CREATE INDEX idx_positions_tenant_project_department
+                ON positions (tenant_id, project_id, department_id);
+              CREATE INDEX idx_positions_department ON positions (department_id);

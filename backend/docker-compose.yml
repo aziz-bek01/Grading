@@ -1,0 +1,126 @@
+# Local developer dependencies for grading.hrlab.uz.
+# Production deployment is K8s-based — see infra/helm + docs/mvp1/04-devops-sre-blueprint.md.
+# Credentials below are LOCAL-ONLY placeholders; never reuse in any deployed env.
+#
+# Role separation (F-04 / db/role-grants-matrix.md):
+#   The three runtime roles (grading_migrator / grading_runtime /
+#   grading_audit_reader) are created and granted by Liquibase changelog
+#   005-db-role-grants.yaml. LOGIN + dev passwords are attached by the
+#   `test-roles` context (enabled in application-local.yml). The optional
+#   init script ./db/init/01-create-roles.sql below seeds the same roles
+#   pre-migration so that developers running `psql` directly (without
+#   booting the Spring app) can also exercise role separation.
+#
+# Usage:
+#   docker compose up -d                       # postgres + redis + minio only
+#   docker compose --profile full up -d        # adds grading-api + grading-frontend
+#                                              # (uses ../backend/Dockerfile + ../frontend/Dockerfile)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: grading-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: grading_control_db
+      POSTGRES_USER: grading_app
+      POSTGRES_PASSWORD: grading_app_pwd
+    ports:
+      - "5432:5432"
+    volumes:
+      - grading-pg-data:/var/lib/postgresql/data
+      # Optional: pre-create the three runtime roles before Liquibase boots.
+      # Idempotent — Liquibase later applies grants on top.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks: [grading-local]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grading_app -d grading_control_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Redis — cache + (later) JTI denylist + rate-limit counters.
+  redis:
+    image: redis:7-alpine
+    container_name: grading-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks: [grading-local]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # MinIO — S3-compatible object storage for attachments & reports.
+  # NEVER use MinIO in production; the prod env points at a managed S3-compatible service.
+  minio:
+    image: minio/minio:RELEASE.2024-08-29T01-40-52Z
+    container_name: grading-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: grading_minio
+      MINIO_ROOT_PASSWORD: grading_minio_pwd
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - grading-minio-data:/data
+    networks: [grading-local]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # --- "full" profile: build + run the application images locally ---
+  # Trigger with `docker compose --profile full up -d`.
+  grading-api:
+    profiles: ["full"]
+    image: grading-api:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: grading-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SERVER_PORT: "8080"
+      # LOCAL placeholders — production values come from Vault via ESO.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/grading_control_db
+      SPRING_DATASOURCE_USERNAME: grading_app
+      SPRING_DATASOURCE_PASSWORD: grading_app_pwd
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: "6379"
+      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0"
+    ports:
+      - "8080:8080"
+    networks: [grading-local]
+
+  grading-frontend:
+    profiles: ["full"]
+    image: grading-frontend:dev
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: grading-frontend
+    restart: unless-stopped
+    depends_on:
+      - grading-api
+    ports:
+      - "8081:8080"
+    networks: [grading-local]
+
+volumes:
+  grading-pg-data:
+  grading-minio-data:
+
+networks:
+  grading-local:
+    driver: bridge

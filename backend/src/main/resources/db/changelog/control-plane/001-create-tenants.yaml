@@ -1,0 +1,186 @@
+# Control plane: tenants + client_companies (database-blueprint §5.1).
+databaseChangeLog:
+  - changeSet:
+      id: 001-enable-pgcrypto
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - sql:
+            sql: CREATE EXTENSION IF NOT EXISTS pgcrypto
+
+  - changeSet:
+      id: 001-create-tenants
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: tenants
+            schemaName: public
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: slug
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_tenants_slug
+              - column:
+                  name: display_name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: isolation_mode
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: schema_name
+                  type: VARCHAR(80)
+              - column:
+                  name: database_name
+                  type: VARCHAR(80)
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: default_locale
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: encryption_key_ref
+                  type: VARCHAR(200)
+              - column:
+                  name: object_storage_prefix
+                  type: VARCHAR(200)
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE public.tenants
+                ADD CONSTRAINT chk_tenants_isolation_mode
+                CHECK (isolation_mode IN ('SCHEMA', 'DATABASE'));
+              ALTER TABLE public.tenants
+                ADD CONSTRAINT chk_tenants_status
+                CHECK (status IN ('PROVISIONING', 'ACTIVE', 'SUSPENDED', 'ARCHIVED'));
+              ALTER TABLE public.tenants
+                ADD CONSTRAINT chk_tenants_locale
+                CHECK (default_locale IN ('ru-RU', 'uz-Cyrl-UZ', 'uz-Latn-UZ', 'en-US'));
+              ALTER TABLE public.tenants
+                ADD CONSTRAINT chk_tenants_isolation_target
+                CHECK (
+                  (isolation_mode = 'SCHEMA' AND schema_name IS NOT NULL AND database_name IS NULL)
+                  OR (isolation_mode = 'DATABASE' AND database_name IS NOT NULL AND schema_name IS NULL)
+                );
+              CREATE UNIQUE INDEX uq_tenants_schema_name
+                ON public.tenants (schema_name) WHERE schema_name IS NOT NULL;
+              CREATE INDEX idx_tenants_status ON public.tenants (status);
+              CREATE INDEX idx_tenants_created_at ON public.tenants (created_at DESC);
+
+  - changeSet:
+      id: 001-create-client-companies
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: client_companies
+            schemaName: public
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_client_companies_tenant
+                    referencedTableSchemaName: public
+                    referencedTableName: tenants
+                    referencedColumnNames: id
+              - column:
+                  name: legal_name
+                  type: VARCHAR(500)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: brand_name
+                  type: VARCHAR(255)
+              - column:
+                  name: industry
+                  type: VARCHAR(100)
+              - column:
+                  name: country_code
+                  type: CHAR(2)
+              - column:
+                  name: tax_id
+                  type: VARCHAR(50)
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - addUniqueConstraint:
+            tableName: client_companies
+            schemaName: public
+            constraintName: uq_client_companies_tenant
+            columnNames: tenant_id
+        - createIndex:
+            tableName: client_companies
+            schemaName: public
+            indexName: idx_client_companies_tenant
+            columns:
+              - column:
+                  name: tenant_id

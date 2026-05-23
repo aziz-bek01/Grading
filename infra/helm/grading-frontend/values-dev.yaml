@@ -1,0 +1,15 @@
+replicaCount: 1
+runtimeConfig:
+  apiBaseUrl: "/api"
+  environment: "dev"
+ingress:
+  enabled: true
+  hosts:
+    - host: grading.dev.hrlab.uz
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: grading-frontend-dev-tls
+      hosts:
+        - grading.dev.hrlab.uz

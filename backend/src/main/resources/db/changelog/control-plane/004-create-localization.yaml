@@ -1,0 +1,40 @@
+# Control plane: localization_messages (database-blueprint §5.1).
+databaseChangeLog:
+  - changeSet:
+      id: 004-create-localization-messages
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: localization_messages
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column: { name: key, type: VARCHAR(200),
+                          constraints: { nullable: false } }
+              - column: { name: locale, type: VARCHAR(20),
+                          constraints: { nullable: false } }
+              - column: { name: value, type: TEXT,
+                          constraints: { nullable: false } }
+              - column: { name: context, type: VARCHAR(64) }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0,
+                          constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+        - addUniqueConstraint:
+            tableName: localization_messages
+            schemaName: public
+            constraintName: uq_localization_messages_key_locale
+            columnNames: key, locale
+        - sql:
+            sql: |
+              ALTER TABLE public.localization_messages
+                ADD CONSTRAINT chk_localization_locale
+                CHECK (locale IN ('ru-RU','uz-Cyrl-UZ','uz-Latn-UZ','en-US'));
+              CREATE INDEX idx_localization_messages_locale
+                ON public.localization_messages (locale);

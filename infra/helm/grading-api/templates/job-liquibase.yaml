@@ -1,0 +1,61 @@
+{{- if .Values.migrator.enabled -}}
+# Liquibase migration Job — runs as pre-install + pre-upgrade Helm hook.
+# Uses the grading_migrator role (DDL privileges). Runtime pods get a
+# different DML-only role — never the same Secret as the app.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "grading-api.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "grading-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrator
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ .Values.migrator.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrator.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ .Values.migrator.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "grading-api.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrator
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "grading-api.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: liquibase
+          image: {{ include "grading-api.migrator.image" . | quote }}
+          imagePullPolicy: {{ .Values.migrator.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          # Run the Spring Boot jar with web disabled — Spring will apply
+          # Liquibase changelogs and then exit.
+          args:
+            {{- toYaml .Values.migrator.args | nindent 12 }}
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "migrate"
+          envFrom:
+            - secretRef:
+                # Migrator-only Secret with DDL credentials (grading_migrator).
+                name: {{ .Values.migrator.existingSecret }}
+          resources:
+            {{- toYaml .Values.migrator.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+{{- end -}}

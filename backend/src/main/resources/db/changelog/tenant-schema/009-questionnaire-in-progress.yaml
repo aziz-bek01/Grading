@@ -1,0 +1,29 @@
+# Phase 3 remediation (D-308 / F-301):
+# widen job_analysis_questionnaires.status CHECK to include IN_PROGRESS so the
+# backend status enum can mirror the frontend type set.
+#
+# This changeset is idempotent: it drops the old constraint (if present) and
+# re-adds the wider one. Liquibase precondition guards re-runs.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-009-widen-questionnaire-status-check
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase3,remediation
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE job_analysis_questionnaires
+                DROP CONSTRAINT IF EXISTS chk_jaq_status;
+              ALTER TABLE job_analysis_questionnaires
+                ADD CONSTRAINT chk_jaq_status
+                CHECK (status IN ('DRAFT','IN_PROGRESS','COMPLETED','ARCHIVED'));
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE job_analysis_questionnaires
+                DROP CONSTRAINT IF EXISTS chk_jaq_status;
+              ALTER TABLE job_analysis_questionnaires
+                ADD CONSTRAINT chk_jaq_status
+                CHECK (status IN ('DRAFT','COMPLETED','ARCHIVED'));

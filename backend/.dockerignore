@@ -1,0 +1,46 @@
+# Exclude everything not needed for the Docker build context.
+# Smaller context = faster builds + smaller attack surface.
+
+# Build outputs
+target/
+*.jar
+!app.jar
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VCS
+.git/
+.gitignore
+.gitattributes
+
+# Logs
+*.log
+logs/
+
+# Local secrets / env (NEVER ship)
+.env
+.env.*
+!.env.example
+
+# Local docker-compose state
+docker-compose.override.yml
+
+# Tests / docs not needed in image (CI runs them outside)
+src/test/
+README.md
+docs/
+
+# Kubernetes / Helm — these live in infra/
+infra/
+
+# Node modules just in case
+node_modules/

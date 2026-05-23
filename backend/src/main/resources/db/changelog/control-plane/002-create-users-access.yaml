@@ -1,0 +1,286 @@
+# Control plane: users + memberships + roles + permissions + assignments.
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-users
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: users
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column: { name: email, type: VARCHAR(320),
+                          constraints: { nullable: false } }
+              - column: { name: external_idp_subject, type: VARCHAR(255) }
+              - column: { name: full_name, type: VARCHAR(255),
+                          constraints: { nullable: false } }
+              - column: { name: status, type: VARCHAR(32),
+                          constraints: { nullable: false } }
+              - column: { name: default_locale, type: VARCHAR(20),
+                          constraints: { nullable: false } }
+              - column: { name: last_login_at, type: TIMESTAMPTZ }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0,
+                          constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+        - sql:
+            sql: |
+              ALTER TABLE public.users
+                ADD CONSTRAINT chk_users_status
+                CHECK (status IN ('ACTIVE','INVITED','DISABLED','LOCKED'));
+              ALTER TABLE public.users
+                ADD CONSTRAINT chk_users_locale
+                CHECK (default_locale IN ('ru-RU','uz-Cyrl-UZ','uz-Latn-UZ','en-US'));
+              CREATE UNIQUE INDEX uq_users_email_lower ON public.users (LOWER(email));
+              CREATE INDEX idx_users_external_idp_subject
+                ON public.users (external_idp_subject)
+                WHERE external_idp_subject IS NOT NULL;
+
+  - changeSet:
+      id: 002-create-roles
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: roles
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(64),
+                          constraints: { nullable: false, unique: true,
+                                         uniqueConstraintName: uq_roles_code } }
+              - column: { name: name, type: VARCHAR(128),
+                          constraints: { nullable: false } }
+              - column: { name: scope, type: VARCHAR(16),
+                          constraints: { nullable: false } }
+              - column: { name: description, type: VARCHAR(500) }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0,
+                          constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+        - sql:
+            sql: |
+              ALTER TABLE public.roles
+                ADD CONSTRAINT chk_roles_scope CHECK (scope IN ('PLATFORM','TENANT'));
+
+  - changeSet:
+      id: 002-create-permissions
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: permissions
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column: { name: code, type: VARCHAR(100),
+                          constraints: { nullable: false, unique: true,
+                                         uniqueConstraintName: uq_permissions_code } }
+              - column: { name: resource, type: VARCHAR(64) }
+              - column: { name: action, type: VARCHAR(32) }
+              - column: { name: description, type: VARCHAR(500) }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0,
+                          constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+
+  - changeSet:
+      id: 002-create-role-permissions
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: role_permissions
+            schemaName: public
+            columns:
+              - column:
+                  name: role_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_role_permissions_role
+                    referencedTableSchemaName: public
+                    referencedTableName: roles
+                    referencedColumnNames: id
+              - column:
+                  name: permission_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_role_permissions_permission
+                    referencedTableSchemaName: public
+                    referencedTableName: permissions
+                    referencedColumnNames: id
+        - addPrimaryKey:
+            tableName: role_permissions
+            schemaName: public
+            constraintName: pk_role_permissions
+            columnNames: role_id, permission_id
+
+  - changeSet:
+      id: 002-create-user-tenant-memberships
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: user_tenant_memberships
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column:
+                  name: user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_utm_user
+                    referencedTableSchemaName: public
+                    referencedTableName: users
+                    referencedColumnNames: id
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_utm_tenant
+                    referencedTableSchemaName: public
+                    referencedTableName: tenants
+                    referencedColumnNames: id
+              - column: { name: status, type: VARCHAR(32),
+                          constraints: { nullable: false } }
+              - column: { name: invited_by, type: UUID }
+              - column: { name: salary_data_permission, type: BOOLEAN,
+                          defaultValueBoolean: false,
+                          constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0,
+                          constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+        - addUniqueConstraint:
+            tableName: user_tenant_memberships
+            schemaName: public
+            constraintName: uq_user_tenant_memberships_user_tenant
+            columnNames: user_id, tenant_id
+        - sql:
+            sql: |
+              ALTER TABLE public.user_tenant_memberships
+                ADD CONSTRAINT chk_utm_status
+                CHECK (status IN ('ACTIVE','INVITED','SUSPENDED','REVOKED'));
+              CREATE INDEX idx_utm_tenant ON public.user_tenant_memberships (tenant_id);
+              CREATE INDEX idx_utm_user ON public.user_tenant_memberships (user_id);
+
+  - changeSet:
+      id: 002-create-user-project-assignments
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      comment: |
+        Future Project rows live in tenant schemas; this control-plane table
+        only stores the (user, tenant, project) tuple — project FK is
+        deliberately omitted (database-blueprint §6.2 — no cross-schema FKs).
+      changes:
+        - createTable:
+            tableName: user_project_assignments
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column:
+                  name: user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_upa_user
+                    referencedTableSchemaName: public
+                    referencedTableName: users
+                    referencedColumnNames: id
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_upa_tenant
+                    referencedTableSchemaName: public
+                    referencedTableName: tenants
+                    referencedColumnNames: id
+              - column: { name: project_id, type: UUID,
+                          constraints: { nullable: false } }
+              - column: { name: status, type: VARCHAR(32),
+                          defaultValue: ACTIVE,
+                          constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0,
+                          constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+        - addUniqueConstraint:
+            tableName: user_project_assignments
+            schemaName: public
+            constraintName: uq_upa_user_tenant_project
+            columnNames: user_id, tenant_id, project_id
+        - sql:
+            sql: |
+              CREATE INDEX idx_upa_tenant_project
+                ON public.user_project_assignments (tenant_id, project_id);
+
+  - changeSet:
+      id: 002-create-user-roles
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1
+      changes:
+        - createTable:
+            tableName: user_roles
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column:
+                  name: user_tenant_membership_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_roles_membership
+                    referencedTableSchemaName: public
+                    referencedTableName: user_tenant_memberships
+                    referencedColumnNames: id
+              - column:
+                  name: role_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_roles_role
+                    referencedTableSchemaName: public
+                    referencedTableName: roles
+                    referencedColumnNames: id
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: created_by, type: UUID }
+        - addUniqueConstraint:
+            tableName: user_roles
+            schemaName: public
+            constraintName: uq_user_roles_membership_role
+            columnNames: user_tenant_membership_id, role_id

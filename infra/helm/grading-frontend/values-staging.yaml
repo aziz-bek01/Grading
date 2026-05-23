@@ -1,0 +1,22 @@
+replicaCount: 2
+runtimeConfig:
+  apiBaseUrl: "/api"
+  environment: "staging"
+ingress:
+  enabled: true
+  hosts:
+    - host: grading.staging.hrlab.uz
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: grading-frontend-staging-tls
+      hosts:
+        - grading.staging.hrlab.uz
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+pdb:
+  enabled: true
+  minAvailable: 1

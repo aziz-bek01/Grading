@@ -1,0 +1,258 @@
+# grading-api Helm chart — SAFE DEFAULTS.
+# Env-specific overrides live in values-<env>.yaml. CI must always pass
+# `--set image.tag=<sha-or-version>` — there is intentionally no `latest`.
+# See infra/README.md for promotion rules.
+
+# -----------------------------------------------------------------------------
+# Image
+# -----------------------------------------------------------------------------
+image:
+  repository: ghcr.io/hrlab-uz/grading/grading-api
+  # REQUIRED at deploy time — leaving blank is a hard error in templates.
+  tag: ""
+  # Optional digest pin for production (preferred over tag for immutability).
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+  # - name: ghcr-pull-secret
+
+# Override the auto-generated names.
+nameOverride: ""
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
+# Replica / rollout
+# -----------------------------------------------------------------------------
+replicaCount: 1
+revisionHistoryLimit: 10
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+terminationGracePeriodSeconds: 30
+
+# -----------------------------------------------------------------------------
+# Pod / container security context (devops-sre blueprint §8)
+# -----------------------------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  runAsNonRoot: true
+  runAsUser: 10001
+
+# -----------------------------------------------------------------------------
+# Probes (devops-sre blueprint §8, mandatory)
+# -----------------------------------------------------------------------------
+probes:
+  liveness:
+    httpGet:
+      path: /actuator/health/liveness
+      port: http
+    initialDelaySeconds: 60
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    httpGet:
+      path: /actuator/health/readiness
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 6
+  startup:
+    httpGet:
+      path: /actuator/health/liveness
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 30
+
+# -----------------------------------------------------------------------------
+# Resources (envelope; tune in staging) — devops-sre §8
+# -----------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# -----------------------------------------------------------------------------
+# Networking
+# -----------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: http
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  hosts:
+    - host: api.grading.hrlab.uz
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: grading-api-tls
+      hosts:
+        - api.grading.hrlab.uz
+
+# -----------------------------------------------------------------------------
+# Autoscaling / PDB
+# -----------------------------------------------------------------------------
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  enabled: false
+  minAvailable: 1
+
+# -----------------------------------------------------------------------------
+# Service account / RBAC
+# -----------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+# -----------------------------------------------------------------------------
+# Application env / config
+# -----------------------------------------------------------------------------
+# SPRING_PROFILES_ACTIVE, server port etc. Non-sensitive only — secrets go in
+# externalSecrets below.
+env:
+  SPRING_PROFILES_ACTIVE: "prod"
+  SERVER_PORT: "8080"
+  MANAGEMENT_SERVER_PORT: "8080"
+  JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+
+# Reference one or more Vault-backed secrets (existing K8s Secrets, populated
+# by external-secrets-operator). Each entry becomes a `envFrom: secretRef`.
+existingSecrets: []
+  # - grading-api-db
+  # - grading-api-redis
+  # - grading-api-oauth
+  # - grading-api-jwt
+  # - grading-api-s3
+
+# Extra environment variables (e.g. valueFrom: secretKeyRef when a single key
+# from a Secret is needed instead of envFrom).
+extraEnv: []
+  # - name: DB_HOST
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: grading-api-db
+  #       key: host
+
+# Non-sensitive runtime config rendered to a ConfigMap.
+config: {}
+  # featureFlags:
+  #   aiAssist: false
+
+# -----------------------------------------------------------------------------
+# Network policy (devops-sre §8) — default-deny + explicit allows
+# -----------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  # Allow ingress from ingress-controller and from intra-namespace workloads.
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/part-of: grading
+  # Allow egress to: DNS, postgres, redis, object storage, OIDC issuer.
+  egressTo:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # S3 / OIDC issuer egress goes out to the internet — gated by egress
+    # firewall, not by NetworkPolicy. Document this explicitly per env.
+
+# -----------------------------------------------------------------------------
+# Scheduling
+# -----------------------------------------------------------------------------
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+# -----------------------------------------------------------------------------
+# Liquibase migrator (pre-install / pre-upgrade Job)
+# -----------------------------------------------------------------------------
+migrator:
+  enabled: true
+  image:
+    # Same image as the app — the boot jar embeds Liquibase + changelogs.
+    # CI must override .image.tag together with the api image.
+    repository: ghcr.io/hrlab-uz/grading/grading-api
+    tag: ""
+    pullPolicy: IfNotPresent
+  # Liquibase runs as grading_migrator — credentials must come from a separate
+  # Secret with DDL privileges; runtime app pods get a different (DML-only) Secret.
+  existingSecret: grading-api-db-migrator
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  # Args passed to the boot jar — runs Liquibase update only, no Spring web context.
+  args:
+    - "--spring.main.web-application-type=none"
+    - "--spring.liquibase.enabled=true"
+    - "--spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.yaml"

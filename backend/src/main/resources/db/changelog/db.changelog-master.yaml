@@ -1,0 +1,42 @@
+# Master Liquibase changelog router (database-blueprint §9.1).
+# Contexts:
+#   control-plane — shared `public` schema changesets (MVP 1 baseline)
+#   tenant-schema — per-tenant schema template (Phase 2+ — not loaded in MVP 1 boot)
+#   seeds         — reference data (permissions, roles, locales)
+#   rls-enable    — RLS policy ENABLE statements (MVP 2)
+#   test-data     — only loaded by integration tests
+databaseChangeLog:
+  - include:
+      file: control-plane/001-create-tenants.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: control-plane/002-create-users-access.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: control-plane/003-create-system-audit.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: control-plane/004-create-localization.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: control-plane/005-db-role-grants.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: seeds/001-default-permissions.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: seeds/002-default-roles.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: seeds/003-default-locales.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: seeds/004-default-role-permissions.yaml
+      relativeToChangelogFile: true
+  # Phase 2 — tenant-schema tables.
+  # In `mode-shared` (default for local dev + integration tests) these are
+  # created in the `public` schema; in production they will be re-applied
+  # per tenant by TenantSchemaProvisioner using db.changelog-tenant.yaml.
+  - include:
+      file: tenant-schema/db.changelog-tenant.yaml
+      relativeToChangelogFile: true

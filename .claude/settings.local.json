@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "PowerShell($p = \"D:\\\\2026\\\\Лойиҳалар\\\\Грейдинг\\\\grading.hrlab.uz\\\\backend\"; if \\(Test-Path $p\\) { \\(Get-ChildItem $p\\).Name } else { \"MISSING\" })",
+      "PowerShell($p = \"D:\\\\2026\\\\Лойиҳалар\\\\Грейдинг\\\\grading.hrlab.uz\\\\backend\\\\src\\\\main\\\\java\\\\uz\\\\hrlab\\\\grading\\\\position\"; Get-ChildItem -Path $p -Recurse -File | ForEach-Object { $_.FullName })"
+    ]
+  }
+}

@@ -25,6 +25,12 @@ pnpm-debug.log*
 # --- Local env / secrets ---
 .env.local
 .env.*.local
+# Real production env file lives ONLY on the VPS (/opt/grading/.env.prod).
+# Never commit it. The committed template is .env.prod.example (kept tracked).
+.env.prod
+!.env.prod.example
+# GHCR read token stored on the VPS for private-image pulls.
+.ghcr-token
 **/application-secret.yml
 **/application-prod.yml
 *.pem

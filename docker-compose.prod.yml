@@ -1,0 +1,282 @@
+# =============================================================================
+# grading.hrlab.uz — PRODUCTION docker compose for a SHARED VPS.
+# =============================================================================
+# This file runs grading.hrlab.uz alongside OTHER subdomains + their own
+# Postgres databases already on the VPS. It is built to COEXIST and NOT touch
+# anything else:
+#
+#   * Every container / network / volume is namespaced `grading-*`.
+#   * The app containers bind ONLY to 127.0.0.1 on unique high ports
+#       grading-api      -> 127.0.0.1:18080
+#       grading-frontend -> 127.0.0.1:18081
+#     so they NEVER clash with the existing host services or the host's
+#     reverse proxy. The OUTER proxy (host nginx or Traefik — see
+#     infra/reverse-proxy/) terminates TLS for grading.hrlab.uz and routes
+#     /api -> 18080, everything else -> 18081.
+#   * The dedicated grading Postgres has NO published host port — it is only
+#     reachable on the internal `grading-prod` docker network, so it cannot
+#     collide with or affect the other subdomains' Postgres on 5432.
+#
+# Images are pulled from GHCR by IMMUTABLE tag (sha-<short> or a SemVer) —
+# never `latest`. The CD pipeline sets IMAGE_TAG.
+#
+# Usage on the VPS (the CD pipeline does this for you):
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod pull
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm grading-migrator
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d grading-api grading-frontend
+#
+# All secrets/config come from .env.prod (NEVER committed — see .env.prod.example).
+# Reuses backend/Dockerfile + frontend/Dockerfile images already built+pushed
+# by .github/workflows/ci.yml. This compose NEVER builds — it only pulls.
+# =============================================================================
+
+# Anchors for repeated security + logging blocks.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Dedicated grading Postgres — ISOLATED.
+  #   * No host port -> cannot clash with other subdomains' :5432.
+  #   * Own named volume `grading-pg-data-prod`.
+  #   * Internal network only.
+  #   * Created with the bootstrap superuser (POSTGRES_USER) which owns the
+  #     dedicated grading database. The grading_migrator / grading_runtime /
+  #     grading_audit_reader roles are created by Liquibase (changelog 005) and
+  #     given LOGIN + passwords by the first-time-setup SQL in
+  #     infra/db/prod/01-create-prod-roles.sql (mounted read-only below).
+  #
+  # TOGGLE — external Postgres instead of this container:
+  #   If you prefer to reuse an EXISTING Postgres already on the VPS, set
+  #   GRADING_USE_EXTERNAL_DB=true in .env.prod, comment out this service +
+  #   the api/migrator `depends_on: grading-postgres`, and point
+  #   SPRING_DATASOURCE_URL / LIQUIBASE url at that server using a SEPARATE
+  #   database + the three SEPARATE roles. Default = this isolated container.
+  # ---------------------------------------------------------------------------
+  grading-postgres:
+    image: postgres:16-alpine
+    container_name: grading-postgres-prod
+    restart: unless-stopped
+    profiles: ["db"]                       # disabled when using external DB (see toggle)
+    # NO `ports:` block on purpose — internal-only, cannot collide with the host.
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_SUPER_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPER_PASSWORD}
+      # Keep the cluster small; tune for the shared VPS.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      # Consumed by ./infra/db/prod/01-create-prod-roles.sh on FIRST init only,
+      # to attach LOGIN + passwords to the three F-04 roles. From .env.prod.
+      GRADING_MIGRATOR_PASSWORD: ${LIQUIBASE_DATASOURCE_PASSWORD}
+      GRADING_RUNTIME_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      GRADING_AUDIT_READER_PASSWORD: ${GRADING_AUDIT_READER_PASSWORD}
+    volumes:
+      - grading-pg-data-prod:/var/lib/postgresql/data
+      # One-shot role bootstrap (LOGIN + passwords for the three F-04 roles).
+      # Idempotent; runs ONLY on first init of an empty data volume.
+      - ./infra/db/prod:/docker-entrypoint-initdb.d:ro
+    networks: [grading-prod]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPER_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1536M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Liquibase migrator — ONE-SHOT. Runs as grading_migrator (DDL privileges).
+  #   * Reuses the grading-api image (the boot jar embeds Liquibase + changelogs).
+  #   * SPRING_PROFILES_ACTIVE=migrate -> there is NO application-migrate.yml, so
+  #     Spring uses base application.yml whose liquibase.contexts are exactly
+  #     `control-plane,seeds,mode-shared` (NO dev, NO test-roles). DevAuthFilter
+  #     does NOT bind (`migrate` is not in DevAuthFilter.ALLOWED_PROFILES).
+  #   * Web context disabled -> it migrates then exits 0.
+  #   * Must run to completion BEFORE grading-api starts (CD runs it via
+  #     `docker compose run --rm grading-migrator`).
+  # ---------------------------------------------------------------------------
+  grading-migrator:
+    image: ghcr.io/${GHCR_REPO}/grading-api:${IMAGE_TAG}
+    container_name: grading-migrator-prod
+    profiles: ["migrate"]                  # only started explicitly by `compose run`
+    pull_policy: always
+    restart: "no"
+    depends_on:
+      grading-postgres:
+        condition: service_healthy
+        required: false                    # tolerate external-DB mode where pg is absent
+    environment:
+      SPRING_PROFILES_ACTIVE: migrate
+      # Migrator connects as grading_migrator (DDL). SEPARATE from runtime.
+      SPRING_DATASOURCE_URL: ${LIQUIBASE_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${LIQUIBASE_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${LIQUIBASE_DATASOURCE_PASSWORD}
+      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0"
+    # Run Liquibase update only, no Spring web server, then exit.
+    # NOTE: $$JAVA_OPTS escapes Compose interpolation so the literal $JAVA_OPTS
+    # reaches the shell and is expanded from the container env at runtime
+    # (mirrors the backend Dockerfile ENTRYPOINT pattern).
+    entrypoint:
+      - sh
+      - -c
+      - >
+        exec java $$JAVA_OPTS -jar /app/app.jar
+        --spring.main.web-application-type=none
+        --spring.liquibase.enabled=true
+        --spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.yaml
+    networks: [grading-prod]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # grading-api — Spring Boot, profile=prod, env-driven, runs as grading_runtime.
+  #   * Binds ONLY to 127.0.0.1:18080 -> the host reverse proxy reaches it; the
+  #     wider internet cannot. Real TLS is terminated by the outer proxy.
+  #   * SPRING_PROFILES_ACTIVE=prod -> no application-prod.yml exists, so config
+  #     is pure base application.yml + env. DevAuthFilter does NOT bind.
+  #   * Real JWT via issuer-uri + audience; CORS pinned to https://grading.hrlab.uz.
+  # ---------------------------------------------------------------------------
+  grading-api:
+    image: ghcr.io/${GHCR_REPO}/grading-api:${IMAGE_TAG}
+    container_name: grading-api-prod
+    restart: unless-stopped
+    pull_policy: always
+    depends_on:
+      grading-postgres:
+        condition: service_healthy
+        required: false
+    ports:
+      - "127.0.0.1:18080:8080"             # localhost-only — coexists with host proxy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: "8080"
+      MANAGEMENT_SERVER_PORT: "8080"
+      # Enable Spring Boot liveness/readiness probe groups explicitly. Outside
+      # Kubernetes these sub-endpoints are NOT auto-enabled, so without this the
+      # container HEALTHCHECK + the CD smoke test (/actuator/health/readiness,
+      # /actuator/health/liveness) would 404. K8s auto-enables them; on plain
+      # Docker we must opt in. (Base application.yml exposes health,info only.)
+      MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+      # --- Datasource: runtime role (DML; INSERT+SELECT only on audit) ---
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      # The app must NOT run migrations at boot — the migrator job owns that.
+      SPRING_LIQUIBASE_ENABLED: "false"
+      # --- Real OAuth2/OIDC JWT validation ---
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ${GRADING_JWT_ISSUER_URI}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCE: ${GRADING_JWT_AUDIENCE}
+      # --- Multi-tenancy + CORS (same-origin SPA) ---
+      GRADING_TENANCY_MODE: ${GRADING_TENANCY_MODE:-shared}
+      GRADING_CORS_ALLOWED_ORIGINS: ${GRADING_CORS_ALLOWED_ORIGINS:-https://grading.hrlab.uz}
+      # --- Salary field encryption (MVP1 stub key id/version; real KMS in MVP3) ---
+      GRADING_SALARY_KEY_ID: ${GRADING_SALARY_KEY_ID:-prod-stub}
+      GRADING_SALARY_KEY_VERSION: ${GRADING_SALARY_KEY_VERSION:-1}
+      # --- JVM ---
+      JAVA_OPTS: ${API_JAVA_OPTS:--XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:+ExitOnOutOfMemoryError}
+    networks: [grading-prod]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+      - /tmp/grading:size=256m
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1536M
+        reservations:
+          cpus: "0.5"
+          memory: 768M
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # grading-frontend — Vite/React SPA served by nginx-unprivileged (uid 101).
+  #   * Binds ONLY to 127.0.0.1:18081.
+  #   * Does NOT proxy /api — the OUTER proxy splits /api vs / on grading.hrlab.uz
+  #     so the SPA + API share one origin (CSP connect-src 'self').
+  #   * config.json (apiBaseUrl=/api, environment=production) is injected at
+  #     runtime from a host file mounted read-only, so we never rebuild the image
+  #     to change runtime config.
+  # ---------------------------------------------------------------------------
+  grading-frontend:
+    image: ghcr.io/${GHCR_REPO}/grading-frontend:${IMAGE_TAG}
+    container_name: grading-frontend-prod
+    restart: unless-stopped
+    pull_policy: always
+    depends_on:
+      - grading-api
+    ports:
+      - "127.0.0.1:18081:8080"             # localhost-only
+    volumes:
+      # Runtime config injected without rebuilding the image. The example file
+      # lives at infra/frontend/config.json (apiBaseUrl=/api, env=production).
+      - ./infra/frontend/config.json:/usr/share/nginx/html/config.json:ro
+    networks: [grading-prod]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+      - /var/cache/nginx:size=32m
+      - /var/run:size=8m
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "--tries=1", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 192M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+    logging: *default-logging
+
+volumes:
+  grading-pg-data-prod:
+    name: grading-pg-data-prod
+
+networks:
+  grading-prod:
+    name: grading-prod
+    driver: bridge
+    # Dedicated, isolated bridge — separate from any other compose project's
+    # network. Other subdomains' containers are NOT attached here.

@@ -1,0 +1,217 @@
+name: deploy
+
+# =============================================================================
+# grading.hrlab.uz — Continuous Deployment to the shared VPS (Docker compose).
+# =============================================================================
+# Trigger: runs AFTER the `ci` workflow finishes SUCCESSFULLY on `main`. This
+# reuses the images that ci.yml already built, scanned and pushed to GHCR
+# (jobs build-backend-image / build-frontend-image + image-scan-*). We do NOT
+# duplicate any build logic here.
+#
+# What it does on the VPS:
+#   1. SSH in (creds from repo secrets — never hardcoded).
+#   2. Sync the deploy artifacts (compose + infra/db + infra/frontend).
+#   3. `docker compose pull` the immutable sha-<short> images.
+#   4. Run the one-shot grading-migrator (Liquibase as grading_migrator).
+#   5. `docker compose up -d` grading-api + grading-frontend (rolling-ish).
+#   6. Smoke-test /actuator/health/readiness and /healthz via the outer proxy.
+#
+# SAFE-TO-MERGE-NOW GUARD:
+#   The whole deploy is gated on the `VPS_HOST` secret being present. Until the
+#   user adds the VPS secrets, the `gate` job reports "skipped (no VPS)" and the
+#   deploy job is skipped — CI stays green and nothing touches any server.
+#
+# IMMUTABLE TAG: we always deploy `sha-<short-sha>` of the commit that ci.yml
+# built. Never `latest`.
+# =============================================================================
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (e.g. sha-1a2b3c4). Defaults to the commit short SHA."
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false        # never interrupt an in-flight production deploy
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_FILE: docker-compose.prod.yml
+  REMOTE_DIR: /opt/grading
+  GHCR_REGISTRY: ghcr.io
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Gate — decide whether to deploy. Skips gracefully when no VPS is configured
+  # and only proceeds when ci.yml succeeded on main.
+  # ---------------------------------------------------------------------------
+  gate:
+    name: gate · deploy?
+    runs-on: ubuntu-22.04
+    timeout-minutes: 2
+    outputs:
+      should_deploy: ${{ steps.decide.outputs.should_deploy }}
+      image_tag: ${{ steps.decide.outputs.image_tag }}
+    steps:
+      - id: decide
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          set -euo pipefail
+
+          # Only deploy for a successful CI run (or a manual dispatch).
+          EVENT="${{ github.event_name }}"
+          CI_CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          if [ "$EVENT" = "workflow_run" ] && [ "$CI_CONCLUSION" != "success" ]; then
+            echo "::notice::CI conclusion was '$CI_CONCLUSION' (not success) — not deploying."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Guard: skip cleanly until the VPS secrets exist.
+          if [ -z "${VPS_HOST}" ]; then
+            echo "::notice::VPS_HOST secret is empty — deploy SKIPPED. Set the VPS secrets to enable CD."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Resolve the immutable tag to deploy.
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            TAG="${{ github.event.inputs.image_tag }}"
+          elif [ "$EVENT" = "workflow_run" ]; then
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            TAG="sha-${SHA:0:7}"
+          else
+            SHA="${{ github.sha }}"
+            TAG="sha-${SHA:0:7}"
+          fi
+          echo "Deploying image tag: $TAG"
+          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Deploy — SSH to the VPS, sync artifacts, migrate, then roll the services.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: deploy · production VPS
+    runs-on: ubuntu-22.04
+    needs: gate
+    if: needs.gate.outputs.should_deploy == 'true'
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://grading.hrlab.uz
+    steps:
+      - name: Checkout (for the deploy artifacts only)
+        uses: actions/checkout@v4
+        with:
+          # The workflow_run commit, not the deploy workflow's default ref.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      # Copy ONLY the files the VPS needs to run the prod stack. We never copy
+      # source code or secrets — secrets live in .env.prod ON the VPS.
+      - name: Copy deploy artifacts to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          # Preserve the relative paths under REMOTE_DIR.
+          source: "docker-compose.prod.yml,infra/db/prod/*,infra/frontend/config.json,infra/reverse-proxy/*"
+          target: ${{ env.REMOTE_DIR }}
+          overwrite: true
+          strip_components: 0
+
+      - name: Pull, migrate, and roll the stack
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_TAG: ${{ needs.gate.outputs.image_tag }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          envs: IMAGE_TAG
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            cd "${{ env.REMOTE_DIR }}"
+
+            # .env.prod is created ONCE during first-time setup (runbook) and
+            # contains all secrets. We only override IMAGE_TAG to the immutable
+            # tag CI just built, without touching the rest of the file.
+            if [ ! -f .env.prod ]; then
+              echo "FATAL: .env.prod missing on VPS. Run first-time setup (see runbook)." >&2
+              exit 1
+            fi
+            # Replace / append IMAGE_TAG line in-place.
+            if grep -q '^IMAGE_TAG=' .env.prod; then
+              sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" .env.prod
+            else
+              echo "IMAGE_TAG=${IMAGE_TAG}" >> .env.prod
+            fi
+
+            # Authenticate to GHCR to pull private images (token from .env.prod
+            # is NOT used; we use a dedicated read-only PAT placed at ~/.ghcr-token
+            # during first-time setup, OR make the packages public).
+            if [ -f "$HOME/.ghcr-token" ]; then
+              cat "$HOME/.ghcr-token" | docker login ghcr.io -u "${{ secrets.GHCR_USER || github.actor }}" --password-stdin
+            fi
+
+            COMPOSE="docker compose -f ${{ env.COMPOSE_FILE }} --env-file .env.prod"
+
+            echo '== Pulling immutable images =='
+            $COMPOSE --profile db --profile migrate pull
+
+            echo '== Ensuring the dedicated grading Postgres is up (bundled-DB mode) =='
+            # No-op when GRADING_USE_EXTERNAL_DB=true (the db profile is simply
+            # not started by the operator in that mode).
+            if grep -q '^GRADING_USE_EXTERNAL_DB=false' .env.prod; then
+              $COMPOSE --profile db up -d grading-postgres
+            fi
+
+            echo '== Running Liquibase migrator (grading_migrator, one-shot) =='
+            # Exits non-zero on migration failure -> the whole deploy fails ->
+            # the running api/frontend keep serving the previous version.
+            $COMPOSE --profile migrate run --rm grading-migrator
+
+            echo '== Rolling api + frontend to the new immutable tag =='
+            $COMPOSE up -d grading-api grading-frontend
+
+            echo '== Pruning dangling images (keep tagged ones for rollback) =='
+            docker image prune -f >/dev/null 2>&1 || true
+
+            echo "Deployed IMAGE_TAG=${IMAGE_TAG}"
+
+      - name: Post-deploy smoke test (via outer proxy)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            echo '== API readiness (localhost-bound container) =='
+            curl -fsS --retry 10 --retry-delay 5 --retry-connrefused \
+              http://127.0.0.1:18080/actuator/health/readiness
+            echo
+            echo '== Frontend health (localhost-bound container) =='
+            curl -fsS --retry 5 --retry-delay 3 --retry-connrefused \
+              http://127.0.0.1:18081/healthz
+            echo
+            echo '== Public same-origin via outer proxy (best-effort) =='
+            curl -fsS https://grading.hrlab.uz/actuator/health/readiness || \
+              echo '::warning::Public readiness check failed — verify outer proxy + TLS + DNS.'

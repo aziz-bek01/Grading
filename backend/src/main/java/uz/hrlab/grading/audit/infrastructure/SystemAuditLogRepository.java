@@ -1,10 +1,13 @@
 package uz.hrlab.grading.audit.infrastructure;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,13 +19,30 @@ import java.util.UUID;
  * insert / read operations declared here are allowed (security-blueprint
  * §20.1 audit hash chaining + §9.1 append-only). The companion
  * {@code AuditAppendOnlyTest} verifies this contract.
+ *
+ * <p><b>D-5 note:</b> the entity has a composite PK {@code (id, created_at)}
+ * because the table is RANGE-partitioned (006-audit-logs-partitioning.yaml).
+ * Single-arg {@code findById(UUID)} no longer matches the entity id type and
+ * has been replaced by {@link #findFirstByIdOrderByCreatedAtDesc(UUID)} —
+ * used only by tests that need to locate a row by its surrogate id when the
+ * write {@code created_at} is unknown.
  */
-public interface SystemAuditLogRepository extends Repository<SystemAuditLogJpaEntity, UUID> {
+public interface SystemAuditLogRepository extends Repository<SystemAuditLogJpaEntity, SystemAuditLogId> {
 
     /** Insert is the ONLY mutating operation exposed. */
     <S extends SystemAuditLogJpaEntity> S save(S entity);
 
-    Optional<SystemAuditLogJpaEntity> findById(UUID id);
+    /**
+     * Locate the audit row matching {@code id}. Since the PK is composite and
+     * a surrogate id is unique by construction (UUID v4), at most ONE row can
+     * exist; the {@code ORDER BY created_at DESC} is purely a defensive
+     * tie-break in case of an extreme clock skew that could place duplicate
+     * surrogate ids into the same row insert (must never happen in production
+     * but keeps the API total).
+     */
+    @Query("select sa from SystemAuditLogJpaEntity sa where sa.id = :id " +
+            "order by sa.createdAt desc limit 1")
+    Optional<SystemAuditLogJpaEntity> findFirstByIdOrderByCreatedAtDesc(@Param("id") UUID id);
 
     long count();
 
@@ -35,4 +55,120 @@ public interface SystemAuditLogRepository extends Repository<SystemAuditLogJpaEn
             "where (:tenantId is null and sa.tenantId is null) or sa.tenantId = :tenantId " +
             "order by sa.createdAt desc limit 1")
     Optional<String> findLastHash(@Param("tenantId") UUID tenantId);
+
+    /**
+     * D-1 — page-able cross-axis filter for the Audit Reader API
+     * (GET /api/v1/audit). Every filter parameter is optional; null skips
+     * that predicate. The tenant scope check happens in the application
+     * layer ({@code ListAuditEventsQuery}) — non-super-admins always pass
+     * their own active tenant id and never see null-tenant control-plane
+     * rows. {@code Pageable} sort is ignored: rows are always returned
+     * newest-first via the explicit JPQL {@code order by}.
+     *
+     * <p><b>{@code from}/{@code to} branching:</b> PostgreSQL's JDBC driver
+     * cannot determine the data type of an untyped {@code NULL} bound into
+     * {@code sa.createdAt >= ?} ({@code TIMESTAMPTZ}) and the server fails
+     * with {@code could not determine data type of parameter}. The default
+     * dispatcher routes to one of four physical {@code @Query} methods,
+     * keeping the {@code from}/{@code to} parameter binding out of the SQL
+     * entirely when the value is {@code null}. UUID/String filters retain
+     * the {@code :x is null or ...} guard because their bound types
+     * ({@code uuid}, {@code text}) are unambiguously inferred by the driver.
+     */
+    default Page<SystemAuditLogJpaEntity> search(
+            UUID tenantId, UUID actorUserId, String action, String entityType,
+            UUID entityId, OffsetDateTime from, OffsetDateTime to, Pageable pageable) {
+        boolean hasFrom = from != null;
+        boolean hasTo = to != null;
+        if (hasFrom && hasTo) {
+            return searchWithFromAndTo(tenantId, actorUserId, action, entityType,
+                    entityId, from, to, pageable);
+        }
+        if (hasFrom) {
+            return searchWithFrom(tenantId, actorUserId, action, entityType,
+                    entityId, from, pageable);
+        }
+        if (hasTo) {
+            return searchWithTo(tenantId, actorUserId, action, entityType,
+                    entityId, to, pageable);
+        }
+        return searchNoRange(tenantId, actorUserId, action, entityType,
+                entityId, pageable);
+    }
+
+    @Query("""
+            select sa from SystemAuditLogJpaEntity sa
+            where (:tenantId is null or sa.tenantId = :tenantId)
+              and (:actorUserId is null or sa.actorUserId = :actorUserId)
+              and (:action is null or sa.action = :action)
+              and (:entityType is null or sa.entityType = :entityType)
+              and (:entityId is null or sa.entityId = :entityId)
+            order by sa.createdAt desc
+            """)
+    Page<SystemAuditLogJpaEntity> searchNoRange(
+            @Param("tenantId")    UUID tenantId,
+            @Param("actorUserId") UUID actorUserId,
+            @Param("action")      String action,
+            @Param("entityType")  String entityType,
+            @Param("entityId")    UUID entityId,
+            Pageable pageable);
+
+    @Query("""
+            select sa from SystemAuditLogJpaEntity sa
+            where (:tenantId is null or sa.tenantId = :tenantId)
+              and (:actorUserId is null or sa.actorUserId = :actorUserId)
+              and (:action is null or sa.action = :action)
+              and (:entityType is null or sa.entityType = :entityType)
+              and (:entityId is null or sa.entityId = :entityId)
+              and sa.createdAt >= :from
+            order by sa.createdAt desc
+            """)
+    Page<SystemAuditLogJpaEntity> searchWithFrom(
+            @Param("tenantId")    UUID tenantId,
+            @Param("actorUserId") UUID actorUserId,
+            @Param("action")      String action,
+            @Param("entityType")  String entityType,
+            @Param("entityId")    UUID entityId,
+            @Param("from")        OffsetDateTime from,
+            Pageable pageable);
+
+    @Query("""
+            select sa from SystemAuditLogJpaEntity sa
+            where (:tenantId is null or sa.tenantId = :tenantId)
+              and (:actorUserId is null or sa.actorUserId = :actorUserId)
+              and (:action is null or sa.action = :action)
+              and (:entityType is null or sa.entityType = :entityType)
+              and (:entityId is null or sa.entityId = :entityId)
+              and sa.createdAt <= :to
+            order by sa.createdAt desc
+            """)
+    Page<SystemAuditLogJpaEntity> searchWithTo(
+            @Param("tenantId")    UUID tenantId,
+            @Param("actorUserId") UUID actorUserId,
+            @Param("action")      String action,
+            @Param("entityType")  String entityType,
+            @Param("entityId")    UUID entityId,
+            @Param("to")          OffsetDateTime to,
+            Pageable pageable);
+
+    @Query("""
+            select sa from SystemAuditLogJpaEntity sa
+            where (:tenantId is null or sa.tenantId = :tenantId)
+              and (:actorUserId is null or sa.actorUserId = :actorUserId)
+              and (:action is null or sa.action = :action)
+              and (:entityType is null or sa.entityType = :entityType)
+              and (:entityId is null or sa.entityId = :entityId)
+              and sa.createdAt >= :from
+              and sa.createdAt <= :to
+            order by sa.createdAt desc
+            """)
+    Page<SystemAuditLogJpaEntity> searchWithFromAndTo(
+            @Param("tenantId")    UUID tenantId,
+            @Param("actorUserId") UUID actorUserId,
+            @Param("action")      String action,
+            @Param("entityType")  String entityType,
+            @Param("entityId")    UUID entityId,
+            @Param("from")        OffsetDateTime from,
+            @Param("to")          OffsetDateTime to,
+            Pageable pageable);
 }

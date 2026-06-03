@@ -1,0 +1,468 @@
+# =========================================================================
+# DEV-ONLY SEED — never runs outside the `dev` (or `local`) Liquibase context.
+# =========================================================================
+#
+# Purpose (BE-SEED-003): give local developers + integration smoke tests two
+# realistic tenants (ACME Holdings, Beta University) so the frontend tenant
+# switcher, the projects list, and cross-tenant isolation tests have real
+# rows to operate on. Without this seed the `public.tenants` and
+# `public.client_companies` tables are empty after a clean Liquibase run.
+#
+# PRODUCTION SAFETY:
+#   1. Every changeSet declares `context: dev` — Liquibase will only apply
+#      these rows when the active context list contains `dev`.
+#   2. `application.yml` defaults to contexts `control-plane,seeds,mode-shared`
+#      — `dev` is NOT in that list. Production therefore CANNOT receive this
+#      seed even by accident.
+#   3. `application-local.yml` already runs `test-roles,mode-shared,...`; the
+#      master changelog will include this file under `dev` so local picks it
+#      up via the explicit `application-dev.yml` profile (added separately).
+#   4. The bundled "admin" users have NO password — the platform is
+#      JWT-based; local dev authenticates through the {@code DevAuthFilter}
+#      using `X-Dev-User: <uuid>` headers. There are NO bcrypt secrets to
+#      leak.
+#   5. UUIDs are hardcoded so frontend devAuth.ts can pin them in sync and
+#      tests get deterministic ids. Should the frontend ever rotate the
+#      values, both sides must be updated together.
+#
+# Frontend cross-reference:
+#   frontend/src/features/auth/devAuth.ts — tenant cards currently use the
+#   placeholder strings `tenant-acme` / `tenant-beta`. After this seed
+#   ships, devAuth.ts MUST be updated to use the real UUIDs below
+#   (00000000-0000-0000-0000-0000000ACME0 / -0000000BETA0).
+
+databaseChangeLog:
+
+  # -----------------------------------------------------------------------
+  # 1) Two tenants
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: dev-seed-001-tenants
+      author: backend-engineer
+      context: dev
+      labels: dev-seed,mvp1
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: SELECT count(*) FROM public.tenants WHERE slug IN ('acme', 'beta')
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.tenants
+                (id, slug, display_name, isolation_mode, schema_name, database_name,
+                 status, default_locale, version)
+              VALUES
+                ('11111111-1111-1111-1111-111111111111',
+                 'acme',
+                 'ACME Holdings',
+                 'SCHEMA',
+                 'tenant_acme',
+                 NULL,
+                 'ACTIVE',
+                 'ru-RU',
+                 0),
+                ('22222222-2222-2222-2222-222222222222',
+                 'beta',
+                 'Beta University',
+                 'SCHEMA',
+                 'tenant_beta',
+                 NULL,
+                 'ACTIVE',
+                 'uz-Latn-UZ',
+                 0);
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.tenants
+              WHERE id IN ('11111111-1111-1111-1111-111111111111',
+                           '22222222-2222-2222-2222-222222222222');
+
+  # -----------------------------------------------------------------------
+  # 2) One client_company per tenant (UNIQUE(tenant_id) — F-203 + §5.1)
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: dev-seed-002-client-companies
+      author: backend-engineer
+      context: dev
+      labels: dev-seed,mvp1
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM public.client_companies
+              WHERE tenant_id IN (
+                '11111111-1111-1111-1111-111111111111',
+                '22222222-2222-2222-2222-222222222222'
+              )
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.client_companies
+                (id, tenant_id, legal_name, brand_name, industry, country_code,
+                 tax_id, version)
+              VALUES
+                ('11111111-1111-1111-1111-1111111111c1',
+                 '11111111-1111-1111-1111-111111111111',
+                 'ACME Holdings LLC',
+                 'ACME',
+                 'Diversified Holding',
+                 'UZ',
+                 '300000001',
+                 0),
+                ('22222222-2222-2222-2222-2222222222c2',
+                 '22222222-2222-2222-2222-222222222222',
+                 'Beta University',
+                 'BetaU',
+                 'Higher Education',
+                 'UZ',
+                 '300000002',
+                 0);
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.client_companies
+              WHERE id IN ('11111111-1111-1111-1111-1111111111c1',
+                           '22222222-2222-2222-2222-2222222222c2');
+
+  # -----------------------------------------------------------------------
+  # 3) One default super-admin user per tenant.
+  #
+  #    NOTE: this platform is JWT-based — `public.users` has NO password
+  #    column. Devs authenticate locally via `X-Dev-User: <uuid>` headers
+  #    (see DevAuthFilter). The "credentials" are simply the UUID below.
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: dev-seed-003-users
+      author: backend-engineer
+      context: dev
+      labels: dev-seed,mvp1
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM public.users
+              WHERE LOWER(email) IN ('admin@acme.dev', 'admin@beta.dev')
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.users
+                (id, email, external_idp_subject, full_name, status,
+                 default_locale, version)
+              VALUES
+                ('aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
+                 'admin@acme.dev',
+                 'dev|admin@acme.dev',
+                 'ACME Admin',
+                 'ACTIVE',
+                 'ru-RU',
+                 0),
+                ('bbbb2222-bbbb-2222-bbbb-2222bbbb2222',
+                 'admin@beta.dev',
+                 'dev|admin@beta.dev',
+                 'Beta Admin',
+                 'ACTIVE',
+                 'uz-Latn-UZ',
+                 0);
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.users
+              WHERE id IN ('aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
+                           'bbbb2222-bbbb-2222-bbbb-2222bbbb2222');
+
+  # -----------------------------------------------------------------------
+  # 4) Memberships — each CLIENT admin → own tenant only (default-deny
+  #    boundary). The HRLab PLATFORM super-admin gets an extra cross-tenant
+  #    membership in changeset 5b below.
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: dev-seed-004-memberships
+      author: backend-engineer
+      context: dev
+      labels: dev-seed,mvp1
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM public.user_tenant_memberships
+              WHERE user_id IN (
+                'aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
+                'bbbb2222-bbbb-2222-bbbb-2222bbbb2222'
+              )
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.user_tenant_memberships
+                (id, user_id, tenant_id, status, salary_data_permission, version)
+              VALUES
+                ('aaaa1111-aaaa-1111-aaaa-1111aaaa2222',
+                 'aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
+                 '11111111-1111-1111-1111-111111111111',
+                 'ACTIVE',
+                 false,
+                 0),
+                ('bbbb2222-bbbb-2222-bbbb-2222bbbb3333',
+                 'bbbb2222-bbbb-2222-bbbb-2222bbbb2222',
+                 '22222222-2222-2222-2222-222222222222',
+                 'ACTIVE',
+                 false,
+                 0);
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.user_tenant_memberships
+              WHERE id IN ('aaaa1111-aaaa-1111-aaaa-1111aaaa2222',
+                           'bbbb2222-bbbb-2222-bbbb-2222bbbb3333');
+
+  # -----------------------------------------------------------------------
+  # 5) Role assignment — HRLAB_SUPER_ADMIN on both memberships.
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: dev-seed-005-user-roles
+      author: backend-engineer
+      context: dev
+      labels: dev-seed,mvp1
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM public.user_roles
+              WHERE user_tenant_membership_id IN (
+                'aaaa1111-aaaa-1111-aaaa-1111aaaa2222',
+                'bbbb2222-bbbb-2222-bbbb-2222bbbb3333'
+              )
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.user_roles
+                (id, user_tenant_membership_id, role_id)
+              SELECT gen_random_uuid(),
+                     'aaaa1111-aaaa-1111-aaaa-1111aaaa2222',
+                     r.id
+              FROM public.roles r WHERE r.code = 'HRLAB_SUPER_ADMIN';
+
+              INSERT INTO public.user_roles
+                (id, user_tenant_membership_id, role_id)
+              SELECT gen_random_uuid(),
+                     'bbbb2222-bbbb-2222-bbbb-2222bbbb3333',
+                     r.id
+              FROM public.roles r WHERE r.code = 'HRLAB_SUPER_ADMIN';
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.user_roles
+              WHERE user_tenant_membership_id IN (
+                'aaaa1111-aaaa-1111-aaaa-1111aaaa2222',
+                'bbbb2222-bbbb-2222-bbbb-2222bbbb3333'
+              );
+
+  # -----------------------------------------------------------------------
+  # 5b) Cross-tenant access for the HRLab PLATFORM super-admin.
+  #
+  #     `aaaa1111…` holds the PLATFORM-scoped role HRLAB_SUPER_ADMIN — an
+  #     HRLab consultant who manages the whole client portfolio. Unlike a
+  #     CLIENT_COMPANY_ADMIN (single-tenant), this user must be a member of
+  #     EVERY client company so the TopBar company switcher works without a
+  #     403. The dev resolver (DevUserAuthorityResolver) mirrors production:
+  #     the IdP only mints a per-tenant JWT when a matching ACTIVE membership
+  #     exists. This adds the same HRLAB_SUPER_ADMIN grant on Beta University
+  #     so switching companies in the UI resolves real permissions instead
+  #     of an empty (fail-closed) authority set.
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: dev-seed-005b-superadmin-beta-membership
+      author: backend-engineer
+      context: dev
+      labels: dev-seed,mvp1
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM public.user_tenant_memberships
+              WHERE id = 'aaaa1111-aaaa-1111-aaaa-1111bbbb2222'
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.user_tenant_memberships
+                (id, user_id, tenant_id, status, salary_data_permission, version)
+              VALUES
+                ('aaaa1111-aaaa-1111-aaaa-1111bbbb2222',
+                 'aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
+                 '22222222-2222-2222-2222-222222222222',
+                 'ACTIVE',
+                 false,
+                 0);
+
+              INSERT INTO public.user_roles
+                (id, user_tenant_membership_id, role_id)
+              SELECT gen_random_uuid(),
+                     'aaaa1111-aaaa-1111-aaaa-1111bbbb2222',
+                     r.id
+              FROM public.roles r WHERE r.code = 'HRLAB_SUPER_ADMIN';
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.user_roles
+              WHERE user_tenant_membership_id = 'aaaa1111-aaaa-1111-aaaa-1111bbbb2222';
+              DELETE FROM public.user_tenant_memberships
+              WHERE id = 'aaaa1111-aaaa-1111-aaaa-1111bbbb2222';
+
+  # -----------------------------------------------------------------------
+  # 6) Demo projects — 2 per tenant (validates frontend "Muammo 2").
+  #
+  #    NOTE: `projects.name_i18n` is JSONB — every project ships translations
+  #    in all four supported locales (architecture §16, common §11).
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: dev-seed-006-projects
+      author: backend-engineer
+      context: dev
+      labels: dev-seed,mvp1
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM projects
+              WHERE tenant_id IN (
+                '11111111-1111-1111-1111-111111111111',
+                '22222222-2222-2222-2222-222222222222'
+              )
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO projects
+                (id, tenant_id, code, name_i18n, description, status,
+                 start_date, end_date, version, created_by)
+              VALUES
+                ('11111111-aaaa-1111-aaaa-111111110001',
+                 '11111111-1111-1111-1111-111111111111',
+                 'ACME-GRADE-2026',
+                 '{"ru-RU":"Грейдинг ACME 2026","uz-Cyrl-UZ":"ACME грейдинги 2026","uz-Latn-UZ":"ACME greydingi 2026","en-US":"ACME Grading 2026"}'::jsonb,
+                 'Initial annual grading cycle for ACME Holdings',
+                 'ACTIVE',
+                 '2026-01-15',
+                 '2026-12-31',
+                 0,
+                 'aaaa1111-aaaa-1111-aaaa-1111aaaa1111'),
+                ('11111111-aaaa-1111-aaaa-111111110002',
+                 '11111111-1111-1111-1111-111111111111',
+                 'ACME-IT-2026',
+                 '{"ru-RU":"Грейдинг ИТ-блока ACME","uz-Cyrl-UZ":"ACME ИТ блоки грейдинги","uz-Latn-UZ":"ACME IT bloki greydingi","en-US":"ACME IT Block Grading"}'::jsonb,
+                 'IT department deep dive — ACME',
+                 'DRAFT',
+                 '2026-03-01',
+                 '2026-09-30',
+                 0,
+                 'aaaa1111-aaaa-1111-aaaa-1111aaaa1111'),
+                ('22222222-bbbb-2222-bbbb-222222220001',
+                 '22222222-2222-2222-2222-222222222222',
+                 'BETA-FACULTY-2026',
+                 '{"ru-RU":"Грейдинг ППС Beta University","uz-Cyrl-UZ":"Beta University ППС грейдинги","uz-Latn-UZ":"Beta University o''qituvchilar greydingi","en-US":"Beta University Faculty Grading"}'::jsonb,
+                 'Academic staff grading project',
+                 'ACTIVE',
+                 '2026-02-01',
+                 '2026-08-31',
+                 0,
+                 'bbbb2222-bbbb-2222-bbbb-2222bbbb2222'),
+                ('22222222-bbbb-2222-bbbb-222222220002',
+                 '22222222-2222-2222-2222-222222222222',
+                 'BETA-ADMIN-2026',
+                 '{"ru-RU":"Грейдинг АУП Beta University","uz-Cyrl-UZ":"Beta University АУП грейдинги","uz-Latn-UZ":"Beta University AUP greydingi","en-US":"Beta University Administrative Grading"}'::jsonb,
+                 'Administrative staff grading project',
+                 'DRAFT',
+                 '2026-04-01',
+                 '2026-10-31',
+                 0,
+                 'bbbb2222-bbbb-2222-bbbb-2222bbbb2222');
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM projects
+              WHERE id IN ('11111111-aaaa-1111-aaaa-111111110001',
+                           '11111111-aaaa-1111-aaaa-111111110002',
+                           '22222222-bbbb-2222-bbbb-222222220001',
+                           '22222222-bbbb-2222-bbbb-222222220002');
+
+  # -----------------------------------------------------------------------
+  # 7) User-project assignments — admin can see all their tenant's projects.
+  # -----------------------------------------------------------------------
+  - changeSet:
+      id: dev-seed-007-user-project-assignments
+      author: backend-engineer
+      context: dev
+      labels: dev-seed,mvp1
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM public.user_project_assignments
+              WHERE user_id IN (
+                'aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
+                'bbbb2222-bbbb-2222-bbbb-2222bbbb2222'
+              )
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.user_project_assignments
+                (id, user_id, tenant_id, project_id, status, version)
+              VALUES
+                (gen_random_uuid(),
+                 'aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
+                 '11111111-1111-1111-1111-111111111111',
+                 '11111111-aaaa-1111-aaaa-111111110001',
+                 'ACTIVE', 0),
+                (gen_random_uuid(),
+                 'aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
+                 '11111111-1111-1111-1111-111111111111',
+                 '11111111-aaaa-1111-aaaa-111111110002',
+                 'ACTIVE', 0),
+                (gen_random_uuid(),
+                 'bbbb2222-bbbb-2222-bbbb-2222bbbb2222',
+                 '22222222-2222-2222-2222-222222222222',
+                 '22222222-bbbb-2222-bbbb-222222220001',
+                 'ACTIVE', 0),
+                (gen_random_uuid(),
+                 'bbbb2222-bbbb-2222-bbbb-2222bbbb2222',
+                 '22222222-2222-2222-2222-222222222222',
+                 '22222222-bbbb-2222-bbbb-222222220002',
+                 'ACTIVE', 0);
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.user_project_assignments
+              WHERE user_id IN (
+                'aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
+                'bbbb2222-bbbb-2222-bbbb-2222bbbb2222'
+              );

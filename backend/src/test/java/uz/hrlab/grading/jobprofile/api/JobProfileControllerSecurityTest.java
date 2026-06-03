@@ -96,7 +96,7 @@ class JobProfileControllerSecurityTest {
         mvc.perform(patch("/api/v1/job-profiles/{id}", UUID.randomUUID())
                         .with(jwt().authorities(() -> "JOB_PROFILE_READ"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"purposeI18n\":{\"ru-RU\":\"x\"}}"))
+                        .content("{\"purpose_i18n\":{\"ru-RU\":\"x\"}}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -160,8 +160,8 @@ class JobProfileControllerSecurityTest {
                 {
                   "tenantId": "00000000-0000-0000-0000-000000000001",
                   "tenant_id": "00000000-0000-0000-0000-000000000002",
-                  "purposeI18n": {"ru-RU": "Цель"},
-                  "mainDutiesI18n": {"ru-RU": "Обязанности"}
+                  "purpose_i18n": {"ru-RU": "Цель"},
+                  "main_duties_i18n": {"ru-RU": "Обязанности"}
                 }
                 """;
         mvc.perform(post("/api/v1/positions/{positionId}/job-profile", positionId)

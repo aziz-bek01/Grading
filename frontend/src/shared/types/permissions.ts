@@ -8,9 +8,19 @@ export const PERMISSIONS = {
   PROJECT_CREATE: 'PROJECT_CREATE',
   PROJECT_EDIT: 'PROJECT_EDIT',
 
-  // Tenants / companies
+  // Tenants / companies (admin/portfolio scope — HRLAB_SUPER_ADMIN)
   TENANT_READ: 'TENANT_READ',
   TENANT_EDIT: 'TENANT_EDIT',
+  /** Archive a tenant (soft-delete). Backend `TENANT_ARCHIVE`. */
+  TENANT_ARCHIVE: 'TENANT_ARCHIVE',
+  /**
+   * Client-company (legal entity behind a tenant) — separate code so we can
+   * grant company-level edits without granting full tenant administration.
+   * Backend codes mirror `CLIENT_LIST` / `CLIENT_VIEW` / `CLIENT_UPDATE`.
+   */
+  CLIENT_LIST: 'CLIENT_LIST',
+  CLIENT_VIEW: 'CLIENT_VIEW',
+  CLIENT_UPDATE: 'CLIENT_UPDATE',
 
   // Organization
   ORG_READ: 'ORG_READ',
@@ -41,16 +51,28 @@ export const PERMISSIONS = {
   METHODOLOGY_APPROVE: 'METHODOLOGY_APPROVE',
   METHODOLOGY_LOCK: 'METHODOLOGY_LOCK',
 
-  // Evaluation
+  // Evaluation (Phase 5)
   EVALUATION_READ: 'EVALUATION_READ',
   EVALUATION_EDIT: 'EVALUATION_EDIT',
   EVALUATION_APPROVE: 'EVALUATION_APPROVE',
+  EVALUATION_LOCK: 'EVALUATION_LOCK',
+  /**
+   * Manual calibration permission — backend code is `CALIBRATION_EDIT`
+   * (see `PermissionCodes.CALIBRATION_EDIT`). Requires a reason ≥ 20 chars
+   * and an audit event (`SCORE_CALIBRATED`).
+   */
+  CALIBRATION_EDIT: 'CALIBRATION_EDIT',
+  /** @deprecated kept for transient back-compat with Phase 0 placeholders; remove after Phase 6. */
   EVALUATION_ADJUST: 'EVALUATION_ADJUST',
 
-  // Grades
+  // Grades + grade-structure (Phase 6)
   GRADE_READ: 'GRADE_READ',
   GRADE_EDIT: 'GRADE_EDIT',
   GRADE_APPROVE: 'GRADE_APPROVE',
+  /** Approve a grade structure (DRAFT → APPROVED). Backend `GRADE_STRUCTURE_APPROVE`. */
+  GRADE_STRUCTURE_APPROVE: 'GRADE_STRUCTURE_APPROVE',
+  /** Lock an approved grade structure (APPROVED → LOCKED). Backend `GRADE_STRUCTURE_LOCK`. */
+  GRADE_STRUCTURE_LOCK: 'GRADE_STRUCTURE_LOCK',
 
   // Compensation / salary
   SALARY_VIEW: 'SALARY_VIEW',
@@ -59,6 +81,9 @@ export const PERMISSIONS = {
 
   // Reports + exports
   REPORT_READ: 'REPORT_READ',
+  /** Request a new report (POST /reports/request) — MVP 2 Phase 3. */
+  REPORT_CREATE: 'REPORT_CREATE',
+  /** Issue signed download URL for a report (GET /reports/:id/download-url). */
   REPORT_EXPORT: 'REPORT_EXPORT',
   EXPORT_GENERAL: 'EXPORT_GENERAL',
 
@@ -70,9 +95,33 @@ export const PERMISSIONS = {
   USER_READ: 'USER_READ',
   USER_EDIT: 'USER_EDIT',
   USER_ACCESS_MANAGE: 'USER_ACCESS_MANAGE',
+  /** Invite a new user (POST /users). Backend code `USER_INVITE`. */
+  USER_INVITE: 'USER_INVITE',
+  /** Toggle salary_data_permission on a membership — audit-sensitive. */
+  USER_SALARY_PERMISSION_GRANT: 'USER_SALARY_PERMISSION_GRANT',
 
   // AI
   AI_ASSIST_USE: 'AI_ASSIST_USE',
+
+  // MVP 2 Phase 1 — Workflow / Approval / Comment
+  WORKFLOW_READ: 'WORKFLOW_READ',
+  WORKFLOW_EDIT: 'WORKFLOW_EDIT',
+  APPROVAL_REQUEST_CREATE: 'APPROVAL_REQUEST_CREATE',
+  APPROVAL_REQUEST_CANCEL: 'APPROVAL_REQUEST_CANCEL',
+  APPROVAL_STEP_APPROVE: 'APPROVAL_STEP_APPROVE',
+  APPROVAL_STEP_REJECT: 'APPROVAL_STEP_REJECT',
+  COMMENT_CREATE: 'COMMENT_CREATE',
+  COMMENT_EDIT: 'COMMENT_EDIT',
+  COMMENT_DELETE: 'COMMENT_DELETE',
+
+  // MVP 2 Phase 2 — Integration (Excel import/export)
+  POSITION_IMPORT: 'POSITION_IMPORT',
+  METHODOLOGY_IMPORT: 'METHODOLOGY_IMPORT',
+  GRADE_IMPORT: 'GRADE_IMPORT',
+  IMPORT_READ: 'IMPORT_READ',
+  IMPORT_CANCEL: 'IMPORT_CANCEL',
+  EXPORT_READ: 'EXPORT_READ',
+  EXPORT_REQUEST: 'EXPORT_REQUEST',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

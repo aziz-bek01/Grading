@@ -18,9 +18,9 @@
     "approve": "Тасдиқлаш",
     "submit": "Юбориш",
     "search": "Қидириш",
-    "filter": "Фильтр",
-    "filters": "Фильтрлар",
-    "reset_filters": "Фильтрларни тозалаш",
+    "filter": "Сараловчи",
+    "filters": "Сараловчилар",
+    "reset_filters": "Сараловчиларни тозалаш",
     "back": "Орқага",
     "retry": "Қайта уриниш",
     "close": "Ёпиш",
@@ -38,7 +38,12 @@
     "description": "Тавсиф",
     "parent": "Юқори бўғин",
     "all": "Барчаси",
-    "none": "Йўқ"
+    "none": "Йўқ",
+    "reason_min_chars": "камида {{count}} та белги",
+    "continue": "Давом этиш",
+    "completeness": "Тўлдирилганлик",
+    "unknown_actor": "Номаълум фойдаланувчи",
+    "loading": "Юкланмоқда…"
   },
   "nav": {
     "dashboard": "Бошқарув панели",
@@ -58,7 +63,10 @@
     "audit": "Аудит журнали",
     "users_access": "Фойдаланувчилар ва рухсатлар",
     "soon": "Тез орада",
-    "governance": "Бошқарув"
+    "governance": "Бошқарув",
+    "approvals": "Тасдиқлар",
+    "imports": "Импортлар",
+    "exports": "Экспортлар"
   },
   "status": {
     "draft": "Қоралама",
@@ -95,7 +103,7 @@
     "signOut": "Чиқиш"
   },
   "language": {
-    "title": "Интерфейс тили",
+    "title": "Тизим тили",
     "ru-RU": "Русский",
     "uz-Cyrl-UZ": "Ўзбек (кирилл)",
     "uz-Latn-UZ": "Oʻzbek (lotin)",
@@ -156,7 +164,7 @@
   },
   "dataTable": {
     "search_placeholder": "Қидириш...",
-    "no_results": "Танланган фильтрлар бўйича натижа йўқ.",
+    "no_results": "Танланган сараловчилар бўйича натижа йўқ.",
     "rows_per_page": "Қаторлар сони",
     "page_of": "Саҳифа {{page}} / {{total}}",
     "previous": "Орқага",
@@ -185,7 +193,8 @@
     "column_updated": "Янгиланган",
     "column_actions": "Амаллар",
     "empty_title": "Лойиҳалар йўқ",
-    "empty_body": "Ушбу мижоз-компания учун биринчи грейдинг лойиҳасини яратинг."
+    "empty_body": "Ушбу мижоз-компания учун биринчи грейдинг лойиҳасини яратинг.",
+    "list_subtitle_for_tenant": "«{{tenant}}» мижоз-компанияси учун грейдинг лойиҳалари."
   },
   "organization": {
     "page_title": "Ташкилий тузилма",
@@ -249,7 +258,8 @@
     "archive_confirm_title": "Лавозимни архивлайсизми?",
     "archive_confirm_body": "Архивли лавозимлар фаол жараёнлардан чиқарилади.",
     "validation_department_required": "Бўлимни танланг.",
-    "validation_title_required": "Асосий тилдаги ном мажбурий."
+    "validation_title_required": "Асосий тилдаги ном мажбурий.",
+    "tab_comments": "Изоҳлар"
   },
   "workflow": {
     "title": "Лойиҳа жараёни",
@@ -271,17 +281,127 @@
       "IN_PROGRESS": "Жараёнда",
       "COMPLETE": "Тугалланган",
       "BLOCKED": "Тўсилган",
-      "LOCKED_FUTURE": "Тез орада"
+      "LOCKED_FUTURE": "Тез орада",
+      "NOT_STARTED": "Бошланмаган"
     },
     "next_action": "Кейинги қадам",
     "recent_activity": "Сўнгги фаолият",
     "no_activity": "Лойиҳада сўнгги фаолият йўқ.",
     "blockers": "Тўсиқлар",
-    "completion": "{{percent}}% бажарилди"
+    "completion": "{{percent}}% бажарилди",
+    "responsible": "Масъул",
+    "last_activity": "Сўнгги фаолият: {{time}} ({{actor}})",
+    "open_stage": "Босқичга ўтиш",
+    "activity_requires_audit": "Фаолият журнали фақат AUDIT_READ ҳуқуқига эга фойдаланувчиларга кўринади.",
+    "open_audit_full": "Тўлиқ аудит журналини очиш"
   },
   "audit": {
     "log": "Аудит журнали",
-    "stat_card_label": "Аудит огоҳлантиришлари"
+    "stat_card_label": "Аудит огоҳлантиришлари",
+    "title": "Аудит журнали",
+    "subtitle": "Текширув ва мувофиқлик учун қайд этилган амаллар хронологияси.",
+    "subtitle_for_tenant": "«{{tenant}}» компанияси бўйича тизим қайд этган амаллар.",
+    "empty": "Танланган сараловчилар бўйича воқеалар топилмади.",
+    "empty_title": "Воқеалар топилмади",
+    "no_access": "Аудит журналини кўриш учун AUDIT_READ ҳуқуқи талаб қилинади.",
+    "export_csv": "CSV кўринишида юклаб олиш",
+    "hash_chain_valid": "Хеш занжири бутун",
+    "hash_chain_valid_hint": "Жорий воқеа хеши олдингиси билан мувофиқ. Тўлиқ занжир текшируви — бэкендда.",
+    "hash_chain_broken": "Хеш занжири бузилган",
+    "filter": {
+      "from": "Санадан",
+      "to": "Санагача",
+      "action": "Амал",
+      "actor": "Ташаббускор IDси",
+      "actor_placeholder": "Фойдаланувчи ID",
+      "entity_type": "Объект тури",
+      "entity_id": "Объект ID",
+      "tenant": "Компания",
+      "error_date": "Сана ЙЙЙЙ-ОО-КК форматида бўлиши керак.",
+      "error_from_after_to": "«Санагача» «Санадан» олдин бўлиши мумкин эмас."
+    },
+    "column": {
+      "timestamp": "Вақт",
+      "action": "Амал",
+      "actor": "Ташаббускор",
+      "entity": "Объект",
+      "correlation_id": "Сўров ID"
+    },
+    "details": {
+      "title": "Аудит воқеаси",
+      "empty": "Тафсилотларни кўриш учун жадвалдан воқеани танланг.",
+      "actor": "Ташаббускор",
+      "entity": "Объект",
+      "tenant": "Компания",
+      "correlation_id": "Сўров ID",
+      "ip": "IP-манзил",
+      "user_agent": "User Agent",
+      "hash_chain": "Хеш занжири",
+      "reason": "Сабаб",
+      "metadata": "Мета-маълумотлар",
+      "before": "Ўзгаришдан олдин",
+      "after": "Ўзгаришдан кейин"
+    },
+    "entity_type": {
+      "PROJECT": "Лойиҳа",
+      "TENANT": "Компания",
+      "USER": "Фойдаланувчи",
+      "USER_MEMBERSHIP": "Фойдаланувчи аъзолиги",
+      "DEPARTMENT": "Бўлинма",
+      "POSITION": "Лавозим",
+      "JOB_PROFILE": "Лавозим профили",
+      "METHODOLOGY": "Методология",
+      "METHODOLOGY_VERSION": "Методология версияси",
+      "EVALUATION": "Баҳолаш",
+      "EVALUATION_SCORE": "Баҳолаш балли",
+      "GRADE_STRUCTURE": "Грейд тузилмаси",
+      "GRADE": "Грейд",
+      "APPROVAL_REQUEST": "Тасдиқлаш сўрови",
+      "IMPORT": "Импорт",
+      "EXPORT": "Экспорт",
+      "REPORT": "Ҳисобот"
+    },
+    "action": {
+      "LOGIN_SUCCESS": "Муваффақиятли кириш",
+      "LOGIN_FAILED": "Кириш муваффақиятсиз",
+      "LOGOUT": "Тизимдан чиқиш",
+      "TENANT_CONTEXT_SWITCH": "Компанияни алмаштириш",
+      "PROJECT_CREATED": "Лойиҳа яратилди",
+      "PROJECT_UPDATED": "Лойиҳа ўзгартирилди",
+      "PROJECT_LOCKED": "Лойиҳа қулфланди",
+      "PROJECT_ARCHIVED": "Лойиҳа архивланди",
+      "DEPARTMENT_CREATED": "Бўлинма яратилди",
+      "DEPARTMENT_UPDATED": "Бўлинма ўзгартирилди",
+      "DEPARTMENT_ARCHIVED": "Бўлинма архивланди",
+      "POSITION_CREATED": "Лавозим яратилди",
+      "POSITION_UPDATED": "Лавозим ўзгартирилди",
+      "POSITION_ARCHIVED": "Лавозим архивланди",
+      "JOB_PROFILE_CREATED": "Профил яратилди",
+      "JOB_PROFILE_SUBMITTED": "Профил кўрикка юборилди",
+      "JOB_PROFILE_APPROVED": "Профил тасдиқланди",
+      "JOB_PROFILE_ARCHIVED": "Профил архивланди",
+      "METHODOLOGY_CREATED": "Методология яратилди",
+      "METHODOLOGY_VERSION_APPROVED": "Методология версияси тасдиқланди",
+      "METHODOLOGY_VERSION_LOCKED": "Методология версияси қулфланди",
+      "EVALUATION_CREATED": "Баҳолаш яратилди",
+      "EVALUATION_SCORE_UPSERTED": "Фактор балли сақланди",
+      "EVALUATION_SUBMITTED": "Баҳолаш юборилди",
+      "EVALUATION_APPROVED": "Баҳолаш тасдиқланди",
+      "EVALUATION_LOCKED": "Баҳолаш қулфланди",
+      "EVALUATION_SCORE_CALIBRATED": "Фактор балли қайта мослаштирилди",
+      "GRADE_ASSIGNED": "Грейд тайинланди",
+      "USER_INVITED": "Фойдаланувчи таклиф қилинди",
+      "USER_REVOKED": "Фойдаланувчи бекор қилинди",
+      "USER_SALARY_PERMISSION_GRANTED": "Компенсация маълумотларига рухсат берилди",
+      "USER_SALARY_PERMISSION_REVOKED": "Компенсация маълумотларига рухсат олиб қўйилди",
+      "IMPORT_UPLOADED": "Импорт юкланди",
+      "IMPORT_COMMITTED": "Импорт тасдиқланди",
+      "EXPORT_REQUESTED": "Экспорт сўралди",
+      "EXPORT_DOWNLOADED": "Экспорт юклаб олинди",
+      "REPORT_GENERATED": "Ҳисобот тузилди",
+      "CROSS_TENANT_OR_PROJECT_ACCESS_ATTEMPT": "Бошқа компания ёки лойиҳага кириш уриниши",
+      "TENANT_MEMBERSHIP_MISMATCH": "Компания аъзолиги мос келмади"
+    }
   },
   "jobProfile": {
     "page_title": "Лавозим профили",
@@ -307,7 +427,7 @@
       "archived": "Архивда"
     },
     "section": {
-      "role": "Роль ва масъулият",
+      "role": "Лавозим вазифаси ва масъулияти",
       "requirements": "Талаблар",
       "interactions": "Алоқалар",
       "working_context": "Иш шартлари"
@@ -328,7 +448,7 @@
       "actualization_date": "Долзарблаштириш санаси"
     },
     "hint": {
-      "purpose": "Нима учун ушбу роль мавжуд.",
+      "purpose": "Нима учун ушбу лавозим мавжуд.",
       "main_duties": "Ҳар кунлик асосий вазифалар.",
       "responsibility_area": "Лавозим нима учун жавобгар.",
       "authority": "Қандай қарорлар қабул қилиши мумкин.",
@@ -373,8 +493,1008 @@
     "advisory_label": "ИИ-таклиф — одам тасдиғи талаб қилинади",
     "panel_title": "ИИ таклифи",
     "disclaimer": "Таклифни қабул қилиш суъбектни тасдиқламайди. Якуний қарорни одам қабул қилади.",
-    "coming_soon": "ИИ интеграцияси 4-фазада чиқади. Ҳозирча — заглушка.",
+    "coming_soon": "AI-ёрдамчи кўриб чиқиш режимида. Тўлиқ интеграция MVP 2'да.",
     "accept": "Қабул қилиш",
     "reject": "Рад этиш"
+  },
+  "sidebar": {
+    "select_project_first": "Аввал лойиҳани танланг",
+    "collapse": "Менюни йиғиш",
+    "expand": "Менюни ёйиш",
+    "toggle_aria": "Ён менюни ўзгартириш",
+    "soonRoadmap": {
+      "compensation": "MVP 3'да мавжуд",
+      "files": "MVP 2'да мавжуд",
+      "aiAssist": "MVP 4'да мавжуд (4-фаза панелларида олдиндан кўриш мавжуд)"
+    }
+  },
+  "approval": {
+    "inbox_title": "Менинг тасдиқларим",
+    "inbox_subtitle": "Сизнинг қарорингизни кутаётган тасдиқлаш сўровлари.",
+    "inbox_empty_title": "Кутиб турган сўровлар йўқ",
+    "inbox_empty_body": "Ҳозирда сиздан тасдиқни кутаётган сўровлар йўқ.",
+    "project_list_title": "Лойиҳа тасдиқлари",
+    "project_list_subtitle": "Жорий лойиҳа бўйича барча тасдиқлаш сўровлари.",
+    "project_list_empty_title": "Сўровлар йўқ",
+    "project_list_empty_body": "Танланган сараловчилар бўйича ҳеч нарса топилмади.",
+    "filter_entity_type": "Объект тури",
+    "steps_title": "Тасдиқлаш босқичлари",
+    "decisions_title": "Қарорлар тарихи",
+    "decisions_empty": "Ҳали қарорлар йўқ.",
+    "steps_count": "{{total}} та босқич",
+    "initiated_by": "Бошлади: {{name}} · {{time}}",
+    "pending_panel_title": "Тасдиқни кутмоқда ({{count}})",
+    "pending_panel_empty": "Фаол тасдиқлаш сўровлари йўқ.",
+    "status": {
+      "PENDING": "Кутилмоқда",
+      "APPROVED": "Тасдиқланди",
+      "REJECTED": "Рад этилди",
+      "CHANGES_REQUESTED": "Ўзгартиришлар талаб қилинди",
+      "CANCELLED": "Бекор қилинди"
+    },
+    "stepStatus": {
+      "PENDING": "Кутилмоқда",
+      "APPROVED": "Тасдиқланди",
+      "REJECTED": "Рад этилди",
+      "SKIPPED": "Ўтказиб юборилди"
+    },
+    "decisionType": {
+      "APPROVED": "Тасдиқланди",
+      "REJECTED": "Рад этилди",
+      "CHANGES_REQUESTED": "Ўзгартиришлар талаб қилинди"
+    },
+    "entityType": {
+      "JOB_PROFILE": "Лавозим профили",
+      "METHODOLOGY_VERSION": "Методология версияси",
+      "EVALUATION": "Баҳолаш",
+      "GRADE_STRUCTURE": "Грейд тузилмаси",
+      "PROJECT": "Лойиҳа"
+    },
+    "step": {
+      "order": "{{order}}-босқич",
+      "approver": "Тасдиқловчи",
+      "required_permission": "Талаб қилинадиган рухсат",
+      "any_approver": "Тегишли рухсатга эга ҳар қандай фойдаланувчи",
+      "decided_by": "Қарор қабул қилди: {{name}} · {{time}}",
+      "reason": "Сабаб",
+      "notes": "Изоҳлар"
+    },
+    "actions": {
+      "approve": "Тасдиқлаш",
+      "reject": "Рад этиш",
+      "request_changes": "Ўзгартириш сўраш",
+      "cancel_request": "Сўровни қайтариб олиш",
+      "no_authority": "Сизда жорий босқичга таъсир ўтказиш ҳуқуқи йўқ.",
+      "approve_confirm_title": "Тасдиқлашни тасдиқлайсизми?",
+      "approve_confirm_body": "Тасдиқлангандан сўнг бу босқични бекор қилиб бўлмайди.",
+      "reject_dialog_title": "Сўровни рад этиш",
+      "reject_dialog_body": "Рад этиш сабабини кўрсатинг (камида 20 та белги).",
+      "changes_dialog_title": "Ўзгартиришлар сўраш",
+      "changes_dialog_body": "Қандай ўзгартиришлар талаб қилинаётганини ёзинг (камида 20 та белги).",
+      "cancel_confirm_title": "Тасдиқлаш сўровини қайтариб оласизми?",
+      "cancel_confirm_body": "Сўров бекор қилинади. Кейинроқ янгисини яратиш мумкин."
+    }
+  },
+  "comment": {
+    "thread_title": "Изоҳлар",
+    "input_placeholder": "Изоҳ ёзинг... Фойдаланувчини белгилаш учун @ дан фойдаланинг.",
+    "mention_hint": "Маслаҳат: белгилаш формати — @[id|Фойдаланувчи номи]",
+    "submit": "Юбориш",
+    "submit_reply": "Жавоб бериш",
+    "reply": "Жавоб бериш",
+    "reply_placeholder": "Изоҳга жавоб...",
+    "edited": "таҳрирланди",
+    "empty": "Ҳали изоҳлар йўқ.",
+    "deleted_placeholder": "Изоҳ ўчирилди",
+    "delete_confirm_title": "Изоҳни ўчирасизми?",
+    "delete_confirm_body": "Бу амални бекор қилиб бўлмайди. Изоҳ ўчирилган деб белгиланади.",
+    "errors": {
+      "body_required": "Изоҳ матнини киритинг.",
+      "body_too_short": "Изоҳ бўш бўлмаслиги керак.",
+      "body_too_long": "Изоҳ 5000 та белгидан ошмаслиги керак."
+    }
+  },
+  "methodology": {
+    "list_page_title": "Методологиялар",
+    "list_page_subtitle": "Жорий лойиҳа учун шаблонлар ва методология версиялари.",
+    "new_methodology": "Янги методология",
+    "open": "Очиш",
+    "empty_title": "Методологиялар йўқ",
+    "empty_body": "CLASSIC_8_FACTOR, EXTENDED_11_CRITERIA ёки Custom шаблонидан бошланг.",
+    "no_active_version": "Фаол версия йўқ",
+    "no_versions": "Версиялар йўқ.",
+    "no_factors": "Факторлар йўқ.",
+    "add_factor": "Фактор қўшиш",
+    "summary_title": "Қисқа маълумот",
+    "scoring_mode": "Ҳисоблаш режими",
+    "approve_lock": "Тасдиқлаш ва блоклаш",
+    "read_only": "Фақат ўқиш",
+    "translations_button": "Таржималар",
+    "translation_matrix_title": "Факторларнинг таржималари",
+    "translation_matrix_subtitle": "Ҳар бир факторнинг номини 4 тилда тўлдиринг.",
+    "translations_page_title": "Методология таржималари",
+    "translations_page_subtitle": "Факторлар × 4 тил матрицаси. Тўлиқ таржима тасдиқни тезлаштиради.",
+    "compare_versions_soon": "Версияларни таққослаш MVP 2 да чиқади.",
+    "version_panel_title": "Версиялар",
+    "version_label": "Версия {{number}}",
+    "factor_table_caption": "Методология факторлари жадвали",
+    "create_new_version": "Янги версия яратиш",
+    "confirm_remove_factor": "Ушбу факторни ўчирасизми?",
+    "confirm_remove_level": "Ушбу даражани ўчирасизми?",
+    "weight_sum_title": "Факторлар оғирлиги йиғиндиси",
+    "weight_sum_label": "Ҳозир: {{current}} / Мақсад: {{target}}",
+    "weight_sum_at_target": "Йиғинди мақсадга мос.",
+    "weight_sum_over": "Мақсаддан {{amount}} ортиқча — оғирликларни тўғриланг.",
+    "weight_sum_under": "Мақсадгача {{amount}} етишмаяпти — оғирликларни тўғриланг.",
+    "locked_header_title_approved": "Методология тасдиқланди",
+    "locked_header_title_locked": "Версия блокланди",
+    "locked_header_body_approved": "Тасдиқлади: {{actor}} ({{timestamp}}). Ўзгартириш учун янги версия яратинг.",
+    "locked_header_body_locked": "Блоклади: {{actor}} ({{timestamp}}). Ўзгартириш учун янги версия яратинг.",
+    "status": {
+      "draft": "Қоралама",
+      "approved": "Тасдиқланган",
+      "locked": "Блокланган",
+      "archived": "Архивда"
+    },
+    "type": {
+      "classic_8_factor": "8 фактор (классик)",
+      "extended_11_criteria": "11 мезон (кенгайтирилган)",
+      "custom": "Махсус"
+    },
+    "scoring_mode_label": {
+      "direct_points": "Тўғридан-тўғри баллар",
+      "weighted_points": "Оғирлантирилган баллар (∑ = 100)",
+      "weighted_scale": "Оғирлантирилган шкала"
+    },
+    "scoring_mode_badge": {
+      "direct_points": "Тўғридан-тўғри баллар",
+      "weighted_points": "Оғирлантирилган баллар",
+      "weighted_scale": "Оғирлантирилган шкала"
+    },
+    "column": {
+      "active_version": "Фаол версия",
+      "updated_at": "Янгиланган"
+    },
+    "filter": {
+      "type": "Тур"
+    },
+    "template_picker": {
+      "title": "Методология шаблонини танланг",
+      "body": "Қаердан бошламоқчисиз?",
+      "classic_body": "Анъанавий 8 омил: билим, тажриба, мураккаблик, масъулият ва б.",
+      "extended_body": "Йирик холдинглар ва кенгайтирилган лойиҳалар учун 11 мезон.",
+      "custom_body": "Бўш методология — факторларни ва даражаларни ўзингиз кўрсатинг.",
+      "default_name_classic": "8 факторли методология",
+      "default_name_extended": "11 мезонли методология",
+      "default_name_custom": "Махсус методология"
+    },
+    "factor_editor": {
+      "create_title": "Янги фактор",
+      "edit_title": "Факторни таҳрирлаш"
+    },
+    "confirm": {
+      "approve_title": "Версияни тасдиқлаш ва блоклаш?",
+      "approve_body": "Тасдиқлаш баҳолашлар учун тузилмани блоклайди. Кейинги ўзгартиришлар учун янги версия керак.",
+      "archive_title": "Версияни архивлаш?",
+      "archive_body": "Версия тарихга айланади. Сабабни кўрсатинг.",
+      "new_version_title": "Янги версия яратилсинми?",
+      "new_version_body": "Барча факторлар ва даражалар нусхаси билан янги қоралама версия яратилади."
+    }
+  },
+  "evaluation": {
+    "list_title": "Баҳолашлар",
+    "list_subtitle": "Жорий лойиҳадаги барча лавозим баҳолашлари.",
+    "details_title": "Лавозим баҳолаши",
+    "new_evaluation": "+ Янги баҳолаш",
+    "open_evaluation": "Баҳолашни очиш",
+    "position_id": "Лавозим",
+    "displayed_total": "Якуний балл",
+    "empty_title": "Ҳозирча баҳолашлар йўқ",
+    "empty_body": "Тасдиқланган методология бўйича лавозимларни баҳолашни бошланг.",
+    "empty_for_position_title": "Баҳолаш мавжуд эмас",
+    "empty_for_position_body": "Грейд белгилаш учун бу лавозимни баҳоланг.",
+    "audit_placeholder": "Баҳолаш бўйича аудит хронологияси MVP 2да тақдим этилади.",
+    "column": {
+      "position": "Лавозим",
+      "methodology": "Методология",
+      "total": "Якун",
+      "updated": "Янгиланган"
+    },
+    "filter": {
+      "status": "Ҳолат",
+      "methodology": "Методология"
+    },
+    "status": {
+      "draft": "Қоралама",
+      "incomplete": "Тўлиқ эмас",
+      "complete": "Юбориш учун тайёр",
+      "submitted": "Юборилган",
+      "approved": "Тасдиқланган",
+      "locked": "Блокланган",
+      "archived": "Архив"
+    },
+    "tab": {
+      "matrix": "Матрица",
+      "breakdown": "Балларни тақсимлаш",
+      "calibration": "Калибровкалар тарихи",
+      "comments": "Изоҳлар",
+      "audit": "Аудит"
+    },
+    "matrix": {
+      "aria_label": "Баҳолаш матрицаси",
+      "levels_for": "{{factor}} фактори даражалари",
+      "weight": "Вазн",
+      "max_points": "Макс. балл",
+      "required_indicator": "Мажбурий",
+      "missing_required": "{{count}} та мажбурий факторга даража танланмаган.",
+      "factor_raw": "Балл",
+      "comment_label": "Изоҳ",
+      "comment_placeholder": "Танлов бўйича ихтиёрий изоҳ..."
+    },
+    "preview": {
+      "total_label": "Тахминий якун",
+      "raw_label": "Хом",
+      "recalculating": "қайта ҳисоблаш...",
+      "disclaimer": "Тахминий ҳисоб. Якуний балл юбориш/тасдиқлашда бэкенд томонидан ҳисобланади."
+    },
+    "actions": {
+      "submit": "Юбориш",
+      "approve": "Тасдиқлаш",
+      "request_changes": "Қайта ишлашга қайтариш",
+      "lock": "Блоклаш",
+      "calibrate": "Калибровка",
+      "archive": "Архивлаш"
+    },
+    "confirm": {
+      "approve_title": "Баҳолаш тасдиқлансинми?",
+      "approve_body": "Тасдиқланган баҳолаш калибровкасиз таҳрирланмайди.",
+      "lock_title": "Баҳолаш блоклансинми?",
+      "lock_body": "Блокланган баҳолаш якуний; фақат сабаб кўрсатилган калибровка балларни ўзгартиради.",
+      "request_changes_title": "Қайта ишлашга қайтарилсинми?",
+      "request_changes_body": "Нима тузатилиши кераклигини изоҳда кўрсатинг.",
+      "archive_title": "Баҳолаш архивлансинми?",
+      "archive_body": "Архивдаги баҳолаш фақат ўқиш учун бўлади. Сабабни кўрсатинг."
+    },
+    "create": {
+      "title": "Янги баҳолаш",
+      "position": "Лавозим",
+      "methodology": "Методология версияси"
+    },
+    "calibration": {
+      "dialog_title": "Фактор баллини калибровка қилиш",
+      "dialog_body": "Балларни қўлда ўзгартириш сабаб талаб қилади ва аудит журналига ёзилади.",
+      "factor_label": "Фактор",
+      "new_score_label": "Янги хом фактор балли",
+      "history_title": "Калибровкалар тарихи",
+      "empty": "Бу баҳолаш бўйича ҳали калибровкалар йўқ.",
+      "col_factor": "Фактор",
+      "col_original": "Бошланғич",
+      "col_adjusted": "Кейин",
+      "col_delta": "Δ",
+      "col_reason": "Сабаб",
+      "col_decided_by": "Ким қарор қилган",
+      "col_when": "Қачон"
+    },
+    "breakdown": {
+      "title": "Факторлар бўйича тақсимлаш",
+      "col_factor": "Фактор",
+      "col_weight": "Вазн",
+      "col_level": "Танланган даража",
+      "col_raw": "Балл",
+      "row_total": "Жами"
+    },
+    "ai": {
+      "placeholder": "AI даражани таклиф қилиш MVP 4да тақдим этилади. Тавсиялар маслаҳат сифатида; якуний қарорни инсон қабул қилади."
+    },
+    "byFactor": {
+      "mode_toggle": {
+        "aria": "Баҳолашлар кўриниш режими",
+        "by_position": "Лавозим бўйича",
+        "by_factor": "Фактор бўйича"
+      },
+      "no_methodology_title": "Методология танланмаган",
+      "no_methodology_body": "Фактор бўйича баҳолаш учун камида битта методологияни яратиб, тасдиқланг.",
+      "no_factors_title": "Методология версиясида факторлар йўқ",
+      "no_factors_body": "Методологияни очиб, факторлар қўшинг.",
+      "empty_title": "Фильтрларга мос лавозим топилмади",
+      "empty_body": "Фильтрларни тозаланг ёки бошқа факторни танланг.",
+      "filter": {
+        "department": "Бўлим",
+        "status": "Ҳолат",
+        "only_unfilled": "Фақат тўлдирилмаганлар"
+      },
+      "table": {
+        "column": {
+          "department": "Бўлим",
+          "unit": "Cектор",
+          "position": "Лавозим",
+          "filled": "Тўлдирилган",
+          "score": "Балл",
+          "comment": "Изоҳ"
+        }
+      },
+      "row": {
+        "select_aria": "Оммавий ҳаракат учун қаторни танлаш",
+        "select_all_aria": "Саҳифадаги барча қаторларни танлаш",
+        "score_aria": "{{factor}} фактори бўйича балл",
+        "comment_aria": "Фактор бўйича изоҳ"
+      },
+      "progress": {
+        "label": "{{total}} тадан {{filled}} та тўлдирилган",
+        "tooltip_filled": "Тўлдирилди: {{codes}}.",
+        "tooltip_missing": "Тўлдирилмади: {{codes}}."
+      },
+      "rubric": {
+        "title": "Фактор рубрикаси",
+        "no_translation": "Таржима йўқ",
+        "level_order": "Даража",
+        "collapse_label": "Йиғиш",
+        "expand_label": "Ёйиш",
+        "vertical_label": "РУБРИКА",
+        "aria_toggle": "Рубрика кўринишини алмаштириш",
+        "show_label": "Рубрика",
+        "hide_label": "Рубрикани яшириш",
+        "score_col": "Балл",
+        "comment_col": "Изоҳ"
+      },
+      "locked": {
+        "tooltip": "Баҳолаш блокланган ва K-варақдан таҳрирланмайди."
+      },
+      "toolbar": {
+        "selected": "{{total}} тадан {{selected}} та танланди"
+      },
+      "bulk": {
+        "set_all": {
+          "cta": "Барча қолганларни тўлдириш = {{count}}",
+          "title": "{{count}} та баҳолаш учун балл белгилаш",
+          "body": "«{{factor}}» фактори бўйича танланган даража барча белгиланган лавозимларга қўлланилади. Амалиёт аудит журналига ёзилади.",
+          "level_label": "Фактор даражаси",
+          "reason_label": "Сабаб",
+          "reason_placeholder": "Нима учун оммавий ёзув асосли эканлигини тушунтиринг (камида 50 белги).",
+          "confirm": "Барчасига қўллаш"
+        },
+        "submit": {
+          "cta": "Оммавий юбориш ({{count}})",
+          "title": "{{count}} та баҳолаш юборилсинми?",
+          "body": "Танланган баҳолашлар «Юборилди» ҳолатига ўтади. Тўлиқ бўлмаганлари сервер томонидан рад этилади.",
+          "reason_label": "Сабаб",
+          "reason_placeholder": "Нима юбораётганингиз ва нима учунлигини қисқача ёзинг (камида 20 белги).",
+          "confirm": "Юбориш"
+        },
+        "result_summary": "Янгиланди: {{updated}}, хатолар: {{failed}}."
+      },
+      "autosave": {
+        "saved": "Сақланди",
+        "failed": "Сақланмади — қайта уриниш учун босинг"
+      }
+    }
+  },
+  "factor": {
+    "column": {
+      "order": "№",
+      "code": "Код",
+      "name": "Номи",
+      "weight": "Оғирлик",
+      "max_points": "Макс. балл",
+      "levels": "Даражалар",
+      "required": "Мажбурий",
+      "actions": "Амаллар"
+    },
+    "field": {
+      "code": "Код",
+      "name": "Номи",
+      "description": "Тавсиф",
+      "weight": "Фактор оғирлиги",
+      "max_points": "Максимал балл",
+      "required": "Баҳолаш учун мажбурий",
+      "points": "Балл",
+      "scale_value": "Шкала қиймати",
+      "label": "Даража номи"
+    },
+    "action": {
+      "move_up": "Юқори",
+      "move_down": "Пастга",
+      "edit": "Таҳрирлаш",
+      "remove": "Ўчириш"
+    },
+    "levels_title": "Фактор даражалари",
+    "no_levels": "Даражалар йўқ.",
+    "add_level": "Даража қўшиш",
+    "levels_after_create": "Даражалар фактор сақлангандан кейин кўринади.",
+    "validation": {
+      "name_primary_required": "ru-RU тилида ном мажбурий.",
+      "weight_invalid": "Оғирлик 0–100 оралиғида сон бўлиши керак.",
+      "max_points_invalid": "Максимал балл мусбат сон бўлиши керак.",
+      "code_required": "Код мажбурий."
+    }
+  },
+  "gradeStructure": {
+    "list_page_title": "Грейд тузилмалари",
+    "list_page_subtitle": "Фаол лойиҳа учун грейд шкалалари ва балл диапазонлари.",
+    "new_structure": "Янги грейд тузилмаси",
+    "open": "Очиш",
+    "open_pyramid": "Грейд пирамидаси",
+    "empty_title": "Грейд тузилмалари ҳали йўқ",
+    "empty_body": "14-грейд / 16-грейд шаблонидан танланг ёки бошидан яратиш мумкин.",
+    "version_label": "{{number}}-версия",
+    "create_new_version": "Янги версия яратиш",
+    "summary_title": "Қисқача маълумот",
+    "gap_policy_label": "Узилиш сиёсати",
+    "confirm_remove_grade": "Ушбу грейдни ўчириш керакми?",
+    "status": {
+      "draft": "Қоралама",
+      "approved": "Тасдиқланган",
+      "locked": "Қулфланган",
+      "archived": "Архивда"
+    },
+    "type": {
+      "grade_14": "14 грейд",
+      "grade_16": "16 грейд",
+      "custom": "Махсус"
+    },
+    "gap_policy": {
+      "strict_no_gaps": "Узилишсиз (қатъий)",
+      "allow_gaps_warn": "Узилишга рухсат (огоҳлантириш)"
+    },
+    "column": {
+      "grades_count": "Грейдлар",
+      "version": "Версия",
+      "updated_at": "Янгиланган"
+    },
+    "template_picker": {
+      "title": "Грейд тузилмаси шаблонини танланг",
+      "body": "Қаердан бошлаймиз?",
+      "grade_14_body": "Тенг диапазонларга эга тайёр 14-грейдли шкала.",
+      "grade_16_body": "Йирик компаниялар учун тайёр 16-грейдли шкала.",
+      "custom_body": "Бўш тузилма — грейдлар ва диапазонларни ўзингиз созлайсиз.",
+      "default_name_14": "14 грейд тузилмаси",
+      "default_name_16": "16 грейд тузилмаси",
+      "default_name_custom": "Махсус тузилма"
+    },
+    "actions": {
+      "approve": "Тасдиқлаш",
+      "lock": "Қулфлаш"
+    },
+    "confirm": {
+      "approve_title": "Грейд тузилмасини тасдиқлаймизми?",
+      "approve_body": "Тасдиқлашдан кейин таҳрирлаш тўхтайди. Кейинчалик ўзгартириш учун янги версия яратиш керак.",
+      "lock_title": "Тузилмани қулфлаймизми?",
+      "lock_body": "Қулфланган тузилма якуний — фақат архивлаш ёки янги версия яратиш мумкин.",
+      "archive_title": "Тузилмани архивга юборамизми?",
+      "archive_body": "Тузилма фаол лойиҳаларда ишлатилмайди. Сабабни кўрсатинг.",
+      "new_version_title": "Янги версия яратамизми?",
+      "new_version_body": "Грейдлар ва диапазонлар нусхалари билан қоралама версия яратилади."
+    },
+    "locked_header_title_approved": "Грейд тузилмаси тасдиқланди",
+    "locked_header_title_locked": "Тузилма қулфланди",
+    "locked_header_body_approved": "{{actor}} томонидан ({{timestamp}}) тасдиқланди. Ўзгартириш учун янги версия яратинг.",
+    "locked_header_body_locked": "{{actor}} томонидан ({{timestamp}}) қулфланди. Ўзгартириш учун янги версия яратинг.",
+    "table": {
+      "caption": "Грейдлар ва балл диапазонлари жадвали",
+      "col_idx": "№",
+      "col_grade_number": "Грейд",
+      "col_name": "Номи",
+      "col_min_score": "Мин. балл",
+      "col_max_score": "Макс. балл",
+      "col_width": "Кенглиги",
+      "col_validation": "Текширув",
+      "col_actions": "Амаллар",
+      "empty": "Грейдлар ҳали қўшилмаган.",
+      "add_grade": "Грейд қўшиш",
+      "action_edit": "Таҳрирлаш",
+      "action_remove": "Ўчириш",
+      "validation_ok": "Тоза",
+      "validation_overlap": "Кесишиш",
+      "validation_gap": "Узилиш",
+      "validation_missing": "Диапазон йўқ"
+    },
+    "validator": {
+      "empty": "Текширувларни кўриш учун грейдлар ва диапазонлар қўшинг.",
+      "all_valid": "Барча диапазонлар тўғри (кесишиш ҳам, узилиш ҳам йўқ).",
+      "has_errors": "Хатоликлар аниқланди",
+      "has_warnings": "Огоҳлантиришлар бор",
+      "overlap_count": "Кесишишлар: {{count}}",
+      "overlap_item": "G{{a}} ва G{{b}} [{{from}}; {{to}}] оралиғида кесишади",
+      "gap_count": "Узилишлар: {{count}}",
+      "gap_item": "G{{below}} ва G{{above}} орасида узилиш: [{{from}}; {{to}}]",
+      "missing_bands": "Диапазон йўқ грейдлар: {{list}}",
+      "invalid_bands": "Нотўғри диапазон (min > max) грейдлари: {{list}}"
+    },
+    "row_editor": {
+      "create_title": "Янги грейд",
+      "edit_title": "G{{number}} грейди",
+      "grade_number": "Грейд рақами",
+      "name_label": "Грейд номи",
+      "description_label": "Тавсиф",
+      "band_legend": "Балл диапазони",
+      "min_score": "Минимал балл",
+      "max_score": "Максимал балл",
+      "error_name_required": "ru-RU тилида ном мажбурий.",
+      "error_min_gt_max": "Минимал балл максимал баллдан кичик ёки тенг бўлиши керак.",
+      "hint_primary_name": "Сақлаш учун ru-RU тилидаги номни киритинг."
+    },
+    "pyramid": {
+      "title": "Грейд пирамидаси",
+      "subtitle": "Грейдлар бўйича лавозимлар тақсимоти.",
+      "aria_label": "Ҳар бир грейдда лавозимлар сони билан грейд пирамидаси",
+      "empty": "Пирамида бўш — грейдлар қўшиб, лавозимларга бириктиринг.",
+      "summary_title": "Пирамида қисқача маълумоти",
+      "total_grades": "Жами грейдлар",
+      "total_positions": "Жами лавозимлар",
+      "total_evaluations": "Жами баҳолашлар",
+      "zero_positions": "0 лавозим",
+      "evaluation_count": "Баҳолашлар: {{count}}",
+      "salary_hidden_note": "Маош маълумотлари махсус яширилади — иш ҳақи изоляцияси сақланади."
+    },
+    "score_lookup": {
+      "title": "Балл бўйича грейд излаш",
+      "subtitle": "Якуний балл киритинг — қайси грейдга тушиши кўринади.",
+      "input_label": "Балл",
+      "placeholder": "Масалан, 750.0000",
+      "empty_state": "Натижани кўриш учун балл киритинг.",
+      "loading": "Текширилмоқда...",
+      "out_of_range": "{{score}} балли ҳеч бир диапазонга тушмайди — қўлда калибровка керак."
+    },
+    "assigned": {
+      "label": "{{number}}-грейд",
+      "pending": "Грейд тайинланмаган",
+      "pending_hint": "Грейд баҳолаш тасдиқлангандан кейин тайинланади.",
+      "out_of_range": "Диапазондан ташқарида",
+      "out_of_range_hint": "Якуний балл барча диапазонлардан ташқарида — қўлда калибровка керак."
+    },
+    "position_grade": {
+      "empty_title": "Грейд ҳали тайинланмаган",
+      "empty_body": "Грейд лавозим баҳолаши тасдиқлангандан кейин кўринади."
+    }
+  },
+  "import": {
+    "list": {
+      "title": "Импортлар",
+      "subtitle": "Лойиҳага маълумотларни киритиш учун Excel юкламалари.",
+      "new": "+ Янги импорт",
+      "empty": "Ҳозирча импортлар йўқ."
+    },
+    "wizard": {
+      "title": "Янги импорт",
+      "subtitle": "Excel файлни юкланг, текширувни кўриб чиқинг, сўнгра тасдиқланг.",
+      "step1": "Шаблон танлаш",
+      "step2": "Файл юклаш",
+      "step3": "Текширувни кўриб чиқиш",
+      "step4": "Тасдиқлаш",
+      "upload_for_template": "Танланган шаблон: {{template}}",
+      "upload": "Юклаш",
+      "cancel": "Импортни бекор қилиш",
+      "continue_commit": "Тасдиқлашга ўтиш",
+      "commit_rows": "{{count}} қаторни тасдиқлаш",
+      "commit_success": "{{count}} қатор муваффақиятли тасдиқланди.",
+      "no_templates_available": "Сизда ҳеч қайси шаблонни импорт қилиш ҳуқуқи йўқ."
+    },
+    "field": {
+      "template": "Шаблон"
+    },
+    "col": {
+      "filename": "Файл",
+      "template": "Шаблон",
+      "status": "Ҳолат",
+      "rows": "Қаторлар",
+      "errors": "Хатолар",
+      "uploaded": "Юкланган"
+    },
+    "file": {
+      "cta": ".xlsx файлни тортиб ташланг ёки танлаш учун босинг",
+      "hint": "Фақат Excel. Максимал ҳажм: 25 МБ.",
+      "error": {
+        "required": "Файлни танланг.",
+        "empty": "Файл бўш.",
+        "too_large": "Файл 25 МБ чегарасидан ошиб кетди.",
+        "extension": "Фақат .xlsx файллар қабул қилинади.",
+        "mime": "Файл MIME-тури .xlsx га тўғри келмайди."
+      }
+    },
+    "summary": {
+      "total_rows": "Жами қаторлар",
+      "valid_rows": "Тўғри қаторлар",
+      "warning_rows": "Огоҳлантиришлар",
+      "error_rows": "Хатолар",
+      "commit_ready": "Тасдиқлашга тайёр.",
+      "commit_blocked": "Тасдиқлаш блокланган — хатоларни тузатинг.",
+      "contains_salary": "Маош маълумотларини ўз ичига олади"
+    },
+    "pipeline": {
+      "aria_label": "5-даражали текширув қувури",
+      "level": {
+        "FILE": "Файл",
+        "STRUCTURE": "Тузилма",
+        "ROW": "Қатор",
+        "BUSINESS": "Бизнес-қоидалар",
+        "SECURITY": "Хавфсизлик"
+      }
+    },
+    "errors": {
+      "filter_label": "Даража:",
+      "empty": "Бу даражада муаммолар йўқ.",
+      "col_row": "Қатор",
+      "col_level": "Даража",
+      "col_field": "Майдон",
+      "col_message": "Хабар",
+      "col_fix": "Тавсия"
+    },
+    "error_level": {
+      "BLOCKER": "Блокер",
+      "ERROR": "Хато",
+      "WARNING": "Огоҳлантириш",
+      "INFO": "Маълумот"
+    },
+    "template": {
+      "ORG_STRUCTURE_V1": "Ташкилий тузилма",
+      "POSITION_CATALOG_V1": "Лавозимлар каталоги",
+      "JOB_PROFILE_V1": "Лавозим профиллари",
+      "METHODOLOGY_FACTORS_V1": "Методология омиллари",
+      "GRADE_BANDS_V1": "Грейд диапазонлари",
+      "download_empty": "Бўш шаблонни юклаб олиш",
+      "download_sample": "Намунани юклаб олиш",
+      "dropdown_label": "Шаблонни юклаб олиш"
+    },
+    "template_desc": {
+      "ORG_STRUCTURE_V1": "Бўлимлар, бошқармалар ва иерархия.",
+      "POSITION_CATALOG_V1": "Лавозимлар: ном, функция, тоифа.",
+      "JOB_PROFILE_V1": "Ҳар бир лавозим учун профил майдонлари.",
+      "METHODOLOGY_FACTORS_V1": "Методология омиллари, даражалари ва вазнлари.",
+      "GRADE_BANDS_V1": "Грейд шкаласи: мин/макс баллар."
+    },
+    "status": {
+      "UPLOADED": "Юкланган",
+      "SCANNING": "Сканерланмоқда",
+      "SCAN_FAILED": "Сканерлаш хатоси",
+      "PARSING": "Таҳлил қилинмоқда",
+      "VALIDATING": "Текширув",
+      "VALIDATION_FAILED": "Текширув хатоси",
+      "READY_FOR_REVIEW": "Кўриб чиқишга тайёр",
+      "READY_TO_COMMIT": "Тасдиқлашга тайёр",
+      "COMMITTING": "Тасдиқланмоқда",
+      "COMMITTED": "Тасдиқланган",
+      "PARTIALLY_COMMITTED": "Қисман тасдиқланган",
+      "FAILED": "Муваффақиятсиз",
+      "CANCELLED": "Бекор қилинган",
+      "ARCHIVED": "Архивланган"
+    }
+  },
+  "export": {
+    "center": {
+      "title": "Экспорт маркази",
+      "subtitle": "Жорий лойиҳанинг шакллантирилган экспортлари.",
+      "new": "Экспорт сўраш",
+      "empty": "Ҳозирча экспортлар йўқ."
+    },
+    "request": {
+      "title": "Янги экспорт сўраш",
+      "type": "Экспорт тури",
+      "format": "Формат",
+      "filter_params": "Сараловчи параметрлари (JSON)",
+      "filter_placeholder": "{}",
+      "submit": "Сўраш",
+      "salary_warning": "Бу экспорт тури маош маълумотларини ўз ичига олади. SALARY_EXPORT ҳуқуқи талаб қилинади."
+    },
+    "download": {
+      "cta": "Юклаб олиш",
+      "generating": "Тайёрланмоқда...",
+      "generating_url": "Имзоланган ҳавола яратилмоқда...",
+      "error": "Ҳавола олинмади. Қайта уриниб кўринг.",
+      "error_v2": "Юклаб олиш муваффақиятсиз. Саҳифани янгиланг ёки қўллаб-қувватлаш хизматига мурожаат қилинг.",
+      "demo_warning": "Демо режим — файл маҳаллий яратилган"
+    },
+    "col": {
+      "type": "Тур",
+      "format": "Формат",
+      "status": "Ҳолат",
+      "created_at": "Яратилган",
+      "generated_at": "Тайёр",
+      "expires_at": "Муддати",
+      "downloaded_at": "Юклаб олинган",
+      "size": "Ҳажм",
+      "rows": "Қаторлар"
+    },
+    "contains_salary": "Маош маълумотларини ўз ичига олади",
+    "status": {
+      "REQUESTED": "Сўралган",
+      "QUEUED": "Навбатда",
+      "GENERATING": "Тайёрланмоқда",
+      "GENERATED": "Тайёр",
+      "FAILED": "Муваффақиятсиз",
+      "DOWNLOADED": "Юклаб олинган",
+      "EXPIRED": "Муддати ўтган",
+      "CANCELLED": "Бекор қилинган"
+    },
+    "type": {
+      "POSITION_CATALOG": "Лавозимлар каталоги",
+      "JOB_PROFILES": "Лавозим профиллари",
+      "METHODOLOGY": "Методология",
+      "EVALUATION_MATRIX": "Баҳолаш матрицаси",
+      "GRADE_STRUCTURE": "Грейд тузилмаси",
+      "GRADE_PYRAMID": "Грейд пирамидаси",
+      "SALARY_RANGES": "Маош диапазонлари",
+      "RED_GREEN_CIRCLE": "Қизил/яшил доира",
+      "COMPENSATION_SCENARIOS": "Компенсация сценарийлари",
+      "REPORT_EXECUTIVE": "Раҳбарият учун ҳисобот"
+    },
+    "format": {
+      "XLSX": "Excel (.xlsx)",
+      "CSV": "CSV",
+      "PDF": "PDF",
+      "DOCX": "Word (.docx)"
+    },
+    "error": {
+      "project_required": "Лойиҳа талаб қилинади."
+    }
+  },
+  "report": {
+    "page_title": "Ҳисоботлар маркази",
+    "page_subtitle": "Фаол лойиҳа учун таҳлилий ҳисоботларни шакллантиринг ва юклаб олинг.",
+    "new_report": "Ҳисобот буюртма қилиш",
+    "request_dialog_title": "Янги ҳисоботни буюртма қилиш",
+    "request_submit": "Ҳисобот буюртма қилиш",
+    "field_type": "Ҳисобот тури",
+    "field_format": "Формат",
+    "field_filter_params": "Филтрлаш параметрлари (JSON)",
+    "filter_placeholder": "{}",
+    "filter_status": "Ҳолат",
+    "filter_status_all": "Барча ҳолатлар",
+    "filter_type": "Тур",
+    "filter_type_all": "Барча турлар",
+    "filter_format": "Формат",
+    "filter_format_all": "Барча форматлар",
+    "format_unavailable": "ушбу тур учун мавжуд эмас",
+    "empty": "Ҳозирча ҳисоботлар йўқ.",
+    "contains_salary": "Маош маълумотларини ўз ичига олади",
+    "download_cta": "Юклаб олиш",
+    "download_generating": "Тайёрланмоқда...",
+    "download_error": "Ҳаволани олиб бўлмади. Қайта уриниб кўринг.",
+    "col_title": "Номланиши",
+    "col_type": "Тур",
+    "col_format": "Формат",
+    "col_status": "Ҳолат",
+    "col_contains_salary": "Маош маълумотлари",
+    "col_created_by": "Яратган",
+    "col_created_at": "Яратилган сана",
+    "col_expires_at": "Муддати тугайди",
+    "type": {
+      "GRADE_DISTRIBUTION": "Грейд тақсимоти",
+      "POSITION_CATALOG": "Лавозимлар каталоги",
+      "EVALUATION_SUMMARY": "Баҳолаш хулосаси",
+      "METHODOLOGY_SPEC": "Методология тавсифи",
+      "AUDIT_SUMMARY": "Аудит хулосаси",
+      "EXECUTIVE_SUMMARY": "Раҳбарият хулосаси"
+    },
+    "format": {
+      "PDF": "PDF",
+      "DOCX": "DOCX",
+      "XLSX": "XLSX"
+    },
+    "status": {
+      "REQUESTED": "Сўралган",
+      "QUEUED": "Навбатда",
+      "GENERATING": "Тайёрланмоқда",
+      "GENERATED": "Тайёр",
+      "FAILED": "Хатолик",
+      "DOWNLOADED": "Юкланган",
+      "EXPIRED": "Муддати тугаган",
+      "CANCELLED": "Бекор қилинган"
+    },
+    "error": {
+      "project_required": "Лойиҳа талаб қилинади.",
+      "format_not_supported": "Танланган формат ушбу ҳисобот тури учун мавжуд эмас."
+    }
+  },
+  "users": {
+    "never": "Ҳеч қачон",
+    "neverLoggedIn": "Кирмаган",
+    "lastLoginAt": "Охирги кириш: {{date}}",
+    "viewAudit": "Аудит журналини очиш",
+    "list": {
+      "title": "Фойдаланувчилар ва рухсатлар",
+      "subtitle": "Фаол мижоз-компаниянинг барча фойдаланувчилари.",
+      "subtitleForTenant": "«{{tenant}}» мижоз-компания фойдаланувчилари."
+    },
+    "column": {
+      "fullName": "Исм",
+      "tenants": "Компаниялар",
+      "roles": "Роллар",
+      "status": "Ҳолат",
+      "lastLogin": "Охирги кириш"
+    },
+    "filter": {
+      "status": "Ҳолат",
+      "role": "Рол",
+      "tenant": "Компания"
+    },
+    "status": {
+      "active": "Фаол",
+      "invited": "Таклиф қилинган",
+      "revoked": "Қайтарилган",
+      "suspended": "Тўхтатилган"
+    },
+    "empty": {
+      "title": "Фойдаланувчилар ҳали йўқ",
+      "body": "Ушбу мижоз-компания учун биринчи фойдаланувчини таклиф қилинг."
+    },
+    "invite": {
+      "button": "Фойдаланувчини таклиф қилиш",
+      "title": "Фойдаланувчини таклиф этиш",
+      "subtitle": "Янги фойдаланувчи активация ҳаволаси билан хат олади.",
+      "submit": "Таклифни юбориш",
+      "email": "Email",
+      "fullName": "Тўлиқ исм",
+      "locale": "Тизим тили",
+      "tenant": "Мижоз-компания",
+      "tenantHint": "Фақат HRLab Super Admin учун мавжуд.",
+      "tenantImpliedHint": "Таклиф фаол компания «{{tenant}}» учун яратилади.",
+      "roles": "Бошланғич роллар",
+      "rolesHint": "Бир ёки бир нечта рол танлаш мумкин. Кейин ўзгартирилади.",
+      "validation_email": "Тўғри email киритинг.",
+      "validation_fullname_min": "Исм камида 2 та белгидан иборат бўлиши керак.",
+      "validation_fullname_max": "Исм 200 белгидан ошмаслиги керак.",
+      "validation_roles_min": "Камида битта ролни танланг."
+    },
+    "assignRole": {
+      "title": "Рол қўшиш",
+      "subtitle": "«{{tenant}}» компанияси учун янги рол.",
+      "submit": "Рол қўшиш",
+      "role": "Рол",
+      "noneLeft": "Барча роллар бириктирилган",
+      "noneLeftHint": "Ушбу аъзоликда барча мавжуд роллар бор."
+    },
+    "revokeMembership": {
+      "title": "Аъзоликни бекор қилиш?",
+      "body": "{{user}} фойдаланувчи «{{tenant}}» компаниясининг барча ресурсларига киришни йўқотади. Амални фақат қайта тиклаш билан бекор қилиш мумкин.",
+      "confirm": "Аъзоликни бекор қилиш"
+    },
+    "salary": {
+      "label": "Иш ҳақи маълумотларига кириш",
+      "enabledHint": "{{date}} дан фаол. Фойдаланувчи иш ҳақи кўрсаткичларини кўради.",
+      "disabledHint": "Ўчирилган. Иш ҳақи майдонлари тизим ва экспортда яширилган.",
+      "grant": "Берсин",
+      "revoke": "Қайтариш",
+      "confirmGrantTitle": "Иш ҳақи маълумотларига рухсат берилсинми?",
+      "confirmRevokeTitle": "Иш ҳақи маълумотларига рухсат қайтарилсинми?",
+      "warningHeader": "Муҳим: сезгир маълумотлар",
+      "grantWarning": "Фойдаланувчи иш ҳақи, диапазонлар, compa-ratio ва бюджет таъсирларини кўради. Амал аудит журналида қайд қилинади.",
+      "revokeWarning": "Фойдаланувчи иш ҳақи маълумотларини барча модулларда кўра олмайди. Амал аудит журналида қайд қилинади.",
+      "reasonHint": "Бизнес-асосни киритинг (камида 10 белги)."
+    },
+    "memberships": {
+      "title": "Компаниялардаги аъзолик",
+      "count": "Жами: {{count}}",
+      "empty": "Фойдаланувчининг фаол аъзолиги йўқ."
+    },
+    "membership": {
+      "joinedAt": "Активланган: {{date}}",
+      "invitedAt": "Таклиф қилинган: {{date}}",
+      "rolesLabel": "Роллар ({{count}})",
+      "noRoles": "Роллар ҳали йўқ.",
+      "addRole": "Рол қўшиш",
+      "removeRoleAria": "{{role}} ролни ўчириш",
+      "revoke": "Аъзоликни бекор қилиш"
+    },
+    "role": {
+      "HRLAB_SUPER_ADMIN": "HRLab Super Admin",
+      "HRLAB_PROJECT_MANAGER": "HRLab лойиҳа менежери",
+      "HRLAB_CONSULTANT": "HRLab консультанти",
+      "HRLAB_ANALYST": "HRLab таҳлилчи",
+      "CLIENT_ADMIN": "Компания администратори",
+      "CLIENT_HR_DIRECTOR": "HR-директор",
+      "CLIENT_HR_SPECIALIST": "HR-мутахассис",
+      "CLIENT_COMMITTEE_MEMBER": "Баҳолаш қўмитаси аъзоси",
+      "CLIENT_DEPARTMENT_MANAGER": "Бўлим раҳбари",
+      "CLIENT_VIEWER": "Кузатувчи",
+      "AUDITOR": "Аудитор"
+    }
+  },
+  "clients": {
+    "list": {
+      "title": "Мижоз компаниялар",
+      "subtitle": "HR Laboratories барча мижоз компаниялари. Бренд, локал ва тенант архивини шу ерда бошқаринг.",
+      "super_admin_badge": "HRLab Super Admin режими",
+      "super_admin_hint": "Бу бўлим фақат HR Laboratories администраторлари учун."
+    },
+    "filter": {
+      "status": "Статус"
+    },
+    "status": {
+      "active": "Фаол",
+      "suspended": "Тўхтатилган",
+      "archived": "Архивда"
+    },
+    "column": {
+      "tenant": "Тенант",
+      "slug": "Slug",
+      "projects": "Лойиҳалар",
+      "users": "Фойдаланувчилар",
+      "status": "Статус",
+      "updated": "Янгиланди"
+    },
+    "empty": {
+      "title": "Тенантлар ҳозирча йўқ",
+      "body": "Янги мижоз компаниялари яратилгач шу ерда пайдо бўлади."
+    },
+    "stats": {
+      "projects": "Фаол лойиҳалар",
+      "users": "Фойдаланувчилар",
+      "activity_30d": "Фаоллик",
+      "last_activity": "Охирги фаоллик",
+      "activity_recent": "Шу ҳафта фаол",
+      "activity_quiet": "7 кун давомида сокин",
+      "never_active": "Фаоллик ҳали бўлмаган"
+    },
+    "field": {
+      "legal_name": "Юридик ном",
+      "brand_name": "Бренд",
+      "industry": "Сектор",
+      "country_code": "Мамлакат (ISO)",
+      "tax_id": "Солиқ IDси"
+    },
+    "detail": {
+      "updated_at": "Янгиланди: {{date}}",
+      "default_locale": "Стандарт локал: {{locale}}",
+      "open_audit": "Аудит журналини очиш",
+      "open_projects": "Лойиҳаларга ўтиш",
+      "open_users": "Фойдаланувчиларни бошқариш",
+      "edit_tenant": "Тенантни таҳрирлаш",
+      "edit_client": "Юридик шахсни таҳрирлаш",
+      "archive_tenant": "Архивлаш",
+      "client_panel_title": "Юридик шахс",
+      "client_panel_subtitle": "Тенантга боғланган мижоз компаниясининг рўйхатдан ўтиш маълумотлари.",
+      "related_title": "Боғлиқ объектлар",
+      "related_subtitle": "Платформанинг бошқа бўлимларига тезкор ўтиш.",
+      "related_projects": "Ишдаги лойиҳалар: {{count}}",
+      "related_users": "Фаол аъзоликдаги фойдаланувчилар: {{count}}",
+      "related_more_soon": "Қўшимча ҳисоботлар кейинги фазаларда пайдо бўлади."
+    },
+    "edit_tenant": {
+      "title": "Тенантни таҳрирлаш",
+      "subtitle": "Slug ва статусни ўзгартириб бўлмайди; статусни ўзгартириш учун архивлашдан фойдаланинг.",
+      "display_name": "Кўрсатиладиган ном",
+      "default_locale": "Стандарт локал",
+      "default_locale_hint": "Тизим хатларини юбориш ва янги фойдаланувчилар учун ишлатилади.",
+      "immutable_hint": "Slug, статус ва юридик шахс боғланишини HRLab Super Admin алоҳида бошқаради.",
+      "validation_display_name_min": "Ном камида 2 та белгидан иборат бўлиши керак.",
+      "validation_display_name_max": "Ном 200 белгидан ошмаслиги керак."
+    },
+    "edit_client": {
+      "title": "Юридик шахсни таҳрирлаш",
+      "subtitle": "Ўзгаришлар ушбу мижоз компаниясининг барча тенантларига қўлланилади.",
+      "legal_name": "Юридик ном",
+      "brand_name": "Бренд",
+      "industry": "Сектор",
+      "country_code": "Мамлакат (ISO 3166-1)",
+      "tax_id": "Солиқ идентификатори",
+      "validation_legal_name_min": "Юридик ном камида 2 та белгидан иборат бўлиши керак.",
+      "validation_legal_name_max": "Юридик ном 300 белгидан ошмаслиги керак.",
+      "validation_brand_name_min": "Бренд камида 2 та белгидан иборат бўлиши керак.",
+      "validation_brand_name_max": "Бренд 200 белгидан ошмаслиги керак.",
+      "validation_country_code": "Мамлакат коди иккита лотин ҳарфидан иборат бўлиши керак (UZ, RU, KZ ...)."
+    },
+    "archive": {
+      "title": "Тенантни архивлаш керакми?",
+      "body": "Архивлаш сўнг «{{tenant}}» тенант фақат ўқиш учун очиқ бўлади. Барча фаол лойиҳалар музлатилади. Амал аудит журналига ёзилади.",
+      "reason_label": "Архивлаш сабаби",
+      "reason_placeholder": "Бизнес асосини ва мижоз розилиги тасдиғини ёзинг...",
+      "reason_hint": "Камида {{min}} та белги · киритилди {{current}}.",
+      "confirm": "Архивлаш"
+    }
+  },
+  "upcoming": {
+    "sprint_label_h": "Режалаштирилган релиз",
+    "preview_features_title": "Нима пайдо бўлади",
+    "compensation": {
+      "title": "Компенсация ва маош тузилмалари",
+      "subtitle": "Компенсация модули MVP 3 да чиқади. Кириш фақат SALARY_VIEW рухсати билан.",
+      "features": {
+        "1": "Грейдлар бўйича маош диапазони дашборди (min / midpoint / max).",
+        "2": "Ходимлар бўйича compa-ratio ва грейд бўйлаб тақсимот.",
+        "3": "Range penetration ва қизил/яшил айлана индикаторлари.",
+        "4": "Бюджет сценарий моделлаштириш ва бозор нормализацияси.",
+        "5": "МФОТ (олдин/кейин) ва сценарийнинг компания бюджетига таъсири."
+      }
+    }
   }
 }

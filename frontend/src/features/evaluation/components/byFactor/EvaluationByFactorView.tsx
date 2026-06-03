@@ -1,0 +1,623 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
+import { BookOpen, Loader2 } from 'lucide-react';
+import { Card } from '@/shared/components/ui/Card';
+import { Button } from '@/shared/components/ui/Button';
+import { Drawer } from '@/shared/components/layout/Drawer';
+import { PaginationBar } from '@/shared/components/data-table/PaginationBar';
+import { LoadingState } from '@/shared/components/feedback/LoadingState';
+import { EmptyState } from '@/shared/components/feedback/EmptyState';
+import { ErrorState } from '@/shared/components/feedback/ErrorState';
+import { PermissionGate } from '@/shared/components/access/PermissionGate';
+import { PERMISSIONS } from '@/shared/types/permissions';
+import { usePermission } from '@/features/auth/usePermission';
+import { useAuthStore } from '@/features/auth/authStore';
+import { useMethodologies, useMethodologyVersion } from '@/features/methodology/hooks/useMethodology';
+import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
+import { pickLocalized } from '@/shared/lib/localized';
+import { cn } from '@/shared/lib/cn';
+import { upsertScore } from '../../api/evaluationApi';
+import {
+  useBulkScoreSet,
+  useBulkSubmit,
+  useEvaluationsByFactor,
+} from '../../hooks/useEvaluationsByFactor';
+import { evaluationKeys } from '../../api/evaluationApi';
+import type {
+  EvaluationByFactorRow,
+  EvaluationStatus,
+  EvaluationsByFactorFilters,
+} from '../../types';
+import { FactorTabs, type FactorCompletionMap } from './FactorTabs';
+import { RubricPanel } from './RubricPanel';
+import { BY_FACTOR_STICKY_TOP, BY_FACTOR_STICKY_Z } from './stickyOffset';
+import { PositionScoreRow } from './PositionScoreRow';
+import { BulkScoreDialog } from './BulkScoreDialog';
+import { BulkSubmitDialog } from './BulkSubmitDialog';
+
+interface EvaluationByFactorViewProps {
+  projectId: string;
+  /** Active factor id from URL. When null/invalid the view picks the first. */
+  factorIdFromUrl: string | null;
+  /** Callback to push the active factor id back to the URL. */
+  onFactorChange: (factorId: string) => void;
+}
+
+const STATUSES: EvaluationStatus[] = [
+  'DRAFT',
+  'INCOMPLETE',
+  'COMPLETE',
+  'SUBMITTED',
+  'APPROVED',
+  'LOCKED',
+  'ARCHIVED',
+];
+
+const PAGE_SIZE = 25;
+
+/**
+ * Bulk-evaluation-by-factor view (Excel K-sheet UX).
+ *
+ * Layout (responsive, desktop-first):
+ *   ┌───────────────── factor tabs ─────────────────┐
+ *   │ filters bar                                    │
+ *   │ ┌─────────────── 65% table ──────────────────┐ │
+ *   │ │   row1  row2  ...                          │ │
+ *   │ └───────────────────────────────────────────┘ │
+ *   │ ┌─────────────── 35% rubric ────────────────┐ │
+ *   │ │   sticky right                            │ │
+ *   │ └───────────────────────────────────────────┘ │
+ *   │ bottom toolbar: selected N / bulk actions     │
+ *   │ pagination                                     │
+ *   └────────────────────────────────────────────────┘
+ *
+ * Methodology source: the view picks the first ACTIVE methodology for
+ * the project and uses its `active_version_id`. In MVP 1 we expect one
+ * canonical methodology per project; multi-methodology support is a
+ * Phase 7+ concern (PRD MVP1-E7).
+ */
+export function EvaluationByFactorView({
+  projectId,
+  factorIdFromUrl,
+  onFactorChange,
+}: EvaluationByFactorViewProps) {
+  const { t, i18n } = useTranslation();
+  const qc = useQueryClient();
+  const { can } = usePermission();
+  const canEdit = can(PERMISSIONS.EVALUATION_EDIT);
+  const setSidebarCollapsed = useAuthStore((s) => s.setSidebarCollapsed);
+
+  // Auto-collapse the sidebar to icon-only mode while the by-factor grid is
+  // mounted (the K-sheet needs the horizontal room). Restore on unmount so
+  // other pages keep the user's default (expanded) layout.
+  useEffect(() => {
+    setSidebarCollapsed(true);
+    return () => setSidebarCollapsed(false);
+  }, [setSidebarCollapsed]);
+
+  // ----- Filters (local; reset to page 0 when any filter changes) -----
+  const [statusFilter, setStatusFilter] = useState<EvaluationStatus | ''>('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [onlyUnfilled, setOnlyUnfilled] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [bulkSet, setBulkSet] = useState<Set<string>>(new Set());
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
+
+  // Dialog open flags
+  const [bulkScoreOpen, setBulkScoreOpen] = useState(false);
+  const [bulkSubmitOpen, setBulkSubmitOpen] = useState(false);
+  // Narrow-screen (<lg) rubric slide-over. On lg+ the rubric docks beside
+  // the table so this drawer is unused there.
+  const [rubricDrawerOpen, setRubricDrawerOpen] = useState(false);
+
+  // ----- Resolve active methodology + version -----
+  const methodologiesQuery = useMethodologies(projectId);
+  const activeMethodology = useMemo(
+    () =>
+      (methodologiesQuery.data?.items ?? []).find(
+        (m) => m.active_version_id,
+      ) ?? null,
+    [methodologiesQuery.data],
+  );
+  const versionQuery = useMethodologyVersion(
+    activeMethodology?.active_version_id ?? undefined,
+  );
+  const factors = useMemo(
+    () =>
+      [...(versionQuery.data?.factors ?? [])].sort(
+        (a, b) => a.sort_order - b.sort_order,
+      ),
+    [versionQuery.data],
+  );
+
+  // ----- Resolve active factor -----
+  const activeFactor = useMemo(() => {
+    if (factors.length === 0) return null;
+    const byUrl = factorIdFromUrl
+      ? factors.find((f) => f.id === factorIdFromUrl || f.code === factorIdFromUrl)
+      : null;
+    return byUrl ?? factors[0];
+  }, [factors, factorIdFromUrl]);
+
+  // Push the canonical factor id back to URL on first auto-pick so a
+  // refresh keeps the same tab. Avoid an infinite loop by only firing
+  // when the URL value does not already match.
+  useEffect(() => {
+    if (activeFactor && factorIdFromUrl !== activeFactor.id) {
+      onFactorChange(activeFactor.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFactor?.id]);
+
+  // ----- Department list for filter -----
+  // `fetchDepartmentTree` returns Department[] (already unwrapped — see
+  // organizationApi.ts) so the data shape is a flat array, not an envelope.
+  const treeQuery = useDepartmentTree(projectId);
+  const departmentOptions = useMemo(
+    () =>
+      (treeQuery.data ?? []).map((d) => ({
+        id: d.id,
+        label: pickLocalized(d.name_i18n, i18n.language),
+      })),
+    [treeQuery.data, i18n.language],
+  );
+
+  // ----- Server query for the K-sheet rows -----
+  const filters: EvaluationsByFactorFilters = {
+    projectId,
+    factorId: activeFactor?.id ?? '',
+    status: statusFilter,
+    departmentId,
+    onlyUnfilled,
+    search: search.trim() || undefined,
+    page,
+    size: PAGE_SIZE,
+  };
+  const rowsQuery = useEvaluationsByFactor(filters);
+
+  const rows: EvaluationByFactorRow[] = rowsQuery.data?.items ?? [];
+  const totalElements = rowsQuery.data?.total_elements ?? 0;
+  const totalPages = rowsQuery.data?.total_pages ?? 1;
+
+  // ----- Per-row mutations -----
+  const bulkScoreMutation = useBulkScoreSet(activeFactor?.id ?? '');
+  const bulkSubmitMutation = useBulkSubmit(activeFactor?.id ?? '');
+
+  // Reset bulk selection when factor changes (per-factor state).
+  useEffect(() => {
+    setBulkSet(new Set());
+    setActiveRowId(null);
+    setPage(0);
+  }, [activeFactor?.id]);
+
+  // ----- Factor-level completion summary (for tab indicators) -----
+  // Aggregated from CURRENT PAGE only — the parent does not have a
+  // project-wide aggregate endpoint in MVP 1; a future iteration can
+  // expand this via a dedicated `/by-factor-completion` summary.
+  const completionMap: FactorCompletionMap = useMemo(() => {
+    const map: FactorCompletionMap = {};
+    if (!activeFactor) return map;
+    if (rows.length === 0) {
+      map[activeFactor.id] = 'empty';
+      return map;
+    }
+    const filledRows = rows.filter((r) => r.current_score_factor_level_id).length;
+    if (filledRows === 0) map[activeFactor.id] = 'empty';
+    else if (filledRows === rows.length) map[activeFactor.id] = 'full';
+    else map[activeFactor.id] = 'partial';
+    // Other factors: derive a rough estimate from filled_factors_count per row.
+    for (const f of factors) {
+      if (f.id === activeFactor.id) continue;
+      // We don't have per-other-factor truth — leave undefined for honesty.
+    }
+    return map;
+  }, [rows, factors, activeFactor]);
+
+  // ----- Inline score change for a single row -----
+  const handleScoreChange = useCallback(
+    async (row: EvaluationByFactorRow, factorLevelId: string) => {
+      if (!activeFactor) return;
+      await upsertScore(row.evaluation_id, {
+        factor_id: activeFactor.id,
+        factor_level_id: factorLevelId,
+      });
+      // Invalidate the by-factor list so the row reflects the saved value
+      // and the progress chip recomputes. Per-evaluation cache is
+      // refreshed indirectly via the `evaluations.all` parent key.
+      qc.invalidateQueries({ queryKey: evaluationKeys.all });
+    },
+    [activeFactor, qc],
+  );
+
+  const handleCommentChange = useCallback(
+    async (row: EvaluationByFactorRow, comment: string) => {
+      if (!activeFactor) return;
+      // Comments require a level — skip when none.
+      if (!row.current_score_factor_level_id) return;
+      await upsertScore(row.evaluation_id, {
+        factor_id: activeFactor.id,
+        factor_level_id: row.current_score_factor_level_id,
+        comment,
+      });
+      qc.invalidateQueries({ queryKey: evaluationKeys.all });
+    },
+    [activeFactor, qc],
+  );
+
+  // ----- Bulk selection helpers -----
+  const allRowIds = useMemo(() => rows.map((r) => r.evaluation_id), [rows]);
+  const allSelected =
+    bulkSet.size > 0 && allRowIds.every((id) => bulkSet.has(id));
+  const toggleAll = () => {
+    setBulkSet((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const id of allRowIds) next.delete(id);
+      } else {
+        for (const id of allRowIds) next.add(id);
+      }
+      return next;
+    });
+  };
+  const toggleRow = (id: string, on: boolean) => {
+    setBulkSet((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  // The active row (for rubric sync). Falls back to the first row.
+  const activeRow = useMemo(
+    () => rows.find((r) => r.evaluation_id === activeRowId) ?? rows[0] ?? null,
+    [rows, activeRowId],
+  );
+
+  // ----- Loading / error / empty branches -----
+  if (methodologiesQuery.isLoading || versionQuery.isLoading) {
+    return <LoadingState />;
+  }
+  if (!activeMethodology || !versionQuery.data) {
+    return (
+      <EmptyState
+        title={t('evaluation.byFactor.no_methodology_title')}
+        body={t('evaluation.byFactor.no_methodology_body')}
+      />
+    );
+  }
+  if (!activeFactor) {
+    return (
+      <EmptyState
+        title={t('evaluation.byFactor.no_factors_title')}
+        body={t('evaluation.byFactor.no_factors_body')}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4" data-testid="evaluation-by-factor">
+      <FactorTabs
+        // Sticky offset + z-index come from the SHARED constant so the tabs
+        // and the rubric never diverge again. top-20 (80px) clears the 62px
+        // TopBar (was top-14/56px → tabs tucked ~6px under the header). z-10
+        // keeps the tabs above table content but below the TopBar (z-20).
+        className={cn(
+          'sticky bg-background pt-2',
+          BY_FACTOR_STICKY_TOP,
+          BY_FACTOR_STICKY_Z,
+        )}
+        factors={factors}
+        activeFactorId={activeFactor.id}
+        completion={completionMap}
+        onSelect={onFactorChange}
+      />
+
+      {/* Filter bar */}
+      <Card compact>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label={t('evaluation.byFactor.filter.department')}
+            value={departmentId}
+            onChange={(e) => {
+              setDepartmentId(e.target.value);
+              setPage(0);
+            }}
+            data-testid="byfactor-filter-department"
+            className="h-9 px-3 border border-border-strong rounded-md text-sm bg-surface"
+          >
+            <option value="">
+              {t('evaluation.byFactor.filter.department')}: {t('common.all')}
+            </option>
+            {departmentOptions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label={t('evaluation.byFactor.filter.status')}
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as EvaluationStatus | '');
+              setPage(0);
+            }}
+            data-testid="byfactor-filter-status"
+            className="h-9 px-3 border border-border-strong rounded-md text-sm bg-surface"
+          >
+            <option value="">
+              {t('evaluation.byFactor.filter.status')}: {t('common.all')}
+            </option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {t(`evaluation.status.${s.toLowerCase()}`)}
+              </option>
+            ))}
+          </select>
+          <label className="inline-flex items-center gap-1.5 text-sm text-text-secondary">
+            <input
+              type="checkbox"
+              checked={onlyUnfilled}
+              onChange={(e) => {
+                setOnlyUnfilled(e.target.checked);
+                setPage(0);
+              }}
+              data-testid="byfactor-filter-only-unfilled"
+              className="h-4 w-4 accent-primary-500"
+            />
+            {t('evaluation.byFactor.filter.only_unfilled')}
+          </label>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(0);
+            }}
+            placeholder={t('common.search')}
+            data-testid="byfactor-filter-search"
+            className="h-9 px-3 border border-border-strong rounded-md text-sm bg-surface flex-1 min-w-[200px] max-w-md"
+          />
+        </div>
+      </Card>
+
+      {/*
+        Main split: flexible table area on the LEFT + fixed-width rubric on
+        the RIGHT (360px or 48px when collapsed). flex (not grid) so the
+        table reclaims the rubric's space instantly when it collapses;
+        items-start keeps the sticky rubric anchored to the page-scroll top.
+        Rubric on the RIGHT — mirrors the source Excel "К-sheet" layout
+        where the score-level reference panel sits to the right of the grid,
+        so evaluators keep the "what does 1 / 4 mean" guide in view while
+        scrolling positions.
+
+        Breakpoint: side-by-side from `lg` (1024px) — NOT `xl` (1280px).
+        A typical laptop with the sidebar + content is frequently <1280px,
+        which used to force the rubric to stack BELOW the 200-row table
+        (useless while scrolling). At <lg the docked rubric is hidden and a
+        sticky "Rubric" toggle opens a slide-over hosting the SAME panel.
+      */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+        <Card compact className="overflow-hidden flex-1 min-w-0 w-full">
+          {rowsQuery.isError ? (
+            <ErrorState onRetry={() => rowsQuery.refetch()} />
+          ) : rowsQuery.isLoading ? (
+            <LoadingState />
+          ) : rows.length === 0 ? (
+            <EmptyState
+              title={t('evaluation.byFactor.empty_title')}
+              body={t('evaluation.byFactor.empty_body')}
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table
+                className="w-full text-sm border-collapse"
+                data-testid="byfactor-table"
+              >
+                <thead className="bg-divider text-text-secondary text-xs uppercase tracking-wide">
+                  <tr>
+                    <th className="px-2 py-2 w-8 text-left">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        aria-label={t('evaluation.byFactor.row.select_all_aria')}
+                        data-testid="byfactor-select-all"
+                        className="h-4 w-4 accent-primary-500"
+                      />
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      {t('evaluation.byFactor.table.column.department')}
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      {t('evaluation.byFactor.table.column.unit')}
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      {t('evaluation.byFactor.table.column.position')}
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      {t('evaluation.byFactor.table.column.filled')}
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      {t('evaluation.byFactor.table.column.score')}
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      {t('evaluation.byFactor.table.column.comment')}
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      {t('common.status')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <PositionScoreRow
+                      key={row.evaluation_id}
+                      row={row}
+                      factor={activeFactor}
+                      selected={activeRow?.evaluation_id === row.evaluation_id}
+                      bulkSelected={bulkSet.has(row.evaluation_id)}
+                      canEdit={canEdit}
+                      onScoreChange={(lvlId) => handleScoreChange(row, lvlId)}
+                      onCommentChange={(c) => handleCommentChange(row, c)}
+                      onRowSelect={() => setActiveRowId(row.evaluation_id)}
+                      onBulkToggle={(on) => toggleRow(row.evaluation_id, on)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        {/*
+          Docked rubric on the RIGHT — owns its own sticky + collapse state.
+          Hidden below `lg`; on narrow screens the slide-over drawer below
+          hosts the SAME <RubricPanel> instead (no markup duplication).
+        */}
+        <div className="hidden lg:block self-start">
+          <RubricPanel
+            factor={activeFactor}
+            selectedLevelId={activeRow?.current_score_factor_level_id ?? null}
+            onSelectLevel={
+              canEdit && activeRow
+                ? (lvlId) => {
+                    void handleScoreChange(activeRow, lvlId);
+                  }
+                : undefined
+            }
+          />
+        </div>
+      </div>
+
+      {/*
+        Narrow-screen (<lg) affordance: a FIXED floating "Rubric" button,
+        anchored bottom-right so it stays reachable for the entire scroll of
+        the 200-row table (a sticky-in-flow button would scroll away once the
+        table block leaves the viewport). It opens a right-side slide-over
+        that renders the SAME RubricPanel (embedded mode) — the evaluator
+        reaches the score legend without losing scroll position. Hidden on
+        lg+ where the rubric docks beside the table.
+      */}
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={() => setRubricDrawerOpen(true)}
+        data-testid="rubric-drawer-toggle"
+        leadingIcon={<BookOpen size={16} aria-hidden />}
+        className="lg:hidden fixed bottom-4 right-4 z-30 shadow-lg"
+      >
+        {t('evaluation.byFactor.rubric.show_label')}
+      </Button>
+
+      <Drawer
+        open={rubricDrawerOpen}
+        onClose={() => setRubricDrawerOpen(false)}
+        title={t('evaluation.byFactor.rubric.title')}
+        widthClassName="max-w-md"
+        data-testid="rubric-drawer"
+      >
+        {/* Reuses the exact RubricPanel — only the host (Drawer) is new. */}
+        <RubricPanel
+          embedded
+          factor={activeFactor}
+          selectedLevelId={activeRow?.current_score_factor_level_id ?? null}
+          onSelectLevel={
+            canEdit && activeRow
+              ? (lvlId) => {
+                  void handleScoreChange(activeRow, lvlId);
+                }
+              : undefined
+          }
+        />
+      </Drawer>
+
+      {/* Bottom toolbar */}
+      <Card compact>
+        <div className="flex flex-wrap items-center gap-3 justify-between">
+          <div className="text-sm text-text-secondary">
+            {t('evaluation.byFactor.toolbar.selected', {
+              selected: bulkSet.size,
+              total: totalElements,
+            })}
+          </div>
+          <div className="flex items-center gap-2">
+            {rowsQuery.isFetching ? (
+              <Loader2
+                size={16}
+                className={cn('animate-spin text-text-muted')}
+                aria-hidden
+              />
+            ) : null}
+            <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
+              <Button
+                variant="secondary"
+                onClick={() => setBulkScoreOpen(true)}
+                disabled={bulkSet.size === 0}
+                data-testid="bulk-score-open"
+              >
+                {t('evaluation.byFactor.bulk.set_all.cta', {
+                  count: bulkSet.size,
+                })}
+              </Button>
+            </PermissionGate>
+            <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
+              <Button
+                onClick={() => setBulkSubmitOpen(true)}
+                disabled={bulkSet.size === 0}
+                data-testid="bulk-submit-open"
+              >
+                {t('evaluation.byFactor.bulk.submit.cta', {
+                  count: bulkSet.size,
+                })}
+              </Button>
+            </PermissionGate>
+          </div>
+        </div>
+        <PaginationBar
+          page={page}
+          totalPages={totalPages}
+          total={totalElements}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+        />
+      </Card>
+
+      <BulkScoreDialog
+        open={bulkScoreOpen}
+        factor={activeFactor}
+        selectedCount={bulkSet.size}
+        onClose={() => setBulkScoreOpen(false)}
+        onConfirm={async (factorLevelId, reason) => {
+          const result = await bulkScoreMutation.mutateAsync({
+            evaluation_ids: Array.from(bulkSet),
+            factor_level_id: factorLevelId,
+            reason,
+          });
+          if (result.failed.length === 0) setBulkSet(new Set());
+          return result;
+        }}
+      />
+      <BulkSubmitDialog
+        open={bulkSubmitOpen}
+        selectedCount={bulkSet.size}
+        onClose={() => setBulkSubmitOpen(false)}
+        onConfirm={async (reason) => {
+          const result = await bulkSubmitMutation.mutateAsync({
+            evaluation_ids: Array.from(bulkSet),
+            reason,
+          });
+          if (result.failed.length === 0) setBulkSet(new Set());
+          return result;
+        }}
+      />
+    </div>
+  );
+}

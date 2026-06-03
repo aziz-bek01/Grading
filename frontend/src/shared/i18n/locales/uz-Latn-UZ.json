@@ -18,9 +18,9 @@
     "approve": "Tasdiqlash",
     "submit": "Yuborish",
     "search": "Qidirish",
-    "filter": "Filtr",
-    "filters": "Filtrlar",
-    "reset_filters": "Filtrlarni tozalash",
+    "filter": "Saralovchi",
+    "filters": "Saralovchilar",
+    "reset_filters": "Saralovchilarni tozalash",
     "back": "Orqaga",
     "retry": "Qayta urinish",
     "close": "Yopish",
@@ -38,7 +38,12 @@
     "description": "Tavsif",
     "parent": "Yuqori boʻgʻin",
     "all": "Barchasi",
-    "none": "Yoʻq"
+    "none": "Yoʻq",
+    "reason_min_chars": "kamida {{count}} ta belgi",
+    "continue": "Davom etish",
+    "completeness": "Toʻldirilganlik",
+    "unknown_actor": "Nomaʼlum foydalanuvchi",
+    "loading": "Yuklanmoqda…"
   },
   "nav": {
     "dashboard": "Boshqaruv paneli",
@@ -58,7 +63,10 @@
     "audit": "Audit jurnali",
     "users_access": "Foydalanuvchilar va ruxsatlar",
     "soon": "Tez orada",
-    "governance": "Boshqaruv"
+    "governance": "Boshqaruv",
+    "approvals": "Tasdiqlar",
+    "imports": "Importlar",
+    "exports": "Eksportlar"
   },
   "status": {
     "draft": "Qoralama",
@@ -95,7 +103,7 @@
     "signOut": "Chiqish"
   },
   "language": {
-    "title": "Interfeys tili",
+    "title": "Tizim tili",
     "ru-RU": "Русский",
     "uz-Cyrl-UZ": "Ўзбек (кирилл)",
     "uz-Latn-UZ": "Oʻzbek (lotin)",
@@ -156,7 +164,7 @@
   },
   "dataTable": {
     "search_placeholder": "Qidirish...",
-    "no_results": "Tanlangan filtrlar boʻyicha natija yoʻq.",
+    "no_results": "Tanlangan saralovchilar boʻyicha natija yoʻq.",
     "rows_per_page": "Qatorlar soni",
     "page_of": "Sahifa {{page}} / {{total}}",
     "previous": "Orqaga",
@@ -185,7 +193,8 @@
     "column_updated": "Yangilangan",
     "column_actions": "Amallar",
     "empty_title": "Loyihalar yoʻq",
-    "empty_body": "Ushbu mijoz-kompaniya uchun birinchi greyding loyihasini yarating."
+    "empty_body": "Ushbu mijoz-kompaniya uchun birinchi greyding loyihasini yarating.",
+    "list_subtitle_for_tenant": "\"{{tenant}}\" mijoz-kompaniyasi uchun greyding loyihalari."
   },
   "organization": {
     "page_title": "Tashkiliy tuzilma",
@@ -249,7 +258,8 @@
     "archive_confirm_title": "Lavozimni arxivlaysizmi?",
     "archive_confirm_body": "Arxivli lavozimlar faol jarayonlardan chiqariladi.",
     "validation_department_required": "Boʻlimni tanlang.",
-    "validation_title_required": "Asosiy tildagi nom majburiy."
+    "validation_title_required": "Asosiy tildagi nom majburiy.",
+    "tab_comments": "Izohlar"
   },
   "workflow": {
     "title": "Loyiha jarayoni",
@@ -271,17 +281,127 @@
       "IN_PROGRESS": "Jarayonda",
       "COMPLETE": "Tugallangan",
       "BLOCKED": "Toʻsilgan",
-      "LOCKED_FUTURE": "Tez orada"
+      "LOCKED_FUTURE": "Tez orada",
+      "NOT_STARTED": "Boshlanmagan"
     },
     "next_action": "Keyingi qadam",
     "recent_activity": "Soʻnggi faoliyat",
     "no_activity": "Loyihada soʻnggi faoliyat yoʻq.",
     "blockers": "Toʻsiqlar",
-    "completion": "{{percent}}% bajarildi"
+    "completion": "{{percent}}% bajarildi",
+    "responsible": "Masʼul",
+    "last_activity": "Soʻnggi faoliyat: {{time}} ({{actor}})",
+    "open_stage": "Bosqichga oʻtish",
+    "activity_requires_audit": "Faoliyat jurnali faqat AUDIT_READ huquqiga ega foydalanuvchilarga koʻrinadi.",
+    "open_audit_full": "Toʻliq audit jurnalini ochish"
   },
   "audit": {
     "log": "Audit jurnali",
-    "stat_card_label": "Audit ogohlantirishlari"
+    "stat_card_label": "Audit ogohlantirishlari",
+    "title": "Audit jurnali",
+    "subtitle": "Tekshiruv va muvofiqlik uchun qayd etilgan amallar xronologiyasi.",
+    "subtitle_for_tenant": "«{{tenant}}» kompaniyasi boʻyicha tizim qayd etgan amallar.",
+    "empty": "Tanlangan saralovchilar boʻyicha voqealar topilmadi.",
+    "empty_title": "Voqealar topilmadi",
+    "no_access": "Audit jurnalini koʻrish uchun AUDIT_READ huquqi talab qilinadi.",
+    "export_csv": "CSV koʻrinishida yuklab olish",
+    "hash_chain_valid": "Xesh zanjiri butun",
+    "hash_chain_valid_hint": "Joriy voqea xeshi oldingisi bilan muvofiq. Toʻliq zanjir tekshiruvi — bekendda.",
+    "hash_chain_broken": "Xesh zanjiri buzilgan",
+    "filter": {
+      "from": "Sanadan",
+      "to": "Sanagacha",
+      "action": "Amal",
+      "actor": "Tashabbuskor IDsi",
+      "actor_placeholder": "Foydalanuvchi ID",
+      "entity_type": "Obʼyekt turi",
+      "entity_id": "Obʼyekt ID",
+      "tenant": "Kompaniya",
+      "error_date": "Sana YYYY-OO-KK formatida boʻlishi kerak.",
+      "error_from_after_to": "«Sanagacha» «Sanadan» oldin boʻlishi mumkin emas."
+    },
+    "column": {
+      "timestamp": "Vaqt",
+      "action": "Amal",
+      "actor": "Tashabbuskor",
+      "entity": "Obʼyekt",
+      "correlation_id": "Soʻrov ID"
+    },
+    "details": {
+      "title": "Audit voqeasi",
+      "empty": "Tafsilotlarni koʻrish uchun jadvaldan voqeani tanlang.",
+      "actor": "Tashabbuskor",
+      "entity": "Obʼyekt",
+      "tenant": "Kompaniya",
+      "correlation_id": "Soʻrov ID",
+      "ip": "IP-manzil",
+      "user_agent": "User Agent",
+      "hash_chain": "Xesh zanjiri",
+      "reason": "Sabab",
+      "metadata": "Meta-maʼlumotlar",
+      "before": "Oʻzgarishdan oldin",
+      "after": "Oʻzgarishdan keyin"
+    },
+    "entity_type": {
+      "PROJECT": "Loyiha",
+      "TENANT": "Kompaniya",
+      "USER": "Foydalanuvchi",
+      "USER_MEMBERSHIP": "Foydalanuvchi aʼzoligi",
+      "DEPARTMENT": "Boʻlinma",
+      "POSITION": "Lavozim",
+      "JOB_PROFILE": "Lavozim profili",
+      "METHODOLOGY": "Metodologiya",
+      "METHODOLOGY_VERSION": "Metodologiya versiyasi",
+      "EVALUATION": "Baholash",
+      "EVALUATION_SCORE": "Baholash bali",
+      "GRADE_STRUCTURE": "Greyd tuzilmasi",
+      "GRADE": "Greyd",
+      "APPROVAL_REQUEST": "Tasdiqlash soʻrovi",
+      "IMPORT": "Import",
+      "EXPORT": "Eksport",
+      "REPORT": "Hisobot"
+    },
+    "action": {
+      "LOGIN_SUCCESS": "Muvaffaqiyatli kirish",
+      "LOGIN_FAILED": "Kirish muvaffaqiyatsiz",
+      "LOGOUT": "Tizimdan chiqish",
+      "TENANT_CONTEXT_SWITCH": "Kompaniyani almashtirish",
+      "PROJECT_CREATED": "Loyiha yaratildi",
+      "PROJECT_UPDATED": "Loyiha oʻzgartirildi",
+      "PROJECT_LOCKED": "Loyiha qulflandi",
+      "PROJECT_ARCHIVED": "Loyiha arxivlandi",
+      "DEPARTMENT_CREATED": "Boʻlinma yaratildi",
+      "DEPARTMENT_UPDATED": "Boʻlinma oʻzgartirildi",
+      "DEPARTMENT_ARCHIVED": "Boʻlinma arxivlandi",
+      "POSITION_CREATED": "Lavozim yaratildi",
+      "POSITION_UPDATED": "Lavozim oʻzgartirildi",
+      "POSITION_ARCHIVED": "Lavozim arxivlandi",
+      "JOB_PROFILE_CREATED": "Profil yaratildi",
+      "JOB_PROFILE_SUBMITTED": "Profil koʻrikka yuborildi",
+      "JOB_PROFILE_APPROVED": "Profil tasdiqlandi",
+      "JOB_PROFILE_ARCHIVED": "Profil arxivlandi",
+      "METHODOLOGY_CREATED": "Metodologiya yaratildi",
+      "METHODOLOGY_VERSION_APPROVED": "Metodologiya versiyasi tasdiqlandi",
+      "METHODOLOGY_VERSION_LOCKED": "Metodologiya versiyasi qulflandi",
+      "EVALUATION_CREATED": "Baholash yaratildi",
+      "EVALUATION_SCORE_UPSERTED": "Faktor bali saqlandi",
+      "EVALUATION_SUBMITTED": "Baholash yuborildi",
+      "EVALUATION_APPROVED": "Baholash tasdiqlandi",
+      "EVALUATION_LOCKED": "Baholash qulflandi",
+      "EVALUATION_SCORE_CALIBRATED": "Faktor bali qayta moslashtirildi",
+      "GRADE_ASSIGNED": "Greyd tayinlandi",
+      "USER_INVITED": "Foydalanuvchi taklif qilindi",
+      "USER_REVOKED": "Foydalanuvchi bekor qilindi",
+      "USER_SALARY_PERMISSION_GRANTED": "Kompensatsiya maʼlumotlariga ruxsat berildi",
+      "USER_SALARY_PERMISSION_REVOKED": "Kompensatsiya maʼlumotlariga ruxsat olib qoʻyildi",
+      "IMPORT_UPLOADED": "Import yuklandi",
+      "IMPORT_COMMITTED": "Import tasdiqlandi",
+      "EXPORT_REQUESTED": "Eksport soʻraldi",
+      "EXPORT_DOWNLOADED": "Eksport yuklab olindi",
+      "REPORT_GENERATED": "Hisobot tuzildi",
+      "CROSS_TENANT_OR_PROJECT_ACCESS_ATTEMPT": "Boshqa kompaniya yoki loyihaga kirish urinishi",
+      "TENANT_MEMBERSHIP_MISMATCH": "Kompaniya aʼzoligi mos kelmadi"
+    }
   },
   "jobProfile": {
     "page_title": "Lavozim profili",
@@ -373,8 +493,1008 @@
     "advisory_label": "AI tavsiya — inson tasdigʻi talab qilinadi",
     "panel_title": "AI tavsiyasi",
     "disclaimer": "Tavsiyani qabul qilish subʼektni tasdiqlamaydi. Yakuniy qarorni inson qabul qiladi.",
-    "coming_soon": "AI integratsiyasi 4-fazada chiqadi. Hozircha — placeholder.",
+    "coming_soon": "AI-yordamchi ko'rib chiqish rejimida. To'liq integratsiya MVP 2'da.",
     "accept": "Qabul qilish",
     "reject": "Rad etish"
+  },
+  "sidebar": {
+    "select_project_first": "Avval loyihani tanlang",
+    "collapse": "Menyuni yig'ish",
+    "expand": "Menyuni yoyish",
+    "toggle_aria": "Yon menyuni o'zgartirish",
+    "soonRoadmap": {
+      "compensation": "MVP 3'da mavjud",
+      "files": "MVP 2'da mavjud",
+      "aiAssist": "MVP 4'da mavjud (4-faza panellarida oldindan ko'rish mavjud)"
+    }
+  },
+  "approval": {
+    "inbox_title": "Mening tasdiqlarim",
+    "inbox_subtitle": "Sizning qaroringizni kutayotgan tasdiqlash soʻrovlari.",
+    "inbox_empty_title": "Kutib turgan soʻrovlar yoʻq",
+    "inbox_empty_body": "Hozirda sizdan tasdiqni kutayotgan soʻrovlar yoʻq.",
+    "project_list_title": "Loyiha tasdiqlari",
+    "project_list_subtitle": "Joriy loyiha boʻyicha barcha tasdiqlash soʻrovlari.",
+    "project_list_empty_title": "Soʻrovlar yoʻq",
+    "project_list_empty_body": "Tanlangan saralovchilar boʻyicha hech narsa topilmadi.",
+    "filter_entity_type": "Obyekt turi",
+    "steps_title": "Tasdiqlash bosqichlari",
+    "decisions_title": "Qarorlar tarixi",
+    "decisions_empty": "Hali qarorlar yoʻq.",
+    "steps_count": "{{total}} ta bosqich",
+    "initiated_by": "Boshladi: {{name}} · {{time}}",
+    "pending_panel_title": "Tasdiqni kutmoqda ({{count}})",
+    "pending_panel_empty": "Faol tasdiqlash soʻrovlari yoʻq.",
+    "status": {
+      "PENDING": "Kutilmoqda",
+      "APPROVED": "Tasdiqlandi",
+      "REJECTED": "Rad etildi",
+      "CHANGES_REQUESTED": "Oʻzgartirishlar talab qilindi",
+      "CANCELLED": "Bekor qilindi"
+    },
+    "stepStatus": {
+      "PENDING": "Kutilmoqda",
+      "APPROVED": "Tasdiqlandi",
+      "REJECTED": "Rad etildi",
+      "SKIPPED": "Oʻtkazib yuborildi"
+    },
+    "decisionType": {
+      "APPROVED": "Tasdiqlandi",
+      "REJECTED": "Rad etildi",
+      "CHANGES_REQUESTED": "Oʻzgartirishlar talab qilindi"
+    },
+    "entityType": {
+      "JOB_PROFILE": "Lavozim profili",
+      "METHODOLOGY_VERSION": "Metodologiya versiyasi",
+      "EVALUATION": "Baholash",
+      "GRADE_STRUCTURE": "Greyd tuzilmasi",
+      "PROJECT": "Loyiha"
+    },
+    "step": {
+      "order": "{{order}}-bosqich",
+      "approver": "Tasdiqlovchi",
+      "required_permission": "Talab qilinadigan ruxsat",
+      "any_approver": "Tegishli ruxsatga ega har qanday foydalanuvchi",
+      "decided_by": "Qaror qabul qildi: {{name}} · {{time}}",
+      "reason": "Sabab",
+      "notes": "Izohlar"
+    },
+    "actions": {
+      "approve": "Tasdiqlash",
+      "reject": "Rad etish",
+      "request_changes": "Oʻzgartirish soʻrash",
+      "cancel_request": "Soʻrovni qaytarib olish",
+      "no_authority": "Sizda joriy bosqichga taʼsir oʻtkazish huquqi yoʻq.",
+      "approve_confirm_title": "Tasdiqlashni tasdiqlaysizmi?",
+      "approve_confirm_body": "Tasdiqlangandan soʻng bu bosqichni bekor qilib boʻlmaydi.",
+      "reject_dialog_title": "Soʻrovni rad etish",
+      "reject_dialog_body": "Rad etish sababini koʻrsating (kamida 20 ta belgi).",
+      "changes_dialog_title": "Oʻzgartirishlar soʻrash",
+      "changes_dialog_body": "Qanday oʻzgartirishlar talab qilinayotganini yozing (kamida 20 ta belgi).",
+      "cancel_confirm_title": "Tasdiqlash soʻrovini qaytarib olasizmi?",
+      "cancel_confirm_body": "Soʻrov bekor qilinadi. Keyinroq yangisini yaratish mumkin."
+    }
+  },
+  "comment": {
+    "thread_title": "Izohlar",
+    "input_placeholder": "Izoh yozing... Foydalanuvchini belgilash uchun @ dan foydalaning.",
+    "mention_hint": "Maslahat: belgilash formati — @[id|Foydalanuvchi nomi]",
+    "submit": "Yuborish",
+    "submit_reply": "Javob berish",
+    "reply": "Javob berish",
+    "reply_placeholder": "Izohga javob...",
+    "edited": "tahrirlandi",
+    "empty": "Hali izohlar yoʻq.",
+    "deleted_placeholder": "Izoh oʻchirildi",
+    "delete_confirm_title": "Izohni oʻchirasizmi?",
+    "delete_confirm_body": "Bu amalni bekor qilib boʻlmaydi. Izoh oʻchirilgan deb belgilanadi.",
+    "errors": {
+      "body_required": "Izoh matnini kiriting.",
+      "body_too_short": "Izoh boʻsh boʻlmasligi kerak.",
+      "body_too_long": "Izoh 5000 ta belgidan oshmasligi kerak."
+    }
+  },
+  "methodology": {
+    "list_page_title": "Metodologiyalar",
+    "list_page_subtitle": "Joriy loyiha uchun shablonlar va metodologiya versiyalari.",
+    "new_methodology": "Yangi metodologiya",
+    "open": "Ochish",
+    "empty_title": "Metodologiyalar yoʻq",
+    "empty_body": "CLASSIC_8_FACTOR, EXTENDED_11_CRITERIA yoki Custom shablonidan boshlang.",
+    "no_active_version": "Faol versiya yoʻq",
+    "no_versions": "Versiyalar yoʻq.",
+    "no_factors": "Faktorlar yoʻq.",
+    "add_factor": "Faktor qoʻshish",
+    "summary_title": "Qisqa maʼlumot",
+    "scoring_mode": "Hisoblash rejimi",
+    "approve_lock": "Tasdiqlash va bloklash",
+    "read_only": "Faqat oʻqish",
+    "translations_button": "Tarjimalar",
+    "translation_matrix_title": "Faktorlarning tarjimalari",
+    "translation_matrix_subtitle": "Har bir faktorning nomini 4 tilda toʻldiring.",
+    "translations_page_title": "Metodologiya tarjimalari",
+    "translations_page_subtitle": "Faktorlar × 4 til matritsasi. Toʻliq tarjima tasdiqni tezlashtiradi.",
+    "compare_versions_soon": "Versiyalarni taqqoslash MVP 2 da chiqadi.",
+    "version_panel_title": "Versiyalar",
+    "version_label": "Versiya {{number}}",
+    "factor_table_caption": "Metodologiya faktorlari jadvali",
+    "create_new_version": "Yangi versiya yaratish",
+    "confirm_remove_factor": "Ushbu faktorni oʻchirasizmi?",
+    "confirm_remove_level": "Ushbu darajani oʻchirasizmi?",
+    "weight_sum_title": "Faktorlar ogʻirligi yigʻindisi",
+    "weight_sum_label": "Hozir: {{current}} / Maqsad: {{target}}",
+    "weight_sum_at_target": "Yigʻindi maqsadga mos.",
+    "weight_sum_over": "Maqsaddan {{amount}} ortiqcha — ogʻirliklarni toʻgʻrilang.",
+    "weight_sum_under": "Maqsadgacha {{amount}} yetishmayapti — ogʻirliklarni toʻgʻrilang.",
+    "locked_header_title_approved": "Metodologiya tasdiqlandi",
+    "locked_header_title_locked": "Versiya bloklandi",
+    "locked_header_body_approved": "Tasdiqladi: {{actor}} ({{timestamp}}). Oʻzgartirish uchun yangi versiya yarating.",
+    "locked_header_body_locked": "Blokladi: {{actor}} ({{timestamp}}). Oʻzgartirish uchun yangi versiya yarating.",
+    "status": {
+      "draft": "Qoralama",
+      "approved": "Tasdiqlangan",
+      "locked": "Bloklangan",
+      "archived": "Arxivda"
+    },
+    "type": {
+      "classic_8_factor": "8 faktor (klassik)",
+      "extended_11_criteria": "11 mezon (kengaytirilgan)",
+      "custom": "Maxsus"
+    },
+    "scoring_mode_label": {
+      "direct_points": "Toʻgʻridan-toʻgʻri ballar",
+      "weighted_points": "Ogʻirlangan ballar (∑ = 100)",
+      "weighted_scale": "Ogʻirlangan shkala"
+    },
+    "scoring_mode_badge": {
+      "direct_points": "Toʻgʻridan-toʻgʻri ballar",
+      "weighted_points": "Ogʻirlangan ballar",
+      "weighted_scale": "Ogʻirlangan shkala"
+    },
+    "column": {
+      "active_version": "Faol versiya",
+      "updated_at": "Yangilangan"
+    },
+    "filter": {
+      "type": "Tur"
+    },
+    "template_picker": {
+      "title": "Metodologiya shablonini tanlang",
+      "body": "Qaerdan boshlamoqchisiz?",
+      "classic_body": "Anʼanaviy 8 omil: bilim, tajriba, murakkablik, masʼuliyat va b.",
+      "extended_body": "Yirik xoldinglar va kengaytirilgan loyihalar uchun 11 mezon.",
+      "custom_body": "Boʻsh metodologiya — faktorlarni va darajalarni oʻzingiz koʻrsating.",
+      "default_name_classic": "8 faktorli metodologiya",
+      "default_name_extended": "11 mezonli metodologiya",
+      "default_name_custom": "Maxsus metodologiya"
+    },
+    "factor_editor": {
+      "create_title": "Yangi faktor",
+      "edit_title": "Faktorni tahrirlash"
+    },
+    "confirm": {
+      "approve_title": "Versiyani tasdiqlash va bloklash?",
+      "approve_body": "Tasdiqlash baholashlar uchun tuzilmani bloklaydi. Keyingi oʻzgartirishlar uchun yangi versiya kerak.",
+      "archive_title": "Versiyani arxivlash?",
+      "archive_body": "Versiya tarixga aylanadi. Sababni koʻrsating.",
+      "new_version_title": "Yangi versiya yaratilsinmi?",
+      "new_version_body": "Barcha faktorlar va darajalar nusxasi bilan yangi qoralama versiya yaratiladi."
+    }
+  },
+  "evaluation": {
+    "list_title": "Baholashlar",
+    "list_subtitle": "Joriy loyihadagi barcha lavozim baholashlari.",
+    "details_title": "Lavozim baholashi",
+    "new_evaluation": "+ Yangi baholash",
+    "open_evaluation": "Baholashni ochish",
+    "position_id": "Lavozim",
+    "displayed_total": "Yakuniy ball",
+    "empty_title": "Hozircha baholashlar yo'q",
+    "empty_body": "Tasdiqlangan metodologiya bo'yicha lavozimlarni baholashni boshlang.",
+    "empty_for_position_title": "Baholash mavjud emas",
+    "empty_for_position_body": "Greyd belgilash uchun bu lavozimni baholang.",
+    "audit_placeholder": "Baholash bo'yicha audit xronologiyasi MVP 2da taqdim etiladi.",
+    "column": {
+      "position": "Lavozim",
+      "methodology": "Metodologiya",
+      "total": "Yakun",
+      "updated": "Yangilangan"
+    },
+    "filter": {
+      "status": "Holat",
+      "methodology": "Metodologiya"
+    },
+    "status": {
+      "draft": "Qoralama",
+      "incomplete": "To'liq emas",
+      "complete": "Yuborish uchun tayyor",
+      "submitted": "Yuborilgan",
+      "approved": "Tasdiqlangan",
+      "locked": "Bloklangan",
+      "archived": "Arxiv"
+    },
+    "tab": {
+      "matrix": "Matritsa",
+      "breakdown": "Ballarni taqsimlash",
+      "calibration": "Kalibrovkalar tarixi",
+      "comments": "Izohlar",
+      "audit": "Audit"
+    },
+    "matrix": {
+      "aria_label": "Baholash matritsasi",
+      "levels_for": "{{factor}} faktori darajalari",
+      "weight": "Vazn",
+      "max_points": "Maks. ball",
+      "required_indicator": "Majburiy",
+      "missing_required": "{{count}} ta majburiy faktorga daraja tanlanmagan.",
+      "factor_raw": "Ball",
+      "comment_label": "Izoh",
+      "comment_placeholder": "Tanlov bo'yicha ixtiyoriy izoh..."
+    },
+    "preview": {
+      "total_label": "Taxminiy yakun",
+      "raw_label": "Xom",
+      "recalculating": "qayta hisoblash...",
+      "disclaimer": "Taxminiy hisob. Yakuniy ball yuborish/tasdiqlashda backend tomonidan hisoblanadi."
+    },
+    "actions": {
+      "submit": "Yuborish",
+      "approve": "Tasdiqlash",
+      "request_changes": "Qayta ishlashga qaytarish",
+      "lock": "Bloklash",
+      "calibrate": "Kalibrovka",
+      "archive": "Arxivlash"
+    },
+    "confirm": {
+      "approve_title": "Baholash tasdiqlansinmi?",
+      "approve_body": "Tasdiqlangan baholash kalibrovkasiz tahrirlanmaydi.",
+      "lock_title": "Baholash bloklansinmi?",
+      "lock_body": "Bloklangan baholash yakuniy; faqat sabab ko'rsatilgan kalibrovka ballarni o'zgartiradi.",
+      "request_changes_title": "Qayta ishlashga qaytarilsinmi?",
+      "request_changes_body": "Nima tuzatilishi kerakligini izohda ko'rsating.",
+      "archive_title": "Baholash arxivlansinmi?",
+      "archive_body": "Arxivdagi baholash faqat o'qish uchun bo'ladi. Sababni ko'rsating."
+    },
+    "create": {
+      "title": "Yangi baholash",
+      "position": "Lavozim",
+      "methodology": "Metodologiya versiyasi"
+    },
+    "calibration": {
+      "dialog_title": "Faktor ballini kalibrovka qilish",
+      "dialog_body": "Ballarni qo'lda o'zgartirish sabab talab qiladi va audit jurnaliga yoziladi.",
+      "factor_label": "Faktor",
+      "new_score_label": "Yangi xom faktor balli",
+      "history_title": "Kalibrovkalar tarixi",
+      "empty": "Bu baholash bo'yicha hali kalibrovkalar yo'q.",
+      "col_factor": "Faktor",
+      "col_original": "Boshlang'ich",
+      "col_adjusted": "Keyin",
+      "col_delta": "Δ",
+      "col_reason": "Sabab",
+      "col_decided_by": "Kim qaror qilgan",
+      "col_when": "Qachon"
+    },
+    "breakdown": {
+      "title": "Faktorlar bo'yicha taqsimlash",
+      "col_factor": "Faktor",
+      "col_weight": "Vazn",
+      "col_level": "Tanlangan daraja",
+      "col_raw": "Ball",
+      "row_total": "Jami"
+    },
+    "ai": {
+      "placeholder": "AI darajani taklif qilish MVP 4da taqdim etiladi. Tavsiyalar maslahat sifatida; yakuniy qarorni inson qabul qiladi."
+    },
+    "byFactor": {
+      "mode_toggle": {
+        "aria": "Baholashlar ko'rinish rejimi",
+        "by_position": "Lavozim bo'yicha",
+        "by_factor": "Faktor bo'yicha"
+      },
+      "no_methodology_title": "Metodologiya tanlanmagan",
+      "no_methodology_body": "Faktor bo'yicha baholash uchun kamida bitta metodologiyani yaratib, tasdiqlang.",
+      "no_factors_title": "Metodologiya versiyasida faktorlar yo'q",
+      "no_factors_body": "Metodologiyani ochib, faktorlar qo'shing.",
+      "empty_title": "Filtrlarga mos lavozim topilmadi",
+      "empty_body": "Filtrlarni tozalang yoki boshqa faktorni tanlang.",
+      "filter": {
+        "department": "Bo'lim",
+        "status": "Holat",
+        "only_unfilled": "Faqat to'ldirilmaganlar"
+      },
+      "table": {
+        "column": {
+          "department": "Bo'lim",
+          "unit": "Sektor",
+          "position": "Lavozim",
+          "filled": "To'ldirilgan",
+          "score": "Ball",
+          "comment": "Izoh"
+        }
+      },
+      "row": {
+        "select_aria": "Ommaviy harakat uchun qatorni tanlash",
+        "select_all_aria": "Sahifadagi barcha qatorlarni tanlash",
+        "score_aria": "{{factor}} faktori bo'yicha ball",
+        "comment_aria": "Faktor bo'yicha izoh"
+      },
+      "progress": {
+        "label": "{{total}} tadan {{filled}} ta to'ldirilgan",
+        "tooltip_filled": "To'ldirildi: {{codes}}.",
+        "tooltip_missing": "To'ldirilmadi: {{codes}}."
+      },
+      "rubric": {
+        "title": "Faktor rubrikasi",
+        "no_translation": "Tarjima yo'q",
+        "level_order": "Daraja",
+        "collapse_label": "Yashirish",
+        "expand_label": "Yoyish",
+        "vertical_label": "RUBRIKA",
+        "aria_toggle": "Rubrika ko'rinishini almashtirish",
+        "show_label": "Rubrika",
+        "hide_label": "Rubrikani yashirish",
+        "score_col": "Ball",
+        "comment_col": "Izoh"
+      },
+      "locked": {
+        "tooltip": "Baholash bloklangan va K-varaqdan tahrirlanmaydi."
+      },
+      "toolbar": {
+        "selected": "{{total}} tadan {{selected}} ta tanlandi"
+      },
+      "bulk": {
+        "set_all": {
+          "cta": "Barcha qolganlarni to'ldirish = {{count}}",
+          "title": "{{count}} ta baholash uchun ball belgilash",
+          "body": "\"{{factor}}\" faktori bo'yicha tanlangan daraja barcha belgilangan lavozimlarga qo'llaniladi. Amaliyot audit jurnaliga yoziladi.",
+          "level_label": "Faktor darajasi",
+          "reason_label": "Sabab",
+          "reason_placeholder": "Nima uchun ommaviy yozuv asosli ekanligini tushuntiring (kamida 50 belgi).",
+          "confirm": "Barchasiga qo'llash"
+        },
+        "submit": {
+          "cta": "Ommaviy yuborish ({{count}})",
+          "title": "{{count}} ta baholash yuborilsinmi?",
+          "body": "Tanlangan baholashlar \"Yuborildi\" holatiga o'tadi. To'liq bo'lmaganlari server tomonidan rad etiladi.",
+          "reason_label": "Sabab",
+          "reason_placeholder": "Nima yuborayotganingiz va nima uchunligini qisqacha yozing (kamida 20 belgi).",
+          "confirm": "Yuborish"
+        },
+        "result_summary": "Yangilandi: {{updated}}, xatolar: {{failed}}."
+      },
+      "autosave": {
+        "saved": "Saqlandi",
+        "failed": "Saqlanmadi — qayta urinish uchun bosing"
+      }
+    }
+  },
+  "factor": {
+    "column": {
+      "order": "№",
+      "code": "Kod",
+      "name": "Nomi",
+      "weight": "Ogʻirlik",
+      "max_points": "Maks. ball",
+      "levels": "Darajalar",
+      "required": "Majburiy",
+      "actions": "Amallar"
+    },
+    "field": {
+      "code": "Kod",
+      "name": "Nomi",
+      "description": "Tavsif",
+      "weight": "Faktor ogʻirligi",
+      "max_points": "Maksimal ball",
+      "required": "Baholash uchun majburiy",
+      "points": "Ball",
+      "scale_value": "Shkala qiymati",
+      "label": "Daraja nomi"
+    },
+    "action": {
+      "move_up": "Yuqori",
+      "move_down": "Pastga",
+      "edit": "Tahrirlash",
+      "remove": "Oʻchirish"
+    },
+    "levels_title": "Faktor darajalari",
+    "no_levels": "Darajalar yoʻq.",
+    "add_level": "Daraja qoʻshish",
+    "levels_after_create": "Darajalar faktor saqlangandan keyin koʻrinadi.",
+    "validation": {
+      "name_primary_required": "ru-RU tilida nom majburiy.",
+      "weight_invalid": "Ogʻirlik 0–100 oraligʻida son boʻlishi kerak.",
+      "max_points_invalid": "Maksimal ball musbat son boʻlishi kerak.",
+      "code_required": "Kod majburiy."
+    }
+  },
+  "gradeStructure": {
+    "list_page_title": "Greyd tuzilmalari",
+    "list_page_subtitle": "Faol loyiha uchun greyd shkalalari va ball diapazonlari.",
+    "new_structure": "Yangi greyd tuzilmasi",
+    "open": "Ochish",
+    "open_pyramid": "Greyd piramidasi",
+    "empty_title": "Greyd tuzilmalari hali yoʻq",
+    "empty_body": "14-greyd / 16-greyd shablonidan tanlang yoki boshidan yarating.",
+    "version_label": "{{number}}-versiya",
+    "create_new_version": "Yangi versiya yaratish",
+    "summary_title": "Qisqacha maʼlumot",
+    "gap_policy_label": "Uzilish siyosati",
+    "confirm_remove_grade": "Ushbu greydni oʻchirish kerakmi?",
+    "status": {
+      "draft": "Qoralama",
+      "approved": "Tasdiqlangan",
+      "locked": "Qulflangan",
+      "archived": "Arxivda"
+    },
+    "type": {
+      "grade_14": "14 greyd",
+      "grade_16": "16 greyd",
+      "custom": "Maxsus"
+    },
+    "gap_policy": {
+      "strict_no_gaps": "Uzilishsiz (qatʼiy)",
+      "allow_gaps_warn": "Uzilishga ruxsat (ogohlantirish)"
+    },
+    "column": {
+      "grades_count": "Greydlar",
+      "version": "Versiya",
+      "updated_at": "Yangilangan"
+    },
+    "template_picker": {
+      "title": "Greyd tuzilmasi shablonini tanlang",
+      "body": "Qaerdan boshlaymiz?",
+      "grade_14_body": "Teng diapazonlarga ega tayyor 14-greydli shkala.",
+      "grade_16_body": "Yirik kompaniyalar uchun tayyor 16-greydli shkala.",
+      "custom_body": "Boʻsh tuzilma — greydlar va diapazonlarni oʻzingiz sozlaysiz.",
+      "default_name_14": "14 greyd tuzilmasi",
+      "default_name_16": "16 greyd tuzilmasi",
+      "default_name_custom": "Maxsus tuzilma"
+    },
+    "actions": {
+      "approve": "Tasdiqlash",
+      "lock": "Qulflash"
+    },
+    "confirm": {
+      "approve_title": "Greyd tuzilmasini tasdiqlaymizmi?",
+      "approve_body": "Tasdiqlashdan keyin tahrirlash toʻxtaydi. Keyinchalik oʻzgartirish uchun yangi versiya yarating.",
+      "lock_title": "Tuzilmani qulflaymizmi?",
+      "lock_body": "Qulflangan tuzilma yakuniy — faqat arxivlash yoki yangi versiya yaratish mumkin.",
+      "archive_title": "Tuzilmani arxivga yuboramizmi?",
+      "archive_body": "Tuzilma faol loyihalarda ishlatilmaydi. Sababni koʻrsating.",
+      "new_version_title": "Yangi versiya yaratamizmi?",
+      "new_version_body": "Greydlar va diapazonlar nusxalari bilan qoralama versiya yaratiladi."
+    },
+    "locked_header_title_approved": "Greyd tuzilmasi tasdiqlandi",
+    "locked_header_title_locked": "Tuzilma qulflandi",
+    "locked_header_body_approved": "{{actor}} tomonidan ({{timestamp}}) tasdiqlandi. Oʻzgartirish uchun yangi versiya yarating.",
+    "locked_header_body_locked": "{{actor}} tomonidan ({{timestamp}}) qulflandi. Oʻzgartirish uchun yangi versiya yarating.",
+    "table": {
+      "caption": "Greydlar va ball diapazonlari jadvali",
+      "col_idx": "№",
+      "col_grade_number": "Greyd",
+      "col_name": "Nomi",
+      "col_min_score": "Min. ball",
+      "col_max_score": "Maks. ball",
+      "col_width": "Kengligi",
+      "col_validation": "Tekshiruv",
+      "col_actions": "Amallar",
+      "empty": "Greydlar hali qoʻshilmagan.",
+      "add_grade": "Greyd qoʻshish",
+      "action_edit": "Tahrirlash",
+      "action_remove": "Oʻchirish",
+      "validation_ok": "Toza",
+      "validation_overlap": "Kesishish",
+      "validation_gap": "Uzilish",
+      "validation_missing": "Diapazon yoʻq"
+    },
+    "validator": {
+      "empty": "Tekshiruvlarni koʻrish uchun greydlar va diapazonlar qoʻshing.",
+      "all_valid": "Barcha diapazonlar toʻgʻri (kesishish ham, uzilish ham yoʻq).",
+      "has_errors": "Xatoliklar aniqlandi",
+      "has_warnings": "Ogohlantirishlar bor",
+      "overlap_count": "Kesishishlar: {{count}}",
+      "overlap_item": "G{{a}} va G{{b}} [{{from}}; {{to}}] oraligʻida kesishadi",
+      "gap_count": "Uzilishlar: {{count}}",
+      "gap_item": "G{{below}} va G{{above}} orasida uzilish: [{{from}}; {{to}}]",
+      "missing_bands": "Diapazoni yoʻq greydlar: {{list}}",
+      "invalid_bands": "Notoʻgʻri diapazon (min > max) greydlari: {{list}}"
+    },
+    "row_editor": {
+      "create_title": "Yangi greyd",
+      "edit_title": "G{{number}} greydi",
+      "grade_number": "Greyd raqami",
+      "name_label": "Greyd nomi",
+      "description_label": "Tavsif",
+      "band_legend": "Ball diapazoni",
+      "min_score": "Minimal ball",
+      "max_score": "Maksimal ball",
+      "error_name_required": "ru-RU tilida nom majburiy.",
+      "error_min_gt_max": "Minimal ball maksimal balldan kichik yoki teng boʻlishi kerak.",
+      "hint_primary_name": "Saqlash uchun ru-RU tilidagi nomni kiriting."
+    },
+    "pyramid": {
+      "title": "Greyd piramidasi",
+      "subtitle": "Greydlar boʻyicha lavozimlar taqsimoti.",
+      "aria_label": "Har bir greydda lavozimlar soni bilan greyd piramidasi",
+      "empty": "Piramida boʻsh — greydlar qoʻshib, lavozimlarga biriktiring.",
+      "summary_title": "Piramida qisqacha maʼlumoti",
+      "total_grades": "Jami greydlar",
+      "total_positions": "Jami lavozimlar",
+      "total_evaluations": "Jami baholashlar",
+      "zero_positions": "0 lavozim",
+      "evaluation_count": "Baholashlar: {{count}}",
+      "salary_hidden_note": "Maosh maʼlumotlari maxsus yashiriladi — ish haqi izolyatsiyasi saqlanadi."
+    },
+    "score_lookup": {
+      "title": "Ball boʻyicha greyd izlash",
+      "subtitle": "Yakuniy ball kiriting — qaysi greydga tushishi koʻrinadi.",
+      "input_label": "Ball",
+      "placeholder": "Masalan, 750.0000",
+      "empty_state": "Natijani koʻrish uchun ball kiriting.",
+      "loading": "Tekshirilmoqda...",
+      "out_of_range": "{{score}} balli hech bir diapazonga tushmaydi — qoʻlda kalibrovka kerak."
+    },
+    "assigned": {
+      "label": "{{number}}-greyd",
+      "pending": "Greyd tayinlanmagan",
+      "pending_hint": "Greyd baholash tasdiqlangandan keyin tayinlanadi.",
+      "out_of_range": "Diapazondan tashqarida",
+      "out_of_range_hint": "Yakuniy ball barcha diapazonlardan tashqarida — qoʻlda kalibrovka kerak."
+    },
+    "position_grade": {
+      "empty_title": "Greyd hali tayinlanmagan",
+      "empty_body": "Greyd lavozim baholashi tasdiqlangandan keyin koʻrinadi."
+    }
+  },
+  "import": {
+    "list": {
+      "title": "Importlar",
+      "subtitle": "Loyihaga maʼlumotlarni kiritish uchun Excel yuklamalari.",
+      "new": "+ Yangi import",
+      "empty": "Hozircha importlar yoʻq."
+    },
+    "wizard": {
+      "title": "Yangi import",
+      "subtitle": "Excel faylni yuklang, tekshiruvni koʻrib chiqing, soʻngra tasdiqlang.",
+      "step1": "Shablon tanlash",
+      "step2": "Fayl yuklash",
+      "step3": "Tekshiruvni koʻrib chiqish",
+      "step4": "Tasdiqlash",
+      "upload_for_template": "Tanlangan shablon: {{template}}",
+      "upload": "Yuklash",
+      "cancel": "Importni bekor qilish",
+      "continue_commit": "Tasdiqlashga oʻtish",
+      "commit_rows": "{{count}} qatorni tasdiqlash",
+      "commit_success": "{{count}} qator muvaffaqiyatli tasdiqlandi.",
+      "no_templates_available": "Sizda hech qaysi shablonni import qilish huquqi yoʻq."
+    },
+    "field": {
+      "template": "Shablon"
+    },
+    "col": {
+      "filename": "Fayl",
+      "template": "Shablon",
+      "status": "Holat",
+      "rows": "Qatorlar",
+      "errors": "Xatolar",
+      "uploaded": "Yuklangan"
+    },
+    "file": {
+      "cta": ".xlsx faylni tortib tashlang yoki tanlash uchun bosing",
+      "hint": "Faqat Excel. Maksimal hajm: 25 MB.",
+      "error": {
+        "required": "Faylni tanlang.",
+        "empty": "Fayl boʻsh.",
+        "too_large": "Fayl 25 MB chegarasidan oshib ketdi.",
+        "extension": "Faqat .xlsx fayllar qabul qilinadi.",
+        "mime": "Fayl MIME-turi .xlsx ga toʻgʻri kelmaydi."
+      }
+    },
+    "summary": {
+      "total_rows": "Jami qatorlar",
+      "valid_rows": "Toʻgʻri qatorlar",
+      "warning_rows": "Ogohlantirishlar",
+      "error_rows": "Xatolar",
+      "commit_ready": "Tasdiqlashga tayyor.",
+      "commit_blocked": "Tasdiqlash bloklangan — xatolarni tuzating.",
+      "contains_salary": "Maosh maʼlumotlarini oʻz ichiga oladi"
+    },
+    "pipeline": {
+      "aria_label": "5-darajali tekshiruv quvuri",
+      "level": {
+        "FILE": "Fayl",
+        "STRUCTURE": "Tuzilma",
+        "ROW": "Qator",
+        "BUSINESS": "Biznes-qoidalar",
+        "SECURITY": "Xavfsizlik"
+      }
+    },
+    "errors": {
+      "filter_label": "Daraja:",
+      "empty": "Bu darajada muammolar yoʻq.",
+      "col_row": "Qator",
+      "col_level": "Daraja",
+      "col_field": "Maydon",
+      "col_message": "Xabar",
+      "col_fix": "Tavsiya"
+    },
+    "error_level": {
+      "BLOCKER": "Bloker",
+      "ERROR": "Xato",
+      "WARNING": "Ogohlantirish",
+      "INFO": "Maʼlumot"
+    },
+    "template": {
+      "ORG_STRUCTURE_V1": "Tashkiliy tuzilma",
+      "POSITION_CATALOG_V1": "Lavozimlar katalogi",
+      "JOB_PROFILE_V1": "Lavozim profillari",
+      "METHODOLOGY_FACTORS_V1": "Metodologiya omillari",
+      "GRADE_BANDS_V1": "Greyd diapazonlari",
+      "download_empty": "Boʻsh shablonni yuklab olish",
+      "download_sample": "Namunani yuklab olish",
+      "dropdown_label": "Shablonni yuklab olish"
+    },
+    "template_desc": {
+      "ORG_STRUCTURE_V1": "Boʻlimlar, boshqarmalar va ierarxiya.",
+      "POSITION_CATALOG_V1": "Lavozimlar: nom, funksiya, kategoriya.",
+      "JOB_PROFILE_V1": "Har bir lavozim uchun profil maydonlari.",
+      "METHODOLOGY_FACTORS_V1": "Metodologiya omillari, darajalari va vaznlari.",
+      "GRADE_BANDS_V1": "Greyd shkalasi: min/max ballar."
+    },
+    "status": {
+      "UPLOADED": "Yuklangan",
+      "SCANNING": "Skanerlanmoqda",
+      "SCAN_FAILED": "Skanerlash xatosi",
+      "PARSING": "Tahlil qilinmoqda",
+      "VALIDATING": "Tekshiruv",
+      "VALIDATION_FAILED": "Tekshiruv xatosi",
+      "READY_FOR_REVIEW": "Koʻrib chiqishga tayyor",
+      "READY_TO_COMMIT": "Tasdiqlashga tayyor",
+      "COMMITTING": "Tasdiqlanmoqda",
+      "COMMITTED": "Tasdiqlangan",
+      "PARTIALLY_COMMITTED": "Qisman tasdiqlangan",
+      "FAILED": "Muvaffaqiyatsiz",
+      "CANCELLED": "Bekor qilingan",
+      "ARCHIVED": "Arxivlangan"
+    }
+  },
+  "export": {
+    "center": {
+      "title": "Eksport markazi",
+      "subtitle": "Joriy loyihaning shakllantirilgan eksportlari.",
+      "new": "Eksport soʻrash",
+      "empty": "Hozircha eksportlar yoʻq."
+    },
+    "request": {
+      "title": "Yangi eksport soʻrash",
+      "type": "Eksport turi",
+      "format": "Format",
+      "filter_params": "Saralovchi parametrlari (JSON)",
+      "filter_placeholder": "{}",
+      "submit": "Soʻrash",
+      "salary_warning": "Bu eksport turi maosh maʼlumotlarini oʻz ichiga oladi. SALARY_EXPORT huquqi talab qilinadi."
+    },
+    "download": {
+      "cta": "Yuklab olish",
+      "generating": "Tayyorlanmoqda...",
+      "generating_url": "Imzolangan havola yaratilmoqda...",
+      "error": "Havola olinmadi. Qayta urinib koʻring.",
+      "error_v2": "Yuklab olish muvaffaqiyatsiz. Sahifani yangilang yoki qoʻllab-quvvatlash xizmatiga murojaat qiling.",
+      "demo_warning": "Demo rejim — fayl mahalliy yaratilgan"
+    },
+    "col": {
+      "type": "Tur",
+      "format": "Format",
+      "status": "Holat",
+      "created_at": "Yaratilgan",
+      "generated_at": "Tayyor",
+      "expires_at": "Muddati",
+      "downloaded_at": "Yuklab olingan",
+      "size": "Hajm",
+      "rows": "Qatorlar"
+    },
+    "contains_salary": "Maosh maʼlumotlarini oʻz ichiga oladi",
+    "status": {
+      "REQUESTED": "Soʻralgan",
+      "QUEUED": "Navbatda",
+      "GENERATING": "Tayyorlanmoqda",
+      "GENERATED": "Tayyor",
+      "FAILED": "Muvaffaqiyatsiz",
+      "DOWNLOADED": "Yuklab olingan",
+      "EXPIRED": "Muddati oʻtgan",
+      "CANCELLED": "Bekor qilingan"
+    },
+    "type": {
+      "POSITION_CATALOG": "Lavozimlar katalogi",
+      "JOB_PROFILES": "Lavozim profillari",
+      "METHODOLOGY": "Metodologiya",
+      "EVALUATION_MATRIX": "Baholash matritsasi",
+      "GRADE_STRUCTURE": "Greyd tuzilmasi",
+      "GRADE_PYRAMID": "Greyd piramidasi",
+      "SALARY_RANGES": "Maosh diapazonlari",
+      "RED_GREEN_CIRCLE": "Qizil/yashil doira",
+      "COMPENSATION_SCENARIOS": "Kompensatsiya stsenariylari",
+      "REPORT_EXECUTIVE": "Rahbariyat uchun hisobot"
+    },
+    "format": {
+      "XLSX": "Excel (.xlsx)",
+      "CSV": "CSV",
+      "PDF": "PDF",
+      "DOCX": "Word (.docx)"
+    },
+    "error": {
+      "project_required": "Loyiha talab qilinadi."
+    }
+  },
+  "report": {
+    "page_title": "Hisobotlar markazi",
+    "page_subtitle": "Faol loyiha uchun tahliliy hisobotlarni shakllantiring va yuklab oling.",
+    "new_report": "Hisobot buyurtma qilish",
+    "request_dialog_title": "Yangi hisobotni buyurtma qilish",
+    "request_submit": "Hisobot buyurtma qilish",
+    "field_type": "Hisobot turi",
+    "field_format": "Format",
+    "field_filter_params": "Saralash parametrlari (JSON)",
+    "filter_placeholder": "{}",
+    "filter_status": "Holat",
+    "filter_status_all": "Barcha holatlar",
+    "filter_type": "Tur",
+    "filter_type_all": "Barcha turlar",
+    "filter_format": "Format",
+    "filter_format_all": "Barcha formatlar",
+    "format_unavailable": "ushbu tur uchun mavjud emas",
+    "empty": "Hozircha hisobotlar yo'q.",
+    "contains_salary": "Maosh ma'lumotlarini o'z ichiga oladi",
+    "download_cta": "Yuklab olish",
+    "download_generating": "Tayyorlanmoqda...",
+    "download_error": "Havolani olib bo'lmadi. Qayta urinib ko'ring.",
+    "col_title": "Nomi",
+    "col_type": "Tur",
+    "col_format": "Format",
+    "col_status": "Holat",
+    "col_contains_salary": "Maosh ma'lumotlari",
+    "col_created_by": "Yaratgan",
+    "col_created_at": "Yaratilgan sana",
+    "col_expires_at": "Muddati tugaydi",
+    "type": {
+      "GRADE_DISTRIBUTION": "Greyd taqsimoti",
+      "POSITION_CATALOG": "Lavozimlar katalogi",
+      "EVALUATION_SUMMARY": "Baholash xulosasi",
+      "METHODOLOGY_SPEC": "Metodologiya tavsifi",
+      "AUDIT_SUMMARY": "Audit xulosasi",
+      "EXECUTIVE_SUMMARY": "Rahbariyat xulosasi"
+    },
+    "format": {
+      "PDF": "PDF",
+      "DOCX": "DOCX",
+      "XLSX": "XLSX"
+    },
+    "status": {
+      "REQUESTED": "So'ralgan",
+      "QUEUED": "Navbatda",
+      "GENERATING": "Tayyorlanmoqda",
+      "GENERATED": "Tayyor",
+      "FAILED": "Xatolik",
+      "DOWNLOADED": "Yuklangan",
+      "EXPIRED": "Muddati tugagan",
+      "CANCELLED": "Bekor qilingan"
+    },
+    "error": {
+      "project_required": "Loyiha talab qilinadi.",
+      "format_not_supported": "Tanlangan format ushbu hisobot turi uchun mavjud emas."
+    }
+  },
+  "users": {
+    "never": "Hech qachon",
+    "neverLoggedIn": "Kirmagan",
+    "lastLoginAt": "Oxirgi kirish: {{date}}",
+    "viewAudit": "Audit jurnalini ochish",
+    "list": {
+      "title": "Foydalanuvchilar va ruxsatlar",
+      "subtitle": "Faol mijoz-kompaniyaning barcha foydalanuvchilari.",
+      "subtitleForTenant": "«{{tenant}}» mijoz-kompaniya foydalanuvchilari."
+    },
+    "column": {
+      "fullName": "Ism",
+      "tenants": "Kompaniyalar",
+      "roles": "Rollar",
+      "status": "Holat",
+      "lastLogin": "Oxirgi kirish"
+    },
+    "filter": {
+      "status": "Holat",
+      "role": "Rol",
+      "tenant": "Kompaniya"
+    },
+    "status": {
+      "active": "Faol",
+      "invited": "Taklif qilingan",
+      "revoked": "Qaytarilgan",
+      "suspended": "To'xtatilgan"
+    },
+    "empty": {
+      "title": "Foydalanuvchilar hali yo'q",
+      "body": "Ushbu mijoz-kompaniya uchun birinchi foydalanuvchini taklif qiling."
+    },
+    "invite": {
+      "button": "Foydalanuvchini taklif qilish",
+      "title": "Foydalanuvchini taklif etish",
+      "subtitle": "Yangi foydalanuvchi aktivatsiya havolasi bilan xat oladi.",
+      "submit": "Taklifni yuborish",
+      "email": "Email",
+      "fullName": "To'liq ism",
+      "locale": "Tizim tili",
+      "tenant": "Mijoz-kompaniya",
+      "tenantHint": "Faqat HRLab Super Admin uchun mavjud.",
+      "tenantImpliedHint": "Taklif faol kompaniya «{{tenant}}» uchun yaratiladi.",
+      "roles": "Boshlang'ich rollar",
+      "rolesHint": "Bir yoki bir nechta rol tanlash mumkin. Keyin o'zgartiriladi.",
+      "validation_email": "To'g'ri email kiriting.",
+      "validation_fullname_min": "Ism kamida 2 ta belgidan iborat bo'lishi kerak.",
+      "validation_fullname_max": "Ism 200 belgidan oshmasligi kerak.",
+      "validation_roles_min": "Kamida bitta rolni tanlang."
+    },
+    "assignRole": {
+      "title": "Rol qo'shish",
+      "subtitle": "«{{tenant}}» kompaniyasi uchun yangi rol.",
+      "submit": "Rol qo'shish",
+      "role": "Rol",
+      "noneLeft": "Barcha rollar biriktirilgan",
+      "noneLeftHint": "Ushbu a'zolikda barcha mavjud rollar bor."
+    },
+    "revokeMembership": {
+      "title": "A'zolikni bekor qilish?",
+      "body": "{{user}} foydalanuvchi «{{tenant}}» kompaniyasining barcha resurslariga kirishni yo'qotadi. Amalni faqat qayta tiklash bilan bekor qilish mumkin.",
+      "confirm": "A'zolikni bekor qilish"
+    },
+    "salary": {
+      "label": "Ish haqi ma'lumotlariga kirish",
+      "enabledHint": "{{date}} dan faol. Foydalanuvchi ish haqi ko'rsatkichlarini ko'radi.",
+      "disabledHint": "O'chirilgan. Ish haqi maydonlari tizim va eksportda yashirilgan.",
+      "grant": "Bersin",
+      "revoke": "Qaytarish",
+      "confirmGrantTitle": "Ish haqi ma'lumotlariga ruxsat berilsinmi?",
+      "confirmRevokeTitle": "Ish haqi ma'lumotlariga ruxsat qaytarilsinmi?",
+      "warningHeader": "Muhim: sezgir ma'lumotlar",
+      "grantWarning": "Foydalanuvchi ish haqi, diapazonlar, compa-ratio va byudjet ta'sirlarini ko'radi. Amal audit jurnalida qayd qilinadi.",
+      "revokeWarning": "Foydalanuvchi ish haqi ma'lumotlarini barcha modullarda ko'ra olmaydi. Amal audit jurnalida qayd qilinadi.",
+      "reasonHint": "Biznes-asosni kiriting (kamida 10 belgi)."
+    },
+    "memberships": {
+      "title": "Kompaniyalardagi a'zolik",
+      "count": "Jami: {{count}}",
+      "empty": "Foydalanuvchining faol a'zoligi yo'q."
+    },
+    "membership": {
+      "joinedAt": "Aktivlangan: {{date}}",
+      "invitedAt": "Taklif qilingan: {{date}}",
+      "rolesLabel": "Rollar ({{count}})",
+      "noRoles": "Rollar hali yo'q.",
+      "addRole": "Rol qo'shish",
+      "removeRoleAria": "{{role}} rolni o'chirish",
+      "revoke": "A'zolikni bekor qilish"
+    },
+    "role": {
+      "HRLAB_SUPER_ADMIN": "HRLab Super Admin",
+      "HRLAB_PROJECT_MANAGER": "HRLab loyiha menejeri",
+      "HRLAB_CONSULTANT": "HRLab konsultanti",
+      "HRLAB_ANALYST": "HRLab tahlilchi",
+      "CLIENT_ADMIN": "Kompaniya administratori",
+      "CLIENT_HR_DIRECTOR": "HR-direktor",
+      "CLIENT_HR_SPECIALIST": "HR-mutaxassis",
+      "CLIENT_COMMITTEE_MEMBER": "Baholash qo'mitasi a'zosi",
+      "CLIENT_DEPARTMENT_MANAGER": "Bo'lim rahbari",
+      "CLIENT_VIEWER": "Kuzatuvchi",
+      "AUDITOR": "Auditor"
+    }
+  },
+  "clients": {
+    "list": {
+      "title": "Mijoz kompaniyalar",
+      "subtitle": "HR Laboratories barcha mijoz kompaniyalari. Brend, lokal va tenant arxivini shu yerda boshqaring.",
+      "super_admin_badge": "HRLab Super Admin rejimi",
+      "super_admin_hint": "Bu bo'lim faqat HR Laboratories administratorlari uchun."
+    },
+    "filter": {
+      "status": "Status"
+    },
+    "status": {
+      "active": "Faol",
+      "suspended": "To'xtatilgan",
+      "archived": "Arxivda"
+    },
+    "column": {
+      "tenant": "Tenant",
+      "slug": "Slug",
+      "projects": "Loyihalar",
+      "users": "Foydalanuvchilar",
+      "status": "Status",
+      "updated": "Yangilandi"
+    },
+    "empty": {
+      "title": "Tenantlar hozircha yo'q",
+      "body": "Yangi mijoz kompaniyalari yaratilgach shu yerda paydo bo'ladi."
+    },
+    "stats": {
+      "projects": "Faol loyihalar",
+      "users": "Foydalanuvchilar",
+      "activity_30d": "Faollik",
+      "last_activity": "Oxirgi faollik",
+      "activity_recent": "Shu hafta faol",
+      "activity_quiet": "7 kun davomida sokin",
+      "never_active": "Faollik hali bo'lmagan"
+    },
+    "field": {
+      "legal_name": "Yuridik nom",
+      "brand_name": "Brend",
+      "industry": "Sektor",
+      "country_code": "Mamlakat (ISO)",
+      "tax_id": "Soliq IDsi"
+    },
+    "detail": {
+      "updated_at": "Yangilandi: {{date}}",
+      "default_locale": "Standart lokal: {{locale}}",
+      "open_audit": "Audit jurnalini ochish",
+      "open_projects": "Loyihalarga o'tish",
+      "open_users": "Foydalanuvchilarni boshqarish",
+      "edit_tenant": "Tenantni tahrirlash",
+      "edit_client": "Yuridik shaxsni tahrirlash",
+      "archive_tenant": "Arxivlash",
+      "client_panel_title": "Yuridik shaxs",
+      "client_panel_subtitle": "Tenantga bog'langan mijoz kompaniyasining ro'yxatdan o'tish ma'lumotlari.",
+      "related_title": "Bog'liq obyektlar",
+      "related_subtitle": "Platformaning boshqa bo'limlariga tezkor o'tish.",
+      "related_projects": "Ishdagi loyihalar: {{count}}",
+      "related_users": "Faol a'zolikdagi foydalanuvchilar: {{count}}",
+      "related_more_soon": "Qo'shimcha hisobotlar keyingi fazalarda paydo bo'ladi."
+    },
+    "edit_tenant": {
+      "title": "Tenantni tahrirlash",
+      "subtitle": "Slug va status o'zgartirib bo'lmaydi; statusni o'zgartirish uchun arxivlashdan foydalaning.",
+      "display_name": "Ko'rsatiladigan nom",
+      "default_locale": "Standart lokal",
+      "default_locale_hint": "Tizim xatlarini yuborish va yangi foydalanuvchilar uchun ishlatiladi.",
+      "immutable_hint": "Slug, status va yuridik shaxs bog'lanishini HRLab Super Admin alohida boshqaradi.",
+      "validation_display_name_min": "Nom kamida 2 ta belgidan iborat bo'lishi kerak.",
+      "validation_display_name_max": "Nom 200 belgidan oshmasligi kerak."
+    },
+    "edit_client": {
+      "title": "Yuridik shaxsni tahrirlash",
+      "subtitle": "O'zgarishlar ushbu mijoz kompaniyasining barcha tenantlariga qo'llaniladi.",
+      "legal_name": "Yuridik nom",
+      "brand_name": "Brend",
+      "industry": "Sektor",
+      "country_code": "Mamlakat (ISO 3166-1)",
+      "tax_id": "Soliq identifikatori",
+      "validation_legal_name_min": "Yuridik nom kamida 2 ta belgidan iborat bo'lishi kerak.",
+      "validation_legal_name_max": "Yuridik nom 300 belgidan oshmasligi kerak.",
+      "validation_brand_name_min": "Brend kamida 2 ta belgidan iborat bo'lishi kerak.",
+      "validation_brand_name_max": "Brend 200 belgidan oshmasligi kerak.",
+      "validation_country_code": "Mamlakat kodi ikkita lotin harfidan iborat bo'lishi kerak (UZ, RU, KZ ...)."
+    },
+    "archive": {
+      "title": "Tenantni arxivlash kerakmi?",
+      "body": "Arxivlash so'ng «{{tenant}}» tenant faqat o'qish uchun ochiq bo'ladi. Barcha faol loyihalar muzlatiladi. Amal audit jurnaliga yoziladi.",
+      "reason_label": "Arxivlash sababi",
+      "reason_placeholder": "Biznes asosini va mijoz roziligi tasdig'ini yozing...",
+      "reason_hint": "Kamida {{min}} ta belgi · kiritildi {{current}}.",
+      "confirm": "Arxivlash"
+    }
+  },
+  "upcoming": {
+    "sprint_label_h": "Rejalashtirilgan reliz",
+    "preview_features_title": "Nima paydo bo'ladi",
+    "compensation": {
+      "title": "Kompensatsiya va maosh tuzilmalari",
+      "subtitle": "Kompensatsiya moduli MVP 3 da chiqadi. Kirish faqat SALARY_VIEW ruxsati bilan.",
+      "features": {
+        "1": "Greydlar bo'yicha maosh diapazoni dashboardi (min / midpoint / max).",
+        "2": "Xodimlar bo'yicha compa-ratio va greyd bo'ylab taqsimot.",
+        "3": "Range penetration va qizil/yashil aylana indikatorlari.",
+        "4": "Byudjet stsenariy modellashtirish va bozor normalizatsiyasi.",
+        "5": "MFOT (oldin/keyin) va stsenariyning kompaniya byudjetiga ta'siri."
+      }
+    }
   }
 }

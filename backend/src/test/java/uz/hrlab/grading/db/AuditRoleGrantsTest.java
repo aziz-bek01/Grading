@@ -187,6 +187,74 @@ class AuditRoleGrantsTest extends AbstractIntegrationTest {
                 .hasMessageContaining("permission denied");
     }
 
+    /**
+     * TI-Reg-07.a — TRUNCATE ... CASCADE bypass attempt.
+     *
+     * <p>The base test ({@link #runtimeRoleCanInsertAndSelectAuditButNotMutate})
+     * already proves plain {@code TRUNCATE public.system_audit_log} is denied.
+     * Closing the edge case: an attacker with {@code grading_runtime} cannot
+     * route around the lockdown by issuing {@code TRUNCATE ... CASCADE} from
+     * a parent table either, since the parent tables themselves are protected.
+     *
+     * <p>We also lock the bulk-delete vector: {@code DELETE FROM ... WHERE true}.
+     */
+    @Test
+    void runtimeRoleCannotBulkPurgeAuditViaCascadeOrWildcardDelete() {
+        JdbcTemplate runtime = connectAs("grading_runtime", "grading_runtime_pwd");
+        UUID tenantId = UUID.randomUUID();
+        UUID id = insertAuditRowAsRuntime(runtime, tenantId);
+        assertThat(id).isNotNull();
+
+        // (1) DELETE FROM ... WHERE true (mass purge via predicate-always-true)
+        assertThatThrownBy(() -> runtime.update(
+                "DELETE FROM public.system_audit_log WHERE 1=1"))
+                .as("grading_runtime must NOT mass-purge audit rows via tautology")
+                .hasMessageContaining("permission denied");
+
+        // (2) TRUNCATE ... CASCADE (defense in depth even though no FK targets it)
+        assertThatThrownBy(() -> runtime.execute(
+                "TRUNCATE public.system_audit_log CASCADE"))
+                .as("grading_runtime must NOT TRUNCATE ... CASCADE on audit log")
+                .hasMessageContaining("permission denied");
+
+        // (3) UPDATE ... WHERE true (mass-tamper via tautology)
+        assertThatThrownBy(() -> runtime.update(
+                "UPDATE public.system_audit_log SET reason = 'tampered' WHERE 1=1"))
+                .as("grading_runtime must NOT mass-tamper audit rows")
+                .hasMessageContaining("permission denied");
+    }
+
+    /**
+     * TI-Reg-07.b — hash-chain tampering via INSERT-only path.
+     *
+     * <p>{@code grading_runtime} can INSERT into {@code system_audit_log} (that
+     * is how legitimate audit writes happen), but the application-level
+     * hash-chain guarantees forward-only ordering. Even an INSERT cannot
+     * splice a row INTO the middle of the chain because each new row's
+     * {@code hash_prev} must match the previous row's {@code hash_current};
+     * here we prove the DB layer still denies an UPDATE that would rewrite a
+     * historic row's {@code hash_current} to break/relink the chain.
+     */
+    @Test
+    void runtimeRoleCannotRewriteHashCurrentOnExistingAuditRow() {
+        JdbcTemplate runtime = connectAs("grading_runtime", "grading_runtime_pwd");
+        UUID tenantId = UUID.randomUUID();
+        UUID id = insertAuditRowAsRuntime(runtime, tenantId);
+
+        // Tampering hash_current would let an attacker re-link the chain;
+        // DB role grants must deny this even if the application layer is
+        // bypassed (defense in depth — security-blueprint §20.1).
+        assertThatThrownBy(() -> runtime.update(
+                "UPDATE public.system_audit_log SET hash_current = 'forged' WHERE id = ?", id))
+                .as("grading_runtime must NOT rewrite hash_current on system_audit_log")
+                .hasMessageContaining("permission denied");
+
+        assertThatThrownBy(() -> runtime.update(
+                "UPDATE public.system_audit_log SET hash_prev = NULL WHERE id = ?", id))
+                .as("grading_runtime must NOT rewrite hash_prev on system_audit_log")
+                .hasMessageContaining("permission denied");
+    }
+
     @Test
     void grantMatrixIsRecordedInInformationSchema() {
         // information_schema.table_privileges is the canonical assertion

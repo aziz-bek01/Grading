@@ -1,0 +1,144 @@
+# MVP 2 Phase 1 — project_workflows + project_workflow_stages tables.
+#
+# One ProjectWorkflow per Project (1:1). The aggregate carries the
+# currently-active stage pointer + lifecycle timestamps. Each of the 11
+# canonical stages lives as a separate row in project_workflow_stages so the
+# table is query-able and the stepper API can SELECT all 11 in one shot.
+#
+# Stage status is auto-derived by WorkflowRecomputeService from the underlying
+# entity counts; the table is essentially a denormalised cache that can be
+# rebuilt from sub-domain repositories.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-020-create-project-workflows
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase1
+      changes:
+        - createTable:
+            tableName: project_workflows
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,    type: UUID, constraints: { nullable: false } }
+              - column: { name: project_id,   type: UUID, constraints: { nullable: false } }
+              - column: { name: current_stage, type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: started_at,   type: TIMESTAMPTZ }
+              - column: { name: archived_at,  type: TIMESTAMPTZ }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addUniqueConstraint:
+            tableName: project_workflows
+            columnNames: tenant_id, project_id
+            constraintName: uq_project_workflows_tenant_project
+        - addForeignKeyConstraint:
+            baseTableName: project_workflows
+            baseColumnNames: project_id
+            referencedTableName: projects
+            referencedColumnNames: id
+            constraintName: fk_project_workflows_project
+            onDelete: CASCADE
+        - createIndex:
+            tableName: project_workflows
+            indexName: idx_project_workflows_tenant
+            columns: [ { column: { name: tenant_id } } ]
+        - sql:
+            sql: |
+              ALTER TABLE project_workflows ADD CONSTRAINT chk_project_workflows_stage
+                CHECK (current_stage IN ('SETUP','ORGANIZATION','POSITIONS','JOB_PROFILES',
+                                         'METHODOLOGY','EVALUATION','CALIBRATION','GRADES',
+                                         'COMPENSATION','REPORTS','ARCHIVE'));
+      rollback:
+        - dropTable:
+            tableName: project_workflows
+
+  - changeSet:
+      id: tenant-020-create-project-workflow-stages
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase1
+      changes:
+        - createTable:
+            tableName: project_workflow_stages
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,           type: UUID, constraints: { nullable: false } }
+              - column: { name: project_workflow_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: project_id,          type: UUID, constraints: { nullable: false } }
+              - column: { name: stage,               type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: status,              type: VARCHAR(24), constraints: { nullable: false } }
+              - column:
+                  name: completion_percent
+                  type: NUMERIC(5,2)
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column: { name: responsible_user_id, type: UUID }
+              - column: { name: last_updated_at,     type: TIMESTAMPTZ }
+              - column: { name: last_updated_by,     type: UUID }
+              - column: { name: sort_order,          type: INT, constraints: { nullable: false } }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addUniqueConstraint:
+            tableName: project_workflow_stages
+            columnNames: project_workflow_id, stage
+            constraintName: uq_project_workflow_stages_workflow_stage
+        - addForeignKeyConstraint:
+            baseTableName: project_workflow_stages
+            baseColumnNames: project_workflow_id
+            referencedTableName: project_workflows
+            referencedColumnNames: id
+            constraintName: fk_pws_workflow
+            onDelete: CASCADE
+        - createIndex:
+            tableName: project_workflow_stages
+            indexName: idx_pws_tenant_project_stage_status
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: project_id } }
+              - { column: { name: stage } }
+              - { column: { name: status } }
+        - sql:
+            sql: |
+              ALTER TABLE project_workflow_stages ADD CONSTRAINT chk_pws_stage
+                CHECK (stage IN ('SETUP','ORGANIZATION','POSITIONS','JOB_PROFILES',
+                                 'METHODOLOGY','EVALUATION','CALIBRATION','GRADES',
+                                 'COMPENSATION','REPORTS','ARCHIVE'));
+              ALTER TABLE project_workflow_stages ADD CONSTRAINT chk_pws_status
+                CHECK (status IN ('NOT_STARTED','IN_PROGRESS','COMPLETE','BLOCKED','LOCKED_FUTURE'));
+              ALTER TABLE project_workflow_stages ADD CONSTRAINT chk_pws_completion_range
+                CHECK (completion_percent >= 0 AND completion_percent <= 100);
+              ALTER TABLE project_workflow_stages ADD CONSTRAINT chk_pws_sort_order_range
+                CHECK (sort_order >= 1 AND sort_order <= 11);
+      rollback:
+        - dropTable:
+            tableName: project_workflow_stages

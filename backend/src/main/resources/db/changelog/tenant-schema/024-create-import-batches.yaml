@@ -1,0 +1,188 @@
+# MVP 2 Phase 2 — import_batches + import_batch_rows + import_errors.
+#
+# Tables back the Excel import pipeline (integration-blueprint §8). The
+# batch row is the aggregate root; rows + errors fan out 1:N. All three
+# carry tenant_id + project_id (where applicable) for defence-in-depth.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-024-create-import-batches
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase2
+      changes:
+        - createTable:
+            tableName: import_batches
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,           type: UUID, constraints: { nullable: false } }
+              - column: { name: project_id,          type: UUID }
+              - column: { name: template_code,       type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: status,              type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: original_filename,   type: VARCHAR(255) }
+              - column: { name: file_storage_key,    type: VARCHAR(512) }
+              - column: { name: file_size,           type: BIGINT }
+              - column: { name: file_checksum,       type: VARCHAR(128) }
+              - column: { name: total_row_count,     type: INT }
+              - column: { name: error_row_count,     type: INT }
+              - column: { name: warning_row_count,   type: INT }
+              - column: { name: committed_row_count, type: INT }
+              - column:
+                  name: contains_salary_data
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints: { nullable: false }
+              - column: { name: uploaded_by,         type: UUID, constraints: { nullable: false } }
+              - column: { name: uploaded_at,         type: TIMESTAMPTZ, constraints: { nullable: false } }
+              - column: { name: committed_by,        type: UUID }
+              - column: { name: committed_at,        type: TIMESTAMPTZ }
+              - column: { name: trace_id,            type: VARCHAR(64) }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - createIndex:
+            tableName: import_batches
+            indexName: idx_import_batches_tenant_project_status
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: project_id } }
+              - { column: { name: status } }
+              - { column: { name: created_at } }
+        - sql:
+            sql: |
+              ALTER TABLE import_batches ADD CONSTRAINT chk_import_batches_status
+                CHECK (status IN ('UPLOADED','SCANNING','SCAN_FAILED','PARSING','VALIDATING',
+                                  'VALIDATION_FAILED','READY_FOR_REVIEW','READY_TO_COMMIT',
+                                  'COMMITTING','COMMITTED','PARTIALLY_COMMITTED',
+                                  'FAILED','CANCELLED','ARCHIVED'));
+      rollback:
+        - dropTable: { tableName: import_batches }
+
+  - changeSet:
+      id: tenant-024-create-import-batch-rows
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase2
+      changes:
+        - createTable:
+            tableName: import_batch_rows
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,           type: UUID, constraints: { nullable: false } }
+              - column: { name: import_batch_id,     type: UUID, constraints: { nullable: false } }
+              - column: { name: row_number,          type: INT,  constraints: { nullable: false } }
+              - column: { name: raw_json,            type: TEXT }
+              - column: { name: parsed_json,         type: TEXT }
+              - column: { name: status,              type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: target_entity_type,  type: VARCHAR(64) }
+              - column: { name: target_entity_id,    type: UUID }
+              - column: { name: committed_at,        type: TIMESTAMPTZ }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addForeignKeyConstraint:
+            baseTableName: import_batch_rows
+            baseColumnNames: import_batch_id
+            referencedTableName: import_batches
+            referencedColumnNames: id
+            constraintName: fk_import_batch_rows_batch
+            onDelete: CASCADE
+        - createIndex:
+            tableName: import_batch_rows
+            indexName: idx_import_batch_rows_batch_status
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: import_batch_id } }
+              - { column: { name: status } }
+        - sql:
+            sql: |
+              ALTER TABLE import_batch_rows ADD CONSTRAINT chk_import_batch_rows_status
+                CHECK (status IN ('PARSED','VALIDATED','READY_TO_COMMIT','COMMITTED','FAILED','SKIPPED'));
+      rollback:
+        - dropTable: { tableName: import_batch_rows }
+
+  - changeSet:
+      id: tenant-024-create-import-errors
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase2
+      changes:
+        - createTable:
+            tableName: import_errors
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,            type: UUID, constraints: { nullable: false } }
+              - column: { name: import_batch_id,      type: UUID, constraints: { nullable: false } }
+              - column: { name: import_batch_row_id,  type: UUID }
+              - column: { name: error_level,          type: VARCHAR(16), constraints: { nullable: false } }
+              - column: { name: error_code,           type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: field_name,           type: VARCHAR(128) }
+              - column: { name: message,              type: VARCHAR(1000), constraints: { nullable: false } }
+              - column: { name: suggested_fix,        type: VARCHAR(1000) }
+              - column: { name: technical_details,    type: VARCHAR(2000) }
+              - column: { name: trace_id,             type: VARCHAR(64) }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addForeignKeyConstraint:
+            baseTableName: import_errors
+            baseColumnNames: import_batch_id
+            referencedTableName: import_batches
+            referencedColumnNames: id
+            constraintName: fk_import_errors_batch
+            onDelete: CASCADE
+        - createIndex:
+            tableName: import_errors
+            indexName: idx_import_errors_batch_level
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: import_batch_id } }
+              - { column: { name: error_level } }
+        - sql:
+            sql: |
+              ALTER TABLE import_errors ADD CONSTRAINT chk_import_errors_level
+                CHECK (error_level IN ('BLOCKER','ERROR','WARNING','INFO'));
+      rollback:
+        - dropTable: { tableName: import_errors }

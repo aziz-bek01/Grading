@@ -2,25 +2,30 @@ import type { LocalizedString, PageEnvelope } from '@/shared/types/common';
 
 export type PositionStatus = 'ACTIVE' | 'ARCHIVED' | 'DRAFT';
 
+/**
+ * Mirrors backend `PositionResponse` (Spring SNAKE_CASE Jackson strategy):
+ * `{ id, project_id, department_id, code, title_i18n, function, category, job_family, job_level, status }`.
+ */
 export interface Position {
   id: string;
   project_id: string;
   department_id: string;
   code: string;
-  title: LocalizedString;
+  title_i18n: LocalizedString;
   function?: string;
   category?: string;
   job_family?: string;
   job_level?: string;
   status: PositionStatus;
-  updated_at: string;
+  /** Optional — backend response does not include updated_at; MSW keeps it for table sorting. */
+  updated_at?: string;
 }
 
 export interface PositionCreatePayload {
   project_id: string;
   department_id: string;
   code: string;
-  title: LocalizedString;
+  title_i18n: LocalizedString;
   function?: string;
   category?: string;
   job_family?: string;

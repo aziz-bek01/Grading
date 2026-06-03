@@ -60,7 +60,8 @@ class Phase3MultilingualPrimaryLocaleTest {
         var policy = new JobProfileStatusTransitionPolicy();
         var snapshot = new JobProfileAuditSnapshot(new AuditJsonRedactor(new ObjectMapper()));
         useCase = new SubmitJobProfileForReviewUseCase(profiles, positions, audit,
-                abacGate, policy, snapshot);
+                abacGate, policy, snapshot,
+                mock(uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase.class));
 
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();

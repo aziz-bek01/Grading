@@ -1,0 +1,33 @@
+# Phase 4 — wire projects.methodology_version_id (created nullable in
+# tenant-001) to methodology_versions(id) with composite tenant-aware FK so a
+# project cannot reference a methodology version belonging to a different
+# tenant.
+#
+# Application layer (AssignProjectMethodologyUseCase, future Phase 5 use case)
+# is responsible for resolving the version + validating tenant + setting the
+# FK; this constraint guarantees defence-in-depth.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-012-projects-methodology-fk
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase4
+      changes:
+        - sql:
+            sql: |
+              -- Add a composite unique index on methodology_versions so the
+              -- composite FK (tenant_id, methodology_version_id) is referenceable.
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_mv_tenant_id
+                ON methodology_versions (tenant_id, id);
+
+              ALTER TABLE projects
+                ADD CONSTRAINT fk_projects_methodology_version
+                FOREIGN KEY (tenant_id, methodology_version_id)
+                REFERENCES methodology_versions (tenant_id, id)
+                DEFERRABLE INITIALLY DEFERRED;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE projects DROP CONSTRAINT IF EXISTS fk_projects_methodology_version;
+              DROP INDEX IF EXISTS uq_mv_tenant_id;

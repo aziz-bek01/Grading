@@ -62,6 +62,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    TenantContextFilter tenantContextFilter,
                                                    CorsConfigurationSource corsConfigurationSource,
+                                                   org.springframework.beans.factory.ObjectProvider<DevUserAuthorityResolver> devAuthorityResolver,
                                                    Environment env) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -76,8 +77,10 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
 
         // Bind DevAuthFilter ONLY in dev profiles. Its constructor refuses to
-        // start otherwise — belt-and-braces.
-        DevAuthFilter devAuthFilter = devAuthFilterIfActive(env);
+        // start otherwise — belt-and-braces. The DB-backed authority resolver
+        // is wired in when present (local/dev profiles); under the `test`
+        // profile it is absent and the filter falls back to header-only mode.
+        DevAuthFilter devAuthFilter = devAuthFilterIfActive(env, devAuthorityResolver.getIfAvailable());
         if (devAuthFilter != null) {
             http.addFilterBefore(devAuthFilter, UsernamePasswordAuthenticationFilter.class);
         }
@@ -87,10 +90,10 @@ public class SecurityConfig {
         return http.build();
     }
 
-    private DevAuthFilter devAuthFilterIfActive(Environment env) {
+    private DevAuthFilter devAuthFilterIfActive(Environment env, DevUserAuthorityResolver authorityResolver) {
         for (String profile : env.getActiveProfiles()) {
             if (DevAuthFilter.ALLOWED_PROFILES.contains(profile)) {
-                return new DevAuthFilter(env);
+                return new DevAuthFilter(env, authorityResolver);
             }
         }
         return null;

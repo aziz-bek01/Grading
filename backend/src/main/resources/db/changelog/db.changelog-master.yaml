@@ -22,6 +22,9 @@ databaseChangeLog:
       file: control-plane/005-db-role-grants.yaml
       relativeToChangelogFile: true
   - include:
+      file: control-plane/006-audit-logs-partitioning.yaml
+      relativeToChangelogFile: true
+  - include:
       file: seeds/001-default-permissions.yaml
       relativeToChangelogFile: true
   - include:
@@ -40,3 +43,21 @@ databaseChangeLog:
   - include:
       file: tenant-schema/db.changelog-tenant.yaml
       relativeToChangelogFile: true
+
+  # ------------------------------------------------------------------------
+  # Dev-only seed (BE-SEED-003). EVERY changeset inside this file declares
+  # `context: dev`. Production application.yml contexts list does NOT include
+  # `dev`, so Liquibase refuses to apply these rows in production even if
+  # the file is on the classpath.
+  # ------------------------------------------------------------------------
+  - include:
+      file: seeds-dev/001-dev-seed-tenants.yaml
+      relativeToChangelogFile: true
+      context: dev
+  # Dev-only methodology + organization + positions + evaluations seed.
+  # Codes match frontend MSW fixtures so the real API and the mock layer
+  # surface identical demo data (BE-SEED-004).
+  - include:
+      file: seeds-dev/002-dev-seed-methodology.yaml
+      relativeToChangelogFile: true
+      context: dev

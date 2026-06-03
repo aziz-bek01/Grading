@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchProject, fetchWorkflowProgress, projectKeys } from '../api/projectApi';
+import { fetchProject, projectKeys } from '../api/projectApi';
 
 export function useProject(id: string | undefined) {
   return useQuery({
@@ -9,10 +9,6 @@ export function useProject(id: string | undefined) {
   });
 }
 
-export function useWorkflowProgress(projectId: string | undefined) {
-  return useQuery({
-    queryKey: projectId ? projectKeys.workflowProgress(projectId) : ['projects', 'workflow-progress', null],
-    queryFn: () => fetchWorkflowProgress(projectId!),
-    enabled: !!projectId,
-  });
-}
+// Backwards-compat re-export so existing callers don't break — new code should
+// import from `features/workflow/hooks/useWorkflowProgress` directly.
+export { useWorkflowProgress } from '@/features/workflow/hooks/useWorkflowProgress';

@@ -1,0 +1,39 @@
+# Dev profile — extends `local` semantics but is the canonical alias used by
+# CI smoke jobs and the Maven `dev` profile (`./mvnw clean verify -Pdev`).
+#
+# All datasource defaults match application-local.yml; the only meaningful
+# difference is the explicit inclusion of the `dev` Liquibase context so the
+# BE-SEED-003 demo tenants (ACME, Beta) are bootstrapped.
+#
+# PRODUCTION SAFETY:
+#   - This file is NEVER active in production. Production deployments must
+#     set SPRING_PROFILES_ACTIVE to a non-dev value (e.g. `prod`) AND must
+#     omit the `dev` Liquibase context (the base application.yml already
+#     does — see `spring.liquibase.contexts`).
+#   - DevAuthFilter binds whenever the `dev` profile is active. NEVER
+#     activate this profile in any deployed environment.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/grading_control_db
+    username: grading_app
+    password: grading_app_pwd
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    properties:
+      hibernate:
+        default_schema: public
+  liquibase:
+    default-schema: public
+    contexts: control-plane,seeds,test-roles,mode-shared,dev
+
+logging:
+  level:
+    root: INFO
+    uz.hrlab.grading: DEBUG
+    security.audit: INFO
+
+grading:
+  security:
+    cors:
+      allowed-origins: http://localhost:5173,http://localhost:5174

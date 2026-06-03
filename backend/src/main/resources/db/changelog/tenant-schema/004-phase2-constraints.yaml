@@ -151,6 +151,7 @@ databaseChangeLog:
       labels: mvp1,phase2,security-f206
       changes:
         - sql:
+            dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |
@@ -222,6 +223,7 @@ databaseChangeLog:
       labels: mvp1,phase2,security-f209
       changes:
         - sql:
+            dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |

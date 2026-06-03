@@ -1,0 +1,470 @@
+# Phase 6 — grade_structures + grades + grade_bands tables
+# (database-blueprint §5.2, architecture §15.3 + §15.4).
+#
+# Aggregate root: grade_structures — container with state machine
+#   DRAFT → APPROVED → LOCKED → ARCHIVED. APPROVED + LOCKED are immutable;
+#   any edit must call create-new-version.
+#
+# Aggregate: grades — one row per grade number inside the structure.
+# Aggregate: grade_bands — min/max score range mapping score → grade.
+#
+# Hard constraints:
+#   - unique (tenant, project_id, code) on grade_structures, where project NULL
+#     means global tenant-level template (partial unique index).
+#   - unique (tenant, grade_structure_id, grade_number) on grades.
+#   - min_score <= max_score on grade_bands (CHECK).
+#   - status / gap_policy / structure_type CHECK constraints match domain enums.
+#   - DB triggers (in 014-phase4-style):
+#       prevent_grade_changes_on_locked_structure: rejects INSERT/UPDATE/DELETE
+#         on grades + grade_bands when parent grade_structure.status in
+#         (APPROVED, LOCKED, ARCHIVED).
+#       prevent_grade_structure_status_regression: rejects LOCKED→APPROVED,
+#         ARCHIVED→anything, APPROVED→DRAFT.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-018-create-grade-structures
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase6
+      changes:
+        - createTable:
+            tableName: grade_structures
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: project_id
+                  type: UUID
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description_i18n
+                  type: JSONB
+              - column:
+                  name: structure_type
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version_number
+                  type: INT
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: previous_version_id
+                  type: UUID
+              - column:
+                  name: gap_policy
+                  type: VARCHAR(24)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: approved_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: approved_by
+                  type: UUID
+              - column:
+                  name: locked_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: locked_by
+                  type: UUID
+              - column:
+                  name: archived_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: archived_by
+                  type: UUID
+              # standard audit columns
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE grade_structures
+                ADD CONSTRAINT fk_grade_structures_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE grade_structures
+                ADD CONSTRAINT fk_grade_structures_project
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT;
+              ALTER TABLE grade_structures
+                ADD CONSTRAINT fk_grade_structures_previous
+                FOREIGN KEY (previous_version_id) REFERENCES grade_structures(id);
+              ALTER TABLE grade_structures
+                ADD CONSTRAINT chk_grade_structures_status
+                CHECK (status IN ('DRAFT','APPROVED','LOCKED','ARCHIVED'));
+              ALTER TABLE grade_structures
+                ADD CONSTRAINT chk_grade_structures_type
+                CHECK (structure_type IN ('GRADE_14','GRADE_16','CUSTOM'));
+              ALTER TABLE grade_structures
+                ADD CONSTRAINT chk_grade_structures_gap_policy
+                CHECK (gap_policy IN ('STRICT_NO_GAPS','ALLOW_GAPS_WARN'));
+              ALTER TABLE grade_structures
+                ADD CONSTRAINT chk_grade_structures_version_number
+                CHECK (version_number >= 1);
+
+              CREATE UNIQUE INDEX uq_grade_structures_tenant_project_code
+                ON grade_structures (tenant_id, project_id, code)
+                WHERE project_id IS NOT NULL;
+              CREATE UNIQUE INDEX uq_grade_structures_tenant_global_code
+                ON grade_structures (tenant_id, code)
+                WHERE project_id IS NULL;
+              CREATE INDEX idx_grade_structures_tenant_status
+                ON grade_structures (tenant_id, status);
+              CREATE INDEX idx_grade_structures_tenant_project
+                ON grade_structures (tenant_id, project_id);
+              CREATE INDEX idx_grade_structures_previous_version
+                ON grade_structures (previous_version_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_grade_structures_previous_version;
+              DROP INDEX IF EXISTS idx_grade_structures_tenant_project;
+              DROP INDEX IF EXISTS idx_grade_structures_tenant_status;
+              DROP INDEX IF EXISTS uq_grade_structures_tenant_global_code;
+              DROP INDEX IF EXISTS uq_grade_structures_tenant_project_code;
+        - dropTable:
+            tableName: grade_structures
+
+  - changeSet:
+      id: tenant-018-create-grades
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase6
+      changes:
+        - createTable:
+            tableName: grades
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: grade_structure_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: grade_number
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description_i18n
+                  type: JSONB
+              - column:
+                  name: sort_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              # standard audit columns
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE grades
+                ADD CONSTRAINT fk_grades_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE grades
+                ADD CONSTRAINT fk_grades_structure
+                FOREIGN KEY (grade_structure_id) REFERENCES grade_structures(id)
+                ON DELETE CASCADE;
+              ALTER TABLE grades
+                ADD CONSTRAINT chk_grades_grade_number_positive
+                CHECK (grade_number >= 1);
+
+              CREATE UNIQUE INDEX uq_grades_structure_number
+                ON grades (tenant_id, grade_structure_id, grade_number);
+              CREATE INDEX idx_grades_tenant_structure
+                ON grades (tenant_id, grade_structure_id, sort_order);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_grades_tenant_structure;
+              DROP INDEX IF EXISTS uq_grades_structure_number;
+        - dropTable:
+            tableName: grades
+
+  - changeSet:
+      id: tenant-018-create-grade-bands
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase6
+      changes:
+        - createTable:
+            tableName: grade_bands
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: grade_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: grade_structure_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: min_score
+                  type: NUMERIC(12,4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: max_score
+                  type: NUMERIC(12,4)
+                  constraints:
+                    nullable: false
+              # standard audit columns
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE grade_bands
+                ADD CONSTRAINT fk_grade_bands_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE grade_bands
+                ADD CONSTRAINT fk_grade_bands_grade
+                FOREIGN KEY (grade_id) REFERENCES grades(id)
+                ON DELETE CASCADE;
+              ALTER TABLE grade_bands
+                ADD CONSTRAINT fk_grade_bands_structure
+                FOREIGN KEY (grade_structure_id) REFERENCES grade_structures(id)
+                ON DELETE CASCADE;
+              ALTER TABLE grade_bands
+                ADD CONSTRAINT chk_grade_bands_min_le_max
+                CHECK (min_score <= max_score);
+              ALTER TABLE grade_bands
+                ADD CONSTRAINT chk_grade_bands_min_non_negative
+                CHECK (min_score >= 0);
+
+              CREATE UNIQUE INDEX uq_grade_bands_grade
+                ON grade_bands (tenant_id, grade_id);
+              CREATE INDEX idx_grade_bands_structure_min
+                ON grade_bands (tenant_id, grade_structure_id, min_score);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_grade_bands_structure_min;
+              DROP INDEX IF EXISTS uq_grade_bands_grade;
+        - dropTable:
+            tableName: grade_bands
+
+  - changeSet:
+      id: tenant-018-grade-structure-immutability-triggers
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase6
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- DB-level safeguard #1: prevent grade-structure status regression.
+              -- DRAFT     → APPROVED / ARCHIVED
+              -- APPROVED  → LOCKED / ARCHIVED
+              -- LOCKED    → ARCHIVED
+              -- ARCHIVED  → terminal
+              CREATE OR REPLACE FUNCTION prevent_grade_structure_status_regression()
+              RETURNS trigger AS $$
+              BEGIN
+                IF OLD.status = NEW.status THEN
+                  RETURN NEW;
+                END IF;
+                IF OLD.status = 'ARCHIVED' THEN
+                  RAISE EXCEPTION 'GRADE_STRUCTURE_LOCKED: archived grade structure cannot be modified (id=%)', OLD.id
+                    USING ERRCODE = '23514';
+                END IF;
+                IF OLD.status = 'LOCKED' AND NEW.status NOT IN ('ARCHIVED') THEN
+                  RAISE EXCEPTION 'GRADE_STRUCTURE_LOCKED: locked structure (id=%) can only transition to ARCHIVED, attempted=%', OLD.id, NEW.status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF OLD.status = 'APPROVED' AND NEW.status NOT IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'GRADE_STRUCTURE_LOCKED: approved structure (id=%) cannot regress to %', OLD.id, NEW.status
+                    USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              DROP TRIGGER IF EXISTS trg_grade_structure_status_regression ON grade_structures;
+              CREATE TRIGGER trg_grade_structure_status_regression
+                BEFORE UPDATE OF status ON grade_structures
+                FOR EACH ROW
+                EXECUTE FUNCTION prevent_grade_structure_status_regression();
+
+              -- DB-level safeguard #2: reject grade/grade_band writes when
+              -- parent structure is APPROVED, LOCKED or ARCHIVED.
+              CREATE OR REPLACE FUNCTION prevent_grade_changes_on_locked_structure()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_structure_id UUID;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_structure_id := OLD.grade_structure_id;
+                ELSE
+                  v_structure_id := NEW.grade_structure_id;
+                END IF;
+                SELECT status INTO v_status FROM grade_structures WHERE id = v_structure_id;
+                IF v_status IN ('APPROVED','LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'GRADE_STRUCTURE_LOCKED: cannot modify grades of structure (id=%, status=%)',
+                    v_structure_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              DROP TRIGGER IF EXISTS trg_grades_lock ON grades;
+              CREATE TRIGGER trg_grades_lock
+                BEFORE INSERT OR UPDATE OR DELETE ON grades
+                FOR EACH ROW
+                EXECUTE FUNCTION prevent_grade_changes_on_locked_structure();
+
+              DROP TRIGGER IF EXISTS trg_grade_bands_lock ON grade_bands;
+              CREATE TRIGGER trg_grade_bands_lock
+                BEFORE INSERT OR UPDATE OR DELETE ON grade_bands
+                FOR EACH ROW
+                EXECUTE FUNCTION prevent_grade_changes_on_locked_structure();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_grade_bands_lock ON grade_bands;
+              DROP TRIGGER IF EXISTS trg_grades_lock ON grades;
+              DROP TRIGGER IF EXISTS trg_grade_structure_status_regression ON grade_structures;
+              DROP FUNCTION IF EXISTS prevent_grade_changes_on_locked_structure();
+              DROP FUNCTION IF EXISTS prevent_grade_structure_status_regression();
+
+  - changeSet:
+      id: tenant-018-evaluations-grade-band-fk
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase6
+      changes:
+        - sql:
+            sql: |
+              -- Phase 5 left evaluations.grade_band_id nullable + unreferenced.
+              -- Phase 6 introduces grade_bands — add the FK now.
+              ALTER TABLE evaluations
+                ADD CONSTRAINT fk_evaluations_grade_band
+                FOREIGN KEY (grade_band_id) REFERENCES grade_bands(id)
+                ON DELETE SET NULL;
+              CREATE INDEX idx_evaluations_grade_band
+                ON evaluations (tenant_id, grade_band_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_evaluations_grade_band;
+              ALTER TABLE evaluations DROP CONSTRAINT IF EXISTS fk_evaluations_grade_band;

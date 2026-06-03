@@ -22,7 +22,8 @@ export const DepartmentCreateSchema = z.object({
     .min(1)
     .max(32)
     .regex(/^[A-Z0-9][A-Z0-9-]*$/u, 'code'),
-  name: localizedStringSchema,
+  /** Backend snake_case contract — POST body field. */
+  name_i18n: localizedStringSchema,
   type: z.enum(['BRANCH', 'DEPARTMENT', 'DIVISION', 'UNIT']),
 });
 

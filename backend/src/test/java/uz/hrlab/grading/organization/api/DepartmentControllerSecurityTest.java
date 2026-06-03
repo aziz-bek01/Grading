@@ -123,9 +123,9 @@ class DepartmentControllerSecurityTest {
                 {
                   "tenantId": "00000000-0000-0000-0000-000000000001",
                   "tenant_id": "00000000-0000-0000-0000-000000000002",
-                  "projectId": "%s",
+                  "project_id": "%s",
                   "code": "HR",
-                  "nameI18n": {"ru-RU": "Отдел"},
+                  "name_i18n": {"ru-RU": "Отдел"},
                   "type": "DEPARTMENT"
                 }
                 """.formatted(UUID.randomUUID());
@@ -169,7 +169,7 @@ class DepartmentControllerSecurityTest {
         mvc.perform(patch("/api/v1/departments/{id}", UUID.randomUUID())
                         .with(jwt().authorities(() -> "ORG_READ"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"nameI18n\":{\"ru-RU\":\"X\"}}"))
+                        .content("{\"name_i18n\":{\"ru-RU\":\"X\"}}"))
                 .andExpect(status().isForbidden());
     }
 

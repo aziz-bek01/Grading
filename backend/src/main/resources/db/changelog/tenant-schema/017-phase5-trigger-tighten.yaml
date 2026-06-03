@@ -1,0 +1,112 @@
+# Phase 5 remediation D-501 — tighten the evaluation_scores defense trigger.
+#
+# Background:
+#   Changelog 015 declared the function
+#   `prevent_score_changes_on_locked_evaluation()` to block INSERT/UPDATE/DELETE
+#   on evaluation_scores when parent.status IN (LOCKED, ARCHIVED). APPROVED was
+#   intentionally relaxed at DB level so the calibration use case could write
+#   through the score row in the same transaction as updating its `is_manually_adjusted`
+#   marker. The trade-off: a developer who bypasses CalibrateEvaluationScoreUseCase
+#   could mutate scores on an APPROVED evaluation with no DB-side guard.
+#
+# Fix (D-501):
+#   Replace the trigger function with a version that additionally checks a
+#   transaction-local session variable `app.calibration_in_progress`.
+#     - parent IN ('LOCKED','ARCHIVED')         => hard reject (any op)
+#     - parent = 'APPROVED' AND session flag != 'true'        => reject
+#     - parent = 'APPROVED' AND session flag = 'true' AND op in (INSERT,DELETE)
+#                                              => reject (calibration only updates)
+#     - parent = 'APPROVED' AND session flag = 'true' AND op = UPDATE  => allow
+#     - otherwise allow
+#
+#   CalibrateEvaluationScoreUseCase executes `SET LOCAL app.calibration_in_progress = 'true'`
+#   on the active connection BEFORE saving the calibrated row; the LOCAL scope
+#   means the flag resets at commit/rollback so it cannot leak across requests
+#   in a pooled connection.
+#
+# Rollback: restore the relaxed-APPROVED 015 trigger body.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-017-phase5-tighten-score-trigger
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase5,remediation,d-501
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION prevent_score_changes_on_locked_evaluation()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_evaluation_id UUID;
+                v_calibration_mode TEXT;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_evaluation_id := OLD.evaluation_id;
+                ELSE
+                  v_evaluation_id := NEW.evaluation_id;
+                END IF;
+                SELECT status INTO v_status
+                  FROM evaluations WHERE id = v_evaluation_id;
+                -- Read transaction-local flag set by CalibrateEvaluationScoreUseCase
+                -- via `SET LOCAL app.calibration_in_progress = 'true'`. The
+                -- second argument `missing_ok = true` returns NULL if the GUC
+                -- has never been set in the current session.
+                v_calibration_mode := current_setting('app.calibration_in_progress', true);
+
+                -- LOCKED + ARCHIVED: hard block, regardless of session flag.
+                IF v_status IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: cannot modify scores of evaluation (id=%, status=%)',
+                    v_evaluation_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+
+                -- APPROVED: only allow UPDATE via calibration session flag.
+                IF v_status = 'APPROVED' THEN
+                  IF v_calibration_mode IS DISTINCT FROM 'true' THEN
+                    RAISE EXCEPTION 'EVALUATION_APPROVED_PROTECTED: scores on APPROVED evaluation (id=%) can only change via calibration use case',
+                      v_evaluation_id
+                      USING ERRCODE = '23514';
+                  END IF;
+                  IF TG_OP IN ('INSERT','DELETE') THEN
+                    RAISE EXCEPTION 'EVALUATION_APPROVED_PROTECTED: only UPDATE allowed on APPROVED evaluation scores (op=%, id=%)',
+                      TG_OP, v_evaluation_id
+                      USING ERRCODE = '23514';
+                  END IF;
+                END IF;
+
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION prevent_score_changes_on_locked_evaluation()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_evaluation_id UUID;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_evaluation_id := OLD.evaluation_id;
+                ELSE
+                  v_evaluation_id := NEW.evaluation_id;
+                END IF;
+                SELECT status INTO v_status FROM evaluations WHERE id = v_evaluation_id;
+                IF v_status IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: cannot modify scores of evaluation (id=%, status=%)',
+                    v_evaluation_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;

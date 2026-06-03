@@ -1,0 +1,65 @@
+# Phase 5 — seed CALIBRATION_EDIT + EVALUATION_LOCK permissions.
+#
+# EVALUATION_READ / EVALUATION_EDIT / EVALUATION_APPROVE were already seeded
+# in seeds/001-default-permissions.yaml + 004-default-role-permissions.yaml.
+# Phase 5 introduces:
+#   - CALIBRATION_EDIT — required for manual factor-score calibration on
+#     SUBMITTED / APPROVED evaluations. Granted to HRLab Super Admin, PM, and
+#     Client HR Director (the approval authority).
+#   - EVALUATION_LOCK — required to lock an APPROVED evaluation. Granted to
+#     HRLab Super Admin and HRLab Project Manager (matches METHODOLOGY_LOCK
+#     authority).
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-016-seed-calibration-and-lock-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp1,phase5
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'CALIBRATION_EDIT', 'EVALUATION', 'CALIBRATE',
+                 'Apply manual calibration to an evaluation score (Phase 5)'),
+                (gen_random_uuid(), 'EVALUATION_LOCK', 'EVALUATION', 'LOCK',
+                 'Lock an approved evaluation against further changes (Phase 5)')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions WHERE code IN ('CALIBRATION_EDIT','EVALUATION_LOCK');
+
+  - changeSet:
+      id: tenant-016-seed-calibration-and-lock-role-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp1,phase5
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              WITH role_perm_map(role_code, permission_code) AS (
+                VALUES
+                  ('HRLAB_SUPER_ADMIN',     'CALIBRATION_EDIT'),
+                  ('HRLAB_PROJECT_MANAGER', 'CALIBRATION_EDIT'),
+                  ('CLIENT_HR_DIRECTOR',    'CALIBRATION_EDIT'),
+                  ('HRLAB_SUPER_ADMIN',     'EVALUATION_LOCK'),
+                  ('HRLAB_PROJECT_MANAGER', 'EVALUATION_LOCK')
+              )
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM role_perm_map m
+                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.permissions p ON p.code = m.permission_code
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p
+                WHERE rp.permission_id = p.id
+                  AND p.code IN ('CALIBRATION_EDIT','EVALUATION_LOCK');

@@ -1,0 +1,315 @@
+# Phase 4 — factors + factor_levels tables (database-blueprint §5.2,
+# architecture §9 Domain Model).
+#
+# Belongs to a MethodologyVersion. Immutable once parent version is
+# APPROVED / LOCKED / ARCHIVED — enforced both at the service layer and at the
+# DB level by trg_factor_immutability_on_locked_version / trg_level_immutability_on_locked_version.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-011-create-factors
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase4
+      changes:
+        - createTable:
+            tableName: factors
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: methodology_version_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description_i18n
+                  type: JSONB
+              - column:
+                  name: weight
+                  type: NUMERIC(12,4)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: max_points
+                  type: NUMERIC(12,4)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sort_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: required
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE factors
+                ADD CONSTRAINT fk_factors_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE factors
+                ADD CONSTRAINT fk_factors_methodology_version
+                FOREIGN KEY (methodology_version_id) REFERENCES methodology_versions(id)
+                ON DELETE RESTRICT;
+              ALTER TABLE factors
+                ADD CONSTRAINT chk_factors_weight_non_negative
+                CHECK (weight >= 0);
+              ALTER TABLE factors
+                ADD CONSTRAINT chk_factors_max_points_non_negative
+                CHECK (max_points >= 0);
+              ALTER TABLE factors
+                ADD CONSTRAINT chk_factors_sort_order_positive
+                CHECK (sort_order >= 0);
+
+              CREATE UNIQUE INDEX uq_factors_version_code
+                ON factors (tenant_id, methodology_version_id, code);
+              CREATE UNIQUE INDEX uq_factors_version_sort_order
+                ON factors (tenant_id, methodology_version_id, sort_order);
+              CREATE INDEX idx_factors_version
+                ON factors (tenant_id, methodology_version_id, sort_order);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_factors_version;
+              DROP INDEX IF EXISTS uq_factors_version_sort_order;
+              DROP INDEX IF EXISTS uq_factors_version_code;
+        - dropTable:
+            tableName: factors
+
+  - changeSet:
+      id: tenant-011-create-factor-levels
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase4
+      changes:
+        - createTable:
+            tableName: factor_levels
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: factor_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: level_order
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: points
+                  type: NUMERIC(12,4)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: scale_value
+                  type: NUMERIC(12,4)
+              - column:
+                  name: label_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description_i18n
+                  type: JSONB
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE factor_levels
+                ADD CONSTRAINT fk_factor_levels_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE factor_levels
+                ADD CONSTRAINT fk_factor_levels_factor
+                FOREIGN KEY (factor_id) REFERENCES factors(id)
+                ON DELETE CASCADE;
+              ALTER TABLE factor_levels
+                ADD CONSTRAINT chk_factor_levels_level_positive
+                CHECK (level_order >= 1);
+              ALTER TABLE factor_levels
+                ADD CONSTRAINT chk_factor_levels_points_non_negative
+                CHECK (points >= 0);
+
+              CREATE UNIQUE INDEX uq_factor_levels_factor_code
+                ON factor_levels (tenant_id, factor_id, code);
+              CREATE UNIQUE INDEX uq_factor_levels_factor_level_order
+                ON factor_levels (tenant_id, factor_id, level_order);
+              CREATE INDEX idx_factor_levels_factor
+                ON factor_levels (tenant_id, factor_id, level_order);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_factor_levels_factor;
+              DROP INDEX IF EXISTS uq_factor_levels_factor_level_order;
+              DROP INDEX IF EXISTS uq_factor_levels_factor_code;
+        - dropTable:
+            tableName: factor_levels
+
+  - changeSet:
+      id: tenant-011-factor-immutability-trigger
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase4
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- DB-level safeguard: prevent INSERT/UPDATE/DELETE on factors or
+              -- factor_levels rows whose parent methodology_version is
+              -- APPROVED / LOCKED / ARCHIVED.  Defence-in-depth — the service
+              -- layer (MethodologyVersionImmutabilityPolicy) is the primary
+              -- gate; this trigger guarantees the rule survives bug-for-bug
+              -- refactors or direct DB writes.
+              CREATE OR REPLACE FUNCTION prevent_locked_factor_changes()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_version_id UUID;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_version_id := OLD.methodology_version_id;
+                ELSE
+                  v_version_id := NEW.methodology_version_id;
+                END IF;
+                SELECT status INTO v_status FROM methodology_versions WHERE id = v_version_id;
+                IF v_status IN ('APPROVED','LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: cannot modify factors of methodology_version (id=%, status=%)', v_version_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              DROP TRIGGER IF EXISTS trg_factor_immutability_on_locked_version ON factors;
+              CREATE TRIGGER trg_factor_immutability_on_locked_version
+                BEFORE INSERT OR UPDATE OR DELETE ON factors
+                FOR EACH ROW
+                EXECUTE FUNCTION prevent_locked_factor_changes();
+
+              CREATE OR REPLACE FUNCTION prevent_locked_factor_level_changes()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_factor_id UUID;
+                v_version_id UUID;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_factor_id := OLD.factor_id;
+                ELSE
+                  v_factor_id := NEW.factor_id;
+                END IF;
+                SELECT methodology_version_id INTO v_version_id FROM factors WHERE id = v_factor_id;
+                IF v_version_id IS NULL THEN
+                  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                  RETURN NEW;
+                END IF;
+                SELECT status INTO v_status FROM methodology_versions WHERE id = v_version_id;
+                IF v_status IN ('APPROVED','LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: cannot modify factor_levels of methodology_version (id=%, status=%)', v_version_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              DROP TRIGGER IF EXISTS trg_level_immutability_on_locked_version ON factor_levels;
+              CREATE TRIGGER trg_level_immutability_on_locked_version
+                BEFORE INSERT OR UPDATE OR DELETE ON factor_levels
+                FOR EACH ROW
+                EXECUTE FUNCTION prevent_locked_factor_level_changes();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_level_immutability_on_locked_version ON factor_levels;
+              DROP TRIGGER IF EXISTS trg_factor_immutability_on_locked_version ON factors;
+              DROP FUNCTION IF EXISTS prevent_locked_factor_level_changes();
+              DROP FUNCTION IF EXISTS prevent_locked_factor_changes();

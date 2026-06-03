@@ -1,0 +1,85 @@
+# MVP 2 Phase 2 — export_jobs table (integration-blueprint §9).
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-025-create-export-jobs
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase2
+      changes:
+        - createTable:
+            tableName: export_jobs
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,             type: UUID,        constraints: { nullable: false } }
+              - column: { name: project_id,            type: UUID,        constraints: { nullable: false } }
+              - column: { name: export_type,           type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: format,                type: VARCHAR(16), constraints: { nullable: false } }
+              - column: { name: status,                type: VARCHAR(24), constraints: { nullable: false } }
+              - column: { name: requested_by,          type: UUID,        constraints: { nullable: false } }
+              - column: { name: requested_at,          type: TIMESTAMPTZ, constraints: { nullable: false } }
+              - column: { name: generated_at,          type: TIMESTAMPTZ }
+              - column: { name: expires_at,            type: TIMESTAMPTZ }
+              - column: { name: downloaded_at,         type: TIMESTAMPTZ }
+              - column: { name: filter_params,         type: TEXT }
+              - column: { name: file_storage_key,      type: VARCHAR(512) }
+              - column: { name: file_size,             type: BIGINT }
+              - column: { name: file_checksum,         type: VARCHAR(128) }
+              - column: { name: row_count,             type: INT }
+              - column:
+                  name: contains_salary_data
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints: { nullable: false }
+              - column:
+                  name: contains_personal_data
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints: { nullable: false }
+              - column: { name: trace_id,              type: VARCHAR(64) }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addForeignKeyConstraint:
+            baseTableName: export_jobs
+            baseColumnNames: project_id
+            referencedTableName: projects
+            referencedColumnNames: id
+            constraintName: fk_export_jobs_project
+            onDelete: CASCADE
+        - createIndex:
+            tableName: export_jobs
+            indexName: idx_export_jobs_tenant_project_status
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: project_id } }
+              - { column: { name: status } }
+              - { column: { name: requested_at } }
+        - sql:
+            sql: |
+              ALTER TABLE export_jobs ADD CONSTRAINT chk_export_jobs_status
+                CHECK (status IN ('REQUESTED','QUEUED','GENERATING','GENERATED','FAILED',
+                                  'DOWNLOADED','EXPIRED','CANCELLED'));
+              ALTER TABLE export_jobs ADD CONSTRAINT chk_export_jobs_format
+                CHECK (format IN ('XLSX','CSV','PDF','DOCX'));
+              ALTER TABLE export_jobs ADD CONSTRAINT chk_export_jobs_type
+                CHECK (export_type IN ('POSITION_CATALOG','JOB_PROFILES','METHODOLOGY',
+                                       'EVALUATION_MATRIX','GRADE_STRUCTURE','GRADE_PYRAMID',
+                                       'SALARY_RANGES','RED_GREEN_CIRCLE','COMPENSATION_SCENARIOS',
+                                       'REPORT_EXECUTIVE'));
+      rollback:
+        - dropTable: { tableName: export_jobs }

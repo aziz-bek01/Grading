@@ -40,6 +40,7 @@ databaseChangeLog:
         NOLOGIN roles. devops-sre attaches LOGIN + password per environment.
       changes:
         - sql:
+            dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |
@@ -58,6 +59,7 @@ databaseChangeLog:
               $$;
       rollback:
         - sql:
+            dbms: postgresql
             splitStatements: false
             sql: |
               DO $$
@@ -258,6 +260,7 @@ databaseChangeLog:
         NEVER include `test-roles` in production Liquibase contexts.
       changes:
         - sql:
+            dbms: postgresql
             splitStatements: false
             sql: |
               DO $$
@@ -269,6 +272,7 @@ databaseChangeLog:
               $$;
       rollback:
         - sql:
+            dbms: postgresql
             splitStatements: false
             sql: |
               DO $$

@@ -1,0 +1,516 @@
+# Phase 5 — evaluations + evaluation_scores + evaluation_calibration_events
+# (architecture §9 + §15 Scoring Engine, database-blueprint §5.3, PRD Phase 5).
+#
+# Aggregate root: evaluations
+#   - state machine: DRAFT / INCOMPLETE / COMPLETE / SUBMITTED / APPROVED /
+#     LOCKED / ARCHIVED (transition policy enforced at app layer + DB trigger)
+#   - rawTotalScore NUMERIC(12,4) — official score; displayedTotalScore
+#     NUMERIC(12,2) — rounded for UI; grade assignment uses raw score per §15.4
+#   - one active evaluation per (tenant, project, position, methodology_version)
+#     enforced by a partial unique index (excludes ARCHIVED)
+#
+# Aggregate: evaluation_scores
+#   - one row per (evaluation, factor) — idempotent upsert
+#   - rawFactorScore NUMERIC(12,4) — computed by EvaluationScoringEngine
+#   - manual adjustment fields (isManuallyAdjusted, originalFactorScore,
+#     adjustmentReason, adjustedBy, adjustedAt) — calibration-event audit
+#
+# Aggregate: evaluation_calibration_events — append-only history of every
+#   manual adjustment (CALIBRATION_EDIT permission + reason required).
+#
+# DB triggers (defence-in-depth):
+#   - trg_evaluation_status_immutability: LOCKED can only go to ARCHIVED;
+#     ARCHIVED terminal; APPROVED cannot regress to SUBMITTED.
+#   - trg_evaluation_score_lock: prevents INSERT/UPDATE/DELETE on
+#     evaluation_scores when parent evaluation.status IN (LOCKED, ARCHIVED).
+#     APPROVED still allows updates because the calibration use case writes
+#     to evaluation_scores directly; the app-layer EvaluationImmutabilityPolicy
+#     gates APPROVED. (Trade-off: simpler trigger; calibration covered by
+#     app + audit.)
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-015-create-evaluations
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase5
+      changes:
+        - createTable:
+            tableName: evaluations
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: project_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: position_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: methodology_version_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: evaluator_user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: raw_total_score
+                  type: NUMERIC(12,4)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: displayed_total_score
+                  type: NUMERIC(12,2)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              # Phase 6 will populate; Phase 5 leaves null.
+              - column:
+                  name: grade_band_id
+                  type: UUID
+              - column:
+                  name: assigned_grade_number
+                  type: INT
+              - column:
+                  name: submitted_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: submitted_by
+                  type: UUID
+              - column:
+                  name: approved_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: approved_by
+                  type: UUID
+              - column:
+                  name: locked_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: locked_by
+                  type: UUID
+              - column:
+                  name: archived_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: archived_by
+                  type: UUID
+              # standard audit columns
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE evaluations
+                ADD CONSTRAINT fk_evaluations_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE evaluations
+                ADD CONSTRAINT fk_evaluations_project
+                FOREIGN KEY (project_id) REFERENCES projects(id)
+                ON DELETE RESTRICT;
+              ALTER TABLE evaluations
+                ADD CONSTRAINT fk_evaluations_position
+                FOREIGN KEY (position_id) REFERENCES positions(id)
+                ON DELETE RESTRICT;
+              ALTER TABLE evaluations
+                ADD CONSTRAINT fk_evaluations_methodology_version
+                FOREIGN KEY (methodology_version_id) REFERENCES methodology_versions(id)
+                ON DELETE RESTRICT;
+              -- evaluator references public.users — defence-in-depth, no cascade.
+              ALTER TABLE evaluations
+                ADD CONSTRAINT fk_evaluations_evaluator
+                FOREIGN KEY (evaluator_user_id) REFERENCES public.users(id)
+                ON DELETE RESTRICT;
+              ALTER TABLE evaluations
+                ADD CONSTRAINT chk_evaluations_status
+                CHECK (status IN ('DRAFT','INCOMPLETE','COMPLETE','SUBMITTED','APPROVED','LOCKED','ARCHIVED'));
+              ALTER TABLE evaluations
+                ADD CONSTRAINT chk_evaluations_raw_total_non_negative
+                CHECK (raw_total_score >= 0);
+              ALTER TABLE evaluations
+                ADD CONSTRAINT chk_evaluations_displayed_total_non_negative
+                CHECK (displayed_total_score >= 0);
+
+              -- One active evaluation per (tenant, project, position, methodology_version).
+              -- ARCHIVED rows allowed to accumulate as history.
+              CREATE UNIQUE INDEX uq_evaluations_active_per_position_version
+                ON evaluations (tenant_id, project_id, position_id, methodology_version_id)
+                WHERE status <> 'ARCHIVED';
+
+              CREATE INDEX idx_evaluations_tenant_project_status
+                ON evaluations (tenant_id, project_id, status);
+              CREATE INDEX idx_evaluations_tenant_position
+                ON evaluations (tenant_id, position_id);
+              CREATE INDEX idx_evaluations_tenant_evaluator
+                ON evaluations (tenant_id, evaluator_user_id);
+              CREATE INDEX idx_evaluations_mv
+                ON evaluations (tenant_id, methodology_version_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_evaluations_mv;
+              DROP INDEX IF EXISTS idx_evaluations_tenant_evaluator;
+              DROP INDEX IF EXISTS idx_evaluations_tenant_position;
+              DROP INDEX IF EXISTS idx_evaluations_tenant_project_status;
+              DROP INDEX IF EXISTS uq_evaluations_active_per_position_version;
+        - dropTable:
+            tableName: evaluations
+
+  - changeSet:
+      id: tenant-015-create-evaluation-scores
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase5
+      changes:
+        - createTable:
+            tableName: evaluation_scores
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: evaluation_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: factor_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: factor_level_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: raw_factor_score
+                  type: NUMERIC(12,4)
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: comment_text
+                  type: TEXT
+              - column:
+                  name: is_manually_adjusted
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: original_factor_score
+                  type: NUMERIC(12,4)
+              - column:
+                  name: adjusted_by_user_id
+                  type: UUID
+              - column:
+                  name: adjusted_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: adjustment_reason
+                  type: TEXT
+              # standard audit columns
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE evaluation_scores
+                ADD CONSTRAINT fk_evaluation_scores_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE evaluation_scores
+                ADD CONSTRAINT fk_evaluation_scores_evaluation
+                FOREIGN KEY (evaluation_id) REFERENCES evaluations(id)
+                ON DELETE CASCADE;
+              ALTER TABLE evaluation_scores
+                ADD CONSTRAINT fk_evaluation_scores_factor
+                FOREIGN KEY (factor_id) REFERENCES factors(id)
+                ON DELETE RESTRICT;
+              ALTER TABLE evaluation_scores
+                ADD CONSTRAINT fk_evaluation_scores_factor_level
+                FOREIGN KEY (factor_level_id) REFERENCES factor_levels(id)
+                ON DELETE RESTRICT;
+              ALTER TABLE evaluation_scores
+                ADD CONSTRAINT chk_evaluation_scores_raw_non_negative
+                CHECK (raw_factor_score >= 0);
+              ALTER TABLE evaluation_scores
+                ADD CONSTRAINT chk_evaluation_scores_original_non_negative
+                CHECK (original_factor_score IS NULL OR original_factor_score >= 0);
+              -- Manually-adjusted rows MUST carry the calibration metadata.
+              ALTER TABLE evaluation_scores
+                ADD CONSTRAINT chk_evaluation_scores_calibration_metadata
+                CHECK (
+                  (is_manually_adjusted = false)
+                  OR (is_manually_adjusted = true
+                      AND original_factor_score IS NOT NULL
+                      AND adjusted_by_user_id IS NOT NULL
+                      AND adjusted_at IS NOT NULL
+                      AND adjustment_reason IS NOT NULL
+                      AND length(trim(adjustment_reason)) >= 20)
+                );
+
+              CREATE UNIQUE INDEX uq_evaluation_scores_per_factor
+                ON evaluation_scores (tenant_id, evaluation_id, factor_id);
+              CREATE INDEX idx_evaluation_scores_evaluation
+                ON evaluation_scores (tenant_id, evaluation_id);
+              CREATE INDEX idx_evaluation_scores_factor
+                ON evaluation_scores (tenant_id, factor_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_evaluation_scores_factor;
+              DROP INDEX IF EXISTS idx_evaluation_scores_evaluation;
+              DROP INDEX IF EXISTS uq_evaluation_scores_per_factor;
+        - dropTable:
+            tableName: evaluation_scores
+
+  - changeSet:
+      id: tenant-015-create-evaluation-calibration-events
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase5
+      changes:
+        - createTable:
+            tableName: evaluation_calibration_events
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: evaluation_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: factor_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: original_score
+                  type: NUMERIC(12,4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: adjusted_score
+                  type: NUMERIC(12,4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: delta
+                  type: NUMERIC(12,4)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reason
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: decided_by
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: decided_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+        - sql:
+            sql: |
+              ALTER TABLE evaluation_calibration_events
+                ADD CONSTRAINT fk_eval_calib_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE evaluation_calibration_events
+                ADD CONSTRAINT fk_eval_calib_evaluation
+                FOREIGN KEY (evaluation_id) REFERENCES evaluations(id)
+                ON DELETE CASCADE;
+              ALTER TABLE evaluation_calibration_events
+                ADD CONSTRAINT fk_eval_calib_factor
+                FOREIGN KEY (factor_id) REFERENCES factors(id)
+                ON DELETE RESTRICT;
+              ALTER TABLE evaluation_calibration_events
+                ADD CONSTRAINT chk_eval_calib_reason_length
+                CHECK (length(trim(reason)) >= 20);
+
+              CREATE INDEX idx_eval_calib_evaluation
+                ON evaluation_calibration_events (tenant_id, evaluation_id, decided_at DESC);
+              CREATE INDEX idx_eval_calib_factor
+                ON evaluation_calibration_events (tenant_id, factor_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_eval_calib_factor;
+              DROP INDEX IF EXISTS idx_eval_calib_evaluation;
+        - dropTable:
+            tableName: evaluation_calibration_events
+
+  - changeSet:
+      id: tenant-015-evaluation-status-immutability-trigger
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,phase5
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- DB-level safeguard: evaluation status state machine.
+              --   DRAFT/INCOMPLETE/COMPLETE  ↔ each other (recomputed automatically)
+              --   COMPLETE          → SUBMITTED
+              --   SUBMITTED         → APPROVED / COMPLETE (request-changes)
+              --   APPROVED          → LOCKED / ARCHIVED
+              --   LOCKED            → ARCHIVED only
+              --   ARCHIVED          terminal
+              CREATE OR REPLACE FUNCTION enforce_evaluation_lock_immutability()
+              RETURNS trigger AS $$
+              BEGIN
+                IF OLD.status = NEW.status THEN
+                  RETURN NEW;
+                END IF;
+                IF OLD.status = 'ARCHIVED' THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: archived evaluation cannot be modified (id=%)', OLD.id
+                    USING ERRCODE = '23514';
+                END IF;
+                IF OLD.status = 'LOCKED' AND NEW.status NOT IN ('ARCHIVED') THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: locked evaluation (id=%) can only transition to ARCHIVED, attempted=%',
+                    OLD.id, NEW.status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF OLD.status = 'APPROVED' AND NEW.status NOT IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: approved evaluation (id=%) cannot regress to %',
+                    OLD.id, NEW.status
+                    USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              DROP TRIGGER IF EXISTS trg_evaluation_status_immutability ON evaluations;
+              CREATE TRIGGER trg_evaluation_status_immutability
+                BEFORE UPDATE OF status ON evaluations
+                FOR EACH ROW
+                EXECUTE FUNCTION enforce_evaluation_lock_immutability();
+
+              -- evaluation_scores immutability: prevent any modification when
+              -- parent evaluation.status IN (LOCKED, ARCHIVED). APPROVED still
+              -- allows score updates so the calibration use case can write
+              -- through; the app-layer EvaluationImmutabilityPolicy gates
+              -- regular EDITs on APPROVED.
+              CREATE OR REPLACE FUNCTION prevent_score_changes_on_locked_evaluation()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_evaluation_id UUID;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_evaluation_id := OLD.evaluation_id;
+                ELSE
+                  v_evaluation_id := NEW.evaluation_id;
+                END IF;
+                SELECT status INTO v_status FROM evaluations WHERE id = v_evaluation_id;
+                IF v_status IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: cannot modify scores of evaluation (id=%, status=%)',
+                    v_evaluation_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              DROP TRIGGER IF EXISTS trg_evaluation_score_lock ON evaluation_scores;
+              CREATE TRIGGER trg_evaluation_score_lock
+                BEFORE INSERT OR UPDATE OR DELETE ON evaluation_scores
+                FOR EACH ROW
+                EXECUTE FUNCTION prevent_score_changes_on_locked_evaluation();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_evaluation_score_lock ON evaluation_scores;
+              DROP TRIGGER IF EXISTS trg_evaluation_status_immutability ON evaluations;
+              DROP FUNCTION IF EXISTS prevent_score_changes_on_locked_evaluation();
+              DROP FUNCTION IF EXISTS enforce_evaluation_lock_immutability();

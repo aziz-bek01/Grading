@@ -88,4 +88,5 @@ public class TenantJpaEntity extends AuditedJpaEntity {
 
     public void setStatus(TenantStatus status) { this.status = status; }
     public void setDisplayName(String displayName) { this.displayName = displayName; }
+    public void setDefaultLocale(String defaultLocale) { this.defaultLocale = defaultLocale; }
 }

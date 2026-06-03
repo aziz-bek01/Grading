@@ -39,6 +39,12 @@ import java.util.stream.Collectors;
  *
  * <p>This filter intentionally NEVER reads any cryptographic material — it is
  * pure header→context plumbing for integration tests.
+ *
+ * <p>BE-DEVAUTH-002: when {@code X-Dev-Roles}/{@code X-Dev-Permissions} are
+ * absent (the normal frontend dev flow — it only sends user + tenant), the
+ * filter delegates to {@link DevUserAuthorityResolver} to expand the user's
+ * real roles + permissions from the database, so business endpoints stop
+ * 403-ing. Explicit override headers still win for deterministic tests.
  */
 public class DevAuthFilter extends OncePerRequestFilter {
 
@@ -54,7 +60,20 @@ public class DevAuthFilter extends OncePerRequestFilter {
     /** Profiles where DevAuthFilter may run. Production profiles must NEVER appear here. */
     public static final Set<String> ALLOWED_PROFILES = Set.of("local", "test", "dev");
 
+    /**
+     * Optional DB-backed RBAC resolver. {@code null} in pure unit tests
+     * (the {@link #DevAuthFilter(Environment)} constructor) where there is no
+     * Spring context — in that case the filter falls back to header-only
+     * behaviour exactly as before.
+     */
+    private final DevUserAuthorityResolver authorityResolver;
+
+    /** Header-only constructor — used by unit tests with no Spring context. */
     public DevAuthFilter(Environment env) {
+        this(env, null);
+    }
+
+    public DevAuthFilter(Environment env, DevUserAuthorityResolver authorityResolver) {
         if (env == null) {
             throw new IllegalStateException("DevAuthFilter: environment is null — refusing to start");
         }
@@ -64,6 +83,7 @@ public class DevAuthFilter extends OncePerRequestFilter {
             throw new IllegalStateException(
                     "DevAuthFilter must only run under " + ALLOWED_PROFILES + " profiles; active=" + active);
         }
+        this.authorityResolver = authorityResolver;
     }
 
     @Override
@@ -79,14 +99,37 @@ public class DevAuthFilter extends OncePerRequestFilter {
                 response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid X-Dev-User");
                 return;
             }
+            UUID tenantId = parseUuid(request.getHeader(HEADER_TENANT));
+
+            // Header values first — explicit overrides keep integration tests
+            // deterministic and let a developer simulate a narrower scope.
+            Set<String> roles = parseStringSet(request.getHeader(HEADER_ROLES));
+            Set<String> permissions = parseStringSet(request.getHeader(HEADER_PERMISSIONS));
+            boolean salary = Boolean.parseBoolean(request.getHeader(HEADER_SALARY));
+
+            // BE-DEVAUTH-002: if no roles/permissions were supplied via headers
+            // (the normal frontend dev flow), expand the user's real RBAC from
+            // the database so business endpoints stop returning PERMISSION_DENIED.
+            if (authorityResolver != null && roles.isEmpty() && permissions.isEmpty() && tenantId != null) {
+                DevUserAuthorityResolver.DevAuthority authority =
+                        authorityResolver.resolve(userId, tenantId);
+                roles = authority.roleCodes();
+                permissions = authority.permissionCodes();
+                // Salary header still takes precedence when explicitly set true;
+                // otherwise fall back to the membership's salary_data_permission.
+                if (request.getHeader(HEADER_SALARY) == null) {
+                    salary = authority.salaryPermission();
+                }
+            }
+
             TenantContext ctx = new TenantContext(
                     userId,
-                    parseUuid(request.getHeader(HEADER_TENANT)),
+                    tenantId,
                     parseUuidSet(request.getHeader(HEADER_PROJECTS)),
-                    parseStringSet(request.getHeader(HEADER_ROLES)),
-                    parseStringSet(request.getHeader(HEADER_PERMISSIONS)),
+                    roles,
+                    permissions,
                     parseUuidSet(request.getHeader(HEADER_DEPTS)),
-                    Boolean.parseBoolean(request.getHeader(HEADER_SALARY)),
+                    salary,
                     request.getHeader(HEADER_LOCALE)
             );
             DevAuthentication auth = new DevAuthentication(userHeader, ctx);

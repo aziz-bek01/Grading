@@ -68,4 +68,6 @@ public class UserJpaEntity extends AuditedJpaEntity {
 
     public void setStatus(UserStatus status) { this.status = status; }
     public void setLastLoginAt(OffsetDateTime lastLoginAt) { this.lastLoginAt = lastLoginAt; }
+    public void setFullName(String fullName) { this.fullName = fullName; }
+    public void setDefaultLocale(String defaultLocale) { this.defaultLocale = defaultLocale; }
 }

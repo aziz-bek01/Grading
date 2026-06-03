@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TenantSelector } from './TenantSelector';
-import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
+import { renderWithProviders, signIn, signOut, createTestQueryClient } from '@/test/testUtils';
 import { useAuthStore } from '@/features/auth/authStore';
 
 describe('<TenantSelector />', () => {
@@ -48,6 +48,26 @@ describe('<TenantSelector />', () => {
     await user.click(screen.getByRole('option', { name: /Beta University/i }));
     await user.click(screen.getByRole('button', { name: /Переключить компанию/i }));
 
+    expect(useAuthStore.getState().activeTenant?.brand_name).toBe('Beta University');
+  });
+
+  // TI-Reg-02: after confirming a tenant switch we MUST invalidate the entire
+  // TanStack Query cache so that no project-scoped resource (projects,
+  // positions, methodologies, evaluations, grade structures, approvals, …)
+  // leaks across tenants while the previous tenant's data is still cached.
+  it('invalidates all TanStack Query cache on tenant switch (TI-Reg-02)', async () => {
+    const user = userEvent.setup();
+    signIn('super-admin');
+    const queryClient = createTestQueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    render(renderWithProviders(<TenantSelector />, ['/'], queryClient));
+
+    await user.click(screen.getByRole('button', { name: /Выбор активной компании/i }));
+    await user.click(screen.getByRole('option', { name: /Beta University/i }));
+    await user.click(screen.getByRole('button', { name: /Переключить компанию/i }));
+
+    expect(invalidateSpy).toHaveBeenCalled();
     expect(useAuthStore.getState().activeTenant?.brand_name).toBe('Beta University');
   });
 });

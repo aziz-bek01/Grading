@@ -63,7 +63,14 @@ infra/helm/*/Chart.lock
 
 # --- Claude / agent runtime state ---
 .claude/launch.json
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.codex/
 **/agentId
+
+# --- Local build / recovery scratch (never commit) ---
+backend/cp.txt
+frontend/scripts/_recovered_*.json
 
 # --- Generated documentation ---
 *.tmp.md

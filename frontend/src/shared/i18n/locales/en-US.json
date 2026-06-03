@@ -38,7 +38,12 @@
     "description": "Description",
     "parent": "Parent",
     "all": "All",
-    "none": "None"
+    "none": "None",
+    "reason_min_chars": "min {{count}} characters",
+    "continue": "Continue",
+    "completeness": "Completeness",
+    "unknown_actor": "Unknown user",
+    "loading": "Loading…"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -58,7 +63,10 @@
     "audit": "Audit log",
     "users_access": "Users & Access",
     "soon": "Soon",
-    "governance": "Governance"
+    "governance": "Governance",
+    "approvals": "Approvals",
+    "imports": "Imports",
+    "exports": "Exports"
   },
   "status": {
     "draft": "Draft",
@@ -185,7 +193,8 @@
     "column_updated": "Updated",
     "column_actions": "Actions",
     "empty_title": "No projects yet",
-    "empty_body": "Create the first grading project for this company-client."
+    "empty_body": "Create the first grading project for this company-client.",
+    "list_subtitle_for_tenant": "Grading projects for client company \"{{tenant}}\"."
   },
   "organization": {
     "page_title": "Organization structure",
@@ -249,7 +258,8 @@
     "archive_confirm_title": "Archive position?",
     "archive_confirm_body": "Archived positions are excluded from active workflows.",
     "validation_department_required": "Select a department.",
-    "validation_title_required": "Title in the primary locale is required."
+    "validation_title_required": "Title in the primary locale is required.",
+    "tab_comments": "Comments"
   },
   "workflow": {
     "title": "Project workflow",
@@ -271,17 +281,127 @@
       "IN_PROGRESS": "In progress",
       "COMPLETE": "Complete",
       "BLOCKED": "Blocked",
-      "LOCKED_FUTURE": "Coming soon"
+      "LOCKED_FUTURE": "Coming soon",
+      "NOT_STARTED": "Not started"
     },
     "next_action": "Next action",
     "recent_activity": "Recent activity",
     "no_activity": "No recent activity for this project.",
     "blockers": "Blockers",
-    "completion": "{{percent}}% complete"
+    "completion": "{{percent}}% complete",
+    "responsible": "Responsible",
+    "last_activity": "Last activity: {{time}} ({{actor}})",
+    "open_stage": "Open stage",
+    "activity_requires_audit": "The activity log is visible only to users with the AUDIT_READ permission.",
+    "open_audit_full": "Open full audit log"
   },
   "audit": {
     "log": "Audit log",
-    "stat_card_label": "Audit alerts"
+    "stat_card_label": "Audit alerts",
+    "title": "Audit log",
+    "subtitle": "Chronological record of actions captured for investigations and compliance.",
+    "subtitle_for_tenant": "Actions for «{{tenant}}» captured by the system.",
+    "empty": "No events match the selected filters.",
+    "empty_title": "No events found",
+    "no_access": "The AUDIT_READ permission is required to view the audit log.",
+    "export_csv": "Export CSV",
+    "hash_chain_valid": "Hash chain intact",
+    "hash_chain_valid_hint": "The current event hash matches the previous one. Full chain verification runs on the backend.",
+    "hash_chain_broken": "Hash chain broken",
+    "filter": {
+      "from": "From",
+      "to": "To",
+      "action": "Action",
+      "actor": "Actor id",
+      "actor_placeholder": "User id",
+      "entity_type": "Entity type",
+      "entity_id": "Entity id",
+      "tenant": "Tenant",
+      "error_date": "Date must be in YYYY-MM-DD format.",
+      "error_from_after_to": "The «To» date cannot be earlier than the «From» date."
+    },
+    "column": {
+      "timestamp": "Time",
+      "action": "Action",
+      "actor": "Actor",
+      "entity": "Entity",
+      "correlation_id": "Correlation id"
+    },
+    "details": {
+      "title": "Audit event",
+      "empty": "Select an event from the table to see its details.",
+      "actor": "Actor",
+      "entity": "Entity",
+      "tenant": "Tenant",
+      "correlation_id": "Correlation id",
+      "ip": "IP address",
+      "user_agent": "User Agent",
+      "hash_chain": "Hash chain",
+      "reason": "Reason",
+      "metadata": "Metadata",
+      "before": "Before change",
+      "after": "After change"
+    },
+    "entity_type": {
+      "PROJECT": "Project",
+      "TENANT": "Tenant",
+      "USER": "User",
+      "USER_MEMBERSHIP": "User membership",
+      "DEPARTMENT": "Department",
+      "POSITION": "Position",
+      "JOB_PROFILE": "Job profile",
+      "METHODOLOGY": "Methodology",
+      "METHODOLOGY_VERSION": "Methodology version",
+      "EVALUATION": "Evaluation",
+      "EVALUATION_SCORE": "Evaluation score",
+      "GRADE_STRUCTURE": "Grade structure",
+      "GRADE": "Grade",
+      "APPROVAL_REQUEST": "Approval request",
+      "IMPORT": "Import",
+      "EXPORT": "Export",
+      "REPORT": "Report"
+    },
+    "action": {
+      "LOGIN_SUCCESS": "Successful sign-in",
+      "LOGIN_FAILED": "Failed sign-in",
+      "LOGOUT": "Sign-out",
+      "TENANT_CONTEXT_SWITCH": "Tenant context switch",
+      "PROJECT_CREATED": "Project created",
+      "PROJECT_UPDATED": "Project updated",
+      "PROJECT_LOCKED": "Project locked",
+      "PROJECT_ARCHIVED": "Project archived",
+      "DEPARTMENT_CREATED": "Department created",
+      "DEPARTMENT_UPDATED": "Department updated",
+      "DEPARTMENT_ARCHIVED": "Department archived",
+      "POSITION_CREATED": "Position created",
+      "POSITION_UPDATED": "Position updated",
+      "POSITION_ARCHIVED": "Position archived",
+      "JOB_PROFILE_CREATED": "Job profile created",
+      "JOB_PROFILE_SUBMITTED": "Job profile submitted for review",
+      "JOB_PROFILE_APPROVED": "Job profile approved",
+      "JOB_PROFILE_ARCHIVED": "Job profile archived",
+      "METHODOLOGY_CREATED": "Methodology created",
+      "METHODOLOGY_VERSION_APPROVED": "Methodology version approved",
+      "METHODOLOGY_VERSION_LOCKED": "Methodology version locked",
+      "EVALUATION_CREATED": "Evaluation created",
+      "EVALUATION_SCORE_UPSERTED": "Factor score saved",
+      "EVALUATION_SUBMITTED": "Evaluation submitted",
+      "EVALUATION_APPROVED": "Evaluation approved",
+      "EVALUATION_LOCKED": "Evaluation locked",
+      "EVALUATION_SCORE_CALIBRATED": "Factor score calibrated",
+      "GRADE_ASSIGNED": "Grade assigned",
+      "USER_INVITED": "User invited",
+      "USER_REVOKED": "User revoked",
+      "USER_SALARY_PERMISSION_GRANTED": "Compensation data access granted",
+      "USER_SALARY_PERMISSION_REVOKED": "Compensation data access revoked",
+      "IMPORT_UPLOADED": "Import uploaded",
+      "IMPORT_COMMITTED": "Import committed",
+      "EXPORT_REQUESTED": "Export requested",
+      "EXPORT_DOWNLOADED": "Export downloaded",
+      "REPORT_GENERATED": "Report generated",
+      "CROSS_TENANT_OR_PROJECT_ACCESS_ATTEMPT": "Cross-tenant or project access attempt",
+      "TENANT_MEMBERSHIP_MISMATCH": "Tenant membership mismatch"
+    }
   },
   "jobProfile": {
     "page_title": "Job profile",
@@ -373,8 +493,1008 @@
     "advisory_label": "AI suggestion — human approval required",
     "panel_title": "AI suggestion",
     "disclaimer": "Accepting an AI suggestion does not approve the entity. A human must still approve.",
-    "coming_soon": "AI integration ships in Phase 4. This panel is a placeholder.",
+    "coming_soon": "AI assistant is in preview. Full integration ships in MVP 2.",
     "accept": "Accept",
     "reject": "Reject"
+  },
+  "sidebar": {
+    "select_project_first": "Select a project first",
+    "collapse": "Collapse menu",
+    "expand": "Expand menu",
+    "toggle_aria": "Toggle sidebar",
+    "soonRoadmap": {
+      "compensation": "Available in MVP 3",
+      "files": "Available in MVP 2",
+      "aiAssist": "Available in MVP 4 (preview already in Phase 4 panels)"
+    }
+  },
+  "approval": {
+    "inbox_title": "My approvals",
+    "inbox_subtitle": "Approval requests waiting on your decision.",
+    "inbox_empty_title": "Inbox zero",
+    "inbox_empty_body": "There are no approval requests waiting on you right now.",
+    "project_list_title": "Project approvals",
+    "project_list_subtitle": "All approval requests within the current project.",
+    "project_list_empty_title": "No approval requests",
+    "project_list_empty_body": "Nothing matches the selected filters.",
+    "filter_entity_type": "Entity type",
+    "steps_title": "Approval steps",
+    "decisions_title": "Decision history",
+    "decisions_empty": "No decisions yet.",
+    "steps_count": "{{total}} step(s)",
+    "initiated_by": "Initiated by {{name}} · {{time}}",
+    "pending_panel_title": "Pending approvals ({{count}})",
+    "pending_panel_empty": "No active approval requests.",
+    "status": {
+      "PENDING": "Pending",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "CHANGES_REQUESTED": "Changes requested",
+      "CANCELLED": "Cancelled"
+    },
+    "stepStatus": {
+      "PENDING": "Pending",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "SKIPPED": "Skipped"
+    },
+    "decisionType": {
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "CHANGES_REQUESTED": "Changes requested"
+    },
+    "entityType": {
+      "JOB_PROFILE": "Job profile",
+      "METHODOLOGY_VERSION": "Methodology version",
+      "EVALUATION": "Evaluation",
+      "GRADE_STRUCTURE": "Grade structure",
+      "PROJECT": "Project"
+    },
+    "step": {
+      "order": "Step {{order}}",
+      "approver": "Approver",
+      "required_permission": "Required permission",
+      "any_approver": "Any user holding the required permission",
+      "decided_by": "Decided by {{name}} · {{time}}",
+      "reason": "Reason",
+      "notes": "Notes"
+    },
+    "actions": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "request_changes": "Request changes",
+      "cancel_request": "Withdraw request",
+      "no_authority": "You don't have authority to act on the current step.",
+      "approve_confirm_title": "Confirm approval?",
+      "approve_confirm_body": "After approval this step is final and cannot be undone.",
+      "reject_dialog_title": "Reject request",
+      "reject_dialog_body": "Provide a reason for rejection (minimum 20 characters).",
+      "changes_dialog_title": "Request changes",
+      "changes_dialog_body": "Describe what needs to change (minimum 20 characters).",
+      "cancel_confirm_title": "Withdraw approval request?",
+      "cancel_confirm_body": "The request will be cancelled. You can create a new one later."
+    }
+  },
+  "comment": {
+    "thread_title": "Comments",
+    "input_placeholder": "Write a comment... Use @ to mention a user.",
+    "mention_hint": "Tip: mention format is @[id|User Name]",
+    "submit": "Submit",
+    "submit_reply": "Reply",
+    "reply": "Reply",
+    "reply_placeholder": "Reply to this comment...",
+    "edited": "edited",
+    "empty": "No comments yet.",
+    "deleted_placeholder": "Comment deleted",
+    "delete_confirm_title": "Delete comment?",
+    "delete_confirm_body": "This action cannot be undone. The comment will be marked as deleted.",
+    "errors": {
+      "body_required": "Please enter the comment text.",
+      "body_too_short": "Comment cannot be empty.",
+      "body_too_long": "Comment cannot exceed 5000 characters."
+    }
+  },
+  "methodology": {
+    "list_page_title": "Methodologies",
+    "list_page_subtitle": "Templates and methodology versions for this project.",
+    "new_methodology": "New methodology",
+    "open": "Open",
+    "empty_title": "No methodologies yet",
+    "empty_body": "Start a methodology from CLASSIC_8_FACTOR, EXTENDED_11_CRITERIA or build a Custom one.",
+    "no_active_version": "No active version",
+    "no_versions": "No versions yet.",
+    "no_factors": "No factors yet.",
+    "add_factor": "Add factor",
+    "summary_title": "Summary",
+    "scoring_mode": "Scoring mode",
+    "approve_lock": "Approve & lock",
+    "read_only": "Read-only",
+    "translations_button": "Translations",
+    "translation_matrix_title": "Factor translations",
+    "translation_matrix_subtitle": "Fill in each factor's name in every language.",
+    "translations_page_title": "Methodology translations",
+    "translations_page_subtitle": "Factor × 4-locale matrix. Full coverage speeds up approval.",
+    "compare_versions_soon": "Version comparison ships in MVP 2.",
+    "version_panel_title": "Versions",
+    "version_label": "Version {{number}}",
+    "factor_table_caption": "Methodology factor table",
+    "create_new_version": "Create new version",
+    "confirm_remove_factor": "Remove this factor?",
+    "confirm_remove_level": "Remove this level?",
+    "weight_sum_title": "Factor weight sum",
+    "weight_sum_label": "Current: {{current}} / Target: {{target}}",
+    "weight_sum_at_target": "Sum matches the target.",
+    "weight_sum_over": "Over the target by {{amount}} — adjust weights.",
+    "weight_sum_under": "Under the target by {{amount}} — adjust weights.",
+    "locked_header_title_approved": "Methodology approved",
+    "locked_header_title_locked": "Version locked",
+    "locked_header_body_approved": "Approved by {{actor}} on {{timestamp}}. Create a new version to make changes.",
+    "locked_header_body_locked": "Locked by {{actor}} on {{timestamp}}. Create a new version to make changes.",
+    "status": {
+      "draft": "Draft",
+      "approved": "Approved",
+      "locked": "Locked",
+      "archived": "Archived"
+    },
+    "type": {
+      "classic_8_factor": "8-factor (classic)",
+      "extended_11_criteria": "11-criteria (extended)",
+      "custom": "Custom"
+    },
+    "scoring_mode_label": {
+      "direct_points": "Direct points",
+      "weighted_points": "Weighted points (sum = 100)",
+      "weighted_scale": "Weighted scale"
+    },
+    "scoring_mode_badge": {
+      "direct_points": "Direct points",
+      "weighted_points": "Weighted points",
+      "weighted_scale": "Weighted scale"
+    },
+    "column": {
+      "active_version": "Active version",
+      "updated_at": "Updated"
+    },
+    "filter": {
+      "type": "Type"
+    },
+    "template_picker": {
+      "title": "Choose a methodology template",
+      "body": "What do you want to start from?",
+      "classic_body": "8 standard factors: knowledge, experience, complexity, responsibility, etc.",
+      "extended_body": "11 criteria for large holdings and extended projects.",
+      "custom_body": "Empty methodology — configure factors and levels manually.",
+      "default_name_classic": "8-factor methodology",
+      "default_name_extended": "11-criteria methodology",
+      "default_name_custom": "Custom methodology"
+    },
+    "factor_editor": {
+      "create_title": "New factor",
+      "edit_title": "Edit factor"
+    },
+    "confirm": {
+      "approve_title": "Approve & lock version?",
+      "approve_body": "Approving locks the structure for evaluations. Future changes need a new version.",
+      "archive_title": "Archive this version?",
+      "archive_body": "The version becomes history. Provide a reason.",
+      "new_version_title": "Create new version?",
+      "new_version_body": "A new draft version will be created with a copy of all factors and levels."
+    }
+  },
+  "evaluation": {
+    "list_title": "Evaluations",
+    "list_subtitle": "All position evaluations across the active project.",
+    "details_title": "Position evaluation",
+    "new_evaluation": "+ New evaluation",
+    "open_evaluation": "Open evaluation",
+    "position_id": "Position",
+    "displayed_total": "Total score",
+    "empty_title": "No evaluations yet",
+    "empty_body": "Start evaluating positions against an approved methodology.",
+    "empty_for_position_title": "No evaluation yet",
+    "empty_for_position_body": "Run an evaluation for this position to assign a grade.",
+    "audit_placeholder": "Per-evaluation audit timeline ships in MVP 2.",
+    "column": {
+      "position": "Position",
+      "methodology": "Methodology",
+      "total": "Total",
+      "updated": "Updated"
+    },
+    "filter": {
+      "status": "Status",
+      "methodology": "Methodology"
+    },
+    "status": {
+      "draft": "Draft",
+      "incomplete": "Incomplete",
+      "complete": "Complete",
+      "submitted": "Submitted",
+      "approved": "Approved",
+      "locked": "Locked",
+      "archived": "Archived"
+    },
+    "tab": {
+      "matrix": "Matrix",
+      "breakdown": "Score breakdown",
+      "calibration": "Calibration history",
+      "comments": "Comments",
+      "audit": "Audit"
+    },
+    "matrix": {
+      "aria_label": "Evaluation matrix",
+      "levels_for": "Levels for factor {{factor}}",
+      "weight": "Weight",
+      "max_points": "Max points",
+      "required_indicator": "Required",
+      "missing_required": "{{count}} required factor(s) not yet scored.",
+      "factor_raw": "Raw",
+      "comment_label": "Comment",
+      "comment_placeholder": "Optional notes on this level selection..."
+    },
+    "preview": {
+      "total_label": "Preview total",
+      "raw_label": "Raw",
+      "recalculating": "recalculating...",
+      "disclaimer": "Preview only. The final score is calculated by the backend on submit / approve."
+    },
+    "actions": {
+      "submit": "Submit",
+      "approve": "Approve",
+      "request_changes": "Request changes",
+      "lock": "Lock",
+      "calibrate": "Calibrate",
+      "archive": "Archive"
+    },
+    "confirm": {
+      "approve_title": "Approve evaluation?",
+      "approve_body": "Approved evaluations cannot be edited without calibration.",
+      "lock_title": "Lock evaluation?",
+      "lock_body": "A locked evaluation is final; only calibration with a reason can change scores.",
+      "request_changes_title": "Return for changes?",
+      "request_changes_body": "Provide a reason explaining what should be revised.",
+      "archive_title": "Archive evaluation?",
+      "archive_body": "Archived evaluations are read-only. Provide a reason."
+    },
+    "create": {
+      "title": "New evaluation",
+      "position": "Position",
+      "methodology": "Methodology version"
+    },
+    "calibration": {
+      "dialog_title": "Calibrate factor score",
+      "dialog_body": "Manually overriding a factor score requires a reason that will be recorded in the audit log.",
+      "factor_label": "Factor",
+      "new_score_label": "New raw factor score",
+      "history_title": "Calibration history",
+      "empty": "No calibration events for this evaluation yet.",
+      "col_factor": "Factor",
+      "col_original": "Original",
+      "col_adjusted": "Adjusted",
+      "col_delta": "Δ",
+      "col_reason": "Reason",
+      "col_decided_by": "Decided by",
+      "col_when": "When"
+    },
+    "breakdown": {
+      "title": "Per-factor breakdown",
+      "col_factor": "Factor",
+      "col_weight": "Weight",
+      "col_level": "Selected level",
+      "col_raw": "Raw",
+      "row_total": "Total"
+    },
+    "ai": {
+      "placeholder": "AI-suggested level mapping ships in MVP 4. Recommendations remain advisory; final approval is human."
+    },
+    "byFactor": {
+      "mode_toggle": {
+        "aria": "Evaluation view mode",
+        "by_position": "By position",
+        "by_factor": "By factor"
+      },
+      "no_methodology_title": "No methodology selected",
+      "no_methodology_body": "Create and approve at least one methodology before evaluating by factor.",
+      "no_factors_title": "No factors in this methodology version",
+      "no_factors_body": "Open the methodology and add factors.",
+      "empty_title": "No positions match the filters",
+      "empty_body": "Reset filters or pick another factor.",
+      "filter": {
+        "department": "Department",
+        "status": "Status",
+        "only_unfilled": "Only unfilled"
+      },
+      "table": {
+        "column": {
+          "department": "Department",
+          "unit": "Unit",
+          "position": "Position",
+          "filled": "Filled",
+          "score": "Score",
+          "comment": "Comment"
+        }
+      },
+      "row": {
+        "select_aria": "Select row for bulk action",
+        "select_all_aria": "Select all rows on page",
+        "score_aria": "Score for factor {{factor}}",
+        "comment_aria": "Per-factor comment"
+      },
+      "progress": {
+        "label": "{{filled}} of {{total}} filled",
+        "tooltip_filled": "Filled: {{codes}}.",
+        "tooltip_missing": "Missing: {{codes}}."
+      },
+      "rubric": {
+        "title": "Factor rubric",
+        "no_translation": "No translation",
+        "level_order": "Level",
+        "collapse_label": "Collapse",
+        "expand_label": "Expand",
+        "vertical_label": "RUBRIC",
+        "aria_toggle": "Toggle rubric visibility",
+        "show_label": "Rubric",
+        "hide_label": "Hide rubric",
+        "score_col": "Score",
+        "comment_col": "Comment"
+      },
+      "locked": {
+        "tooltip": "Evaluation is locked and cannot be edited from the K-sheet."
+      },
+      "toolbar": {
+        "selected": "Selected: {{selected}} of {{total}}"
+      },
+      "bulk": {
+        "set_all": {
+          "cta": "Set all remaining = {{count}}",
+          "title": "Set score for {{count}} evaluations",
+          "body": "The chosen level for factor \"{{factor}}\" will be applied to every selected position. The action is recorded in the audit log.",
+          "level_label": "Factor level",
+          "reason_label": "Reason",
+          "reason_placeholder": "Explain why a bulk write is justified (50 characters minimum).",
+          "confirm": "Apply to all"
+        },
+        "submit": {
+          "cta": "Bulk submit ({{count}})",
+          "title": "Submit {{count}} evaluations?",
+          "body": "Selected evaluations will move to \"Submitted\". Incomplete ones will be rejected by the server.",
+          "reason_label": "Reason",
+          "reason_placeholder": "Briefly state what is being submitted and why (20 characters minimum).",
+          "confirm": "Submit"
+        },
+        "result_summary": "Updated: {{updated}}, failed: {{failed}}."
+      },
+      "autosave": {
+        "saved": "Saved",
+        "failed": "Save failed — click to retry"
+      }
+    }
+  },
+  "factor": {
+    "column": {
+      "order": "#",
+      "code": "Code",
+      "name": "Name",
+      "weight": "Weight",
+      "max_points": "Max points",
+      "levels": "Levels",
+      "required": "Required",
+      "actions": "Actions"
+    },
+    "field": {
+      "code": "Code",
+      "name": "Name",
+      "description": "Description",
+      "weight": "Factor weight",
+      "max_points": "Max points",
+      "required": "Required to evaluate",
+      "points": "Points",
+      "scale_value": "Scale value",
+      "label": "Level label"
+    },
+    "action": {
+      "move_up": "Move up",
+      "move_down": "Move down",
+      "edit": "Edit",
+      "remove": "Remove"
+    },
+    "levels_title": "Factor levels",
+    "no_levels": "No levels yet.",
+    "add_level": "Add level",
+    "levels_after_create": "Levels appear once the factor is saved.",
+    "validation": {
+      "name_primary_required": "Name in ru-RU is required.",
+      "weight_invalid": "Weight must be a number 0–100.",
+      "max_points_invalid": "Max points must be a positive number.",
+      "code_required": "Code is required."
+    }
+  },
+  "gradeStructure": {
+    "list_page_title": "Grade structures",
+    "list_page_subtitle": "Grade scales and score bands for the active project.",
+    "new_structure": "New grade structure",
+    "open": "Open",
+    "open_pyramid": "Grade pyramid",
+    "empty_title": "No grade structures yet",
+    "empty_body": "Create one from a 14-grade / 16-grade template, or start from scratch.",
+    "version_label": "Version {{number}}",
+    "create_new_version": "Create new version",
+    "summary_title": "Summary",
+    "gap_policy_label": "Gap policy",
+    "confirm_remove_grade": "Remove this grade?",
+    "status": {
+      "draft": "Draft",
+      "approved": "Approved",
+      "locked": "Locked",
+      "archived": "Archived"
+    },
+    "type": {
+      "grade_14": "14 grades",
+      "grade_16": "16 grades",
+      "custom": "Custom"
+    },
+    "gap_policy": {
+      "strict_no_gaps": "No gaps allowed (strict)",
+      "allow_gaps_warn": "Gaps allowed (warn)"
+    },
+    "column": {
+      "grades_count": "Grades",
+      "version": "Version",
+      "updated_at": "Updated"
+    },
+    "template_picker": {
+      "title": "Choose a grade structure template",
+      "body": "Where do you want to start?",
+      "grade_14_body": "Ready 14-grade scale with even bands.",
+      "grade_16_body": "Ready 16-grade scale for larger organisations.",
+      "custom_body": "Empty structure — define your own grades and bands.",
+      "default_name_14": "14-grade structure",
+      "default_name_16": "16-grade structure",
+      "default_name_custom": "Custom structure"
+    },
+    "actions": {
+      "approve": "Approve",
+      "lock": "Lock"
+    },
+    "confirm": {
+      "approve_title": "Approve grade structure?",
+      "approve_body": "Approval locks editing. To change later, create a new version.",
+      "lock_title": "Lock structure?",
+      "lock_body": "A locked structure is final — only archive or new version can change it.",
+      "archive_title": "Archive structure?",
+      "archive_body": "This structure will no longer be available for active projects. Provide a reason.",
+      "new_version_title": "Create new version?",
+      "new_version_body": "A draft version will be created with a copy of grades and bands."
+    },
+    "locked_header_title_approved": "Grade structure approved",
+    "locked_header_title_locked": "Structure locked",
+    "locked_header_body_approved": "Approved by {{actor}} ({{timestamp}}). To make changes, create a new version.",
+    "locked_header_body_locked": "Locked by {{actor}} ({{timestamp}}). To make changes, create a new version.",
+    "table": {
+      "caption": "Table of grades and score bands",
+      "col_idx": "#",
+      "col_grade_number": "Grade",
+      "col_name": "Name",
+      "col_min_score": "Min score",
+      "col_max_score": "Max score",
+      "col_width": "Width",
+      "col_validation": "Validation",
+      "col_actions": "Actions",
+      "empty": "No grades yet.",
+      "add_grade": "Add grade",
+      "action_edit": "Edit",
+      "action_remove": "Remove",
+      "validation_ok": "OK",
+      "validation_overlap": "Overlap",
+      "validation_gap": "Gap",
+      "validation_missing": "No band"
+    },
+    "validator": {
+      "empty": "Add grades and bands to see validation.",
+      "all_valid": "All bands valid (no overlaps, no gaps).",
+      "has_errors": "Errors detected",
+      "has_warnings": "Warnings detected",
+      "overlap_count": "Overlaps: {{count}}",
+      "overlap_item": "G{{a}} and G{{b}} overlap at [{{from}}; {{to}}]",
+      "gap_count": "Gaps: {{count}}",
+      "gap_item": "Gap between G{{below}} and G{{above}}: [{{from}}; {{to}}]",
+      "missing_bands": "Grades without a band: {{list}}",
+      "invalid_bands": "Invalid bands (min > max) for grades: {{list}}"
+    },
+    "row_editor": {
+      "create_title": "New grade",
+      "edit_title": "Grade G{{number}}",
+      "grade_number": "Grade number",
+      "name_label": "Grade name",
+      "description_label": "Description",
+      "band_legend": "Score band",
+      "min_score": "Minimum score",
+      "max_score": "Maximum score",
+      "error_name_required": "Name in ru-RU is required.",
+      "error_min_gt_max": "Minimum score must be ≤ maximum score.",
+      "hint_primary_name": "Fill in the ru-RU name to save."
+    },
+    "pyramid": {
+      "title": "Grade pyramid",
+      "subtitle": "Distribution of positions across grades.",
+      "aria_label": "Grade pyramid with the number of positions per grade",
+      "empty": "Pyramid is empty — add grades and assign positions.",
+      "summary_title": "Pyramid summary",
+      "total_grades": "Total grades",
+      "total_positions": "Total positions",
+      "total_evaluations": "Total evaluations",
+      "zero_positions": "0 positions",
+      "evaluation_count": "Evaluations: {{count}}",
+      "salary_hidden_note": "Salary data is intentionally hidden — pay isolation is preserved."
+    },
+    "score_lookup": {
+      "title": "Score-to-grade lookup",
+      "subtitle": "Type a total score to preview which grade it maps to.",
+      "input_label": "Score",
+      "placeholder": "e.g. 750.0000",
+      "empty_state": "Enter a score to see the result.",
+      "loading": "Checking...",
+      "out_of_range": "Score {{score}} falls outside every band — manual calibration needed."
+    },
+    "assigned": {
+      "label": "Grade {{number}}",
+      "pending": "Grade pending",
+      "pending_hint": "The grade is assigned once the evaluation is approved.",
+      "out_of_range": "Out of range",
+      "out_of_range_hint": "Total score falls outside every band — manual calibration needed."
+    },
+    "position_grade": {
+      "empty_title": "No grade assigned yet",
+      "empty_body": "The grade appears once an evaluation for the position is approved."
+    }
+  },
+  "import": {
+    "list": {
+      "title": "Imports",
+      "subtitle": "Excel uploads to bring data into this project.",
+      "new": "+ New import",
+      "empty": "No import batches yet."
+    },
+    "wizard": {
+      "title": "New import",
+      "subtitle": "Upload an Excel file, review validation results, then commit.",
+      "step1": "Choose template",
+      "step2": "Upload file",
+      "step3": "Review validation",
+      "step4": "Confirm commit",
+      "upload_for_template": "Selected template: {{template}}",
+      "upload": "Upload",
+      "cancel": "Cancel import",
+      "continue_commit": "Continue to commit",
+      "commit_rows": "Commit {{count}} rows",
+      "commit_success": "Successfully committed {{count}} rows.",
+      "no_templates_available": "You do not have permission to import any template."
+    },
+    "field": {
+      "template": "Template"
+    },
+    "col": {
+      "filename": "File",
+      "template": "Template",
+      "status": "Status",
+      "rows": "Rows",
+      "errors": "Errors",
+      "uploaded": "Uploaded"
+    },
+    "file": {
+      "cta": "Drag and drop an .xlsx file or click to browse",
+      "hint": "Excel only. Maximum file size: 25 MB.",
+      "error": {
+        "required": "Select a file.",
+        "empty": "File is empty.",
+        "too_large": "File exceeds the 25 MB limit.",
+        "extension": "Only .xlsx files are accepted.",
+        "mime": "File MIME type does not match .xlsx."
+      }
+    },
+    "summary": {
+      "total_rows": "Total rows",
+      "valid_rows": "Valid rows",
+      "warning_rows": "Warnings",
+      "error_rows": "Errors",
+      "commit_ready": "Ready to commit.",
+      "commit_blocked": "Commit blocked — fix errors first.",
+      "contains_salary": "Contains salary data"
+    },
+    "pipeline": {
+      "aria_label": "5-level validation pipeline",
+      "level": {
+        "FILE": "File",
+        "STRUCTURE": "Structure",
+        "ROW": "Row",
+        "BUSINESS": "Business",
+        "SECURITY": "Security"
+      }
+    },
+    "errors": {
+      "filter_label": "Level:",
+      "empty": "No issues at this level.",
+      "col_row": "Row",
+      "col_level": "Level",
+      "col_field": "Field",
+      "col_message": "Message",
+      "col_fix": "Suggested fix"
+    },
+    "error_level": {
+      "BLOCKER": "Blocker",
+      "ERROR": "Error",
+      "WARNING": "Warning",
+      "INFO": "Info"
+    },
+    "template": {
+      "ORG_STRUCTURE_V1": "Organization structure",
+      "POSITION_CATALOG_V1": "Position catalog",
+      "JOB_PROFILE_V1": "Job profiles",
+      "METHODOLOGY_FACTORS_V1": "Methodology factors",
+      "GRADE_BANDS_V1": "Grade bands",
+      "download_empty": "Download empty template",
+      "download_sample": "Download sample",
+      "dropdown_label": "Download template"
+    },
+    "template_desc": {
+      "ORG_STRUCTURE_V1": "Departments, divisions, units and parent hierarchy.",
+      "POSITION_CATALOG_V1": "Positions with title, function, category, job family.",
+      "JOB_PROFILE_V1": "Job profile fields per position.",
+      "METHODOLOGY_FACTORS_V1": "Factors, levels and weights for a methodology version.",
+      "GRADE_BANDS_V1": "Grade scale with min/max score per grade."
+    },
+    "status": {
+      "UPLOADED": "Uploaded",
+      "SCANNING": "Scanning",
+      "SCAN_FAILED": "Scan failed",
+      "PARSING": "Parsing",
+      "VALIDATING": "Validating",
+      "VALIDATION_FAILED": "Validation failed",
+      "READY_FOR_REVIEW": "Ready for review",
+      "READY_TO_COMMIT": "Ready to commit",
+      "COMMITTING": "Committing",
+      "COMMITTED": "Committed",
+      "PARTIALLY_COMMITTED": "Partially committed",
+      "FAILED": "Failed",
+      "CANCELLED": "Cancelled",
+      "ARCHIVED": "Archived"
+    }
+  },
+  "export": {
+    "center": {
+      "title": "Export center",
+      "subtitle": "Generated exports for the current project.",
+      "new": "Request export",
+      "empty": "No exports yet."
+    },
+    "request": {
+      "title": "Request a new export",
+      "type": "Export type",
+      "format": "Format",
+      "filter_params": "Filter parameters (JSON)",
+      "filter_placeholder": "{}",
+      "submit": "Request export",
+      "salary_warning": "This export type contains salary data. SALARY_EXPORT permission is required server-side."
+    },
+    "download": {
+      "cta": "Download",
+      "generating": "Generating...",
+      "generating_url": "Generating signed URL...",
+      "error": "Failed to fetch download URL. Please retry.",
+      "error_v2": "Download failed. Try refresh or contact support.",
+      "demo_warning": "DEMO mode — file generated locally"
+    },
+    "col": {
+      "type": "Type",
+      "format": "Format",
+      "status": "Status",
+      "created_at": "Created",
+      "generated_at": "Generated",
+      "expires_at": "Expires",
+      "downloaded_at": "Downloaded",
+      "size": "Size",
+      "rows": "Rows"
+    },
+    "contains_salary": "Contains salary data",
+    "status": {
+      "REQUESTED": "Requested",
+      "QUEUED": "Queued",
+      "GENERATING": "Generating",
+      "GENERATED": "Generated",
+      "FAILED": "Failed",
+      "DOWNLOADED": "Downloaded",
+      "EXPIRED": "Expired",
+      "CANCELLED": "Cancelled"
+    },
+    "type": {
+      "POSITION_CATALOG": "Position catalog",
+      "JOB_PROFILES": "Job profiles",
+      "METHODOLOGY": "Methodology",
+      "EVALUATION_MATRIX": "Evaluation matrix",
+      "GRADE_STRUCTURE": "Grade structure",
+      "GRADE_PYRAMID": "Grade pyramid",
+      "SALARY_RANGES": "Salary ranges",
+      "RED_GREEN_CIRCLE": "Red/green circle",
+      "COMPENSATION_SCENARIOS": "Compensation scenarios",
+      "REPORT_EXECUTIVE": "Executive report"
+    },
+    "format": {
+      "XLSX": "Excel (.xlsx)",
+      "CSV": "CSV",
+      "PDF": "PDF",
+      "DOCX": "Word (.docx)"
+    },
+    "error": {
+      "project_required": "Project is required."
+    }
+  },
+  "report": {
+    "page_title": "Reports center",
+    "page_subtitle": "Generate and download analytical reports for the active project.",
+    "new_report": "Request report",
+    "request_dialog_title": "Request a new report",
+    "request_submit": "Request report",
+    "field_type": "Report type",
+    "field_format": "Format",
+    "field_filter_params": "Filter parameters (JSON)",
+    "filter_placeholder": "{}",
+    "filter_status": "Status",
+    "filter_status_all": "All statuses",
+    "filter_type": "Type",
+    "filter_type_all": "All types",
+    "filter_format": "Format",
+    "filter_format_all": "All formats",
+    "format_unavailable": "not available for this type",
+    "empty": "No reports yet.",
+    "contains_salary": "Contains salary data",
+    "download_cta": "Download",
+    "download_generating": "Preparing...",
+    "download_error": "Failed to fetch download URL. Please retry.",
+    "col_title": "Title",
+    "col_type": "Type",
+    "col_format": "Format",
+    "col_status": "Status",
+    "col_contains_salary": "Salary data",
+    "col_created_by": "Created by",
+    "col_created_at": "Created",
+    "col_expires_at": "Expires",
+    "type": {
+      "GRADE_DISTRIBUTION": "Grade distribution",
+      "POSITION_CATALOG": "Position catalog",
+      "EVALUATION_SUMMARY": "Evaluation summary",
+      "METHODOLOGY_SPEC": "Methodology specification",
+      "AUDIT_SUMMARY": "Audit summary",
+      "EXECUTIVE_SUMMARY": "Executive summary"
+    },
+    "format": {
+      "PDF": "PDF",
+      "DOCX": "DOCX",
+      "XLSX": "XLSX"
+    },
+    "status": {
+      "REQUESTED": "Requested",
+      "QUEUED": "Queued",
+      "GENERATING": "Generating",
+      "GENERATED": "Ready",
+      "FAILED": "Failed",
+      "DOWNLOADED": "Downloaded",
+      "EXPIRED": "Expired",
+      "CANCELLED": "Cancelled"
+    },
+    "error": {
+      "project_required": "Project is required.",
+      "format_not_supported": "Selected format is not supported for this report type."
+    }
+  },
+  "users": {
+    "never": "Never",
+    "neverLoggedIn": "Has not signed in",
+    "lastLoginAt": "Last sign-in: {{date}}",
+    "viewAudit": "Open audit log",
+    "list": {
+      "title": "Users & access",
+      "subtitle": "All users for the active client company.",
+      "subtitleForTenant": "Users of client company \"{{tenant}}\"."
+    },
+    "column": {
+      "fullName": "Name",
+      "tenants": "Tenants",
+      "roles": "Roles",
+      "status": "Status",
+      "lastLogin": "Last sign-in"
+    },
+    "filter": {
+      "status": "Status",
+      "role": "Role",
+      "tenant": "Tenant"
+    },
+    "status": {
+      "active": "Active",
+      "invited": "Invited",
+      "revoked": "Revoked",
+      "suspended": "Suspended"
+    },
+    "empty": {
+      "title": "No users yet",
+      "body": "Invite the first user for this client company."
+    },
+    "invite": {
+      "button": "Invite user",
+      "title": "Invite a user",
+      "subtitle": "The new user receives an email with an activation link.",
+      "submit": "Send invitation",
+      "email": "Email",
+      "fullName": "Full name",
+      "locale": "Interface language",
+      "tenant": "Client company",
+      "tenantHint": "Available to HRLab Super Admin only.",
+      "tenantImpliedHint": "Invitation will be created in the active company \"{{tenant}}\".",
+      "roles": "Initial roles",
+      "rolesHint": "Pick one or more roles. Can be changed later.",
+      "validation_email": "Enter a valid email address.",
+      "validation_fullname_min": "Name must be at least 2 characters.",
+      "validation_fullname_max": "Name must be at most 200 characters.",
+      "validation_roles_min": "Select at least one role."
+    },
+    "assignRole": {
+      "title": "Add role",
+      "subtitle": "New role for company \"{{tenant}}\".",
+      "submit": "Add role",
+      "role": "Role",
+      "noneLeft": "All roles already assigned",
+      "noneLeftHint": "This membership already has every available role."
+    },
+    "revokeMembership": {
+      "title": "Revoke membership?",
+      "body": "User {{user}} will lose access to all resources of company \"{{tenant}}\". The action can only be undone by re-inviting.",
+      "confirm": "Revoke membership"
+    },
+    "salary": {
+      "label": "Compensation data access",
+      "enabledHint": "Granted on {{date}}. User can view salary figures.",
+      "disabledHint": "Disabled. Salary fields are hidden in the UI and exports.",
+      "grant": "Grant",
+      "revoke": "Revoke",
+      "confirmGrantTitle": "Grant access to salary data?",
+      "confirmRevokeTitle": "Revoke access to salary data?",
+      "warningHeader": "Important: sensitive data",
+      "grantWarning": "The user will see salaries, ranges, compa-ratios and budget impacts. The action is logged in the audit trail.",
+      "revokeWarning": "The user will no longer see salary data across any module. The action is logged in the audit trail.",
+      "reasonHint": "Provide a business justification (minimum 10 characters)."
+    },
+    "memberships": {
+      "title": "Company memberships",
+      "count": "Total: {{count}}",
+      "empty": "The user has no active memberships."
+    },
+    "membership": {
+      "joinedAt": "Activated: {{date}}",
+      "invitedAt": "Invited: {{date}}",
+      "rolesLabel": "Roles ({{count}})",
+      "noRoles": "No roles yet.",
+      "addRole": "Add role",
+      "removeRoleAria": "Remove role {{role}}",
+      "revoke": "Revoke membership"
+    },
+    "role": {
+      "HRLAB_SUPER_ADMIN": "HRLab Super Admin",
+      "HRLAB_PROJECT_MANAGER": "HRLab Project Manager",
+      "HRLAB_CONSULTANT": "HRLab Consultant",
+      "HRLAB_ANALYST": "HRLab Analyst",
+      "CLIENT_ADMIN": "Company admin",
+      "CLIENT_HR_DIRECTOR": "HR Director",
+      "CLIENT_HR_SPECIALIST": "HR Specialist",
+      "CLIENT_COMMITTEE_MEMBER": "Evaluation committee member",
+      "CLIENT_DEPARTMENT_MANAGER": "Department manager",
+      "CLIENT_VIEWER": "Viewer",
+      "AUDITOR": "Auditor"
+    }
+  },
+  "clients": {
+    "list": {
+      "title": "Client companies",
+      "subtitle": "All HR Laboratories client companies. Manage brand, locale and tenant archival here.",
+      "super_admin_badge": "HRLab Super Admin mode",
+      "super_admin_hint": "This section is reserved for HR Laboratories administrators."
+    },
+    "filter": {
+      "status": "Status"
+    },
+    "status": {
+      "active": "Active",
+      "suspended": "Suspended",
+      "archived": "Archived"
+    },
+    "column": {
+      "tenant": "Tenant",
+      "slug": "Slug",
+      "projects": "Projects",
+      "users": "Users",
+      "status": "Status",
+      "updated": "Updated"
+    },
+    "empty": {
+      "title": "No tenants yet",
+      "body": "New client companies will appear here once created."
+    },
+    "stats": {
+      "projects": "Active projects",
+      "users": "Users",
+      "activity_30d": "Activity",
+      "last_activity": "Last activity",
+      "activity_recent": "Active this week",
+      "activity_quiet": "Quiet for 7 days",
+      "never_active": "Never active"
+    },
+    "field": {
+      "legal_name": "Legal name",
+      "brand_name": "Brand",
+      "industry": "Industry",
+      "country_code": "Country (ISO)",
+      "tax_id": "Tax ID"
+    },
+    "detail": {
+      "updated_at": "Updated: {{date}}",
+      "default_locale": "Default locale: {{locale}}",
+      "open_audit": "Open audit log",
+      "open_projects": "Open projects",
+      "open_users": "Manage users",
+      "edit_tenant": "Edit tenant",
+      "edit_client": "Edit legal entity",
+      "archive_tenant": "Archive",
+      "client_panel_title": "Legal entity",
+      "client_panel_subtitle": "Registration details of the client company that owns this tenant.",
+      "related_title": "Related objects",
+      "related_subtitle": "Quick links to other platform areas.",
+      "related_projects": "Active projects: {{count}}",
+      "related_users": "Users with active membership: {{count}}",
+      "related_more_soon": "Additional summaries land in upcoming phases."
+    },
+    "edit_tenant": {
+      "title": "Edit tenant",
+      "subtitle": "Slug and status are immutable; use archival to change status.",
+      "display_name": "Display name",
+      "default_locale": "Default locale",
+      "default_locale_hint": "Used for system emails and new user defaults.",
+      "immutable_hint": "Slug, status and client linkage are managed separately by HRLab Super Admin.",
+      "validation_display_name_min": "Display name must be at least 2 characters.",
+      "validation_display_name_max": "Display name must be at most 200 characters."
+    },
+    "edit_client": {
+      "title": "Edit legal entity",
+      "subtitle": "Changes apply to every tenant of this client company.",
+      "legal_name": "Legal name",
+      "brand_name": "Brand",
+      "industry": "Industry",
+      "country_code": "Country (ISO 3166-1)",
+      "tax_id": "Tax identifier",
+      "validation_legal_name_min": "Legal name must be at least 2 characters.",
+      "validation_legal_name_max": "Legal name must be at most 300 characters.",
+      "validation_brand_name_min": "Brand must be at least 2 characters.",
+      "validation_brand_name_max": "Brand must be at most 200 characters.",
+      "validation_country_code": "Country code must be two Latin letters (UZ, RU, KZ ...)."
+    },
+    "archive": {
+      "title": "Archive tenant?",
+      "body": "After archival, the tenant «{{tenant}}» becomes read-only. All active projects are frozen. This action is recorded in the audit log.",
+      "reason_label": "Archive reason",
+      "reason_placeholder": "Document the business reason and customer sign-off...",
+      "reason_hint": "Minimum {{min}} characters · entered {{current}}.",
+      "confirm": "Archive"
+    }
+  },
+  "upcoming": {
+    "sprint_label_h": "Scheduled release",
+    "preview_features_title": "What's coming",
+    "compensation": {
+      "title": "Compensation & salary structures",
+      "subtitle": "Compensation lands in MVP 3. Access strictly gated by SALARY_VIEW permission.",
+      "features": {
+        "1": "Salary range dashboard per grade (min / midpoint / max).",
+        "2": "Compa-ratio per employee and distribution by grade.",
+        "3": "Range penetration and red/green circle indicators.",
+        "4": "Budget scenario modelling and market normalisation.",
+        "5": "Payroll before/after and scenario impact on company budget."
+      }
+    }
   }
 }

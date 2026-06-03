@@ -14,6 +14,7 @@ import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Read-side queries for {@link JobProfile} (ABAC-checked). */
@@ -45,20 +46,28 @@ public class FindJobProfileQuery {
         return entity.toDomain();
     }
 
+    /**
+     * Active (non-archived) profile for a position, or empty when none exists yet.
+     *
+     * <p>"No profile yet" is a NORMAL state (the UI then offers to create one) and
+     * MUST be distinguished from a real ABAC denial. Position-not-found and the
+     * {@code abacGate.enforce} call still throw {@link TenantAccessDeniedException}
+     * (genuine cross-tenant / position-access failures); only the missing-profile
+     * case returns {@link Optional#empty()}.
+     */
     @Transactional(readOnly = true)
-    public JobProfile findActiveByPositionId(UUID positionId) {
+    public Optional<JobProfile> findActiveByPositionId(UUID positionId) {
         TenantContext ctx = TenantContextHolder.requireActive();
         PositionJpaEntity position = positions
                 .findByIdAndTenantId(positionId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         abacGate.enforceCanReadPosition(ctx, position.getId(), position.getProjectId(),
                 position.getDepartmentId(), null);
-        JobProfileJpaEntity entity = profiles
+        return profiles
                 .findFirstByTenantIdAndProjectIdAndPositionIdAndStatusNot(
                         ctx.tenantId(), position.getProjectId(), position.getId(),
                         JobProfileStatus.ARCHIVED)
-                .orElseThrow(TenantAccessDeniedException::new);
-        return entity.toDomain();
+                .map(JobProfileJpaEntity::toDomain);
     }
 
     @Transactional(readOnly = true)

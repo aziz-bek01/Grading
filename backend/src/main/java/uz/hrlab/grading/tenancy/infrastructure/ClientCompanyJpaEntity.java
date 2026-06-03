@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import uz.hrlab.grading.common.persistence.AuditedJpaEntity;
 import uz.hrlab.grading.tenancy.domain.ClientCompany;
 
@@ -31,6 +33,7 @@ public class ClientCompanyJpaEntity extends AuditedJpaEntity {
     private String industry;
 
     @Column(name = "country_code", length = 2, columnDefinition = "char(2)")
+    @JdbcTypeCode(SqlTypes.CHAR)
     private String countryCode;
 
     @Column(name = "tax_id", length = 50)
@@ -58,4 +61,12 @@ public class ClientCompanyJpaEntity extends AuditedJpaEntity {
     public String getLegalName() { return legalName; }
     public String getBrandName() { return brandName; }
     public String getIndustry() { return industry; }
+    public String getCountryCode() { return countryCode; }
+    public String getTaxId() { return taxId; }
+
+    public void setLegalName(String legalName) { this.legalName = legalName; }
+    public void setBrandName(String brandName) { this.brandName = brandName; }
+    public void setIndustry(String industry) { this.industry = industry; }
+    public void setCountryCode(String countryCode) { this.countryCode = countryCode; }
+    public void setTaxId(String taxId) { this.taxId = taxId; }
 }

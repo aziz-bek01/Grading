@@ -6,9 +6,9 @@ import { renderWithProviders } from '@/test/testUtils';
 import type { Department } from '../types/organizationTypes';
 
 const items: Department[] = [
-  { id: 'hq', project_id: 'p', parent_id: null, code: 'HQ', name: { 'ru-RU': 'Штаб' }, type: 'BRANCH', status: 'ACTIVE', updated_at: '' },
-  { id: 'fin', project_id: 'p', parent_id: 'hq', code: 'FIN', name: { 'ru-RU': 'Финансы' }, type: 'DEPARTMENT', status: 'ACTIVE', updated_at: '' },
-  { id: 'old', project_id: 'p', parent_id: 'hq', code: 'OLD', name: { 'ru-RU': 'Старое' }, type: 'UNIT', status: 'ARCHIVED', updated_at: '' },
+  { id: 'hq', project_id: 'p', parent_id: null, code: 'HQ', name_i18n: { 'ru-RU': 'Штаб' }, type: 'BRANCH', status: 'ACTIVE', updated_at: '' },
+  { id: 'fin', project_id: 'p', parent_id: 'hq', code: 'FIN', name_i18n: { 'ru-RU': 'Финансы' }, type: 'DEPARTMENT', status: 'ACTIVE', updated_at: '' },
+  { id: 'old', project_id: 'p', parent_id: 'hq', code: 'OLD', name_i18n: { 'ru-RU': 'Старое' }, type: 'UNIT', status: 'ARCHIVED', updated_at: '' },
 ];
 
 describe('<DepartmentTree />', () => {

@@ -26,6 +26,9 @@ import { JobProfileFieldEditor } from '../components/JobProfileFieldEditor';
 import { JobProfileActionsBar } from '../components/JobProfileActionsBar';
 import { JobProfileRevisionHistory } from '../components/JobProfileRevisionHistory';
 import { AIRecommendationPanel } from '../components/AIRecommendationPanel';
+import { CommentThread } from '@/features/comment/components/CommentThread';
+import { ApprovalStatusBadge } from '@/features/approval/components/ApprovalStatusBadge';
+import { useApprovalRequests } from '@/features/approval/hooks/useApprovals';
 import type {
   JobProfile,
   JobProfileLongTextFieldKey,
@@ -37,22 +40,22 @@ const SECTIONS: { key: string; titleKey: string; fields: JobProfileLongTextField
   {
     key: 'role',
     titleKey: 'jobProfile.section.role',
-    fields: ['purpose', 'main_duties', 'responsibility_area', 'authority', 'kpi_expected_results'],
+    fields: ['purpose_i18n', 'main_duties_i18n', 'responsibility_area_i18n', 'authority_i18n', 'kpi_expected_results_i18n'],
   },
   {
     key: 'requirements',
     titleKey: 'jobProfile.section.requirements',
-    fields: ['education_requirements', 'experience_requirements', 'knowledge_skills'],
+    fields: ['education_requirements_i18n', 'experience_requirements_i18n', 'knowledge_skills_i18n'],
   },
   {
     key: 'interactions',
     titleKey: 'jobProfile.section.interactions',
-    fields: ['internal_interactions', 'external_interactions'],
+    fields: ['internal_interactions_i18n', 'external_interactions_i18n'],
   },
   {
     key: 'working_context',
     titleKey: 'jobProfile.section.working_context',
-    fields: ['working_conditions', 'documents_regulations'],
+    fields: ['working_conditions_i18n', 'documents_regulations_i18n'],
   },
 ];
 
@@ -60,18 +63,18 @@ const AUTO_SAVE_DEBOUNCE_MS = 30_000;
 
 function emptyFromProfile(p: JobProfile): JobProfilePatch {
   return {
-    purpose: p.purpose,
-    main_duties: p.main_duties,
-    responsibility_area: p.responsibility_area,
-    authority: p.authority,
-    kpi_expected_results: p.kpi_expected_results,
-    education_requirements: p.education_requirements,
-    experience_requirements: p.experience_requirements,
-    knowledge_skills: p.knowledge_skills,
-    internal_interactions: p.internal_interactions,
-    external_interactions: p.external_interactions,
-    working_conditions: p.working_conditions,
-    documents_regulations: p.documents_regulations,
+    purpose_i18n: p.purpose_i18n,
+    main_duties_i18n: p.main_duties_i18n,
+    responsibility_area_i18n: p.responsibility_area_i18n,
+    authority_i18n: p.authority_i18n,
+    kpi_expected_results_i18n: p.kpi_expected_results_i18n,
+    education_requirements_i18n: p.education_requirements_i18n,
+    experience_requirements_i18n: p.experience_requirements_i18n,
+    knowledge_skills_i18n: p.knowledge_skills_i18n,
+    internal_interactions_i18n: p.internal_interactions_i18n,
+    external_interactions_i18n: p.external_interactions_i18n,
+    working_conditions_i18n: p.working_conditions_i18n,
+    documents_regulations_i18n: p.documents_regulations_i18n,
     actualization_date: p.actualization_date ?? '',
   };
 }
@@ -186,7 +189,7 @@ export function JobProfileEditorPage() {
       />
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl text-text-primary">{t('jobProfile.page_title')}</h1>
             <JobProfileStatusBadge status={profile.status} />
             {profile.revision_number > 1 ? (
@@ -194,6 +197,7 @@ export function JobProfileEditorPage() {
                 {t('jobProfile.revision_number', { number: profile.revision_number })}
               </span>
             ) : null}
+            <JobProfileApprovalInline jobProfileId={profile.id} status={profile.status} />
           </div>
           <p className="text-sm text-text-secondary mt-1">{t('jobProfile.page_subtitle')}</p>
         </div>
@@ -282,6 +286,32 @@ export function JobProfileEditorPage() {
           />
         </aside>
       </div>
+
+      <Card title={t('comment.thread_title')} compact>
+        <CommentThread entityType="JOB_PROFILE" entityId={profile.id} />
+      </Card>
     </div>
   );
+}
+
+/**
+ * Shows the inline approval status badge next to a job profile header.
+ * When the profile is UNDER_REVIEW, the backend always has an active
+ * approval request — we fetch the latest one and surface its status.
+ */
+function JobProfileApprovalInline({
+  jobProfileId,
+  status,
+}: {
+  jobProfileId: string;
+  status: string;
+}) {
+  const requests = useApprovalRequests({
+    entityType: 'JOB_PROFILE',
+    entityId: jobProfileId,
+  });
+  if (status !== 'UNDER_REVIEW') return null;
+  const latest = requests.data?.items[0];
+  if (!latest) return null;
+  return <ApprovalStatusBadge status={latest.status} />;
 }

@@ -50,10 +50,19 @@ public class PositionJobProfileController {
         return ResponseEntity.status(HttpStatus.CREATED).body(JobProfileResponse.from(created));
     }
 
+    /**
+     * Returns the position's active job profile, or {@code 204 No Content} when
+     * none exists yet — "no profile" is a normal state the UI handles by offering
+     * to create one. A genuine cross-tenant / ABAC failure still yields 404 from
+     * {@link FindJobProfileQuery#findActiveByPositionId}.
+     */
     @GetMapping
     @PreAuthorize("hasAuthority('JOB_PROFILE_READ')")
-    public JobProfileResponse getActive(@PathVariable UUID positionId) {
-        return JobProfileResponse.from(findQuery.findActiveByPositionId(positionId));
+    public ResponseEntity<JobProfileResponse> getActive(@PathVariable UUID positionId) {
+        return findQuery.findActiveByPositionId(positionId)
+                .map(JobProfileResponse::from)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @GetMapping("/revisions")

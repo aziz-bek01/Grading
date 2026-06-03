@@ -1,0 +1,122 @@
+# MVP 2 Phase 1 — comments table.
+#
+# Flat list with optional 1-level reply (parent_comment_id references a parent
+# whose own parent_comment_id MUST be NULL — enforced by a trigger so threads
+# stay shallow).
+#
+# Soft delete via deleted_at — audit preservation. Mentions stored as a UUID
+# array with a GIN index for "/comments/my-mentions" queries.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-022-create-comments
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase1
+      changes:
+        - createTable:
+            tableName: comments
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,           type: UUID, constraints: { nullable: false } }
+              - column: { name: project_id,          type: UUID }
+              - column: { name: entity_type,         type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: entity_id,           type: UUID, constraints: { nullable: false } }
+              - column: { name: author_user_id,      type: UUID, constraints: { nullable: false } }
+              - column: { name: body,                type: TEXT, constraints: { nullable: false } }
+              - column:
+                  name: mentioned_user_ids
+                  type: uuid[]
+              - column: { name: parent_comment_id,   type: UUID }
+              - column: { name: deleted_at,          type: TIMESTAMPTZ }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addForeignKeyConstraint:
+            baseTableName: comments
+            baseColumnNames: parent_comment_id
+            referencedTableName: comments
+            referencedColumnNames: id
+            constraintName: fk_comments_parent
+            onDelete: SET NULL
+        - createIndex:
+            tableName: comments
+            indexName: idx_comments_tenant_entity_created
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: entity_type } }
+              - { column: { name: entity_id } }
+              - { column: { name: created_at, descending: true } }
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE comments ADD CONSTRAINT chk_comments_entity_type
+                CHECK (entity_type IN ('POSITION','JOB_PROFILE','EVALUATION','METHODOLOGY',
+                                       'METHODOLOGY_VERSION','GRADE_STRUCTURE','APPROVAL_REQUEST'));
+              ALTER TABLE comments ADD CONSTRAINT chk_comments_body_length
+                CHECK (char_length(body) >= 1 AND char_length(body) <= 5000);
+              CREATE INDEX idx_comments_mentions_gin ON comments USING GIN (mentioned_user_ids);
+      rollback:
+        - sql:
+            sql: |
+              DROP TABLE IF EXISTS comments CASCADE;
+
+  # ---------------------------------------------------------------------------
+  # Separate changeSet for the dollar-quoted trigger function. PostgreSQL's
+  # parameter-binding parser in pgjdbc misreads `$$` inside a statement that
+  # Liquibase still scans for `?` placeholders. Isolating the DO/CREATE FUNCTION
+  # block in its own changeSet with `splitStatements: false` plus
+  # `dbms: postgresql` keeps the parent changeSet's SQL list (ALTER + CREATE
+  # INDEX) executing via the default split path, while letting the trigger
+  # function body run as a single statement.
+  # ---------------------------------------------------------------------------
+  - changeSet:
+      id: tenant-022-create-comments-thread-depth-trigger
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase1
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Threading depth = 1: parent of a parent must be NULL.
+              CREATE OR REPLACE FUNCTION enforce_comment_thread_depth() RETURNS TRIGGER AS $$
+              DECLARE parent_parent UUID;
+              BEGIN
+                IF NEW.parent_comment_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+                SELECT parent_comment_id INTO parent_parent
+                  FROM comments WHERE id = NEW.parent_comment_id;
+                IF parent_parent IS NOT NULL THEN
+                  RAISE EXCEPTION 'Comment threading limited to one level of reply';
+                END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+              DROP TRIGGER IF EXISTS trg_comments_thread_depth ON comments;
+              CREATE TRIGGER trg_comments_thread_depth
+                BEFORE INSERT OR UPDATE OF parent_comment_id ON comments
+                FOR EACH ROW EXECUTE FUNCTION enforce_comment_thread_depth();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_comments_thread_depth ON comments;
+              DROP FUNCTION IF EXISTS enforce_comment_thread_depth();

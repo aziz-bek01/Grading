@@ -1,0 +1,67 @@
+# Phase 4 — METHODOLOGY_CREATE permission seed.
+#
+# METHODOLOGY_READ / METHODOLOGY_EDIT / METHODOLOGY_APPROVE / METHODOLOGY_LOCK
+# were already seeded in seeds/001-default-permissions.yaml and role-mapped in
+# seeds/004-default-role-permissions.yaml. This changeset adds the missing
+# METHODOLOGY_CREATE code introduced by Phase 4 (role-permissions-matrix.md).
+#
+# Role grants per role-permissions-matrix.md §METHODOLOGY:
+#   HRLAB_SUPER_ADMIN          → READ / CREATE / EDIT / APPROVE / LOCK
+#   HRLAB_PROJECT_MANAGER      → READ / CREATE / EDIT / APPROVE / LOCK
+#   HRLAB_CONSULTANT           → READ / CREATE / EDIT
+#   HRLAB_ANALYST              → READ
+#   CLIENT_COMPANY_ADMIN       → READ
+#   CLIENT_HR_DIRECTOR         → READ
+#   CLIENT_HR_SPECIALIST       → READ
+#   Others                     → none
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-013-seed-methodology-create-permission
+      author: backend-engineer
+      context: seeds
+      labels: mvp1,phase4
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'METHODOLOGY_CREATE', 'METHODOLOGY', 'CREATE',
+                 'Create methodology from template or scratch (Phase 4)')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions WHERE code = 'METHODOLOGY_CREATE';
+
+  - changeSet:
+      id: tenant-013-seed-methodology-role-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp1,phase4
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- METHODOLOGY_CREATE role grants (matrix doc).
+              WITH role_perm_map(role_code, permission_code) AS (
+                VALUES
+                  ('HRLAB_SUPER_ADMIN',     'METHODOLOGY_CREATE'),
+                  ('HRLAB_PROJECT_MANAGER', 'METHODOLOGY_CREATE'),
+                  ('HRLAB_CONSULTANT',      'METHODOLOGY_CREATE')
+              )
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM role_perm_map m
+                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.permissions p ON p.code = m.permission_code
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p
+                WHERE rp.permission_id = p.id
+                  AND p.code = 'METHODOLOGY_CREATE';

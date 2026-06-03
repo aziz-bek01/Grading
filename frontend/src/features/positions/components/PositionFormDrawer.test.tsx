@@ -6,8 +6,8 @@ import { renderWithProviders } from '@/test/testUtils';
 import type { Department } from '@/features/organization/types/organizationTypes';
 
 const departments: Department[] = [
-  { id: 'd1', project_id: 'p', parent_id: null, code: 'IT', name: { 'ru-RU': 'ИТ' }, type: 'DIVISION', status: 'ACTIVE', updated_at: '' },
-  { id: 'd2', project_id: 'p', parent_id: null, code: 'OLD', name: { 'ru-RU': 'Старое' }, type: 'UNIT', status: 'ARCHIVED', updated_at: '' },
+  { id: 'd1', project_id: 'p', parent_id: null, code: 'IT', name_i18n: { 'ru-RU': 'ИТ' }, type: 'DIVISION', status: 'ACTIVE', updated_at: '' },
+  { id: 'd2', project_id: 'p', parent_id: null, code: 'OLD', name_i18n: { 'ru-RU': 'Старое' }, type: 'UNIT', status: 'ARCHIVED', updated_at: '' },
 ];
 
 describe('<PositionFormDrawer />', () => {

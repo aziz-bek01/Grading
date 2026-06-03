@@ -1218,6 +1218,26 @@ exercises the three composite-FK paths against a real Postgres via
 Testcontainers (`@Tag("integration")`, Docker-skipped on machines
 without Docker).
 
+### 31.7 Phase 4 constraints (post-review remediation)
+
+Changelog `tenant-schema/014-phase4-constraints.yaml` closes the
+trigger-coverage finding from
+`docs/mvp1/reviews/phase4-security-review.md`. The change is additive
+and reversible (the `rollback:` block restores the Phase 4 baseline
+trigger function and timing).
+
+| Finding | DB-level control | Affected table | Rationale |
+|---|---|---|---|
+| **F-403** | Trigger `prevent_mv_status_regression` extended to `BEFORE INSERT OR UPDATE OF status ON methodology_versions`; PL/pgSQL function branches on `TG_OP`. On `INSERT`, the trigger asserts `NEW.status = 'DRAFT'` and raises `METHODOLOGY_VERSION_INVALID_INITIAL_STATUS` otherwise. On `UPDATE`, the existing regression rules (ARCHIVED→∅, LOCKED→ARCHIVED only, APPROVED→LOCKED\|ARCHIVED only) are preserved unchanged. | `methodology_versions` | Phase 4 constraints update: trigger extended to BEFORE INSERT to enforce `status=DRAFT` on creation. The application use cases (`CreateMethodologyVersionUseCase`, `CreateMethodologyFromTemplateUseCase`, `CreateMethodologyFromScratchUseCase`) already create new versions as DRAFT, but a direct DBA INSERT or future operational script could bypass that. The trigger guarantees the invariant at the storage layer — defence-in-depth for the workflow status machine. Function uses `CREATE OR REPLACE FUNCTION` and the trigger uses `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` (idempotent). |
+
+**New integration test:**
+`backend/src/test/java/uz/hrlab/grading/phase4/Phase4ConstraintsTest.java`
+exercises four scenarios: direct INSERT with `status='APPROVED'` /
+`'LOCKED'` / `'ARCHIVED'` → trigger rejects with
+`METHODOLOGY_VERSION_INVALID_INITIAL_STATUS`; direct INSERT with
+`status='DRAFT'` → succeeds; LOCKED→APPROVED UPDATE → still rejected
+(baseline behaviour preserved). Testcontainers-gated.
+
 ---
 
 *End of MVP 1 Database Blueprint.*

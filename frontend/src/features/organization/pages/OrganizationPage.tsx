@@ -98,7 +98,7 @@ export function OrganizationPage() {
             <div className="space-y-2 text-sm">
               <div>
                 <div className="text-xs uppercase text-text-muted">{t('common.name')}</div>
-                <div className="text-text-primary">{pickLocalized(selected.name, i18n.language)}</div>
+                <div className="text-text-primary">{pickLocalized(selected.name_i18n, i18n.language)}</div>
               </div>
               <div>
                 <div className="text-xs uppercase text-text-muted">{t('common.type')}</div>
@@ -127,7 +127,7 @@ export function OrganizationPage() {
             project_id: input.project_id,
             parent_id: input.parent_id,
             code: input.code,
-            name: input.name,
+            name_i18n: input.name_i18n,
             type: input.type,
           });
         }}

@@ -29,7 +29,7 @@ export function DepartmentTree({ items, selectedId, onSelect, showArchived, quer
     return items.filter((d) => {
       if (!showArchived && d.status === 'ARCHIVED') return false;
       if (!q) return true;
-      const name = pickLocalized(d.name, i18n.language).toLowerCase();
+      const name = pickLocalized(d.name_i18n, i18n.language).toLowerCase();
       return d.code.toLowerCase().includes(q) || name.includes(q);
     });
   }, [items, showArchived, query, i18n.language]);
@@ -106,7 +106,7 @@ function DepartmentNode({
         </button>
         <span aria-hidden className="text-text-secondary">{typeIcon[node.type]}</span>
         <span className="font-medium text-xs text-text-muted">{node.code}</span>
-        <span className="truncate">{pickLocalized(node.name, locale)}</span>
+        <span className="truncate">{pickLocalized(node.name_i18n, locale)}</span>
       </div>
       {hasChildren && expanded ? (
         <ul role="group">

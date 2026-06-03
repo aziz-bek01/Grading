@@ -27,7 +27,7 @@ export function ProjectFormDrawer({ open, initial, readOnly, onClose, onSubmit }
     resolver: zodResolver(ProjectCreateSchema),
     defaultValues: {
       code: '',
-      name: {},
+      name_i18n: {},
       description: '',
       start_date: '',
       end_date: '',
@@ -38,7 +38,7 @@ export function ProjectFormDrawer({ open, initial, readOnly, onClose, onSubmit }
     if (open) {
       reset({
         code: initial?.code ?? '',
-        name: initial?.name ?? {},
+        name_i18n: initial?.name_i18n ?? {},
         description: initial?.description ?? '',
         start_date: initial?.start_date ?? '',
         end_date: initial?.end_date ?? '',
@@ -80,7 +80,7 @@ export function ProjectFormDrawer({ open, initial, readOnly, onClose, onSubmit }
 
       <Controller
         control={control}
-        name="name"
+        name="name_i18n"
         render={({ field, fieldState }) => (
           <LocalizedNameTabs
             value={field.value ?? {}}

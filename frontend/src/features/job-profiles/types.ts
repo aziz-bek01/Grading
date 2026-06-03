@@ -4,72 +4,86 @@ export type JobProfileStatus = 'DRAFT' | 'UNDER_REVIEW' | 'APPROVED' | 'ARCHIVED
 
 export type JobProfileMultilingualField = LocalizedString;
 
-/** 12 long-text multilingual fields per design-foundation §16 / PRD E6. */
+/**
+ * Mirrors backend `JobProfileResponse` (Spring SNAKE_CASE Jackson strategy):
+ * Each multilingual long-text field carries the `_i18n` suffix
+ * (`purpose_i18n`, `main_duties_i18n`, ...) — backend Java field names are
+ * `purposeI18n`, `mainDutiesI18n`, ... rewritten by Jackson.
+ *
+ * `previous_revision_id` mirrors backend `previousRevisionId` (renamed from
+ * the legacy `parent_revision_id` FE field).
+ */
 export interface JobProfile {
   id: string;
   position_id: string;
   project_id: string;
   status: JobProfileStatus;
   revision_number: number;
-  parent_revision_id?: string | null;
+  /** Backend field name — replaces legacy `parent_revision_id`. */
+  previous_revision_id?: string | null;
 
   // Role & responsibilities
-  purpose: JobProfileMultilingualField;
-  main_duties: JobProfileMultilingualField;
-  responsibility_area: JobProfileMultilingualField;
-  authority: JobProfileMultilingualField;
-  kpi_expected_results: JobProfileMultilingualField;
+  purpose_i18n: JobProfileMultilingualField;
+  main_duties_i18n: JobProfileMultilingualField;
+  responsibility_area_i18n: JobProfileMultilingualField;
+  authority_i18n: JobProfileMultilingualField;
+  kpi_expected_results_i18n: JobProfileMultilingualField;
 
   // Requirements
-  education_requirements: JobProfileMultilingualField;
-  experience_requirements: JobProfileMultilingualField;
-  knowledge_skills: JobProfileMultilingualField;
+  education_requirements_i18n: JobProfileMultilingualField;
+  experience_requirements_i18n: JobProfileMultilingualField;
+  knowledge_skills_i18n: JobProfileMultilingualField;
 
   // Interactions
-  internal_interactions: JobProfileMultilingualField;
-  external_interactions: JobProfileMultilingualField;
+  internal_interactions_i18n: JobProfileMultilingualField;
+  external_interactions_i18n: JobProfileMultilingualField;
 
   // Working context
-  working_conditions: JobProfileMultilingualField;
-  documents_regulations: JobProfileMultilingualField;
+  working_conditions_i18n: JobProfileMultilingualField;
+  documents_regulations_i18n: JobProfileMultilingualField;
   actualization_date?: string;
 
-  created_at: string;
-  updated_at: string;
+  // Workflow timestamps (backend names mirror snake_case).
+  submitted_at?: string | null;
+  submitted_by?: string | null;
   approved_at?: string | null;
   approved_by?: string | null;
+  locked_at?: string | null;
+  /** Optional — backend response doesn't always include; MSW back-compat. */
+  created_at?: string;
+  updated_at?: string;
   archived_at?: string | null;
   archived_by?: string | null;
   archive_reason?: string | null;
 }
 
 export type JobProfileLongTextFieldKey =
-  | 'purpose'
-  | 'main_duties'
-  | 'responsibility_area'
-  | 'authority'
-  | 'kpi_expected_results'
-  | 'education_requirements'
-  | 'experience_requirements'
-  | 'knowledge_skills'
-  | 'internal_interactions'
-  | 'external_interactions'
-  | 'working_conditions'
-  | 'documents_regulations';
+  | 'purpose_i18n'
+  | 'main_duties_i18n'
+  | 'responsibility_area_i18n'
+  | 'authority_i18n'
+  | 'kpi_expected_results_i18n'
+  | 'education_requirements_i18n'
+  | 'experience_requirements_i18n'
+  | 'knowledge_skills_i18n'
+  | 'internal_interactions_i18n'
+  | 'external_interactions_i18n'
+  | 'working_conditions_i18n'
+  | 'documents_regulations_i18n';
 
 export const JOB_PROFILE_FIELDS: JobProfileLongTextFieldKey[] = [
-  'purpose',
-  'main_duties',
-  'responsibility_area',
-  'authority',
-  'kpi_expected_results',
-  'education_requirements',
-  'experience_requirements',
-  'knowledge_skills',
-  'internal_interactions',
-  'external_interactions',
-  'working_conditions',
-  'documents_regulations',
+  'purpose_i18n',
+  'main_duties_i18n',
+  'responsibility_area_i18n',
+  'authority_i18n',
+  'kpi_expected_results_i18n',
+  'education_requirements_i18n',
+  'experience_requirements_i18n',
+  'knowledge_skills_i18n',
+  'internal_interactions_i18n',
+  'external_interactions_i18n',
+  'working_conditions_i18n',
+  'documents_regulations_i18n',
 ];
 
 export interface JobProfileRevisionSummary {

@@ -1,0 +1,62 @@
+# MVP 2 Phase 2 — file_attachments table.
+#
+# Shared metadata for attachments owned by domain entities (positions, job
+# profiles, evaluations). MVP 2 Phase 2 ships the schema; the API surface
+# (POST /api/v1/files, GET /api/v1/files/{id}/download) ships in Phase 3
+# once devops-sre has wired the real MinIO bucket policy.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-026-create-file-attachments
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase2
+      changes:
+        - createTable:
+            tableName: file_attachments
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,         type: UUID, constraints: { nullable: false } }
+              - column: { name: project_id,        type: UUID, constraints: { nullable: false } }
+              - column: { name: owner_entity_type, type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: owner_entity_id,   type: UUID, constraints: { nullable: false } }
+              - column: { name: original_filename, type: VARCHAR(255) }
+              - column: { name: safe_filename,     type: VARCHAR(255), constraints: { nullable: false } }
+              - column: { name: storage_key,       type: VARCHAR(512), constraints: { nullable: false } }
+              - column: { name: content_type,      type: VARCHAR(128), constraints: { nullable: false } }
+              - column: { name: file_size,         type: BIGINT,       constraints: { nullable: false } }
+              - column: { name: file_checksum,     type: VARCHAR(128) }
+              - column: { name: scan_status,       type: VARCHAR(16),  constraints: { nullable: false } }
+              - column: { name: uploaded_by,       type: UUID, constraints: { nullable: false } }
+              - column: { name: deleted_at,        type: TIMESTAMPTZ }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - createIndex:
+            tableName: file_attachments
+            indexName: idx_file_attachments_tenant_project_owner
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: project_id } }
+              - { column: { name: owner_entity_type } }
+              - { column: { name: owner_entity_id } }
+        - sql:
+            sql: |
+              ALTER TABLE file_attachments ADD CONSTRAINT chk_file_attachments_scan_status
+                CHECK (scan_status IN ('PENDING','CLEAN','INFECTED'));
+      rollback:
+        - dropTable: { tableName: file_attachments }

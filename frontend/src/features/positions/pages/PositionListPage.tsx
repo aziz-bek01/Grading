@@ -43,7 +43,7 @@ export function PositionListPage() {
         onChange: (v) => setDepartmentId(v),
         options: departments
           .filter((d) => d.status !== 'ARCHIVED')
-          .map((d) => ({ value: d.id, label: `${d.code} · ${pickLocalized(d.name, i18n.language)}` })),
+          .map((d) => ({ value: d.id, label: `${d.code} · ${pickLocalized(d.name_i18n, i18n.language)}` })),
       },
       {
         key: 'jobFamily',
@@ -125,7 +125,7 @@ export function PositionListPage() {
             project_id: input.project_id,
             department_id: input.department_id,
             code: input.code,
-            title: input.title,
+            title_i18n: input.title_i18n,
             function: input.function || undefined,
             category: input.category || undefined,
             job_family: input.job_family || undefined,

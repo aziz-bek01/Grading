@@ -1,0 +1,22 @@
+import { useTranslation } from 'react-i18next';
+import { StatusBadge, type StatusTone } from '@/shared/components/status/StatusBadge';
+import type { GradeStructureStatus } from '../types';
+
+const map: Record<GradeStructureStatus, { tone: StatusTone; key: string }> = {
+  DRAFT: { tone: 'draft', key: 'gradeStructure.status.draft' },
+  APPROVED: { tone: 'approved', key: 'gradeStructure.status.approved' },
+  LOCKED: { tone: 'locked', key: 'gradeStructure.status.locked' },
+  ARCHIVED: { tone: 'archived', key: 'gradeStructure.status.archived' },
+};
+
+export function GradeStructureStatusBadge({
+  status,
+  className,
+}: {
+  status: GradeStructureStatus;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  const spec = map[status];
+  return <StatusBadge tone={spec.tone} label={t(spec.key)} className={className} />;
+}

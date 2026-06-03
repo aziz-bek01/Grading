@@ -28,7 +28,51 @@ Added in Phase 2:
 | `uz.hrlab.grading.access.application.AbacGate` | Composes scope policies, writes `ACCESS_DENIED_BY_ABAC` audit on deny |
 | `uz.hrlab.grading.tenancy.infrastructure.TenantSchemaProvisioner` | Programmatic Liquibase runner for schema-per-tenant mode |
 
-Phase 3+ modules (jobanalysis, methodology, evaluation, gradestructure, compensation, workflow, analytics, reporting, integration, localization, aiassist) are wired into the package tree but ship in subsequent iterations.
+Added in Phase 3:
+
+| Package                              | Role                                                                |
+|--------------------------------------|---------------------------------------------------------------------|
+| `uz.hrlab.grading.jobprofile`        | `JobProfile` aggregate (DRAFT/UNDER_REVIEW/APPROVED/ARCHIVED), multilingual long-text JSONB, revisions |
+| `uz.hrlab.grading.jobanalysis`       | `Questionnaire` + `Answer`, embedded JSONB questions, status workflow |
+
+Added in Phase 4:
+
+| Package                              | Role                                                                |
+|--------------------------------------|---------------------------------------------------------------------|
+| `uz.hrlab.grading.methodology`       | `Methodology` container + `MethodologyVersion` (DRAFT/APPROVED/LOCKED/ARCHIVED) + `Factor` + `FactorLevel` with 3 scoring modes (DIRECT_POINTS, WEIGHTED_POINTS, WEIGHTED_SCALE) |
+| `uz.hrlab.grading.methodology.application.MethodologyTemplateRegistry` | In-memory CLASSIC_8_FACTOR / EXTENDED_11_CRITERIA / CUSTOM templates |
+| `uz.hrlab.grading.methodology.domain.MethodologyVersionImmutabilityPolicy` | Approved/Locked versions immutable; edits require new version |
+| DB triggers `trg_mv_status_immutability`, `trg_factor_immutability_on_locked_version`, `trg_level_immutability_on_locked_version` | Defence-in-depth: reject status regression + factor/level INSERT/UPDATE/DELETE on non-DRAFT versions |
+
+Phase 5+ modules (evaluation, gradestructure, compensation, workflow, analytics, reporting, integration, aiassist) are wired into the package tree but ship in subsequent iterations.
+
+### Phase 4 — methodology endpoints
+
+```
+POST   /api/v1/methodologies/from-template       # body: { templateCode, projectId?, code, nameI18n }
+POST   /api/v1/methodologies                     # body: { projectId?, code, nameI18n, methodologyType, scoringMode, targetTotalPoints }
+GET    /api/v1/methodologies?projectId={uuid}    # paged list
+GET    /api/v1/methodologies/{id}                # container + metadata
+PATCH  /api/v1/methodologies/{id}                # name/description only
+POST   /api/v1/methodologies/{id}/archive        # body: { reason }
+GET    /api/v1/methodologies/{id}/versions
+GET    /api/v1/methodology-versions/{id}
+GET    /api/v1/methodology-versions/{id}/factors
+POST   /api/v1/methodology-versions/{id}/approve
+POST   /api/v1/methodology-versions/{id}/lock
+POST   /api/v1/methodology-versions/{id}/archive # body: { reason }
+POST   /api/v1/methodology-versions/{id}/create-new-version
+POST   /api/v1/methodology-versions/{id}/factors
+POST   /api/v1/methodology-versions/{id}/factors/reorder
+GET    /api/v1/factors/{id}
+PATCH  /api/v1/factors/{id}
+DELETE /api/v1/factors/{id}
+GET    /api/v1/factors/{id}/levels
+POST   /api/v1/factors/{id}/levels
+POST   /api/v1/factors/{id}/levels/reorder
+PATCH  /api/v1/factor-levels/{id}
+DELETE /api/v1/factor-levels/{id}
+```
 
 ## Tenancy mode (`grading.tenancy.mode`)
 
@@ -255,9 +299,9 @@ GRADING_REQUIRE_DOCKER=true ./mvnw test
 |-------|------------------------------------------------------------------------|-------------|
 | 0     | Skeleton, common module, Liquibase wiring, OpenAPI                     | done        |
 | 1     | Tenancy + access + security + audit foundation                         | done        |
-| 2     | Project, organization, position                                        | not started |
-| 3     | Job profile + job analysis                                             | not started |
-| 4     | Methodology builder (immutable approved versions)                      | not started |
+| 2     | Project, organization, position                                        | done        |
+| 3     | Job profile + job analysis                                             | done        |
+| 4     | Methodology builder (immutable approved versions)                      | done        |
 | 5     | Scoring engine (3 modes, BigDecimal, audit)                            | not started |
 | 6     | Grade structure (no overlaps, auto-assignment)                         | not started |
 | 7     | Compensation foundation                                                | not started |

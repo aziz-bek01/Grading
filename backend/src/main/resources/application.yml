@@ -31,6 +31,11 @@ spring:
     change-log: classpath:/db/changelog/db.changelog-master.yaml
     contexts: control-plane,seeds,mode-shared
   jackson:
+    # Global JSON contract (Contract-A): snake_case property names so the
+    # frontend consumes a single consistent casing (name_i18n, total_elements,
+    # raw_total_score...). Map KEYS (e.g. LocalizedString "ru-RU") are NOT
+    # affected — the naming strategy only rewrites POJO field names.
+    property-naming-strategy: SNAKE_CASE
     default-property-inclusion: non_null
     serialization:
       write-dates-as-timestamps: false

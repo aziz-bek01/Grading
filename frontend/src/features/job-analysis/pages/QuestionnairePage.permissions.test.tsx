@@ -58,7 +58,7 @@ function signInWith(permissions: PermissionCode[]): void {
     permissions,
     salary_data_permission: false,
     tenants: [
-      { id: 'tenant-acme', slug: 'acme', brand_name: 'ACME', fingerprint_hue: 215 },
+      { id: '11111111-1111-1111-1111-111111111111', slug: 'acme', brand_name: 'ACME', fingerprint_hue: 215 },
     ],
   };
   useAuthStore

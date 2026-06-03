@@ -22,7 +22,8 @@ export const ProjectCreateSchema = z
       .min(2)
       .max(32)
       .regex(/^[A-Z0-9][A-Z0-9-]*$/u, 'code'),
-    name: localizedStringSchema,
+    /** Backend snake_case contract — POST body field. */
+    name_i18n: localizedStringSchema,
     description: z.string().trim().max(2000).optional().or(z.literal('')),
     start_date: z.string().optional().or(z.literal('')),
     end_date: z.string().optional().or(z.literal('')),

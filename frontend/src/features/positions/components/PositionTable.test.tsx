@@ -6,7 +6,7 @@ import type { Position } from '../types/positionTypes';
 import type { Department } from '@/features/organization/types/organizationTypes';
 
 const departments: Department[] = [
-  { id: 'd1', project_id: 'p', parent_id: null, code: 'IT', name: { 'ru-RU': 'ИТ' }, type: 'DIVISION', status: 'ACTIVE', updated_at: '' },
+  { id: 'd1', project_id: 'p', parent_id: null, code: 'IT', name_i18n: { 'ru-RU': 'ИТ' }, type: 'DIVISION', status: 'ACTIVE', updated_at: '' },
 ];
 const rows: Position[] = [
   {
@@ -14,7 +14,7 @@ const rows: Position[] = [
     project_id: 'p',
     department_id: 'd1',
     code: 'SWE',
-    title: { 'ru-RU': 'Разработчик', 'en-US': 'Software Engineer' },
+    title_i18n: { 'ru-RU': 'Разработчик', 'en-US': 'Software Engineer' },
     function: 'Technology',
     job_family: 'IT',
     job_level: 'L5',

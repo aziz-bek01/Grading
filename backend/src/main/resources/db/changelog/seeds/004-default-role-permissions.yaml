@@ -273,45 +273,6 @@ databaseChangeLog:
                WHERE r.code = 'EXTERNAL_AUDITOR'
               ON CONFLICT (role_id, permission_id) DO NOTHING;
 
-              -- =====================================================================
-              -- Post-seed defensive invariants. These statements are intentionally
-              -- written as `DO $$ ... $$` blocks so any violation aborts the
-              -- migration. They enforce the hard rules at the database level even
-              -- if a future developer edits the INSERTs incorrectly.
-              -- =====================================================================
-              DO $$
-              DECLARE
-                salary_grants  INT;
-                audit_grants   INT;
-                ai_grants      INT;
-              BEGIN
-                SELECT COUNT(*) INTO salary_grants
-                  FROM public.role_permissions rp
-                  JOIN public.permissions p ON p.id = rp.permission_id
-                 WHERE p.code IN ('SALARY_VIEW','SALARY_EDIT','SALARY_EXPORT','SALARY_SCENARIO_RUN');
-                IF salary_grants <> 0 THEN
-                  RAISE EXCEPTION 'INVARIANT VIOLATED: SALARY_* permissions must not be granted to any role by default (found % grants)', salary_grants;
-                END IF;
-
-                SELECT COUNT(*) INTO audit_grants
-                  FROM public.role_permissions rp
-                  JOIN public.permissions p ON p.id = rp.permission_id
-                  JOIN public.roles r       ON r.id = rp.role_id
-                 WHERE p.code = 'AUDIT_READ'
-                   AND r.code NOT IN ('HRLAB_SUPER_ADMIN','EXTERNAL_AUDITOR');
-                IF audit_grants <> 0 THEN
-                  RAISE EXCEPTION 'INVARIANT VIOLATED: AUDIT_READ may only be granted to HRLAB_SUPER_ADMIN and EXTERNAL_AUDITOR (found % extra grants)', audit_grants;
-                END IF;
-
-                SELECT COUNT(*) INTO ai_grants
-                  FROM public.role_permissions rp
-                  JOIN public.permissions p ON p.id = rp.permission_id
-                 WHERE p.code = 'AI_ASSIST_USE';
-                IF ai_grants <> 0 THEN
-                  RAISE EXCEPTION 'INVARIANT VIOLATED: AI_ASSIST_USE is MVP 4 and must not be granted to any role yet (found % grants)', ai_grants;
-                END IF;
-              END
-              $$;
       rollback:
         - sql:
             sql: |
@@ -433,3 +394,194 @@ databaseChangeLog:
                           'AUDIT_READ',
                           'FILE_DOWNLOAD'))
                );
+
+
+  # ---------------------------------------------------------------------------
+  # User Management module (MVP 1 Phase 1.5) — fine-grained USER_* permissions
+  # introduced AFTER the original baseline. Inserts are idempotent so the
+  # seed can be re-applied without duplicating rows. Granted to:
+  #   - HRLAB_SUPER_ADMIN  -> every USER_* code (incl. _HRLAB), AUDIT_VIEW
+  #   - HRLAB_PROJECT_MANAGER -> USER_LIST, USER_VIEW (read-only oversight)
+  #   - CLIENT_COMPANY_ADMIN -> USER_LIST/VIEW/INVITE/UPDATE/MEMBERSHIP/ROLE_ASSIGN
+  #                              + USER_SALARY_PERMISSION_TOGGLE (own tenant only;
+  #                                ABAC blocks HRLab roles + self-grant).
+  #   - EXTERNAL_AUDITOR    -> AUDIT_VIEW (matches its AUDIT_READ scope).
+  # USER_ROLE_ASSIGN_HRLAB is granted ONLY to HRLAB_SUPER_ADMIN —
+  # CLIENT_COMPANY_ADMIN MUST NOT attach an HRLAB_* role to anyone.
+  # USER_SALARY_PERMISSION_TOGGLE is granted ONLY to CLIENT_COMPANY_ADMIN —
+  # HRLab roles MUST NOT have it (architecture §8.4 separation of duties).
+  # ---------------------------------------------------------------------------
+  - changeSet:
+      id: seed-user-management-permissions-catalog
+      author: backend-engineer
+      context: seeds
+      labels: mvp1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'USER_LIST',                     'USER', 'LIST',     'List users (tenant-scoped)'),
+                (gen_random_uuid(), 'USER_VIEW',                     'USER', 'VIEW',     'View a single user'),
+                (gen_random_uuid(), 'USER_INVITE',                   'USER', 'INVITE',   'Invite users / create membership'),
+                (gen_random_uuid(), 'USER_UPDATE',                   'USER', 'UPDATE',   'Update user identity / status'),
+                (gen_random_uuid(), 'USER_MEMBERSHIP_MANAGE',        'USER', 'MEMBERSHIP', 'Add / revoke tenant memberships'),
+                (gen_random_uuid(), 'USER_ROLE_ASSIGN',              'USER', 'ROLE_ASSIGN', 'Assign / remove tenant-scope roles'),
+                (gen_random_uuid(), 'USER_ROLE_ASSIGN_HRLAB',        'USER', 'ROLE_ASSIGN_HRLAB', 'Assign HRLab platform roles'),
+                (gen_random_uuid(), 'USER_SALARY_PERMISSION_TOGGLE', 'USER', 'SALARY_TOGGLE', 'Flip user_tenant_memberships.salary_data_permission'),
+                (gen_random_uuid(), 'AUDIT_VIEW',                    'AUDIT','VIEW',     'View per-user audit timeline')
+              ON CONFLICT (code) DO NOTHING;
+
+  - changeSet:
+      id: seed-user-management-role-grants
+      author: backend-engineer
+      context: seeds
+      labels: mvp1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- HRLAB_SUPER_ADMIN — every USER_* code + AUDIT_VIEW
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM public.roles r
+                JOIN public.permissions p ON p.code IN (
+                  'USER_LIST','USER_VIEW','USER_INVITE','USER_UPDATE',
+                  'USER_MEMBERSHIP_MANAGE','USER_ROLE_ASSIGN','USER_ROLE_ASSIGN_HRLAB',
+                  'AUDIT_VIEW'
+                )
+               WHERE r.code = 'HRLAB_SUPER_ADMIN'
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+              -- HRLAB_PROJECT_MANAGER — read-only oversight of tenant users
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM public.roles r
+                JOIN public.permissions p ON p.code IN ('USER_LIST','USER_VIEW')
+               WHERE r.code = 'HRLAB_PROJECT_MANAGER'
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+              -- CLIENT_COMPANY_ADMIN — full management of own tenant
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM public.roles r
+                JOIN public.permissions p ON p.code IN (
+                  'USER_LIST','USER_VIEW','USER_INVITE','USER_UPDATE',
+                  'USER_MEMBERSHIP_MANAGE','USER_ROLE_ASSIGN',
+                  'USER_SALARY_PERMISSION_TOGGLE',
+                  'AUDIT_VIEW'
+                )
+               WHERE r.code = 'CLIENT_COMPANY_ADMIN'
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+              -- EXTERNAL_AUDITOR — augment its AUDIT_READ with AUDIT_VIEW
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM public.roles r
+                JOIN public.permissions p ON p.code IN ('AUDIT_VIEW')
+               WHERE r.code = 'EXTERNAL_AUDITOR'
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+  - changeSet:
+      id: seed-user-management-invariants
+      author: backend-engineer
+      context: seeds
+      labels: mvp1
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              DECLARE
+                hrlab_salary_grants INT;
+                client_hrlab_role_grants INT;
+              BEGIN
+                -- HRLab roles must NEVER hold USER_SALARY_PERMISSION_TOGGLE
+                -- (architecture §8.4 — separation of duties).
+                SELECT COUNT(*) INTO hrlab_salary_grants
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                  JOIN public.roles r       ON r.id = rp.role_id
+                 WHERE p.code = 'USER_SALARY_PERMISSION_TOGGLE'
+                   AND r.code LIKE 'HRLAB_%';
+                IF hrlab_salary_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: USER_SALARY_PERMISSION_TOGGLE must not be granted to HRLab roles (found % grants)', hrlab_salary_grants;
+                END IF;
+
+                -- USER_ROLE_ASSIGN_HRLAB must only be granted to HRLAB_SUPER_ADMIN.
+                SELECT COUNT(*) INTO client_hrlab_role_grants
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                  JOIN public.roles r       ON r.id = rp.role_id
+                 WHERE p.code = 'USER_ROLE_ASSIGN_HRLAB'
+                   AND r.code <> 'HRLAB_SUPER_ADMIN';
+                IF client_hrlab_role_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: USER_ROLE_ASSIGN_HRLAB may only be granted to HRLAB_SUPER_ADMIN (found % extra grants)', client_hrlab_role_grants;
+                END IF;
+              END
+              $$;
+      rollback:
+        - sql:
+            sql: SELECT 1;
+
+  # ---------------------------------------------------------------------------
+  # Separate changeSet for the dollar-quoted invariants. PostgreSQL's
+  # parameter-binding parser cannot tolerate `$$` inside a statement that
+  # Liquibase still scans for `?` placeholders — even with splitStatements
+  # disabled, the parser misreads the dollar-quote as `$1`. Isolating the
+  # block in its own changeSet with `splitStatements: false` plus
+  # `dbms: postgresql` keeps the pre-existing INSERT-only changeSet's
+  # checksum and execution semantics unchanged, while letting the invariant
+  # DO-block run as a single-statement payload.
+  # ---------------------------------------------------------------------------
+  - changeSet:
+      id: seed-default-role-permissions-invariants
+      author: hr-product-owner
+      context: seeds
+      labels: mvp1
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              DECLARE
+                salary_grants  INT;
+                audit_grants   INT;
+                ai_grants      INT;
+              BEGIN
+                SELECT COUNT(*) INTO salary_grants
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                 WHERE p.code IN ('SALARY_VIEW','SALARY_EDIT','SALARY_EXPORT','SALARY_SCENARIO_RUN');
+                IF salary_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: SALARY_* permissions must not be granted to any role by default (found % grants)', salary_grants;
+                END IF;
+
+                SELECT COUNT(*) INTO audit_grants
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                  JOIN public.roles r       ON r.id = rp.role_id
+                 WHERE p.code = 'AUDIT_READ'
+                   AND r.code NOT IN ('HRLAB_SUPER_ADMIN','EXTERNAL_AUDITOR');
+                IF audit_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: AUDIT_READ may only be granted to HRLAB_SUPER_ADMIN and EXTERNAL_AUDITOR (found % extra grants)', audit_grants;
+                END IF;
+
+                SELECT COUNT(*) INTO ai_grants
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                 WHERE p.code = 'AI_ASSIST_USE';
+                IF ai_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: AI_ASSIST_USE is MVP 4 and must not be granted to any role yet (found % grants)', ai_grants;
+                END IF;
+              END
+              $$;
+      rollback:
+        - sql:
+            sql: SELECT 1;

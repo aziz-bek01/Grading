@@ -1,0 +1,203 @@
+# MVP 2 Phase 1 — approval_requests + approval_steps + approval_decisions tables.
+#
+# One ApprovalRequest per (entity_type, entity_id) at a time — partial unique
+# index enforces only one PENDING request can exist for the same target. After
+# decision (APPROVED/REJECTED/CHANGES_REQUESTED/CANCELLED) a new request can be
+# opened.
+#
+# Steps support multi-step approval (e.g. PM → Director). Step order = 1..N.
+# Decisions table preserves full audit history; never soft-deleted.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-021-create-approval-requests
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase1
+      changes:
+        - createTable:
+            tableName: approval_requests
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,       type: UUID, constraints: { nullable: false } }
+              - column: { name: project_id,      type: UUID, constraints: { nullable: false } }
+              - column: { name: entity_type,     type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: entity_id,       type: UUID, constraints: { nullable: false } }
+              - column: { name: requested_by,    type: UUID, constraints: { nullable: false } }
+              - column:
+                  name: requested_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: current_status,  type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: notes_i18n,      type: JSONB }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addForeignKeyConstraint:
+            baseTableName: approval_requests
+            baseColumnNames: project_id
+            referencedTableName: projects
+            referencedColumnNames: id
+            constraintName: fk_approval_requests_project
+            onDelete: RESTRICT
+        - createIndex:
+            tableName: approval_requests
+            indexName: idx_approval_requests_tenant_entity
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: entity_type } }
+              - { column: { name: entity_id } }
+        - createIndex:
+            tableName: approval_requests
+            indexName: idx_approval_requests_tenant_project_status
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: project_id } }
+              - { column: { name: current_status } }
+        - sql:
+            sql: |
+              ALTER TABLE approval_requests ADD CONSTRAINT chk_approval_requests_status
+                CHECK (current_status IN ('PENDING','APPROVED','REJECTED','CHANGES_REQUESTED','CANCELLED'));
+              ALTER TABLE approval_requests ADD CONSTRAINT chk_approval_requests_entity_type
+                CHECK (entity_type IN ('METHODOLOGY_VERSION','EVALUATION','JOB_PROFILE','GRADE_STRUCTURE'));
+              CREATE UNIQUE INDEX uq_approval_requests_one_pending_per_entity
+                ON approval_requests (tenant_id, entity_type, entity_id)
+                WHERE current_status = 'PENDING';
+      rollback:
+        - dropTable:
+            tableName: approval_requests
+
+  - changeSet:
+      id: tenant-021-create-approval-steps
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase1
+      changes:
+        - createTable:
+            tableName: approval_steps
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,            type: UUID, constraints: { nullable: false } }
+              - column: { name: approval_request_id,  type: UUID, constraints: { nullable: false } }
+              - column: { name: step_order,           type: INT,  constraints: { nullable: false } }
+              - column: { name: approver_user_id,     type: UUID }
+              - column: { name: required_permission,  type: VARCHAR(64), constraints: { nullable: false } }
+              - column: { name: status,               type: VARCHAR(24), constraints: { nullable: false } }
+              - column: { name: decided_by,           type: UUID }
+              - column: { name: decided_at,           type: TIMESTAMPTZ }
+              - column: { name: reason_i18n,          type: JSONB }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addForeignKeyConstraint:
+            baseTableName: approval_steps
+            baseColumnNames: approval_request_id
+            referencedTableName: approval_requests
+            referencedColumnNames: id
+            constraintName: fk_approval_steps_request
+            onDelete: CASCADE
+        - addUniqueConstraint:
+            tableName: approval_steps
+            columnNames: approval_request_id, step_order
+            constraintName: uq_approval_steps_request_order
+        - createIndex:
+            tableName: approval_steps
+            indexName: idx_approval_steps_tenant_approver_status
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: approver_user_id } }
+              - { column: { name: status } }
+        - sql:
+            sql: |
+              ALTER TABLE approval_steps ADD CONSTRAINT chk_approval_steps_status
+                CHECK (status IN ('PENDING','APPROVED','REJECTED','SKIPPED'));
+      rollback:
+        - dropTable:
+            tableName: approval_steps
+
+  - changeSet:
+      id: tenant-021-create-approval-decisions
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase1
+      changes:
+        - createTable:
+            tableName: approval_decisions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,        type: UUID, constraints: { nullable: false } }
+              - column: { name: approval_step_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: decision_type,    type: VARCHAR(24), constraints: { nullable: false } }
+              - column: { name: reason_text,      type: TEXT }
+              - column: { name: decided_by,       type: UUID, constraints: { nullable: false } }
+              - column:
+                  name: decided_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addForeignKeyConstraint:
+            baseTableName: approval_decisions
+            baseColumnNames: approval_step_id
+            referencedTableName: approval_steps
+            referencedColumnNames: id
+            constraintName: fk_approval_decisions_step
+            onDelete: CASCADE
+        - createIndex:
+            tableName: approval_decisions
+            indexName: idx_approval_decisions_tenant_step
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: approval_step_id } }
+        - sql:
+            sql: |
+              ALTER TABLE approval_decisions ADD CONSTRAINT chk_approval_decisions_type
+                CHECK (decision_type IN ('APPROVE','REJECT','REQUEST_CHANGES','DELEGATE'));
+      rollback:
+        - dropTable:
+            tableName: approval_decisions

@@ -11,18 +11,18 @@ const baseProfile: JobProfile = {
   project_id: 'proj-1',
   status: 'DRAFT',
   revision_number: 1,
-  purpose: { 'ru-RU': 'Покрытие финансовых рисков' },
-  main_duties: {},
-  responsibility_area: {},
-  authority: {},
-  kpi_expected_results: {},
-  education_requirements: {},
-  experience_requirements: {},
-  knowledge_skills: {},
-  internal_interactions: {},
-  external_interactions: {},
-  working_conditions: {},
-  documents_regulations: {},
+  purpose_i18n: { 'ru-RU': 'Покрытие финансовых рисков' },
+  main_duties_i18n: {},
+  responsibility_area_i18n: {},
+  authority_i18n: {},
+  kpi_expected_results_i18n: {},
+  education_requirements_i18n: {},
+  experience_requirements_i18n: {},
+  knowledge_skills_i18n: {},
+  internal_interactions_i18n: {},
+  external_interactions_i18n: {},
+  working_conditions_i18n: {},
+  documents_regulations_i18n: {},
   created_at: '2026-05-01T00:00:00Z',
   updated_at: '2026-05-01T00:00:00Z',
 };
@@ -67,7 +67,9 @@ describe('JobProfileEditorPage', () => {
     await waitFor(() => expect(screen.getByTestId('action-save')).toBeInTheDocument());
     expect(screen.getByTestId('action-submit')).toBeInTheDocument();
     // Field is editable (textarea, not readonly div).
-    expect(screen.getByTestId('textarea-purpose-ru-RU')).toBeInTheDocument();
+    // Field keys carry the `_i18n` suffix (Contract-A), so the testid is
+    // `textarea-purpose_i18n-ru-RU` — see SECTIONS in JobProfileEditorPage.tsx.
+    expect(screen.getByTestId('textarea-purpose_i18n-ru-RU')).toBeInTheDocument();
   });
 
   it('APPROVED renders fields read-only with Create new revision button', async () => {
@@ -78,8 +80,8 @@ describe('JobProfileEditorPage', () => {
     expect(screen.queryByTestId('action-save')).not.toBeInTheDocument();
     expect(screen.queryByTestId('action-submit')).not.toBeInTheDocument();
     // Fields are rendered as read-only divs.
-    expect(screen.getByTestId('readonly-purpose-ru-RU')).toBeInTheDocument();
-    expect(screen.queryByTestId('textarea-purpose-ru-RU')).not.toBeInTheDocument();
+    expect(screen.getByTestId('readonly-purpose_i18n-ru-RU')).toBeInTheDocument();
+    expect(screen.queryByTestId('textarea-purpose_i18n-ru-RU')).not.toBeInTheDocument();
   });
 
   it('UNDER_REVIEW shows Approve + Request changes for users with approve permission', async () => {

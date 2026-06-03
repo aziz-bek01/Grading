@@ -86,7 +86,7 @@ class JobAnalysisControllerSecurityTest {
                         UUID.randomUUID(), UUID.randomUUID())
                         .with(jwt().authorities(() -> "JOB_ANALYSIS_READ"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"answerText\":\"hi\"}"))
+                        .content("{\"answer_text\":\"hi\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -111,7 +111,7 @@ class JobAnalysisControllerSecurityTest {
         mvc.perform(post("/api/v1/positions/{positionId}/questionnaires", UUID.randomUUID())
                         .with(jwt().authorities(() -> "JOB_ANALYSIS_READ"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"templateCode\":\"STANDARD_V1\"}"))
+                        .content("{\"template_code\":\"STANDARD_V1\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -146,7 +146,7 @@ class JobAnalysisControllerSecurityTest {
         String body = """
                 {
                   "tenantId": "00000000-0000-0000-0000-000000000001",
-                  "templateCode": "STANDARD_V1"
+                  "template_code": "STANDARD_V1"
                 }
                 """;
         mvc.perform(post("/api/v1/positions/{positionId}/questionnaires", positionId)

@@ -1,0 +1,139 @@
+# Phase 4 — post-review constraints (database-blueprint §31.7).
+#
+# Remediates findings from:
+#   docs/mvp1/reviews/phase4-security-review.md  F-403
+#
+# Scope:
+#   F-403 — methodology_versions: trigger prevent_mv_status_regression()
+#           currently only fires BEFORE UPDATE OF status. A direct INSERT with
+#           status='APPROVED' or 'LOCKED' or 'ARCHIVED' would bypass the
+#           DRAFT-first workflow invariant. Extend the trigger to BEFORE
+#           INSERT OR UPDATE OF status and branch via TG_OP:
+#             - INSERT  → require NEW.status = 'DRAFT'
+#             - UPDATE  → existing regression rules (ARCHIVED/LOCKED/APPROVED)
+#
+# Tenancy mode applicability:
+#   mode-shared          — applies as-is (all tables in `public`).
+#   schema-per-tenant    — TenantSchemaProvisioner re-applies the master tenant
+#                          changelog under the per-tenant schema; trigger DDL
+#                          is intra-schema (function + trigger on the same
+#                          methodology_versions table), so the same DDL works.
+#
+# Reversibility: each changeSet has a `rollback:` block that restores the
+# Phase 4 baseline behaviour shipped in 010-create-methodologies.yaml. The
+# function uses CREATE OR REPLACE FUNCTION (idempotent) and the trigger uses
+# DROP TRIGGER IF EXISTS + CREATE TRIGGER (idempotent). Pure DDL — no row data
+# is mutated.
+
+databaseChangeLog:
+
+  # ===================================================================== F-403
+  # Replace the function body to branch on TG_OP. On INSERT we require
+  # NEW.status = 'DRAFT'; on UPDATE we keep the existing regression rules.
+  - changeSet:
+      id: tenant-014-mv-status-trigger-insert-branch
+      author: database-architect
+      context: mode-shared
+      labels: mvp1,phase4,security-f403
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- F-403 defence-in-depth: a methodology_version row must be born
+              -- in DRAFT state. The application use cases already create new
+              -- versions as DRAFT (CreateMethodologyVersionUseCase,
+              -- CreateMethodologyFromTemplateUseCase, etc.) but a direct DBA
+              -- INSERT or future operational script could bypass that. This
+              -- trigger guarantees the invariant at the storage layer.
+              --
+              -- TG_OP branching:
+              --   INSERT — only DRAFT allowed at creation; APPROVE/LOCK must
+              --            go through the workflow (which uses UPDATE).
+              --   UPDATE — existing regression rules (Phase 4 baseline):
+              --              ARCHIVED  → ∅            (terminal)
+              --              LOCKED    → ARCHIVED      only
+              --              APPROVED  → LOCKED|ARCHIVED only
+              --              DRAFT     → any of the above (no restriction here;
+              --                          the service-layer state machine is
+              --                          the primary gate for forward moves)
+              CREATE OR REPLACE FUNCTION prevent_mv_status_regression()
+              RETURNS trigger AS $$
+              BEGIN
+                IF TG_OP = 'INSERT' THEN
+                  -- F-403: every new methodology_version must be born in
+                  -- DRAFT state. APPROVE/LOCK/ARCHIVE go through UPDATE.
+                  IF NEW.status <> 'DRAFT' THEN
+                    RAISE EXCEPTION 'METHODOLOGY_VERSION_INVALID_INITIAL_STATUS: '
+                      'new methodology versions must be created in DRAFT '
+                      'status. Use APPROVE/LOCK transitions instead '
+                      '(attempted=%, id=%)', NEW.status, NEW.id
+                      USING ERRCODE = '23514';
+                  END IF;
+                  RETURN NEW;
+                ELSIF TG_OP = 'UPDATE' THEN
+                  -- Phase 4 baseline UPDATE-time regression rules.
+                  IF OLD.status = NEW.status THEN
+                    RETURN NEW;
+                  END IF;
+                  IF OLD.status = 'ARCHIVED' THEN
+                    RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: archived versions cannot be modified (id=%)', OLD.id
+                      USING ERRCODE = '23514';
+                  END IF;
+                  IF OLD.status = 'LOCKED' AND NEW.status NOT IN ('ARCHIVED') THEN
+                    RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: locked version (id=%) can only transition to ARCHIVED, attempted=%', OLD.id, NEW.status
+                      USING ERRCODE = '23514';
+                  END IF;
+                  IF OLD.status = 'APPROVED' AND NEW.status NOT IN ('LOCKED','ARCHIVED') THEN
+                    RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: approved version (id=%) cannot regress to %', OLD.id, NEW.status
+                      USING ERRCODE = '23514';
+                  END IF;
+                  RETURN NEW;
+                END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              -- Re-bind the trigger with the BEFORE INSERT OR UPDATE OF status
+              -- timing. Idempotent: DROP IF EXISTS + CREATE.
+              DROP TRIGGER IF EXISTS trg_mv_status_immutability ON methodology_versions;
+              CREATE TRIGGER trg_mv_status_immutability
+                BEFORE INSERT OR UPDATE OF status ON methodology_versions
+                FOR EACH ROW
+                EXECUTE FUNCTION prevent_mv_status_regression();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Restore the Phase 4 baseline trigger function (UPDATE-only,
+              -- as shipped in tenant-010-mv-status-immutability-trigger).
+              CREATE OR REPLACE FUNCTION prevent_mv_status_regression()
+              RETURNS trigger AS $$
+              BEGIN
+                IF OLD.status = NEW.status THEN
+                  RETURN NEW;
+                END IF;
+                IF OLD.status = 'ARCHIVED' THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: archived versions cannot be modified (id=%)', OLD.id
+                    USING ERRCODE = '23514';
+                END IF;
+                IF OLD.status = 'LOCKED' AND NEW.status NOT IN ('ARCHIVED') THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: locked version (id=%) can only transition to ARCHIVED, attempted=%', OLD.id, NEW.status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF OLD.status = 'APPROVED' AND NEW.status NOT IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: approved version (id=%) cannot regress to %', OLD.id, NEW.status
+                    USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              DROP TRIGGER IF EXISTS trg_mv_status_immutability ON methodology_versions;
+              CREATE TRIGGER trg_mv_status_immutability
+                BEFORE UPDATE OF status ON methodology_versions
+                FOR EACH ROW
+                EXECUTE FUNCTION prevent_mv_status_regression();

@@ -122,10 +122,10 @@ class PositionControllerSecurityTest {
                 {
                   "tenantId": "00000000-0000-0000-0000-000000000001",
                   "tenant_id": "00000000-0000-0000-0000-000000000002",
-                  "projectId": "%s",
-                  "departmentId": "%s",
+                  "project_id": "%s",
+                  "department_id": "%s",
                   "code": "POS-1",
-                  "titleI18n": {"ru-RU": "Инженер"}
+                  "title_i18n": {"ru-RU": "Инженер"}
                 }
                 """.formatted(UUID.randomUUID(), UUID.randomUUID());
 
@@ -168,7 +168,7 @@ class PositionControllerSecurityTest {
         mvc.perform(patch("/api/v1/positions/{id}", UUID.randomUUID())
                         .with(jwt().authorities(() -> "POSITION_READ"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"titleI18n\":{\"ru-RU\":\"X\"}}"))
+                        .content("{\"title_i18n\":{\"ru-RU\":\"X\"}}"))
                 .andExpect(status().isForbidden());
     }
 

@@ -1,0 +1,66 @@
+# Phase 6 — GRADE_STRUCTURE_APPROVE + GRADE_STRUCTURE_LOCK permissions seed.
+#
+# GRADE_READ / GRADE_EDIT exist from MVP 0 seeds. Phase 6 introduces the two
+# workflow-control permissions per role-permissions-matrix.md §GRADE:
+#
+#   HRLAB_SUPER_ADMIN          → READ / EDIT / APPROVE / LOCK
+#   HRLAB_PROJECT_MANAGER      → READ / EDIT / APPROVE
+#   HRLAB_CONSULTANT           → READ / EDIT
+#   HRLAB_ANALYST              → READ
+#   CLIENT_COMPANY_ADMIN       → READ
+#   CLIENT_HR_DIRECTOR         → READ
+#   CLIENT_HR_SPECIALIST       → READ
+#   Others                     → none
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-019-seed-grade-structure-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp1,phase6
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'GRADE_STRUCTURE_APPROVE', 'GRADE_STRUCTURE', 'APPROVE',
+                 'Approve grade structure (DRAFT to APPROVED) - Phase 6'),
+                (gen_random_uuid(), 'GRADE_STRUCTURE_LOCK',    'GRADE_STRUCTURE', 'LOCK',
+                 'Lock approved grade structure (APPROVED to LOCKED) - Phase 6')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions
+                WHERE code IN ('GRADE_STRUCTURE_APPROVE','GRADE_STRUCTURE_LOCK');
+
+  - changeSet:
+      id: tenant-019-seed-grade-structure-role-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp1,phase6
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              WITH role_perm_map(role_code, permission_code) AS (
+                VALUES
+                  ('HRLAB_SUPER_ADMIN',     'GRADE_STRUCTURE_APPROVE'),
+                  ('HRLAB_SUPER_ADMIN',     'GRADE_STRUCTURE_LOCK'),
+                  ('HRLAB_PROJECT_MANAGER', 'GRADE_STRUCTURE_APPROVE')
+              )
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM role_perm_map m
+                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.permissions p ON p.code = m.permission_code
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p
+                WHERE rp.permission_id = p.id
+                  AND p.code IN ('GRADE_STRUCTURE_APPROVE','GRADE_STRUCTURE_LOCK');

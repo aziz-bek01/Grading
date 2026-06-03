@@ -18,4 +18,7 @@ public interface ProjectRepository
 
     Page<ProjectJpaEntity> findAllByTenantIdAndStatusNot(UUID tenantId, ProjectStatus excluded,
                                                         Pageable pageable);
+
+    /** Count of projects in a tenant — used by the admin tenant stats endpoint. */
+    long countByTenantId(UUID tenantId);
 }

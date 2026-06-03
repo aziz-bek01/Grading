@@ -21,10 +21,15 @@ import {
   useQuestionnaires,
   useTemplates,
 } from '@/features/job-analysis/hooks/useQuestionnaire';
+import { useEvaluations } from '@/features/evaluation/hooks/useEvaluation';
+import { EvaluationStatusBadge } from '@/features/evaluation/components/EvaluationStatusBadge';
+import { useMethodologies } from '@/features/methodology/hooks/useMethodology';
+import { AssignedGradeBadge } from '@/features/grade-structure/components/AssignedGradeBadge';
+import { CommentThread } from '@/features/comment/components/CommentThread';
 import { pickLocalized } from '@/shared/lib/localized';
 import { cn } from '@/shared/lib/cn';
 
-type Tab = 'overview' | 'job_profile' | 'job_analysis' | 'evaluation' | 'grade' | 'audit';
+type Tab = 'overview' | 'job_profile' | 'job_analysis' | 'evaluation' | 'grade' | 'comments' | 'audit';
 
 export function PositionDetailsPage() {
   const { t, i18n } = useTranslation();
@@ -36,6 +41,8 @@ export function PositionDetailsPage() {
   const templatesQuery = useTemplates();
   const createProfile = useCreateJobProfile(positionId);
   const createQuestionnaire = useCreateQuestionnaire(positionId);
+  const evaluationsQuery = useEvaluations({ projectId, positionId });
+  const methodologiesQuery = useMethodologies(projectId);
 
   if (position.isLoading) return <LoadingState />;
   if (position.error) return <ErrorState onRetry={() => position.refetch()} />;
@@ -50,16 +57,17 @@ export function PositionDetailsPage() {
     { key: 'job_analysis', label: t('positions.tab_job_analysis') },
     { key: 'evaluation', label: t('positions.tab_evaluation') },
     { key: 'grade', label: t('positions.tab_grade') },
+    { key: 'comments', label: t('positions.tab_comments') },
     { key: 'audit', label: t('positions.tab_audit') },
   ];
 
   return (
     <div className="space-y-6">
-      <Breadcrumbs extra={[{ label: pickLocalized(p.title, i18n.language) }]} />
+      <Breadcrumbs extra={[{ label: pickLocalized(p.title_i18n, i18n.language) }]} />
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl text-text-primary">{pickLocalized(p.title, i18n.language)}</h1>
+            <h1 className="text-2xl text-text-primary">{pickLocalized(p.title_i18n, i18n.language)}</h1>
             <PositionStatusBadge status={p.status} />
           </div>
           <p className="text-sm text-text-secondary mt-1">
@@ -116,7 +124,7 @@ export function PositionDetailsPage() {
                   </span>
                 </div>
                 <p className="text-text-secondary">
-                  {t('jobProfile.last_updated', { date: profileQuery.data.updated_at.slice(0, 10) })}
+                  {t('jobProfile.last_updated', { date: (profileQuery.data.updated_at ?? '').slice(0, 10) })}
                 </p>
               </div>
               <Link to={jobProfileHref}>
@@ -208,13 +216,114 @@ export function PositionDetailsPage() {
       ) : null}
 
       {tab === 'evaluation' ? (
-        <Card>
-          <EmptyState body={t('positions.stub_evaluation')} />
+        <Card title={t('positions.tab_evaluation')}>
+          {evaluationsQuery.isLoading ? (
+            <LoadingState />
+          ) : (evaluationsQuery.data?.items?.length ?? 0) === 0 ? (
+            <EmptyState
+              title={t('evaluation.empty_for_position_title')}
+              body={t('evaluation.empty_for_position_body')}
+              action={
+                <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
+                  <Link to={`/app/projects/${projectId}/evaluation`}>
+                    <Button data-testid="position-create-evaluation-cta">
+                      {t('evaluation.new_evaluation')}
+                    </Button>
+                  </Link>
+                </PermissionGate>
+              }
+            />
+          ) : (
+            <ul className="divide-y divide-divider" data-testid="position-evaluation-list">
+              {evaluationsQuery.data!.items.map((ev) => {
+                const meth = methodologiesQuery.data?.items.find(
+                  (m) => m.active_version_id === ev.methodology_version_id,
+                );
+                const href = `/app/projects/${projectId}/evaluation/${ev.id}`;
+                return (
+                  <li
+                    key={ev.id}
+                    className="py-3 flex items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <EvaluationStatusBadge status={ev.status} />
+                        {meth ? (
+                          <span className="text-xs text-text-muted">
+                            {pickLocalized(meth.name_i18n, i18n.language)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-text-muted">
+                        {t('evaluation.displayed_total')}:{' '}
+                        {ev.displayed_total_score != null
+                          ? Number(ev.displayed_total_score).toFixed(2)
+                          : '—'}
+                      </p>
+                    </div>
+                    <Link
+                      to={href}
+                      className="text-sm text-primary-600 hover:underline"
+                      data-testid={`position-open-evaluation-${ev.id}`}
+                    >
+                      {t('evaluation.open_evaluation')}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </Card>
       ) : null}
       {tab === 'grade' ? (
-        <Card>
-          <EmptyState body={t('positions.stub_grade')} />
+        <Card title={t('positions.tab_grade')}>
+          {(() => {
+            const items = evaluationsQuery.data?.items ?? [];
+            const approved = items
+              .filter((ev) => ev.status === 'APPROVED' || ev.status === 'LOCKED')
+              .sort((a, b) => (b.approved_at ?? '').localeCompare(a.approved_at ?? ''));
+            const latest = approved[0];
+            if (!latest) {
+              return (
+                <EmptyState
+                  title={t('gradeStructure.position_grade.empty_title')}
+                  body={t('gradeStructure.position_grade.empty_body')}
+                />
+              );
+            }
+            const outOfRange =
+              latest.assigned_grade_number == null && latest.grade_band_id == null;
+            return (
+              <div className="space-y-3" data-testid="position-grade-summary">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <AssignedGradeBadge
+                    gradeNumber={latest.assigned_grade_number ?? null}
+                    outOfRange={outOfRange}
+                  />
+                  {latest.displayed_total_score != null ? (
+                    <span className="text-xs text-text-secondary">
+                      {t('evaluation.displayed_total')}:{' '}
+                      <span className="tabular-nums">
+                        {Number(latest.displayed_total_score).toFixed(2)}
+                      </span>
+                    </span>
+                  ) : null}
+                </div>
+                <Link
+                  to={`/app/projects/${projectId}/evaluation/${latest.id}`}
+                  className="text-sm text-primary-600 hover:underline"
+                  data-testid="position-grade-open-evaluation"
+                >
+                  {t('evaluation.open_evaluation')}
+                </Link>
+              </div>
+            );
+          })()}
+        </Card>
+      ) : null}
+      {tab === 'comments' ? (
+        <Card title={t('comment.thread_title')}>
+          <CommentThread entityType="POSITION" entityId={positionId} />
         </Card>
       ) : null}
       {tab === 'audit' ? (

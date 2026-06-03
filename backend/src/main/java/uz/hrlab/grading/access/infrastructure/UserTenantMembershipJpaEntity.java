@@ -62,4 +62,8 @@ public class UserTenantMembershipJpaEntity extends AuditedJpaEntity {
     public boolean isSalaryDataPermission() { return salaryDataPermission; }
 
     public void setStatus(MembershipStatus status) { this.status = status; }
+
+    public void setSalaryDataPermission(boolean salaryDataPermission) {
+        this.salaryDataPermission = salaryDataPermission;
+    }
 }

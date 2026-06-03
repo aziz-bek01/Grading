@@ -27,7 +27,9 @@ spring:
     default-schema: public
     # `test-roles` is enabled locally so the three DB roles get LOGIN +
     # dev passwords. NEVER enable this context in production.
-    contexts: control-plane,seeds,test-roles,mode-shared
+    # `dev` enables the BE-SEED-003 demo tenants/users/projects seed.
+    # NEVER enable `dev` in production — application.yml omits it on purpose.
+    contexts: control-plane,seeds,test-roles,mode-shared,dev
 
 logging:
   level:
@@ -38,8 +40,8 @@ logging:
 # No JWT issuer in dev — SecurityConfig falls back to the no-op decoder and
 # requests are authenticated via DevAuthFilter (X-Dev-* headers).
 
-# Local CORS allowlist — Vite dev server only.
+# Local CORS allowlist — Vite dev server (5173) + Preview MCP dev server (5174).
 grading:
   security:
     cors:
-      allowed-origins: http://localhost:5173
+      allowed-origins: http://localhost:5173,http://localhost:5174

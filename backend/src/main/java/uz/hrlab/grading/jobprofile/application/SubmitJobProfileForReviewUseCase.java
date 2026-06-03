@@ -3,6 +3,10 @@ package uz.hrlab.grading.jobprofile.application;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
+import uz.hrlab.grading.access.application.PermissionCodes;
+import uz.hrlab.grading.approval.application.CreateApprovalRequestCommand;
+import uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase;
+import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
@@ -36,19 +40,22 @@ public class SubmitJobProfileForReviewUseCase {
     private final AbacGate abacGate;
     private final JobProfileStatusTransitionPolicy transitionPolicy;
     private final JobProfileAuditSnapshot snapshot;
+    private final CreateApprovalRequestUseCase createApprovalRequest;
 
     public SubmitJobProfileForReviewUseCase(JobProfileRepository profiles,
                                             PositionRepository positions,
                                             AuditService audit,
                                             AbacGate abacGate,
                                             JobProfileStatusTransitionPolicy transitionPolicy,
-                                            JobProfileAuditSnapshot snapshot) {
+                                            JobProfileAuditSnapshot snapshot,
+                                            CreateApprovalRequestUseCase createApprovalRequest) {
         this.profiles = profiles;
         this.positions = positions;
         this.audit = audit;
         this.abacGate = abacGate;
         this.transitionPolicy = transitionPolicy;
         this.snapshot = snapshot;
+        this.createApprovalRequest = createApprovalRequest;
     }
 
     @Transactional
@@ -84,6 +91,26 @@ public class SubmitJobProfileForReviewUseCase {
                 .beforeJson(beforeJson)
                 .afterJson(snapshot.of(entity))
                 .build());
+
+        // MVP 2 Phase 1 — open a single-step approval request requiring
+        // JOB_PROFILE_APPROVE. The originating user already passed JOB_PROFILE_EDIT;
+        // we use createSystem to skip the APPROVAL_REQUEST_CREATE recheck.
+        try {
+            createApprovalRequest.createSystem(
+                    CreateApprovalRequestCommand.singleStep(
+                            entity.getProjectId(),
+                            ApprovalEntityType.JOB_PROFILE,
+                            entity.getId(),
+                            PermissionCodes.JOB_PROFILE_APPROVE));
+        } catch (RuntimeException openExisting) {
+            // Idempotent — if a PENDING request already exists for this profile,
+            // re-submission must not raise. Other failures should propagate.
+            if (!"ANOTHER_PENDING_REQUEST_EXISTS".equals(
+                    openExisting instanceof uz.hrlab.grading.common.exception.BaseDomainException b
+                            ? b.getCode() : null)) {
+                throw openExisting;
+            }
+        }
         return entity.toDomain();
     }
 

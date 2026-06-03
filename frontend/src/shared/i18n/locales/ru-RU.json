@@ -38,7 +38,12 @@
     "description": "Описание",
     "parent": "Родитель",
     "all": "Все",
-    "none": "Нет"
+    "none": "Нет",
+    "reason_min_chars": "минимум {{count}} символов",
+    "continue": "Продолжить",
+    "completeness": "Заполненность",
+    "unknown_actor": "Неизвестный пользователь",
+    "loading": "Загрузка…"
   },
   "nav": {
     "dashboard": "Главная",
@@ -58,7 +63,10 @@
     "audit": "Журнал аудита",
     "users_access": "Пользователи и доступ",
     "soon": "Скоро",
-    "governance": "Управление"
+    "governance": "Управление",
+    "approvals": "Согласования",
+    "imports": "Импорты",
+    "exports": "Экспорты"
   },
   "status": {
     "draft": "Черновик",
@@ -185,7 +193,8 @@
     "column_updated": "Обновлено",
     "column_actions": "Действия",
     "empty_title": "Проектов ещё нет",
-    "empty_body": "Создайте первый проект грейдирования для этой компании-клиента."
+    "empty_body": "Создайте первый проект грейдирования для этой компании-клиента.",
+    "list_subtitle_for_tenant": "Проекты грейдирования для компании-клиента «{{tenant}}»."
   },
   "organization": {
     "page_title": "Организационная структура",
@@ -249,7 +258,8 @@
     "archive_confirm_title": "Архивировать позицию?",
     "archive_confirm_body": "Архивные позиции исключаются из активных процессов.",
     "validation_department_required": "Выберите подразделение.",
-    "validation_title_required": "Название на основном языке обязательно."
+    "validation_title_required": "Название на основном языке обязательно.",
+    "tab_comments": "Комментарии"
   },
   "workflow": {
     "title": "Поток работ проекта",
@@ -271,17 +281,127 @@
       "IN_PROGRESS": "В работе",
       "COMPLETE": "Завершено",
       "BLOCKED": "Заблокировано",
-      "LOCKED_FUTURE": "Скоро"
+      "LOCKED_FUTURE": "Скоро",
+      "NOT_STARTED": "Не начато"
     },
     "next_action": "Следующий шаг",
     "recent_activity": "Недавняя активность",
     "no_activity": "По проекту нет недавней активности.",
     "blockers": "Блокеры",
-    "completion": "Выполнено {{percent}}%"
+    "completion": "Выполнено {{percent}}%",
+    "responsible": "Ответственный",
+    "last_activity": "Последняя активность: {{time}} ({{actor}})",
+    "open_stage": "Перейти к этапу",
+    "activity_requires_audit": "Журнал активности доступен только пользователям с правом AUDIT_READ.",
+    "open_audit_full": "Открыть полный журнал аудита"
   },
   "audit": {
     "log": "Журнал аудита",
-    "stat_card_label": "Аудит-уведомления"
+    "stat_card_label": "Аудит-уведомления",
+    "title": "Журнал аудита",
+    "subtitle": "Хронология действий, фиксируемая для расследований и соответствия.",
+    "subtitle_for_tenant": "Действия компании «{{tenant}}», зафиксированные системой.",
+    "empty": "По выбранным фильтрам событий не найдено.",
+    "empty_title": "События не найдены",
+    "no_access": "Для просмотра журнала аудита требуется право AUDIT_READ.",
+    "export_csv": "Экспорт в CSV",
+    "hash_chain_valid": "Цепочка хешей цела",
+    "hash_chain_valid_hint": "Хеш текущего события согласуется с предыдущим. Полная проверка цепочки — на бэкенде.",
+    "hash_chain_broken": "Цепочка хешей нарушена",
+    "filter": {
+      "from": "С даты",
+      "to": "По дату",
+      "action": "Действие",
+      "actor": "Идентификатор инициатора",
+      "actor_placeholder": "ID пользователя",
+      "entity_type": "Тип сущности",
+      "entity_id": "ID сущности",
+      "tenant": "Компания",
+      "error_date": "Дата должна быть в формате ГГГГ-ММ-ДД.",
+      "error_from_after_to": "Дата «По» не может быть раньше даты «С»."
+    },
+    "column": {
+      "timestamp": "Время",
+      "action": "Действие",
+      "actor": "Инициатор",
+      "entity": "Сущность",
+      "correlation_id": "ID запроса"
+    },
+    "details": {
+      "title": "Событие аудита",
+      "empty": "Выберите событие в таблице, чтобы увидеть подробности.",
+      "actor": "Инициатор",
+      "entity": "Сущность",
+      "tenant": "Компания",
+      "correlation_id": "ID запроса",
+      "ip": "IP-адрес",
+      "user_agent": "User Agent",
+      "hash_chain": "Цепочка хешей",
+      "reason": "Причина",
+      "metadata": "Метаданные",
+      "before": "До изменения",
+      "after": "После изменения"
+    },
+    "entity_type": {
+      "PROJECT": "Проект",
+      "TENANT": "Компания",
+      "USER": "Пользователь",
+      "USER_MEMBERSHIP": "Членство пользователя",
+      "DEPARTMENT": "Подразделение",
+      "POSITION": "Должность",
+      "JOB_PROFILE": "Должностной профиль",
+      "METHODOLOGY": "Методология",
+      "METHODOLOGY_VERSION": "Версия методологии",
+      "EVALUATION": "Оценка",
+      "EVALUATION_SCORE": "Балл оценки",
+      "GRADE_STRUCTURE": "Структура грейдов",
+      "GRADE": "Грейд",
+      "APPROVAL_REQUEST": "Запрос на согласование",
+      "IMPORT": "Импорт",
+      "EXPORT": "Экспорт",
+      "REPORT": "Отчёт"
+    },
+    "action": {
+      "LOGIN_SUCCESS": "Успешный вход",
+      "LOGIN_FAILED": "Неудачный вход",
+      "LOGOUT": "Выход из системы",
+      "TENANT_CONTEXT_SWITCH": "Переключение компании",
+      "PROJECT_CREATED": "Проект создан",
+      "PROJECT_UPDATED": "Проект изменён",
+      "PROJECT_LOCKED": "Проект заблокирован",
+      "PROJECT_ARCHIVED": "Проект архивирован",
+      "DEPARTMENT_CREATED": "Подразделение создано",
+      "DEPARTMENT_UPDATED": "Подразделение изменено",
+      "DEPARTMENT_ARCHIVED": "Подразделение архивировано",
+      "POSITION_CREATED": "Должность создана",
+      "POSITION_UPDATED": "Должность изменена",
+      "POSITION_ARCHIVED": "Должность архивирована",
+      "JOB_PROFILE_CREATED": "Профиль создан",
+      "JOB_PROFILE_SUBMITTED": "Профиль отправлен на проверку",
+      "JOB_PROFILE_APPROVED": "Профиль утверждён",
+      "JOB_PROFILE_ARCHIVED": "Профиль архивирован",
+      "METHODOLOGY_CREATED": "Методология создана",
+      "METHODOLOGY_VERSION_APPROVED": "Версия методологии утверждена",
+      "METHODOLOGY_VERSION_LOCKED": "Версия методологии заблокирована",
+      "EVALUATION_CREATED": "Оценка создана",
+      "EVALUATION_SCORE_UPSERTED": "Балл по фактору сохранён",
+      "EVALUATION_SUBMITTED": "Оценка отправлена",
+      "EVALUATION_APPROVED": "Оценка утверждена",
+      "EVALUATION_LOCKED": "Оценка заблокирована",
+      "EVALUATION_SCORE_CALIBRATED": "Калибровка балла фактора",
+      "GRADE_ASSIGNED": "Грейд присвоен",
+      "USER_INVITED": "Пользователь приглашён",
+      "USER_REVOKED": "Пользователь отозван",
+      "USER_SALARY_PERMISSION_GRANTED": "Выдан доступ к данным о компенсации",
+      "USER_SALARY_PERMISSION_REVOKED": "Отозван доступ к данным о компенсации",
+      "IMPORT_UPLOADED": "Импорт загружен",
+      "IMPORT_COMMITTED": "Импорт зафиксирован",
+      "EXPORT_REQUESTED": "Экспорт запрошен",
+      "EXPORT_DOWNLOADED": "Экспорт скачан",
+      "REPORT_GENERATED": "Отчёт сформирован",
+      "CROSS_TENANT_OR_PROJECT_ACCESS_ATTEMPT": "Попытка доступа к чужой компании или проекту",
+      "TENANT_MEMBERSHIP_MISMATCH": "Несоответствие членства в компании"
+    }
   },
   "jobProfile": {
     "page_title": "Должностной профиль",
@@ -373,8 +493,1008 @@
     "advisory_label": "ИИ-подсказка — требуется подтверждение человеком",
     "panel_title": "Подсказка ИИ",
     "disclaimer": "Принятие подсказки не утверждает сущность. Окончательное решение принимает человек.",
-    "coming_soon": "Интеграция ИИ появится в фазе 4. Пока этот раздел — заглушка.",
+    "coming_soon": "AI-ассистент доступен в режиме предпросмотра. Полная интеграция в MVP 2.",
     "accept": "Принять",
     "reject": "Отклонить"
+  },
+  "sidebar": {
+    "select_project_first": "Сначала выберите проект",
+    "collapse": "Свернуть меню",
+    "expand": "Развернуть меню",
+    "toggle_aria": "Переключить боковое меню",
+    "soonRoadmap": {
+      "compensation": "Доступно в MVP 3",
+      "files": "Доступно в MVP 2",
+      "aiAssist": "Доступно в MVP 4 (предпросмотр уже в панелях Фазы 4)"
+    }
+  },
+  "approval": {
+    "inbox_title": "Мои согласования",
+    "inbox_subtitle": "Запросы, ожидающие вашего решения.",
+    "inbox_empty_title": "Очередь пуста",
+    "inbox_empty_body": "Сейчас нет запросов на согласование, требующих вашего внимания.",
+    "project_list_title": "Согласования проекта",
+    "project_list_subtitle": "Все запросы на согласование в рамках текущего проекта.",
+    "project_list_empty_title": "Запросов нет",
+    "project_list_empty_body": "По выбранным фильтрам ничего не найдено.",
+    "filter_entity_type": "Тип сущности",
+    "steps_title": "Шаги согласования",
+    "decisions_title": "История решений",
+    "decisions_empty": "Решений ещё не было.",
+    "steps_count": "{{total}} шаг(а)",
+    "initiated_by": "Инициировал: {{name}} · {{time}}",
+    "pending_panel_title": "Ожидают согласования ({{count}})",
+    "pending_panel_empty": "Нет активных запросов на согласование.",
+    "status": {
+      "PENDING": "Ожидает",
+      "APPROVED": "Утверждено",
+      "REJECTED": "Отклонено",
+      "CHANGES_REQUESTED": "Требует доработки",
+      "CANCELLED": "Отменено"
+    },
+    "stepStatus": {
+      "PENDING": "Ожидает",
+      "APPROVED": "Утверждено",
+      "REJECTED": "Отклонено",
+      "SKIPPED": "Пропущено"
+    },
+    "decisionType": {
+      "APPROVED": "Утверждено",
+      "REJECTED": "Отклонено",
+      "CHANGES_REQUESTED": "Запрошены изменения"
+    },
+    "entityType": {
+      "JOB_PROFILE": "Должностной профиль",
+      "METHODOLOGY_VERSION": "Версия методологии",
+      "EVALUATION": "Оценка",
+      "GRADE_STRUCTURE": "Структура грейдов",
+      "PROJECT": "Проект"
+    },
+    "step": {
+      "order": "Шаг {{order}}",
+      "approver": "Согласующий",
+      "required_permission": "Требуется право",
+      "any_approver": "Любой пользователь с правом",
+      "decided_by": "Решение принял {{name}} · {{time}}",
+      "reason": "Причина",
+      "notes": "Заметки"
+    },
+    "actions": {
+      "approve": "Утвердить",
+      "reject": "Отклонить",
+      "request_changes": "Запросить доработку",
+      "cancel_request": "Отозвать запрос",
+      "no_authority": "У вас нет прав для действия на текущем шаге.",
+      "approve_confirm_title": "Подтвердить утверждение?",
+      "approve_confirm_body": "После утверждения шаг считается пройденным и не подлежит отмене.",
+      "reject_dialog_title": "Отклонить запрос",
+      "reject_dialog_body": "Укажите причину отклонения (не менее 20 символов).",
+      "changes_dialog_title": "Запросить доработку",
+      "changes_dialog_body": "Опишите, что необходимо доработать (не менее 20 символов).",
+      "cancel_confirm_title": "Отозвать запрос на согласование?",
+      "cancel_confirm_body": "Запрос будет отменён, новый можно создать позже."
+    }
+  },
+  "comment": {
+    "thread_title": "Комментарии",
+    "input_placeholder": "Напишите комментарий... Используйте @ для упоминания пользователя.",
+    "mention_hint": "Подсказка: формат упоминания — @[id|Имя пользователя]",
+    "submit": "Отправить",
+    "submit_reply": "Ответить",
+    "reply": "Ответить",
+    "reply_placeholder": "Ответ на комментарий...",
+    "edited": "изменено",
+    "empty": "Комментариев пока нет.",
+    "deleted_placeholder": "Комментарий удалён",
+    "delete_confirm_title": "Удалить комментарий?",
+    "delete_confirm_body": "Это действие нельзя отменить. Комментарий будет помечен как удалённый.",
+    "errors": {
+      "body_required": "Введите текст комментария.",
+      "body_too_short": "Комментарий не может быть пустым.",
+      "body_too_long": "Комментарий не должен превышать 5000 символов."
+    }
+  },
+  "methodology": {
+    "list_page_title": "Методологии",
+    "list_page_subtitle": "Шаблоны и версии методологий грейдинга для текущего проекта.",
+    "new_methodology": "Новая методология",
+    "open": "Открыть",
+    "empty_title": "Методологий ещё нет",
+    "empty_body": "Создайте методологию из шаблона CLASSIC_8_FACTOR, EXTENDED_11_CRITERIA или начните с нуля (Custom).",
+    "no_active_version": "Нет активной версии",
+    "no_versions": "Версий ещё нет.",
+    "no_factors": "Факторы пока не добавлены.",
+    "add_factor": "Добавить фактор",
+    "summary_title": "Сводка",
+    "scoring_mode": "Режим подсчёта",
+    "approve_lock": "Утвердить и заблокировать",
+    "read_only": "Только чтение",
+    "translations_button": "Переводы",
+    "translation_matrix_title": "Перевод факторов",
+    "translation_matrix_subtitle": "Заполните название каждого фактора в каждом языке.",
+    "translations_page_title": "Переводы методологии",
+    "translations_page_subtitle": "Матрица факторов × 4 языка. Полная заполненность ускоряет приёмку.",
+    "compare_versions_soon": "Сравнение версий появится в MVP 2.",
+    "version_panel_title": "Версии",
+    "version_label": "Версия {{number}}",
+    "factor_table_caption": "Таблица факторов методологии",
+    "create_new_version": "Создать новую версию",
+    "confirm_remove_factor": "Удалить этот фактор?",
+    "confirm_remove_level": "Удалить этот уровень?",
+    "weight_sum_title": "Сумма весов факторов",
+    "weight_sum_label": "Сейчас: {{current}} / Цель: {{target}}",
+    "weight_sum_at_target": "Сумма соответствует целевому значению.",
+    "weight_sum_over": "Превышение цели на {{amount}} — отрегулируйте веса.",
+    "weight_sum_under": "Недобор до цели на {{amount}} — отрегулируйте веса.",
+    "locked_header_title_approved": "Методология утверждена",
+    "locked_header_title_locked": "Версия заблокирована",
+    "locked_header_body_approved": "Утвердил(а) {{actor}} ({{timestamp}}). Для изменений создайте новую версию.",
+    "locked_header_body_locked": "Заблокировал(а) {{actor}} ({{timestamp}}). Для изменений создайте новую версию.",
+    "status": {
+      "draft": "Черновик",
+      "approved": "Утверждено",
+      "locked": "Заблокировано",
+      "archived": "В архиве"
+    },
+    "type": {
+      "classic_8_factor": "8 факторов (классика)",
+      "extended_11_criteria": "11 критериев (расширенная)",
+      "custom": "Пользовательская"
+    },
+    "scoring_mode_label": {
+      "direct_points": "Прямые баллы",
+      "weighted_points": "Взвешенные баллы (∑ = 100)",
+      "weighted_scale": "Взвешенная шкала"
+    },
+    "scoring_mode_badge": {
+      "direct_points": "Прямые баллы",
+      "weighted_points": "Взвешенные баллы",
+      "weighted_scale": "Взвешенная шкала"
+    },
+    "column": {
+      "active_version": "Активная версия",
+      "updated_at": "Обновлено"
+    },
+    "filter": {
+      "type": "Тип"
+    },
+    "template_picker": {
+      "title": "Выберите шаблон методологии",
+      "body": "С чего удобно начать?",
+      "classic_body": "Стандартные 8 факторов: знания, опыт, сложность, ответственность и др.",
+      "extended_body": "11 критериев для крупных холдингов и расширенных проектов.",
+      "custom_body": "Пустая методология — настроите факторы и уровни вручную.",
+      "default_name_classic": "Методология 8-факторная",
+      "default_name_extended": "Методология 11-критериальная",
+      "default_name_custom": "Пользовательская методология"
+    },
+    "factor_editor": {
+      "create_title": "Новый фактор",
+      "edit_title": "Редактирование фактора"
+    },
+    "confirm": {
+      "approve_title": "Утвердить и заблокировать версию?",
+      "approve_body": "Утверждение заблокирует структуру для оценок. Изменить позже можно только через новую версию.",
+      "archive_title": "Архивировать версию?",
+      "archive_body": "Версия станет историей. Укажите причину.",
+      "new_version_title": "Создать новую версию?",
+      "new_version_body": "Будет создан черновик новой версии с копией факторов и уровней."
+    }
+  },
+  "evaluation": {
+    "list_title": "Оценки",
+    "list_subtitle": "Все оценки должностей в активном проекте.",
+    "details_title": "Оценка должности",
+    "new_evaluation": "+ Новая оценка",
+    "open_evaluation": "Открыть оценку",
+    "position_id": "Должность",
+    "displayed_total": "Итоговый балл",
+    "empty_title": "Оценок пока нет",
+    "empty_body": "Начните оценивать должности по утверждённой методологии.",
+    "empty_for_position_title": "Оценка отсутствует",
+    "empty_for_position_body": "Запустите оценку этой должности, чтобы присвоить грейд.",
+    "audit_placeholder": "Хронология аудита по оценке появится в MVP 2.",
+    "column": {
+      "position": "Должность",
+      "methodology": "Методология",
+      "total": "Итог",
+      "updated": "Обновлено"
+    },
+    "filter": {
+      "status": "Статус",
+      "methodology": "Методология"
+    },
+    "status": {
+      "draft": "Черновик",
+      "incomplete": "Неполная",
+      "complete": "Готова к подаче",
+      "submitted": "Отправлена",
+      "approved": "Утверждена",
+      "locked": "Заблокирована",
+      "archived": "Архив"
+    },
+    "tab": {
+      "matrix": "Матрица",
+      "breakdown": "Разбивка баллов",
+      "calibration": "История калибровок",
+      "comments": "Комментарии",
+      "audit": "Аудит"
+    },
+    "matrix": {
+      "aria_label": "Матрица оценки",
+      "levels_for": "Уровни фактора {{factor}}",
+      "weight": "Вес",
+      "max_points": "Макс. баллы",
+      "required_indicator": "Обязательно",
+      "missing_required": "Не выбраны уровни у {{count}} обязательных факторов.",
+      "factor_raw": "Балл",
+      "comment_label": "Комментарий",
+      "comment_placeholder": "Необязательные пояснения к выбору уровня..."
+    },
+    "preview": {
+      "total_label": "Предварительный итог",
+      "raw_label": "Сырой",
+      "recalculating": "пересчёт...",
+      "disclaimer": "Предварительный расчёт. Итоговый балл вычисляется бэкендом при отправке/утверждении."
+    },
+    "actions": {
+      "submit": "Отправить",
+      "approve": "Утвердить",
+      "request_changes": "Вернуть на доработку",
+      "lock": "Заблокировать",
+      "calibrate": "Калибровать",
+      "archive": "Архивировать"
+    },
+    "confirm": {
+      "approve_title": "Утвердить оценку?",
+      "approve_body": "Утверждённую оценку нельзя редактировать без калибровки.",
+      "lock_title": "Заблокировать оценку?",
+      "lock_body": "Заблокированная оценка финальна; только калибровка с указанием причины может изменить баллы.",
+      "request_changes_title": "Вернуть на доработку?",
+      "request_changes_body": "Укажите причину — что необходимо доработать.",
+      "archive_title": "Архивировать оценку?",
+      "archive_body": "Архивная оценка становится только для чтения. Укажите причину."
+    },
+    "create": {
+      "title": "Новая оценка",
+      "position": "Должность",
+      "methodology": "Версия методологии"
+    },
+    "calibration": {
+      "dialog_title": "Калибровать балл фактора",
+      "dialog_body": "Ручное изменение балла требует причины, которая фиксируется в аудит-журнале.",
+      "factor_label": "Фактор",
+      "new_score_label": "Новый сырой балл фактора",
+      "history_title": "История калибровок",
+      "empty": "По этой оценке калибровок ещё не было.",
+      "col_factor": "Фактор",
+      "col_original": "Исходный",
+      "col_adjusted": "После",
+      "col_delta": "Δ",
+      "col_reason": "Причина",
+      "col_decided_by": "Кто решил",
+      "col_when": "Когда"
+    },
+    "breakdown": {
+      "title": "Разбивка по факторам",
+      "col_factor": "Фактор",
+      "col_weight": "Вес",
+      "col_level": "Выбранный уровень",
+      "col_raw": "Балл",
+      "row_total": "Итого"
+    },
+    "ai": {
+      "placeholder": "AI-подсказки по выбору уровня появятся в MVP 4. Рекомендации остаются совещательными; финальное решение принимает человек."
+    },
+    "byFactor": {
+      "mode_toggle": {
+        "aria": "Режим отображения оценок",
+        "by_position": "По должности",
+        "by_factor": "По фактору"
+      },
+      "no_methodology_title": "Методология не выбрана",
+      "no_methodology_body": "Создайте и утвердите хотя бы одну методологию, чтобы оценивать по факторам.",
+      "no_factors_title": "В версии методологии нет факторов",
+      "no_factors_body": "Откройте методологию и добавьте факторы.",
+      "empty_title": "Подходящих позиций не найдено",
+      "empty_body": "Сбросьте фильтры или выберите другой фактор.",
+      "filter": {
+        "department": "Подразделение",
+        "status": "Статус",
+        "only_unfilled": "Только незаполненные"
+      },
+      "table": {
+        "column": {
+          "department": "Подразделение",
+          "unit": "Отдел",
+          "position": "Должность",
+          "filled": "Заполнено",
+          "score": "Балл",
+          "comment": "Комментарий"
+        }
+      },
+      "row": {
+        "select_aria": "Выбрать строку для массового действия",
+        "select_all_aria": "Выбрать все строки на странице",
+        "score_aria": "Балл по фактору {{factor}}",
+        "comment_aria": "Комментарий по фактору"
+      },
+      "progress": {
+        "label": "Заполнено {{filled}} из {{total}}",
+        "tooltip_filled": "Заполнены: {{codes}}.",
+        "tooltip_missing": "Не заполнены: {{codes}}."
+      },
+      "rubric": {
+        "title": "Рубрика фактора",
+        "no_translation": "Нет перевода",
+        "level_order": "Уровень",
+        "collapse_label": "Свернуть",
+        "expand_label": "Развернуть",
+        "vertical_label": "РУБРИКА",
+        "aria_toggle": "Переключить видимость рубрики",
+        "show_label": "Рубрика",
+        "hide_label": "Скрыть рубрику",
+        "score_col": "Балл",
+        "comment_col": "Комментарий"
+      },
+      "locked": {
+        "tooltip": "Оценка заблокирована и не может быть отредактирована из K-листа."
+      },
+      "toolbar": {
+        "selected": "Выбрано: {{selected}} из {{total}}"
+      },
+      "bulk": {
+        "set_all": {
+          "cta": "Заполнить все остальные = {{count}}",
+          "title": "Заполнить балл для {{count}} оценок",
+          "body": "Будет применён выбранный уровень для фактора «{{factor}}» ко всем выбранным позициям. Действие фиксируется в аудите.",
+          "level_label": "Уровень фактора",
+          "reason_label": "Причина",
+          "reason_placeholder": "Опишите, почему массовое заполнение оправдано (минимум 50 символов).",
+          "confirm": "Применить ко всем"
+        },
+        "submit": {
+          "cta": "Массовая отправка ({{count}})",
+          "title": "Отправить {{count}} оценок?",
+          "body": "Выбранные оценки будут переведены в статус «Отправлена». Незавершённые оценки будут отклонены сервером.",
+          "reason_label": "Причина",
+          "reason_placeholder": "Кратко опишите, что отправляется и зачем (минимум 20 символов).",
+          "confirm": "Отправить"
+        },
+        "result_summary": "Обновлено: {{updated}}, ошибок: {{failed}}."
+      },
+      "autosave": {
+        "saved": "Сохранено",
+        "failed": "Не сохранено — нажмите для повтора"
+      }
+    }
+  },
+  "factor": {
+    "column": {
+      "order": "№",
+      "code": "Код",
+      "name": "Название",
+      "weight": "Вес",
+      "max_points": "Макс. баллов",
+      "levels": "Уровней",
+      "required": "Обязательный",
+      "actions": "Действия"
+    },
+    "field": {
+      "code": "Код",
+      "name": "Название",
+      "description": "Описание",
+      "weight": "Вес фактора",
+      "max_points": "Максимум баллов",
+      "required": "Обязательный для оценки",
+      "points": "Баллы",
+      "scale_value": "Значение шкалы",
+      "label": "Метка уровня"
+    },
+    "action": {
+      "move_up": "Поднять",
+      "move_down": "Опустить",
+      "edit": "Изменить",
+      "remove": "Удалить"
+    },
+    "levels_title": "Уровни фактора",
+    "no_levels": "Уровней пока нет.",
+    "add_level": "Добавить уровень",
+    "levels_after_create": "Уровни появятся после сохранения фактора.",
+    "validation": {
+      "name_primary_required": "Название обязательно на ru-RU.",
+      "weight_invalid": "Вес должен быть числом 0–100.",
+      "max_points_invalid": "Максимум баллов должен быть положительным числом.",
+      "code_required": "Код обязателен."
+    }
+  },
+  "gradeStructure": {
+    "list_page_title": "Структуры грейдов",
+    "list_page_subtitle": "Шкалы грейдов и диапазоны баллов для активного проекта.",
+    "new_structure": "Новая структура грейдов",
+    "open": "Открыть",
+    "open_pyramid": "Пирамида грейдов",
+    "empty_title": "Структур грейдов ещё нет",
+    "empty_body": "Создайте структуру из шаблона 14-грейдов / 16-грейдов или начните с нуля.",
+    "version_label": "Версия {{number}}",
+    "create_new_version": "Создать новую версию",
+    "summary_title": "Сводка",
+    "gap_policy_label": "Политика разрывов",
+    "confirm_remove_grade": "Удалить этот грейд?",
+    "status": {
+      "draft": "Черновик",
+      "approved": "Утверждено",
+      "locked": "Заблокировано",
+      "archived": "В архиве"
+    },
+    "type": {
+      "grade_14": "14 грейдов",
+      "grade_16": "16 грейдов",
+      "custom": "Пользовательская"
+    },
+    "gap_policy": {
+      "strict_no_gaps": "Без разрывов (строго)",
+      "allow_gaps_warn": "Разрывы допускаются (с предупреждением)"
+    },
+    "column": {
+      "grades_count": "Грейдов",
+      "version": "Версия",
+      "updated_at": "Обновлено"
+    },
+    "template_picker": {
+      "title": "Выберите шаблон структуры грейдов",
+      "body": "С чего удобно начать?",
+      "grade_14_body": "Готовая 14-грейдовая шкала с равномерными диапазонами.",
+      "grade_16_body": "Готовая 16-грейдовая шкала для крупных компаний.",
+      "custom_body": "Пустая структура — настроите грейды и диапазоны вручную.",
+      "default_name_14": "Структура 14 грейдов",
+      "default_name_16": "Структура 16 грейдов",
+      "default_name_custom": "Пользовательская структура"
+    },
+    "actions": {
+      "approve": "Утвердить",
+      "lock": "Заблокировать"
+    },
+    "confirm": {
+      "approve_title": "Утвердить структуру грейдов?",
+      "approve_body": "Утверждение запретит правки. Чтобы внести изменения позже, создайте новую версию.",
+      "lock_title": "Заблокировать структуру?",
+      "lock_body": "Заблокированная структура финальна — её можно только архивировать или создать новую версию.",
+      "archive_title": "Архивировать структуру?",
+      "archive_body": "Структура станет недоступной для активных проектов. Укажите причину.",
+      "new_version_title": "Создать новую версию?",
+      "new_version_body": "Будет создан черновик новой версии с копией грейдов и диапазонов."
+    },
+    "locked_header_title_approved": "Структура грейдов утверждена",
+    "locked_header_title_locked": "Структура заблокирована",
+    "locked_header_body_approved": "Утвердил(а) {{actor}} ({{timestamp}}). Для изменений создайте новую версию.",
+    "locked_header_body_locked": "Заблокировал(а) {{actor}} ({{timestamp}}). Для изменений создайте новую версию.",
+    "table": {
+      "caption": "Таблица грейдов и диапазонов баллов",
+      "col_idx": "№",
+      "col_grade_number": "Грейд",
+      "col_name": "Название",
+      "col_min_score": "Мин. балл",
+      "col_max_score": "Макс. балл",
+      "col_width": "Ширина",
+      "col_validation": "Валидация",
+      "col_actions": "Действия",
+      "empty": "Грейды ещё не добавлены.",
+      "add_grade": "Добавить грейд",
+      "action_edit": "Редактировать",
+      "action_remove": "Удалить",
+      "validation_ok": "Без замечаний",
+      "validation_overlap": "Пересечение",
+      "validation_gap": "Разрыв",
+      "validation_missing": "Нет диапазона"
+    },
+    "validator": {
+      "empty": "Добавьте грейды и диапазоны, чтобы увидеть проверки.",
+      "all_valid": "Все диапазоны корректны (без пересечений, без разрывов).",
+      "has_errors": "Обнаружены ошибки",
+      "has_warnings": "Обнаружены предупреждения",
+      "overlap_count": "Пересечений: {{count}}",
+      "overlap_item": "G{{a}} и G{{b}} пересекаются на [{{from}}; {{to}}]",
+      "gap_count": "Разрывов: {{count}}",
+      "gap_item": "Разрыв между G{{below}} и G{{above}}: [{{from}}; {{to}}]",
+      "missing_bands": "Нет диапазонов у грейдов: {{list}}",
+      "invalid_bands": "Некорректные диапазоны (min > max) у грейдов: {{list}}"
+    },
+    "row_editor": {
+      "create_title": "Новый грейд",
+      "edit_title": "Грейд G{{number}}",
+      "grade_number": "Номер грейда",
+      "name_label": "Название грейда",
+      "description_label": "Описание",
+      "band_legend": "Диапазон баллов",
+      "min_score": "Минимальный балл",
+      "max_score": "Максимальный балл",
+      "error_name_required": "Название обязательно на ru-RU.",
+      "error_min_gt_max": "Минимальный балл должен быть ≤ максимального.",
+      "hint_primary_name": "Заполните название на ru-RU, чтобы сохранить."
+    },
+    "pyramid": {
+      "title": "Пирамида грейдов",
+      "subtitle": "Распределение должностей по грейдам.",
+      "aria_label": "Пирамида грейдов с количеством должностей на каждом уровне",
+      "empty": "Пирамида пуста — добавьте грейды и присвойте должностям.",
+      "summary_title": "Сводка по пирамиде",
+      "total_grades": "Всего грейдов",
+      "total_positions": "Всего должностей",
+      "total_evaluations": "Всего оценок",
+      "zero_positions": "0 должностей",
+      "evaluation_count": "Оценок: {{count}}",
+      "salary_hidden_note": "Данные о зарплатах не отображаются — соблюдается изоляция оплаты труда."
+    },
+    "score_lookup": {
+      "title": "Подбор грейда по баллу",
+      "subtitle": "Введите итоговый балл — увидите, в какой грейд он попадёт.",
+      "input_label": "Балл",
+      "placeholder": "Например, 750.0000",
+      "empty_state": "Введите балл, чтобы увидеть результат.",
+      "loading": "Проверка...",
+      "out_of_range": "Балл {{score}} не попадает ни в один диапазон — нужна ручная калибровка."
+    },
+    "assigned": {
+      "label": "Грейд {{number}}",
+      "pending": "Грейд не присвоен",
+      "pending_hint": "Грейд будет присвоен после утверждения оценки.",
+      "out_of_range": "Вне диапазона",
+      "out_of_range_hint": "Итоговый балл оценки вне всех диапазонов — нужна ручная калибровка."
+    },
+    "position_grade": {
+      "empty_title": "Грейд ещё не присвоен",
+      "empty_body": "Грейд появится после утверждения оценки должности."
+    }
+  },
+  "import": {
+    "list": {
+      "title": "Импорты",
+      "subtitle": "Загрузки Excel для пополнения данных проекта.",
+      "new": "+ Новый импорт",
+      "empty": "Импорты ещё не создавались."
+    },
+    "wizard": {
+      "title": "Новый импорт",
+      "subtitle": "Загрузите Excel-файл, проверьте валидацию, затем подтвердите фиксацию.",
+      "step1": "Выбор шаблона",
+      "step2": "Загрузка файла",
+      "step3": "Проверка валидации",
+      "step4": "Подтверждение фиксации",
+      "upload_for_template": "Выбранный шаблон: {{template}}",
+      "upload": "Загрузить",
+      "cancel": "Отменить импорт",
+      "continue_commit": "Перейти к фиксации",
+      "commit_rows": "Зафиксировать {{count}} строк",
+      "commit_success": "Успешно зафиксировано {{count}} строк.",
+      "no_templates_available": "У вас нет прав на импорт ни одного шаблона."
+    },
+    "field": {
+      "template": "Шаблон"
+    },
+    "col": {
+      "filename": "Файл",
+      "template": "Шаблон",
+      "status": "Статус",
+      "rows": "Строк",
+      "errors": "Ошибок",
+      "uploaded": "Загружено"
+    },
+    "file": {
+      "cta": "Перетащите .xlsx или нажмите для выбора",
+      "hint": "Только Excel. Максимальный размер: 25 МБ.",
+      "error": {
+        "required": "Выберите файл.",
+        "empty": "Файл пустой.",
+        "too_large": "Файл больше 25 МБ.",
+        "extension": "Поддерживается только .xlsx.",
+        "mime": "MIME-тип файла не соответствует .xlsx."
+      }
+    },
+    "summary": {
+      "total_rows": "Всего строк",
+      "valid_rows": "Валидных",
+      "warning_rows": "Предупреждений",
+      "error_rows": "Ошибок",
+      "commit_ready": "Готово к фиксации.",
+      "commit_blocked": "Фиксация заблокирована — устраните ошибки.",
+      "contains_salary": "Содержит данные о зарплате"
+    },
+    "pipeline": {
+      "aria_label": "Пятиуровневый конвейер валидации",
+      "level": {
+        "FILE": "Файл",
+        "STRUCTURE": "Структура",
+        "ROW": "Строки",
+        "BUSINESS": "Бизнес-правила",
+        "SECURITY": "Безопасность"
+      }
+    },
+    "errors": {
+      "filter_label": "Уровень:",
+      "empty": "Проблем на этом уровне нет.",
+      "col_row": "Строка",
+      "col_level": "Уровень",
+      "col_field": "Поле",
+      "col_message": "Сообщение",
+      "col_fix": "Рекомендация"
+    },
+    "error_level": {
+      "BLOCKER": "Блокер",
+      "ERROR": "Ошибка",
+      "WARNING": "Предупреждение",
+      "INFO": "Информация"
+    },
+    "template": {
+      "ORG_STRUCTURE_V1": "Организационная структура",
+      "POSITION_CATALOG_V1": "Каталог должностей",
+      "JOB_PROFILE_V1": "Профили должностей",
+      "METHODOLOGY_FACTORS_V1": "Факторы методологии",
+      "GRADE_BANDS_V1": "Диапазоны грейдов",
+      "download_empty": "Скачать пустой шаблон",
+      "download_sample": "Скачать пример",
+      "dropdown_label": "Скачать шаблон"
+    },
+    "template_desc": {
+      "ORG_STRUCTURE_V1": "Подразделения, отделы и иерархия.",
+      "POSITION_CATALOG_V1": "Должности с названием, функцией, категорией.",
+      "JOB_PROFILE_V1": "Поля профилей должностей.",
+      "METHODOLOGY_FACTORS_V1": "Факторы, уровни и веса версии методологии.",
+      "GRADE_BANDS_V1": "Шкала грейдов с диапазонами баллов."
+    },
+    "status": {
+      "UPLOADED": "Загружено",
+      "SCANNING": "Сканирование",
+      "SCAN_FAILED": "Антивирус: ошибка",
+      "PARSING": "Парсинг",
+      "VALIDATING": "Валидация",
+      "VALIDATION_FAILED": "Валидация: ошибка",
+      "READY_FOR_REVIEW": "Готов к проверке",
+      "READY_TO_COMMIT": "Готов к фиксации",
+      "COMMITTING": "Фиксация",
+      "COMMITTED": "Зафиксирован",
+      "PARTIALLY_COMMITTED": "Частично зафиксирован",
+      "FAILED": "Сбой",
+      "CANCELLED": "Отменён",
+      "ARCHIVED": "Архив"
+    }
+  },
+  "export": {
+    "center": {
+      "title": "Центр экспорта",
+      "subtitle": "Сформированные выгрузки текущего проекта.",
+      "new": "Запросить экспорт",
+      "empty": "Экспортов ещё нет."
+    },
+    "request": {
+      "title": "Запросить новый экспорт",
+      "type": "Тип экспорта",
+      "format": "Формат",
+      "filter_params": "Параметры фильтра (JSON)",
+      "filter_placeholder": "{}",
+      "submit": "Запросить",
+      "salary_warning": "Этот тип экспорта содержит данные о зарплате. Требуется право SALARY_EXPORT."
+    },
+    "download": {
+      "cta": "Скачать",
+      "generating": "Подготовка...",
+      "generating_url": "Генерация подписанной ссылки...",
+      "error": "Не удалось получить ссылку. Повторите.",
+      "error_v2": "Загрузка не удалась. Обновите страницу или обратитесь в поддержку.",
+      "demo_warning": "Демо-режим — файл сгенерирован локально"
+    },
+    "col": {
+      "type": "Тип",
+      "format": "Формат",
+      "status": "Статус",
+      "created_at": "Создан",
+      "generated_at": "Готов",
+      "expires_at": "Истекает",
+      "downloaded_at": "Скачан",
+      "size": "Размер",
+      "rows": "Строк"
+    },
+    "contains_salary": "Содержит данные о зарплате",
+    "status": {
+      "REQUESTED": "Запрошен",
+      "QUEUED": "В очереди",
+      "GENERATING": "Формируется",
+      "GENERATED": "Готов",
+      "FAILED": "Сбой",
+      "DOWNLOADED": "Скачан",
+      "EXPIRED": "Истёк",
+      "CANCELLED": "Отменён"
+    },
+    "type": {
+      "POSITION_CATALOG": "Каталог должностей",
+      "JOB_PROFILES": "Профили должностей",
+      "METHODOLOGY": "Методология",
+      "EVALUATION_MATRIX": "Матрица оценки",
+      "GRADE_STRUCTURE": "Структура грейдов",
+      "GRADE_PYRAMID": "Пирамида грейдов",
+      "SALARY_RANGES": "Диапазоны зарплат",
+      "RED_GREEN_CIRCLE": "Красный/зелёный круг",
+      "COMPENSATION_SCENARIOS": "Сценарии компенсации",
+      "REPORT_EXECUTIVE": "Отчёт руководству"
+    },
+    "format": {
+      "XLSX": "Excel (.xlsx)",
+      "CSV": "CSV",
+      "PDF": "PDF",
+      "DOCX": "Word (.docx)"
+    },
+    "error": {
+      "project_required": "Проект обязателен."
+    }
+  },
+  "report": {
+    "page_title": "Центр отчётов",
+    "page_subtitle": "Формируйте и скачивайте аналитические отчёты по активному проекту.",
+    "new_report": "Заказать отчёт",
+    "request_dialog_title": "Заказ нового отчёта",
+    "request_submit": "Заказать отчёт",
+    "field_type": "Тип отчёта",
+    "field_format": "Формат",
+    "field_filter_params": "Параметры фильтрации (JSON)",
+    "filter_placeholder": "{}",
+    "filter_status": "Статус",
+    "filter_status_all": "Все статусы",
+    "filter_type": "Тип",
+    "filter_type_all": "Все типы",
+    "filter_format": "Формат",
+    "filter_format_all": "Все форматы",
+    "format_unavailable": "недоступно для этого типа",
+    "empty": "Пока нет отчётов.",
+    "contains_salary": "Содержит данные о зарплате",
+    "download_cta": "Скачать",
+    "download_generating": "Подготовка...",
+    "download_error": "Не удалось получить ссылку. Повторите попытку.",
+    "col_title": "Название",
+    "col_type": "Тип",
+    "col_format": "Формат",
+    "col_status": "Статус",
+    "col_contains_salary": "Зарплатные данные",
+    "col_created_by": "Создан",
+    "col_created_at": "Дата создания",
+    "col_expires_at": "Истекает",
+    "type": {
+      "GRADE_DISTRIBUTION": "Распределение по грейдам",
+      "POSITION_CATALOG": "Каталог должностей",
+      "EVALUATION_SUMMARY": "Сводка оценки",
+      "METHODOLOGY_SPEC": "Спецификация методологии",
+      "AUDIT_SUMMARY": "Сводка аудита",
+      "EXECUTIVE_SUMMARY": "Сводка для руководства"
+    },
+    "format": {
+      "PDF": "PDF",
+      "DOCX": "DOCX",
+      "XLSX": "XLSX"
+    },
+    "status": {
+      "REQUESTED": "Запрошен",
+      "QUEUED": "В очереди",
+      "GENERATING": "Генерация",
+      "GENERATED": "Готов",
+      "FAILED": "Не удалось",
+      "DOWNLOADED": "Скачан",
+      "EXPIRED": "Истёк",
+      "CANCELLED": "Отменён"
+    },
+    "error": {
+      "project_required": "Проект обязателен.",
+      "format_not_supported": "Выбранный формат недоступен для этого типа отчёта."
+    }
+  },
+  "users": {
+    "never": "Никогда",
+    "neverLoggedIn": "Не входил(а)",
+    "lastLoginAt": "Последний вход: {{date}}",
+    "viewAudit": "Открыть журнал аудита",
+    "list": {
+      "title": "Пользователи и доступ",
+      "subtitle": "Все пользователи активной компании-клиента.",
+      "subtitleForTenant": "Пользователи компании-клиента «{{tenant}}»."
+    },
+    "column": {
+      "fullName": "Имя",
+      "tenants": "Компаний",
+      "roles": "Ролей",
+      "status": "Статус",
+      "lastLogin": "Последний вход"
+    },
+    "filter": {
+      "status": "Статус",
+      "role": "Роль",
+      "tenant": "Компания"
+    },
+    "status": {
+      "active": "Активен",
+      "invited": "Приглашён",
+      "revoked": "Отозван",
+      "suspended": "Приостановлен"
+    },
+    "empty": {
+      "title": "Пользователей пока нет",
+      "body": "Пригласите первого пользователя для этой компании-клиента."
+    },
+    "invite": {
+      "button": "Пригласить пользователя",
+      "title": "Приглашение пользователя",
+      "subtitle": "Новый пользователь получит письмо со ссылкой для активации.",
+      "submit": "Отправить приглашение",
+      "email": "Email",
+      "fullName": "Полное имя",
+      "locale": "Язык интерфейса",
+      "tenant": "Компания-клиент",
+      "tenantHint": "Доступно только HRLab Super Admin.",
+      "tenantImpliedHint": "Приглашение будет создано в активной компании «{{tenant}}».",
+      "roles": "Начальные роли",
+      "rolesHint": "Можно выбрать одну или несколько ролей. Изменить позже.",
+      "validation_email": "Введите корректный email.",
+      "validation_fullname_min": "Имя должно содержать не менее 2 символов.",
+      "validation_fullname_max": "Имя не должно превышать 200 символов.",
+      "validation_roles_min": "Выберите хотя бы одну роль."
+    },
+    "assignRole": {
+      "title": "Добавить роль",
+      "subtitle": "Новая роль в компании «{{tenant}}».",
+      "submit": "Добавить роль",
+      "role": "Роль",
+      "noneLeft": "Все роли уже назначены",
+      "noneLeftHint": "У этого членства уже есть все доступные роли."
+    },
+    "revokeMembership": {
+      "title": "Отозвать членство?",
+      "body": "Пользователь {{user}} потеряет доступ ко всем ресурсам компании «{{tenant}}». Действие можно отменить только восстановлением.",
+      "confirm": "Отозвать членство"
+    },
+    "salary": {
+      "label": "Доступ к данным о компенсации",
+      "enabledHint": "Включён с {{date}}. Пользователь видит зарплатные показатели.",
+      "disabledHint": "Отключён. Зарплатные поля скрыты в интерфейсе и экспорте.",
+      "grant": "Предоставить",
+      "revoke": "Отозвать",
+      "confirmGrantTitle": "Предоставить доступ к зарплатным данным?",
+      "confirmRevokeTitle": "Отозвать доступ к зарплатным данным?",
+      "warningHeader": "Важно: чувствительные данные",
+      "grantWarning": "Пользователь увидит зарплаты, диапазоны, compa-ratio и бюджетные эффекты. Действие фиксируется в аудит-журнале.",
+      "revokeWarning": "Пользователь перестанет видеть зарплатные данные во всех модулях. Действие фиксируется в аудит-журнале.",
+      "reasonHint": "Укажите бизнес-обоснование (минимум 10 символов)."
+    },
+    "memberships": {
+      "title": "Членство в компаниях",
+      "count": "Всего: {{count}}",
+      "empty": "У пользователя нет активных членств."
+    },
+    "membership": {
+      "joinedAt": "Активирован: {{date}}",
+      "invitedAt": "Приглашён: {{date}}",
+      "rolesLabel": "Роли ({{count}})",
+      "noRoles": "Ролей пока нет.",
+      "addRole": "Добавить роль",
+      "removeRoleAria": "Удалить роль {{role}}",
+      "revoke": "Отозвать членство"
+    },
+    "role": {
+      "HRLAB_SUPER_ADMIN": "HRLab Super Admin",
+      "HRLAB_PROJECT_MANAGER": "HRLab менеджер проекта",
+      "HRLAB_CONSULTANT": "HRLab консультант",
+      "HRLAB_ANALYST": "HRLab аналитик",
+      "CLIENT_ADMIN": "Администратор компании",
+      "CLIENT_HR_DIRECTOR": "HR-директор",
+      "CLIENT_HR_SPECIALIST": "HR-специалист",
+      "CLIENT_COMMITTEE_MEMBER": "Член оценочного комитета",
+      "CLIENT_DEPARTMENT_MANAGER": "Руководитель подразделения",
+      "CLIENT_VIEWER": "Наблюдатель",
+      "AUDITOR": "Аудитор"
+    }
+  },
+  "clients": {
+    "list": {
+      "title": "Компании-клиенты",
+      "subtitle": "Все клиентские компании HR Laboratories. Управляйте брендом, локалью и архивом тенантов.",
+      "super_admin_badge": "Режим HRLab Super Admin",
+      "super_admin_hint": "Этот раздел доступен только администраторам HR Laboratories."
+    },
+    "filter": {
+      "status": "Статус"
+    },
+    "status": {
+      "active": "Активный",
+      "suspended": "Приостановлен",
+      "archived": "В архиве"
+    },
+    "column": {
+      "tenant": "Тенант",
+      "slug": "Slug",
+      "projects": "Проекты",
+      "users": "Пользователи",
+      "status": "Статус",
+      "updated": "Обновлено"
+    },
+    "empty": {
+      "title": "Тенантов пока нет",
+      "body": "Новые клиентские компании появятся здесь после создания."
+    },
+    "stats": {
+      "projects": "Активных проектов",
+      "users": "Пользователей",
+      "activity_30d": "Активность",
+      "last_activity": "Последняя активность",
+      "activity_recent": "Активен на этой неделе",
+      "activity_quiet": "Тихо последние 7 дней",
+      "never_active": "Активности ещё не было"
+    },
+    "field": {
+      "legal_name": "Юридическое название",
+      "brand_name": "Бренд",
+      "industry": "Отрасль",
+      "country_code": "Страна (ISO)",
+      "tax_id": "ИНН/Налоговый ID"
+    },
+    "detail": {
+      "updated_at": "Обновлено: {{date}}",
+      "default_locale": "Локаль по умолчанию: {{locale}}",
+      "open_audit": "Открыть аудит",
+      "open_projects": "Перейти к проектам",
+      "open_users": "Управление пользователями",
+      "edit_tenant": "Изменить тенант",
+      "edit_client": "Изменить юр. лицо",
+      "archive_tenant": "Архивировать",
+      "client_panel_title": "Юридическое лицо",
+      "client_panel_subtitle": "Реквизиты клиентской компании, к которой привязан тенант.",
+      "related_title": "Связанные объекты",
+      "related_subtitle": "Быстрый переход к ключевым разделам платформы.",
+      "related_projects": "Проектов в работе: {{count}}",
+      "related_users": "Пользователей с активным членством: {{count}}",
+      "related_more_soon": "Дополнительные сводки появятся в следующих фазах."
+    },
+    "edit_tenant": {
+      "title": "Редактировать тенант",
+      "subtitle": "Slug и статус неизменяемы; для смены статуса используйте архивирование.",
+      "display_name": "Отображаемое название",
+      "default_locale": "Локаль по умолчанию",
+      "default_locale_hint": "Используется при отправке системных писем и создании новых пользователей.",
+      "immutable_hint": "Slug, статус и привязка к юр. лицу управляются HRLab Super Admin отдельно.",
+      "validation_display_name_min": "Название должно содержать не менее 2 символов.",
+      "validation_display_name_max": "Название не должно превышать 200 символов."
+    },
+    "edit_client": {
+      "title": "Редактировать юр. лицо",
+      "subtitle": "Изменения применяются ко всем тенантам этой клиентской компании.",
+      "legal_name": "Юридическое название",
+      "brand_name": "Бренд",
+      "industry": "Отрасль",
+      "country_code": "Страна (ISO 3166-1)",
+      "tax_id": "Налоговый идентификатор",
+      "validation_legal_name_min": "Юр. название должно содержать не менее 2 символов.",
+      "validation_legal_name_max": "Юр. название не должно превышать 300 символов.",
+      "validation_brand_name_min": "Бренд должен содержать не менее 2 символов.",
+      "validation_brand_name_max": "Бренд не должен превышать 200 символов.",
+      "validation_country_code": "Код страны — две латинские буквы (UZ, RU, KZ ...)."
+    },
+    "archive": {
+      "title": "Архивировать тенант?",
+      "body": "После архивирования тенант «{{tenant}}» становится доступен только для чтения. Все активные проекты замораживаются. Действие фиксируется в аудит-журнале.",
+      "reason_label": "Причина архивирования",
+      "reason_placeholder": "Опишите бизнес-обоснование и согласовано ли решение с заказчиком...",
+      "reason_hint": "Минимум {{min}} символов · введено {{current}}.",
+      "confirm": "Архивировать"
+    }
+  },
+  "upcoming": {
+    "sprint_label_h": "Релиз запланирован",
+    "preview_features_title": "Что появится",
+    "compensation": {
+      "title": "Компенсация и зарплатные структуры",
+      "subtitle": "Модуль компенсации запускается в MVP 3. Доступ строго по разрешению SALARY_VIEW.",
+      "features": {
+        "1": "Дашборд зарплатных диапазонов по грейдам (min / midpoint / max).",
+        "2": "Compa-ratio по сотрудникам и распределение по грейдам.",
+        "3": "Range penetration и индикатор красных/зелёных кругов.",
+        "4": "Сценарное моделирование бюджета и нормализация по рынку.",
+        "5": "ФОТ до/после и влияние сценария на бюджет компании."
+      }
+    }
   }
 }

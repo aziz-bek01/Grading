@@ -1,9 +1,11 @@
 package uz.hrlab.grading.architecture;
 
+import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.domain.JavaParameter;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -55,9 +57,28 @@ class ArchitectureTest {
             "TenantRepository",
             "UserRepository",
             "UserTenantMembershipRepository",
+            "UserRoleRepository",
+            "RolePermissionRepository",
             "RoleRepository",
             "PermissionRepository",
             "SystemAuditLogRepository"
+    );
+
+    /**
+     * Request DTOs allowed to carry an explicit {@code tenantId} field.
+     *
+     * <p>Normally tenant id MUST come from {@link uz.hrlab.grading.tenancy.application.TenantContext}
+     * (security-blueprint §13). The user-management module is the documented
+     * exception: HRLab Super Admin invites people INTO a specific client
+     * tenant they don't currently have active, and {@link
+     * uz.hrlab.grading.access.application.UserManagementPolicy} re-verifies
+     * the value against the caller's membership set on every call.
+     * Non-super-admins cannot reach into a tenant they don't belong to even
+     * if they spoof the URL.
+     */
+    private static final Set<String> TENANT_ID_REQUEST_WHITELIST = Set.of(
+            "InviteUserRequest",
+            "AddMembershipRequest"
     );
 
     @Test
@@ -236,9 +257,13 @@ class ArchitectureTest {
         ArchRule rule = classes()
                 .that().resideInAPackage("..api..")
                 .and().haveSimpleNameEndingWith("Request")
-                .should(new ArchCondition<>("not declare a field named " + FORBIDDEN_TENANT_NAMES) {
+                .should(new ArchCondition<>("not declare a field named " + FORBIDDEN_TENANT_NAMES
+                        + " (whitelist: " + TENANT_ID_REQUEST_WHITELIST + ")") {
                     @Override
                     public void check(JavaClass item, ConditionEvents events) {
+                        if (TENANT_ID_REQUEST_WHITELIST.contains(item.getSimpleName())) {
+                            return; // documented user-management exception
+                        }
                         for (JavaField field : item.getAllFields()) {
                             if (isForbiddenTenantName(field.getName())) {
                                 events.add(SimpleConditionEvent.violated(field,
@@ -260,6 +285,143 @@ class ArchitectureTest {
      * tenant management is the documented exception, see
      * {@code GET /api/v1/admin/tenants/{tenantId}}).
      */
+    // ---------------------------------------------------------------------
+    //  Rule 9 — integration-review F2: Excel string cell writes must go
+    //  through SafeCellWriter, never call Cell.setCellValue(String) directly
+    //  from outside the integration.excel package.
+    //
+    //  Prevents formula-injection regressions when new exports ship in Phase 3:
+    //  a developer adding `cell.setCellValue(userInput)` anywhere in the
+    //  codebase (e.g. a report adapter, a future template) will fail the build
+    //  unless the call lives next to SafeCellWriter.
+    // ---------------------------------------------------------------------
+    @Test
+    void excelCellWritesMustGoThroughSafeCellWriter() {
+        ArchRule rule = noClasses()
+                .that().resideOutsideOfPackage("..integration.excel..")
+                .should(new ArchCondition<>("not call org.apache.poi.ss.usermodel.Cell" +
+                        ".setCellValue(String) — must route through SafeCellWriter") {
+                    @Override
+                    public void check(JavaClass item, ConditionEvents events) {
+                        for (JavaMethodCall call : item.getMethodCallsFromSelf()) {
+                            if (isPoiSetCellValueString(call)) {
+                                events.add(SimpleConditionEvent.violated(call,
+                                        call.getOriginOwner().getName() + " calls " +
+                                                call.getTargetOwner().getName() + ".setCellValue(String) " +
+                                                "directly; use SafeCellWriter.writeString(...) " +
+                                                "to neutralize formula-injection payloads " +
+                                                "(integration-review F2)"));
+                            }
+                        }
+                    }
+                })
+                .because("integration-blueprint §13.1 + integration-review F2 — every user-" +
+                        "originated string written into an Excel cell must be sanitized by " +
+                        "SafeCellWriter to prevent formula-injection (=, +, -, @, \\t, \\r, \\n).");
+        rule.check(CLASSES);
+    }
+
+    /**
+     * Matches any call to {@code setCellValue(String)} on any Apache POI Cell
+     * type — covers {@code Cell}, {@code XSSFCell}, {@code SXSSFCell},
+     * {@code HSSFCell}. We assert by target type prefix (org.apache.poi.) +
+     * method name + single String parameter so we don't need to import POI
+     * concrete classes in the test (keeps the test classpath light).
+     */
+    private static boolean isPoiSetCellValueString(JavaCall<?> call) {
+        String targetOwner = call.getTargetOwner().getName();
+        if (!targetOwner.startsWith("org.apache.poi.")) return false;
+        if (!"setCellValue".equals(call.getTarget().getName())) return false;
+        return call.getTarget().getRawParameterTypes().size() == 1
+                && "java.lang.String".equals(
+                        call.getTarget().getRawParameterTypes().get(0).getName());
+    }
+
+    // ---------------------------------------------------------------------
+    //  Rule 10 (TI-Reg-08.a) — tenant-aware repositories must not declare a
+    //  single-arg `findById(ID)` / `existsById(ID)` / `deleteById(ID)` that
+    //  bypasses the tenant filter. The base interface intentionally omits
+    //  these BOLA-prone signatures; a subtype re-declaring one would re-open
+    //  the hole (security-blueprint §5.2, finding F-01, defect D-001).
+    // ---------------------------------------------------------------------
+    @Test
+    void tenantAwareRepositoriesMustNotDeclareSingleArgFindById() {
+        ArchRule rule = classes()
+                .that().areInterfaces()
+                .and().areAssignableTo(TenantAwareRepository.class)
+                .and().doNotBelongToAnyOf(TenantAwareRepository.class)
+                .should(new ArchCondition<>("not declare findById(ID) / existsById(ID) / " +
+                        "deleteById(ID) — those bypass the tenant filter (BOLA hazard)") {
+                    @Override
+                    public void check(JavaClass item, ConditionEvents events) {
+                        for (JavaMethod method : item.getMethods()) {
+                            String n = method.getName();
+                            int paramCount = method.getRawParameterTypes().size();
+                            boolean isForbiddenName =
+                                    "findById".equals(n)
+                                    || "existsById".equals(n)
+                                    || "deleteById".equals(n)
+                                    || "getById".equals(n)
+                                    || "getOne".equals(n)
+                                    || "getReferenceById".equals(n);
+                            if (isForbiddenName && paramCount == 1) {
+                                events.add(SimpleConditionEvent.violated(method,
+                                        item.getName() + "." + n + "(...) re-declares a single-arg "
+                                                + "lookup on a tenant-scoped repository — use "
+                                                + "findByIdAndTenantId(id, tenantId) instead "
+                                                + "(security-blueprint §5.2 / F-01)"));
+                            }
+                        }
+                    }
+                })
+                .because("security-blueprint §5.2 / F-01 — tenant-scoped repositories must " +
+                        "NEVER expose a single-arg id lookup; the canonical path is " +
+                        "findByIdAndTenantId(id, tenantId).");
+        rule.check(CLASSES);
+    }
+
+    // ---------------------------------------------------------------------
+    //  Rule 11 (TI-Reg-08.b) — query-string DTOs (any class under ..api..
+    //  whose name ends with `Filter`, `Query`, `Criteria` or `Search`) must
+    //  not declare a tenantId-shaped field either. The existing Rule 7
+    //  covers `*Request` DTOs (mass-assignment via @RequestBody); this edge
+    //  case closes the gap for paged-list query DTOs that bind via
+    //  @ModelAttribute / @RequestParam projection
+    //  (security-blueprint §13 — single source of truth = JWT).
+    // ---------------------------------------------------------------------
+    @Test
+    void queryFilterDtosMustNotDeclareTenantIdField() {
+        ArchRule rule = classes()
+                .that().resideInAPackage("..api..")
+                .and().haveSimpleNameEndingWith("Filter")
+                .or().resideInAPackage("..api..")
+                .and().haveSimpleNameEndingWith("Query")
+                .or().resideInAPackage("..api..")
+                .and().haveSimpleNameEndingWith("Criteria")
+                .or().resideInAPackage("..api..")
+                .and().haveSimpleNameEndingWith("Search")
+                .should(new ArchCondition<>("not declare a field named " + FORBIDDEN_TENANT_NAMES) {
+                    @Override
+                    public void check(JavaClass item, ConditionEvents events) {
+                        for (JavaField field : item.getAllFields()) {
+                            if (isForbiddenTenantName(field.getName())) {
+                                events.add(SimpleConditionEvent.violated(field,
+                                        item.getName() + "." + field.getName() +
+                                                " is a forbidden tenantId field on a query/filter DTO "
+                                                + "(security-blueprint §13)"));
+                            }
+                        }
+                    }
+                })
+                .because("security-blueprint §13 — list/filter DTOs MUST source tenantId from " +
+                        "the authenticated TenantContext, never from a client-supplied query.")
+                // No Filter/Query/Criteria/Search DTOs exist today — the rule is a guard
+                // for future modules. Allow empty match so the build is not red until
+                // the first such DTO ships.
+                .allowEmptyShould(true);
+        rule.check(CLASSES);
+    }
+
     @Test
     void controllersMustNotBindTenantIdAsPathVariableOutsideAdmin() {
         ArchRule rule = classes()

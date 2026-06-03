@@ -1,0 +1,156 @@
+# MVP 2 Phase 1 — workflow / approval-request / comment permissions seed.
+#
+# Permissions introduced:
+#   - WORKFLOW_READ, WORKFLOW_EDIT  (advance stage, manual recompute)
+#   - APPROVAL_REQUEST_CREATE, APPROVAL_REQUEST_DECIDE, APPROVAL_REQUEST_CANCEL
+#   - COMMENT_READ, COMMENT_CREATE, COMMENT_EDIT, COMMENT_DELETE
+#
+# Role grants per role-permissions-matrix.md and PRD MVP 2 user stories:
+#   - WORKFLOW_READ is broad (everyone sees the stepper).
+#   - WORKFLOW_EDIT is HRLab Super Admin + Project Manager only.
+#   - APPROVAL_REQUEST_DECIDE is the same set as the underlying entity's
+#     APPROVE permission (PM/Director/etc) — guarded per-step at use-case
+#     level via required_permission column.
+#   - COMMENT_* is broad across all tenant members; delete is own-only by
+#     default + Project Manager+ override (enforced in use case).
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-023-seed-workflow-approval-comment-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,phase1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'WORKFLOW_READ',           'WORKFLOW', 'READ',
+                 'Read project workflow stepper - MVP 2 Phase 1'),
+                (gen_random_uuid(), 'WORKFLOW_EDIT',           'WORKFLOW', 'EDIT',
+                 'Advance workflow stage manually - MVP 2 Phase 1'),
+                (gen_random_uuid(), 'APPROVAL_REQUEST_CREATE', 'APPROVAL_REQUEST', 'CREATE',
+                 'Open an approval request - MVP 2 Phase 1'),
+                (gen_random_uuid(), 'APPROVAL_REQUEST_DECIDE', 'APPROVAL_REQUEST', 'DECIDE',
+                 'Approve / reject / request-changes - MVP 2 Phase 1'),
+                (gen_random_uuid(), 'APPROVAL_REQUEST_CANCEL', 'APPROVAL_REQUEST', 'CANCEL',
+                 'Cancel own approval request - MVP 2 Phase 1'),
+                (gen_random_uuid(), 'COMMENT_READ',            'COMMENT', 'READ',
+                 'Read entity comments - MVP 2 Phase 1'),
+                (gen_random_uuid(), 'COMMENT_CREATE',          'COMMENT', 'CREATE',
+                 'Post a comment - MVP 2 Phase 1'),
+                (gen_random_uuid(), 'COMMENT_EDIT',            'COMMENT', 'EDIT',
+                 'Edit own comment - MVP 2 Phase 1'),
+                (gen_random_uuid(), 'COMMENT_DELETE',          'COMMENT', 'DELETE',
+                 'Soft-delete own comment (or PM+ override) - MVP 2 Phase 1')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions
+               WHERE code IN ('WORKFLOW_READ','WORKFLOW_EDIT',
+                              'APPROVAL_REQUEST_CREATE','APPROVAL_REQUEST_DECIDE','APPROVAL_REQUEST_CANCEL',
+                              'COMMENT_READ','COMMENT_CREATE','COMMENT_EDIT','COMMENT_DELETE');
+
+  - changeSet:
+      id: tenant-023-seed-workflow-approval-comment-role-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,phase1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              WITH role_perm_map(role_code, permission_code) AS (
+                VALUES
+                  -- WORKFLOW_READ — visible to all roles that can see project
+                  ('HRLAB_SUPER_ADMIN',          'WORKFLOW_READ'),
+                  ('HRLAB_PROJECT_MANAGER',      'WORKFLOW_READ'),
+                  ('HRLAB_CONSULTANT',           'WORKFLOW_READ'),
+                  ('HRLAB_ANALYST',              'WORKFLOW_READ'),
+                  ('CLIENT_COMPANY_ADMIN',       'WORKFLOW_READ'),
+                  ('CLIENT_HR_DIRECTOR',         'WORKFLOW_READ'),
+                  ('CLIENT_HR_SPECIALIST',       'WORKFLOW_READ'),
+                  ('EVALUATION_COMMITTEE_MEMBER','WORKFLOW_READ'),
+                  ('DEPARTMENT_MANAGER',         'WORKFLOW_READ'),
+                  ('VIEWER',                     'WORKFLOW_READ'),
+                  ('EXTERNAL_AUDITOR',           'WORKFLOW_READ'),
+                  -- WORKFLOW_EDIT — Super Admin + PM only
+                  ('HRLAB_SUPER_ADMIN',          'WORKFLOW_EDIT'),
+                  ('HRLAB_PROJECT_MANAGER',      'WORKFLOW_EDIT'),
+                  -- APPROVAL_REQUEST_CREATE — anyone who can submit work
+                  ('HRLAB_SUPER_ADMIN',          'APPROVAL_REQUEST_CREATE'),
+                  ('HRLAB_PROJECT_MANAGER',      'APPROVAL_REQUEST_CREATE'),
+                  ('HRLAB_CONSULTANT',           'APPROVAL_REQUEST_CREATE'),
+                  ('HRLAB_ANALYST',              'APPROVAL_REQUEST_CREATE'),
+                  ('CLIENT_HR_SPECIALIST',       'APPROVAL_REQUEST_CREATE'),
+                  ('EVALUATION_COMMITTEE_MEMBER','APPROVAL_REQUEST_CREATE'),
+                  -- APPROVAL_REQUEST_DECIDE — PM + Director + Super Admin
+                  ('HRLAB_SUPER_ADMIN',          'APPROVAL_REQUEST_DECIDE'),
+                  ('HRLAB_PROJECT_MANAGER',      'APPROVAL_REQUEST_DECIDE'),
+                  ('CLIENT_HR_DIRECTOR',         'APPROVAL_REQUEST_DECIDE'),
+                  -- APPROVAL_REQUEST_CANCEL — same set that can create
+                  ('HRLAB_SUPER_ADMIN',          'APPROVAL_REQUEST_CANCEL'),
+                  ('HRLAB_PROJECT_MANAGER',      'APPROVAL_REQUEST_CANCEL'),
+                  ('HRLAB_CONSULTANT',           'APPROVAL_REQUEST_CANCEL'),
+                  ('HRLAB_ANALYST',              'APPROVAL_REQUEST_CANCEL'),
+                  ('CLIENT_HR_SPECIALIST',       'APPROVAL_REQUEST_CANCEL'),
+                  ('EVALUATION_COMMITTEE_MEMBER','APPROVAL_REQUEST_CANCEL'),
+                  -- COMMENT_READ — every project participant
+                  ('HRLAB_SUPER_ADMIN',          'COMMENT_READ'),
+                  ('HRLAB_PROJECT_MANAGER',      'COMMENT_READ'),
+                  ('HRLAB_CONSULTANT',           'COMMENT_READ'),
+                  ('HRLAB_ANALYST',              'COMMENT_READ'),
+                  ('CLIENT_COMPANY_ADMIN',       'COMMENT_READ'),
+                  ('CLIENT_HR_DIRECTOR',         'COMMENT_READ'),
+                  ('CLIENT_HR_SPECIALIST',       'COMMENT_READ'),
+                  ('EVALUATION_COMMITTEE_MEMBER','COMMENT_READ'),
+                  ('DEPARTMENT_MANAGER',         'COMMENT_READ'),
+                  ('VIEWER',                     'COMMENT_READ'),
+                  ('EXTERNAL_AUDITOR',           'COMMENT_READ'),
+                  -- COMMENT_CREATE / EDIT / DELETE — everyone except VIEWER/AUDITOR
+                  ('HRLAB_SUPER_ADMIN',          'COMMENT_CREATE'),
+                  ('HRLAB_PROJECT_MANAGER',      'COMMENT_CREATE'),
+                  ('HRLAB_CONSULTANT',           'COMMENT_CREATE'),
+                  ('HRLAB_ANALYST',              'COMMENT_CREATE'),
+                  ('CLIENT_COMPANY_ADMIN',       'COMMENT_CREATE'),
+                  ('CLIENT_HR_DIRECTOR',         'COMMENT_CREATE'),
+                  ('CLIENT_HR_SPECIALIST',       'COMMENT_CREATE'),
+                  ('EVALUATION_COMMITTEE_MEMBER','COMMENT_CREATE'),
+                  ('DEPARTMENT_MANAGER',         'COMMENT_CREATE'),
+                  ('HRLAB_SUPER_ADMIN',          'COMMENT_EDIT'),
+                  ('HRLAB_PROJECT_MANAGER',      'COMMENT_EDIT'),
+                  ('HRLAB_CONSULTANT',           'COMMENT_EDIT'),
+                  ('HRLAB_ANALYST',              'COMMENT_EDIT'),
+                  ('CLIENT_COMPANY_ADMIN',       'COMMENT_EDIT'),
+                  ('CLIENT_HR_DIRECTOR',         'COMMENT_EDIT'),
+                  ('CLIENT_HR_SPECIALIST',       'COMMENT_EDIT'),
+                  ('EVALUATION_COMMITTEE_MEMBER','COMMENT_EDIT'),
+                  ('DEPARTMENT_MANAGER',         'COMMENT_EDIT'),
+                  ('HRLAB_SUPER_ADMIN',          'COMMENT_DELETE'),
+                  ('HRLAB_PROJECT_MANAGER',      'COMMENT_DELETE'),
+                  ('HRLAB_CONSULTANT',           'COMMENT_DELETE'),
+                  ('HRLAB_ANALYST',              'COMMENT_DELETE'),
+                  ('CLIENT_COMPANY_ADMIN',       'COMMENT_DELETE'),
+                  ('CLIENT_HR_DIRECTOR',         'COMMENT_DELETE'),
+                  ('CLIENT_HR_SPECIALIST',       'COMMENT_DELETE'),
+                  ('EVALUATION_COMMITTEE_MEMBER','COMMENT_DELETE'),
+                  ('DEPARTMENT_MANAGER',         'COMMENT_DELETE')
+              )
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM role_perm_map m
+                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.permissions p ON p.code = m.permission_code
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p
+                WHERE rp.permission_id = p.id
+                  AND p.code IN ('WORKFLOW_READ','WORKFLOW_EDIT',
+                                 'APPROVAL_REQUEST_CREATE','APPROVAL_REQUEST_DECIDE','APPROVAL_REQUEST_CANCEL',
+                                 'COMMENT_READ','COMMENT_CREATE','COMMENT_EDIT','COMMENT_DELETE');

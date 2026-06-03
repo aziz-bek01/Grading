@@ -43,7 +43,7 @@ export function DepartmentDrawer({
       project_id: projectId,
       parent_id: null,
       code: '',
-      name: {},
+      name_i18n: {},
       type: 'DEPARTMENT',
     },
   });
@@ -54,7 +54,7 @@ export function DepartmentDrawer({
         project_id: projectId,
         parent_id: initial?.parent_id ?? null,
         code: initial?.code ?? '',
-        name: initial?.name ?? {},
+        name_i18n: initial?.name_i18n ?? {},
         type: initial?.type ?? 'DEPARTMENT',
       });
     }
@@ -98,7 +98,7 @@ export function DepartmentDrawer({
               <option value="">{t('organization.field_parent_none')}</option>
               {parentOptions.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.code} · {pickLocalized(o.name, i18n.language)}
+                  {o.code} · {pickLocalized(o.name_i18n, i18n.language)}
                 </option>
               ))}
             </select>
@@ -141,7 +141,7 @@ export function DepartmentDrawer({
 
       <Controller
         control={control}
-        name="name"
+        name="name_i18n"
         render={({ field, fieldState }) => (
           <LocalizedNameTabs
             value={field.value ?? {}}

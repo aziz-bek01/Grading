@@ -6,6 +6,7 @@ import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
+import { useAuthStore } from '@/features/auth/authStore';
 import { ProjectTable } from '../components/ProjectTable';
 import { ProjectFormDrawer } from '../components/ProjectFormDrawer';
 import { useProjects } from '../hooks/useProjects';
@@ -16,6 +17,13 @@ export function ProjectListPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { data, isLoading, error, refetch } = useProjects();
   const createMutation = useCreateProject();
+  // FE-TI-004: make the active client-company explicit in the page header so
+  // the user can immediately see which tenant scope the list reflects.
+  const activeTenant = useAuthStore((s) => s.activeTenant);
+
+  const subtitle = activeTenant
+    ? t('projects.list_subtitle_for_tenant', { tenant: activeTenant.brand_name })
+    : t('projects.list_subtitle');
 
   return (
     <div className="space-y-6">
@@ -23,7 +31,9 @@ export function ProjectListPage() {
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl text-text-primary">{t('projects.list_title')}</h1>
-          <p className="text-sm text-text-secondary mt-1">{t('projects.list_subtitle')}</p>
+          <p className="text-sm text-text-secondary mt-1" data-testid="projects-list-subtitle">
+            {subtitle}
+          </p>
         </div>
       </header>
 
@@ -55,7 +65,7 @@ export function ProjectListPage() {
         onSubmit={async (input) => {
           await createMutation.mutateAsync({
             code: input.code,
-            name: input.name,
+            name_i18n: input.name_i18n,
             description: input.description || undefined,
             start_date: input.start_date || undefined,
             end_date: input.end_date || undefined,

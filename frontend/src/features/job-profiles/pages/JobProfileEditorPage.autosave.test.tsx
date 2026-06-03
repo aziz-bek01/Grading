@@ -20,18 +20,18 @@ const baseProfile: JobProfile = {
   project_id: 'proj-1',
   status: 'DRAFT',
   revision_number: 1,
-  purpose: { 'ru-RU': 'Initial purpose' },
-  main_duties: {},
-  responsibility_area: {},
-  authority: {},
-  kpi_expected_results: {},
-  education_requirements: {},
-  experience_requirements: {},
-  knowledge_skills: {},
-  internal_interactions: {},
-  external_interactions: {},
-  working_conditions: {},
-  documents_regulations: {},
+  purpose_i18n: { 'ru-RU': 'Initial purpose' },
+  main_duties_i18n: {},
+  responsibility_area_i18n: {},
+  authority_i18n: {},
+  kpi_expected_results_i18n: {},
+  education_requirements_i18n: {},
+  experience_requirements_i18n: {},
+  knowledge_skills_i18n: {},
+  internal_interactions_i18n: {},
+  external_interactions_i18n: {},
+  working_conditions_i18n: {},
+  documents_regulations_i18n: {},
   created_at: '2026-05-01T00:00:00Z',
   updated_at: '2026-05-01T00:00:00Z',
 };
@@ -95,7 +95,7 @@ describe('JobProfileEditorPage auto-save cancellation (F-306)', () => {
     const view = renderPage();
 
     // Render finishes with real timers — i18n + react-query are happy.
-    const textarea = await screen.findByTestId('textarea-purpose-ru-RU');
+    const textarea = await screen.findByTestId('textarea-purpose_i18n-ru-RU');
 
     // Now switch to fake timers for the 30s interval check.
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
@@ -123,7 +123,7 @@ describe('JobProfileEditorPage auto-save cancellation (F-306)', () => {
     setProfile({ ...baseProfile, status: 'DRAFT' });
     renderPage();
 
-    const textarea = await screen.findByTestId('textarea-purpose-ru-RU');
+    const textarea = await screen.findByTestId('textarea-purpose_i18n-ru-RU');
 
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
     fireEvent.change(textarea, { target: { value: 'Another update' } });

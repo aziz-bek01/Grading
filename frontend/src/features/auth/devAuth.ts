@@ -8,7 +8,10 @@ import { PERMISSIONS } from '@/shared/types/permissions';
  */
 export function buildDevUser(role: 'super-admin' | 'consultant' | 'viewer' = 'super-admin'): CurrentUser {
   const base: CurrentUser = {
-    id: '00000000-0000-0000-0000-000000000001',
+    // Real ACME admin user UUID seeded in the backend dev DB. When running
+    // against the real backend (VITE_USE_MSW=false) httpClient forwards this
+    // as `X-Dev-User` so DevAuthFilter resolves roles/permissions from the DB.
+    id: 'aaaa1111-aaaa-1111-aaaa-1111aaaa1111',
     email: 'dev@hrlab.local',
     name: 'Dev User',
     locale: 'ru-RU',
@@ -17,13 +20,13 @@ export function buildDevUser(role: 'super-admin' | 'consultant' | 'viewer' = 'su
     salary_data_permission: false,
     tenants: [
       {
-        id: 'tenant-acme',
+        id: '11111111-1111-1111-1111-111111111111',
         slug: 'acme',
         brand_name: 'ACME Holdings',
         fingerprint_hue: 215,
       },
       {
-        id: 'tenant-beta',
+        id: '22222222-2222-2222-2222-222222222222',
         slug: 'beta',
         brand_name: 'Beta University',
         fingerprint_hue: 145,
@@ -36,6 +39,9 @@ export function buildDevUser(role: 'super-admin' | 'consultant' | 'viewer' = 'su
       return {
         ...base,
         roles: ['HRLAB_SUPER_ADMIN'],
+        // Super-admin has every permission except salary visibility (granted
+        // explicitly per-membership). USER_INVITE / USER_SALARY_PERMISSION_GRANT
+        // are part of the full set via Object.values(PERMISSIONS).
         permissions: Object.values(PERMISSIONS).filter(
           (p) => p !== PERMISSIONS.SALARY_VIEW && p !== PERMISSIONS.SALARY_EDIT && p !== PERMISSIONS.SALARY_EXPORT,
         ),
@@ -60,8 +66,22 @@ export function buildDevUser(role: 'super-admin' | 'consultant' | 'viewer' = 'su
           PERMISSIONS.METHODOLOGY_EDIT,
           PERMISSIONS.EVALUATION_READ,
           PERMISSIONS.EVALUATION_EDIT,
+          PERMISSIONS.EVALUATION_APPROVE,
+          PERMISSIONS.EVALUATION_LOCK,
+          PERMISSIONS.CALIBRATION_EDIT,
           PERMISSIONS.GRADE_READ,
           PERMISSIONS.AUDIT_READ,
+          PERMISSIONS.WORKFLOW_READ,
+          PERMISSIONS.APPROVAL_REQUEST_CREATE,
+          PERMISSIONS.APPROVAL_REQUEST_CANCEL,
+          PERMISSIONS.APPROVAL_STEP_APPROVE,
+          PERMISSIONS.APPROVAL_STEP_REJECT,
+          PERMISSIONS.COMMENT_CREATE,
+          PERMISSIONS.COMMENT_EDIT,
+          PERMISSIONS.COMMENT_DELETE,
+          PERMISSIONS.REPORT_READ,
+          PERMISSIONS.REPORT_CREATE,
+          PERMISSIONS.REPORT_EXPORT,
         ],
       };
     case 'viewer':
@@ -76,6 +96,8 @@ export function buildDevUser(role: 'super-admin' | 'consultant' | 'viewer' = 'su
           PERMISSIONS.METHODOLOGY_READ,
           PERMISSIONS.EVALUATION_READ,
           PERMISSIONS.GRADE_READ,
+          PERMISSIONS.WORKFLOW_READ,
+          PERMISSIONS.REPORT_READ,
         ],
       };
   }

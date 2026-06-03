@@ -1,0 +1,246 @@
+package uz.hrlab.grading.evaluation.api;
+
+import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import uz.hrlab.grading.evaluation.application.ApproveEvaluationUseCase;
+import uz.hrlab.grading.evaluation.application.ArchiveEvaluationUseCase;
+import uz.hrlab.grading.evaluation.application.BulkSubmitEvaluationsUseCase;
+import uz.hrlab.grading.evaluation.application.BulkUpsertEvaluationScoreUseCase;
+import uz.hrlab.grading.evaluation.application.CalibrateEvaluationScoreCommand;
+import uz.hrlab.grading.evaluation.application.CalibrateEvaluationScoreUseCase;
+import uz.hrlab.grading.evaluation.application.CreateEvaluationCommand;
+import uz.hrlab.grading.evaluation.application.CreateEvaluationUseCase;
+import uz.hrlab.grading.evaluation.application.EvaluationQueries;
+import uz.hrlab.grading.evaluation.application.LockEvaluationUseCase;
+import uz.hrlab.grading.evaluation.application.PreviewEvaluationScoreUseCase;
+import uz.hrlab.grading.evaluation.application.PreviewScoreCommand;
+import uz.hrlab.grading.evaluation.application.RequestEvaluationChangesUseCase;
+import uz.hrlab.grading.evaluation.application.SubmitEvaluationUseCase;
+import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreCommand;
+import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreUseCase;
+import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.common.api.PageResponse;
+
+import java.util.List;
+import java.util.UUID;
+
+/** Evaluation endpoints — every method @PreAuthorize'd; ABAC enforced server-side. */
+@RestController
+@RequestMapping("/api/v1/evaluations")
+public class EvaluationController {
+
+    /** Maximum allowed page size per blueprint API-5 (F-409). */
+    public static final int MAX_PAGE_SIZE = 200;
+
+    private final CreateEvaluationUseCase createUseCase;
+    private final UpsertEvaluationScoreUseCase upsertScoreUseCase;
+    private final SubmitEvaluationUseCase submitUseCase;
+    private final ApproveEvaluationUseCase approveUseCase;
+    private final RequestEvaluationChangesUseCase requestChangesUseCase;
+    private final LockEvaluationUseCase lockUseCase;
+    private final ArchiveEvaluationUseCase archiveUseCase;
+    private final CalibrateEvaluationScoreUseCase calibrateUseCase;
+    private final PreviewEvaluationScoreUseCase previewUseCase;
+    private final BulkUpsertEvaluationScoreUseCase bulkUpsertScoreUseCase;
+    private final BulkSubmitEvaluationsUseCase bulkSubmitUseCase;
+    private final EvaluationQueries queries;
+
+    public EvaluationController(CreateEvaluationUseCase createUseCase,
+                                UpsertEvaluationScoreUseCase upsertScoreUseCase,
+                                SubmitEvaluationUseCase submitUseCase,
+                                ApproveEvaluationUseCase approveUseCase,
+                                RequestEvaluationChangesUseCase requestChangesUseCase,
+                                LockEvaluationUseCase lockUseCase,
+                                ArchiveEvaluationUseCase archiveUseCase,
+                                CalibrateEvaluationScoreUseCase calibrateUseCase,
+                                PreviewEvaluationScoreUseCase previewUseCase,
+                                BulkUpsertEvaluationScoreUseCase bulkUpsertScoreUseCase,
+                                BulkSubmitEvaluationsUseCase bulkSubmitUseCase,
+                                EvaluationQueries queries) {
+        this.createUseCase = createUseCase;
+        this.upsertScoreUseCase = upsertScoreUseCase;
+        this.submitUseCase = submitUseCase;
+        this.approveUseCase = approveUseCase;
+        this.requestChangesUseCase = requestChangesUseCase;
+        this.lockUseCase = lockUseCase;
+        this.archiveUseCase = archiveUseCase;
+        this.calibrateUseCase = calibrateUseCase;
+        this.previewUseCase = previewUseCase;
+        this.bulkUpsertScoreUseCase = bulkUpsertScoreUseCase;
+        this.bulkSubmitUseCase = bulkSubmitUseCase;
+        this.queries = queries;
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('EVALUATION_EDIT')")
+    public ResponseEntity<EvaluationResponse> create(@Valid @RequestBody CreateEvaluationRequest req) {
+        var evaluation = createUseCase.create(new CreateEvaluationCommand(
+                req.positionId(), req.methodologyVersionId(), req.evaluatorUserId()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(EvaluationResponse.from(evaluation));
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('EVALUATION_READ')")
+    public ResponseEntity<PageResponse<?>> list(@RequestParam(required = false) UUID projectId,
+                                                @RequestParam(required = false) UUID positionId,
+                                                @RequestParam(required = false) UUID evaluatorUserId,
+                                                @RequestParam(required = false) EvaluationStatus status,
+                                                @RequestParam(required = false) String groupBy,
+                                                @RequestParam(required = false) UUID factorId,
+                                                @RequestParam(required = false) UUID departmentId,
+                                                Pageable pageable) {
+        Pageable safe = clampPageSize(pageable);
+        // K-sheet UX branch — Excel-style per-factor grid across positions.
+        if ("factor".equalsIgnoreCase(groupBy)) {
+            Page<EvaluationByFactorRow> rows = queries.listByFactor(
+                    projectId, factorId, status, departmentId, safe);
+            return ResponseEntity.ok(PageResponse.from(rows));
+        }
+        Page<EvaluationJpaEntity> page = queries.list(projectId, positionId, evaluatorUserId,
+                status, safe);
+        return ResponseEntity.ok(PageResponse.of(page, e -> EvaluationResponse.from(e.toDomain())));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('EVALUATION_READ')")
+    public EvaluationResponse getById(@PathVariable UUID id) {
+        return EvaluationResponse.from(queries.findById(id).toDomain());
+    }
+
+    @GetMapping("/{id}/scores")
+    @PreAuthorize("hasAuthority('EVALUATION_READ')")
+    public List<EvaluationScoreResponse> listScores(@PathVariable UUID id) {
+        return queries.findScoresByEvaluationId(id).stream()
+                .map(s -> EvaluationScoreResponse.from(s.toDomain()))
+                .toList();
+    }
+
+    @GetMapping("/{id}/calibration-history")
+    @PreAuthorize("hasAuthority('EVALUATION_READ')")
+    public List<CalibrationEventResponse> listCalibrationHistory(@PathVariable UUID id) {
+        return queries.findCalibrationHistory(id).stream()
+                .map(c -> CalibrationEventResponse.from(c.toDomain()))
+                .toList();
+    }
+
+    @PostMapping("/{id}/scores")
+    @PreAuthorize("hasAuthority('EVALUATION_EDIT')")
+    public EvaluationScoreResponse upsertScore(@PathVariable UUID id,
+                                               @Valid @RequestBody UpsertScoreRequest req) {
+        var score = upsertScoreUseCase.upsert(new UpsertEvaluationScoreCommand(
+                id, req.factorId(), req.factorLevelId(), req.comment()));
+        return EvaluationScoreResponse.from(score);
+    }
+
+    @PostMapping("/{id}/submit")
+    @PreAuthorize("hasAuthority('EVALUATION_EDIT')")
+    public EvaluationResponse submit(@PathVariable UUID id) {
+        return EvaluationResponse.from(submitUseCase.submit(id));
+    }
+
+    @PostMapping("/{id}/approve")
+    @PreAuthorize("hasAuthority('EVALUATION_APPROVE')")
+    public EvaluationResponse approve(@PathVariable UUID id) {
+        return EvaluationResponse.from(approveUseCase.approve(id));
+    }
+
+    @PostMapping("/{id}/request-changes")
+    @PreAuthorize("hasAuthority('EVALUATION_APPROVE')")
+    public EvaluationResponse requestChanges(@PathVariable UUID id,
+                                             @Valid @RequestBody ReasonRequest req) {
+        return EvaluationResponse.from(requestChangesUseCase.requestChanges(id, req.reason()));
+    }
+
+    @PostMapping("/{id}/lock")
+    @PreAuthorize("hasAuthority('EVALUATION_LOCK')")
+    public EvaluationResponse lock(@PathVariable UUID id) {
+        return EvaluationResponse.from(lockUseCase.lock(id));
+    }
+
+    @PostMapping("/{id}/archive")
+    @PreAuthorize("hasAuthority('EVALUATION_EDIT')")
+    public EvaluationResponse archive(@PathVariable UUID id,
+                                      @Valid @RequestBody ReasonRequest req) {
+        return EvaluationResponse.from(archiveUseCase.archive(id, req.reason()));
+    }
+
+    @PostMapping("/{id}/calibrate")
+    @PreAuthorize("hasAuthority('CALIBRATION_EDIT')")
+    public CalibrationEventResponse calibrate(@PathVariable UUID id,
+                                              @Valid @RequestBody CalibrateScoreRequest req) {
+        var event = calibrateUseCase.calibrate(new CalibrateEvaluationScoreCommand(
+                id, req.factorId(), req.newRawFactorScore(), req.reason()));
+        return CalibrationEventResponse.from(event);
+    }
+
+    @PostMapping("/{id}/preview-score")
+    @PreAuthorize("hasAuthority('EVALUATION_READ')")
+    public ScoringResultResponse previewExisting(@PathVariable UUID id,
+                                                 @Valid @RequestBody PreviewScoreRequest req) {
+        // path id reserved for future "preview against this evaluation's existing scores
+        // but with overrides" — for now treat the same as a stateless preview.
+        return previewScore(req);
+    }
+
+    @PostMapping("/preview-score")
+    @PreAuthorize("hasAuthority('EVALUATION_READ')")
+    public ScoringResultResponse previewScore(@Valid @RequestBody PreviewScoreRequest req) {
+        List<PreviewScoreCommand.Selection> sel = req.selections() == null
+                ? List.of()
+                : req.selections().stream()
+                        .map(s -> new PreviewScoreCommand.Selection(s.factorId(), s.factorLevelId()))
+                        .toList();
+        var result = previewUseCase.preview(new PreviewScoreCommand(
+                req.methodologyVersionId(), sel));
+        return ScoringResultResponse.from(result);
+    }
+
+    /**
+     * Bulk PATCH score across many evaluations for a single factor (Excel
+     * K-sheet UX). Failures collected per row — partial success returns 200.
+     */
+    @PostMapping("/factor/{factorId}/bulk-score")
+    @PreAuthorize("hasAuthority('EVALUATION_EDIT')")
+    public BulkOperationResponse bulkScoreSet(@PathVariable UUID factorId,
+                                              @Valid @RequestBody BulkScoreRequest req) {
+        return bulkUpsertScoreUseCase.execute(
+                factorId, req.factorLevelId(), req.evaluationIds(), req.reason());
+    }
+
+    /**
+     * Bulk transition COMPLETE→SUBMITTED. Completeness re-validated server-side
+     * per evaluation; failures collected per row.
+     */
+    @PostMapping("/factor/{factorId}/bulk-submit")
+    @PreAuthorize("hasAuthority('EVALUATION_EDIT')")
+    public BulkOperationResponse bulkSubmit(@PathVariable UUID factorId,
+                                            @Valid @RequestBody BulkSubmitRequest req) {
+        // factorId in the path is contextual only (audit grouping by factor) —
+        // the submit operation itself is evaluation-level, not factor-level.
+        return bulkSubmitUseCase.execute(req.evaluationIds(), req.reason());
+    }
+
+    /** F-409: caps page size at MAX_PAGE_SIZE to defend against DoS. */
+    private static Pageable clampPageSize(Pageable pageable) {
+        if (pageable == null) {
+            return PageRequest.of(0, 20);
+        }
+        if (pageable.getPageSize() <= MAX_PAGE_SIZE) {
+            return pageable;
+        }
+        return PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
+    }
+}

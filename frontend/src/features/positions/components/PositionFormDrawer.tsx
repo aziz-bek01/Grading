@@ -41,7 +41,7 @@ export function PositionFormDrawer({
       project_id: projectId,
       department_id: '',
       code: '',
-      title: {},
+      title_i18n: {},
       function: '',
       category: '',
       job_family: '',
@@ -55,7 +55,7 @@ export function PositionFormDrawer({
         project_id: projectId,
         department_id: initial?.department_id ?? '',
         code: initial?.code ?? '',
-        title: initial?.title ?? {},
+        title_i18n: initial?.title_i18n ?? {},
         function: initial?.function ?? '',
         category: initial?.category ?? '',
         job_family: initial?.job_family ?? '',
@@ -102,7 +102,7 @@ export function PositionFormDrawer({
                   .filter((d) => d.status !== 'ARCHIVED')
                   .map((d) => (
                     <option key={d.id} value={d.id}>
-                      {d.code} · {pickLocalized(d.name, i18n.language)}
+                      {d.code} · {pickLocalized(d.name_i18n, i18n.language)}
                     </option>
                   ))}
               </select>
@@ -133,7 +133,7 @@ export function PositionFormDrawer({
 
       <Controller
         control={control}
-        name="title"
+        name="title_i18n"
         render={({ field, fieldState }) => (
           <LocalizedNameTabs
             value={field.value ?? {}}

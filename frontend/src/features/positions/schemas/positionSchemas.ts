@@ -22,7 +22,8 @@ export const PositionCreateSchema = z.object({
     .min(2)
     .max(48)
     .regex(/^[A-Z0-9][A-Z0-9-]*$/u, 'code'),
-  title: localizedTitleSchema,
+  /** Backend snake_case contract — POST body field. */
+  title_i18n: localizedTitleSchema,
   function: z.string().trim().max(120).optional().or(z.literal('')),
   category: z.string().trim().max(120).optional().or(z.literal('')),
   job_family: z.string().trim().max(120).optional().or(z.literal('')),

@@ -1,0 +1,112 @@
+# MVP 2 Phase 2 — integration permissions seed.
+#
+# New permissions: ORG_IMPORT, POSITION_IMPORT, METHODOLOGY_IMPORT,
+# GRADE_IMPORT, PAYROLL_IMPORT, IMPORT_READ, IMPORT_CANCEL, EXPORT_READ,
+# EXPORT_REQUEST.
+#
+# REPORT_EXPORT and SALARY_EXPORT already exist from Phase 0-1 seeds.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-027-seed-integration-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,phase2
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'ORG_IMPORT',         'IMPORT', 'CREATE', 'Import organization structure - MVP 2 Phase 2'),
+                (gen_random_uuid(), 'POSITION_IMPORT',    'IMPORT', 'CREATE', 'Import position catalog - MVP 2 Phase 2'),
+                (gen_random_uuid(), 'METHODOLOGY_IMPORT', 'IMPORT', 'CREATE', 'Import methodology factors/levels - MVP 2 Phase 2'),
+                (gen_random_uuid(), 'GRADE_IMPORT',       'IMPORT', 'CREATE', 'Import grade bands - MVP 2 Phase 2'),
+                (gen_random_uuid(), 'PAYROLL_IMPORT',     'IMPORT', 'CREATE', 'Import payroll/compensation snapshots - MVP 2 Phase 2 (no role grant; MVP 4)'),
+                (gen_random_uuid(), 'IMPORT_READ',        'IMPORT', 'READ',   'Read import batches and errors - MVP 2 Phase 2'),
+                (gen_random_uuid(), 'IMPORT_CANCEL',      'IMPORT', 'CANCEL', 'Cancel an in-progress import - MVP 2 Phase 2'),
+                (gen_random_uuid(), 'EXPORT_READ',        'EXPORT', 'READ',   'Read export jobs - MVP 2 Phase 2'),
+                (gen_random_uuid(), 'EXPORT_REQUEST',     'EXPORT', 'CREATE', 'Request a non-salary, non-report export - MVP 2 Phase 2')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions
+                WHERE code IN ('ORG_IMPORT','POSITION_IMPORT','METHODOLOGY_IMPORT',
+                               'GRADE_IMPORT','PAYROLL_IMPORT','IMPORT_READ',
+                               'IMPORT_CANCEL','EXPORT_READ','EXPORT_REQUEST');
+
+  - changeSet:
+      id: tenant-027-seed-integration-role-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,phase2
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              WITH role_perm_map(role_code, permission_code) AS (
+                VALUES
+                  -- IMPORT_READ / EXPORT_READ — broad visibility
+                  ('HRLAB_SUPER_ADMIN',     'IMPORT_READ'),
+                  ('HRLAB_PROJECT_MANAGER', 'IMPORT_READ'),
+                  ('HRLAB_CONSULTANT',      'IMPORT_READ'),
+                  ('HRLAB_ANALYST',         'IMPORT_READ'),
+                  ('CLIENT_COMPANY_ADMIN',  'IMPORT_READ'),
+                  ('CLIENT_HR_DIRECTOR',    'IMPORT_READ'),
+                  ('CLIENT_HR_SPECIALIST',  'IMPORT_READ'),
+                  ('EXTERNAL_AUDITOR',      'IMPORT_READ'),
+                  ('HRLAB_SUPER_ADMIN',     'EXPORT_READ'),
+                  ('HRLAB_PROJECT_MANAGER', 'EXPORT_READ'),
+                  ('HRLAB_CONSULTANT',      'EXPORT_READ'),
+                  ('HRLAB_ANALYST',         'EXPORT_READ'),
+                  ('CLIENT_COMPANY_ADMIN',  'EXPORT_READ'),
+                  ('CLIENT_HR_DIRECTOR',    'EXPORT_READ'),
+                  ('CLIENT_HR_SPECIALIST',  'EXPORT_READ'),
+                  ('EXTERNAL_AUDITOR',      'EXPORT_READ'),
+                  -- ORG_IMPORT / POSITION_IMPORT / METHODOLOGY_IMPORT / GRADE_IMPORT
+                  -- HRLab roles + Client HR Director can drive structural imports
+                  ('HRLAB_SUPER_ADMIN',     'ORG_IMPORT'),
+                  ('HRLAB_PROJECT_MANAGER', 'ORG_IMPORT'),
+                  ('HRLAB_CONSULTANT',      'ORG_IMPORT'),
+                  ('CLIENT_HR_DIRECTOR',    'ORG_IMPORT'),
+                  ('HRLAB_SUPER_ADMIN',     'POSITION_IMPORT'),
+                  ('HRLAB_PROJECT_MANAGER', 'POSITION_IMPORT'),
+                  ('HRLAB_CONSULTANT',      'POSITION_IMPORT'),
+                  ('CLIENT_HR_DIRECTOR',    'POSITION_IMPORT'),
+                  ('HRLAB_SUPER_ADMIN',     'METHODOLOGY_IMPORT'),
+                  ('HRLAB_PROJECT_MANAGER', 'METHODOLOGY_IMPORT'),
+                  ('HRLAB_CONSULTANT',      'METHODOLOGY_IMPORT'),
+                  ('HRLAB_SUPER_ADMIN',     'GRADE_IMPORT'),
+                  ('HRLAB_PROJECT_MANAGER', 'GRADE_IMPORT'),
+                  -- IMPORT_CANCEL — same set as the underlying CREATE
+                  ('HRLAB_SUPER_ADMIN',     'IMPORT_CANCEL'),
+                  ('HRLAB_PROJECT_MANAGER', 'IMPORT_CANCEL'),
+                  ('HRLAB_CONSULTANT',      'IMPORT_CANCEL'),
+                  -- EXPORT_REQUEST — broad for non-salary, non-report exports
+                  ('HRLAB_SUPER_ADMIN',     'EXPORT_REQUEST'),
+                  ('HRLAB_PROJECT_MANAGER', 'EXPORT_REQUEST'),
+                  ('HRLAB_CONSULTANT',      'EXPORT_REQUEST'),
+                  ('HRLAB_ANALYST',         'EXPORT_REQUEST'),
+                  ('CLIENT_HR_DIRECTOR',    'EXPORT_REQUEST'),
+                  ('CLIENT_HR_SPECIALIST',  'EXPORT_REQUEST'),
+                  ('EXTERNAL_AUDITOR',      'EXPORT_REQUEST')
+                  -- PAYROLL_IMPORT intentionally NOT granted to any role in MVP 2.
+                  -- It exists for MVP 4 (Phase 4) when payroll connector ships.
+              )
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM role_perm_map m
+                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.permissions p ON p.code = m.permission_code
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p
+                WHERE rp.permission_id = p.id
+                  AND p.code IN ('ORG_IMPORT','POSITION_IMPORT','METHODOLOGY_IMPORT',
+                                 'GRADE_IMPORT','PAYROLL_IMPORT','IMPORT_READ',
+                                 'IMPORT_CANCEL','EXPORT_READ','EXPORT_REQUEST');

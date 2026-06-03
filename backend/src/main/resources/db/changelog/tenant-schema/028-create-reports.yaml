@@ -1,0 +1,101 @@
+# MVP 2 Phase 3 — reports table (architecture §17 / ADR-009 async generation).
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-028-create-reports
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,phase3
+      changes:
+        - createTable:
+            tableName: reports
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints: { primaryKey: true, nullable: false }
+              - column: { name: tenant_id,             type: UUID,        constraints: { nullable: false } }
+              - column: { name: project_id,            type: UUID,        constraints: { nullable: false } }
+              - column: { name: report_type,           type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: format,                type: VARCHAR(16), constraints: { nullable: false } }
+              - column: { name: status,                type: VARCHAR(24), constraints: { nullable: false } }
+              - column: { name: title,                 type: VARCHAR(256), constraints: { nullable: false } }
+              - column: { name: requested_by,          type: UUID,        constraints: { nullable: false } }
+              - column: { name: requested_at,          type: TIMESTAMPTZ, constraints: { nullable: false } }
+              - column: { name: generated_at,          type: TIMESTAMPTZ }
+              - column: { name: expires_at,            type: TIMESTAMPTZ }
+              - column: { name: downloaded_at,         type: TIMESTAMPTZ }
+              - column: { name: filter_params,         type: TEXT }
+              - column: { name: file_storage_key,      type: VARCHAR(512) }
+              - column: { name: file_size,             type: BIGINT }
+              - column: { name: file_checksum,         type: VARCHAR(128) }
+              - column: { name: locale,                type: VARCHAR(16) }
+              - column:
+                  name: contains_salary_data
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints: { nullable: false }
+              - column:
+                  name: contains_personal_data
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints: { nullable: false }
+              - column:
+                  name: attempt_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column: { name: failure_reason,        type: VARCHAR(512) }
+              - column: { name: trace_id,              type: VARCHAR(64) }
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints: { nullable: false }
+              - column: { name: updated_at,  type: TIMESTAMPTZ }
+              - column: { name: created_by,  type: UUID }
+              - column: { name: updated_by,  type: UUID }
+        - addForeignKeyConstraint:
+            baseTableName: reports
+            baseColumnNames: project_id
+            referencedTableName: projects
+            referencedColumnNames: id
+            constraintName: fk_reports_project
+            onDelete: CASCADE
+        - createIndex:
+            tableName: reports
+            indexName: idx_reports_tenant_project_status_created
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: project_id } }
+              - { column: { name: status } }
+              - { column: { name: created_at } }
+        - createIndex:
+            tableName: reports
+            indexName: idx_reports_tenant_requestor
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: requested_by } }
+        - sql:
+            sql: |
+              ALTER TABLE reports ADD CONSTRAINT chk_reports_status
+                CHECK (status IN ('REQUESTED','QUEUED','GENERATING','GENERATED','FAILED',
+                                  'DOWNLOADED','EXPIRED','CANCELLED'));
+              ALTER TABLE reports ADD CONSTRAINT chk_reports_format
+                CHECK (format IN ('PDF','DOCX','XLSX'));
+              ALTER TABLE reports ADD CONSTRAINT chk_reports_type
+                CHECK (report_type IN ('GRADE_DISTRIBUTION','POSITION_CATALOG',
+                                       'EVALUATION_SUMMARY','METHODOLOGY_SPEC',
+                                       'AUDIT_SUMMARY','EXECUTIVE_SUMMARY'));
+              -- Partial unique index — one in-flight report per (tenant, user, type, project)
+              CREATE UNIQUE INDEX uq_reports_inflight
+                ON reports (tenant_id, requested_by, report_type, project_id)
+                WHERE status IN ('REQUESTED','QUEUED','GENERATING');
+      rollback:
+        - dropTable: { tableName: reports }

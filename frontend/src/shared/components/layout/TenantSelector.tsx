@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Building2, ChevronDown, Check } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth/authStore';
 import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import type { TenantSummary } from '@/shared/auth/authTypes';
@@ -9,9 +10,18 @@ import { cn } from '@/shared/lib/cn';
 /**
  * TenantSelector — never accepts free-text tenant_id (security blueprint API-13).
  * Switching is gated by ConfirmDialog and clears the project context.
+ *
+ * FE-TI-004: after a tenant switch we MUST invalidate the whole React Query
+ * cache so that any project-scoped resource (projects, positions, methodologies,
+ * evaluations, grade structures, approvals, etc.) re-fetches under the new
+ * tenant context. Without this, the projects page would render the stale list
+ * for the previous tenant until staleTime elapses. Tenant resolution itself
+ * stays server-side: the backend reads the active tenant from the JWT and the
+ * mock adapter reads it from `X-Mock-Tenant-Id`; clients never send tenant_id.
  */
 export function TenantSelector() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const active = useAuthStore((s) => s.activeTenant);
   const setActiveTenant = useAuthStore((s) => s.setActiveTenant);
@@ -28,7 +38,12 @@ export function TenantSelector() {
   };
 
   const onConfirm = () => {
-    if (pending) setActiveTenant(pending);
+    if (pending) {
+      setActiveTenant(pending);
+      // Bust every cached query so resource hooks re-fetch under the new
+      // tenant context. activeProject is already cleared by the store.
+      queryClient.invalidateQueries();
+    }
     setPending(null);
   };
 

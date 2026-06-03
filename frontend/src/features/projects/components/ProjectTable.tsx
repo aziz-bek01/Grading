@@ -29,9 +29,9 @@ export function ProjectTable({ rows, loading, toolbarRight }: ProjectTableProps)
     {
       key: 'name',
       header: t('projects.column_name'),
-      render: (p) => <span>{pickLocalized(p.name, locale)}</span>,
+      render: (p) => <span>{pickLocalized(p.name_i18n, locale)}</span>,
       sortable: true,
-      sortAccessor: (p) => pickLocalized(p.name, locale).toLowerCase(),
+      sortAccessor: (p) => pickLocalized(p.name_i18n, locale).toLowerCase(),
     },
     {
       key: 'status',
@@ -50,9 +50,9 @@ export function ProjectTable({ rows, loading, toolbarRight }: ProjectTableProps)
     {
       key: 'updated',
       header: t('projects.column_updated'),
-      render: (p) => new Date(p.updated_at).toLocaleDateString(locale),
+      render: (p) => (p.updated_at ? new Date(p.updated_at).toLocaleDateString(locale) : '—'),
       sortable: true,
-      sortAccessor: (p) => p.updated_at,
+      sortAccessor: (p) => p.updated_at ?? '',
       width: '140px',
     },
   ];
@@ -64,7 +64,7 @@ export function ProjectTable({ rows, loading, toolbarRight }: ProjectTableProps)
       rowKey={(p) => p.id}
       loading={loading}
       searchPredicate={(p, q) => {
-        const name = pickLocalized(p.name, locale).toLowerCase();
+        const name = pickLocalized(p.name_i18n, locale).toLowerCase();
         return p.code.toLowerCase().includes(q) || name.includes(q);
       }}
       onRowClick={(p) => navigate(routes.projectWorkspace(p.id))}

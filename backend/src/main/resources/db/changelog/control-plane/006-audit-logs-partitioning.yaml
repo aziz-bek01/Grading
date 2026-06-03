@@ -1,0 +1,435 @@
+# Control plane: convert audit log tables to PostgreSQL native RANGE
+# partitioning by month (database-blueprint §15.3, security-blueprint §7.4).
+#
+# WHY:
+#   Audit log volume in MVP 1 is bounded but grows ~10x business records and
+#   is retained for 7 years (compliance). A single non-partitioned table will
+#   choke vacuum/index maintenance within months of go-live. Monthly RANGE
+#   partitions let us:
+#     - DROP old partitions in O(1) instead of mass-DELETE (which a
+#       runtime user no longer has the privilege to issue anyway — see
+#       control-plane/005-db-role-grants.yaml).
+#     - Localise hot indexes to the current month.
+#     - Replicate / archive whole-partition files to cold storage.
+#
+# WHAT IS PARTITIONED:
+#   - public.system_audit_log   (control-plane audit; RLS NOT applied)
+#   - public.tenant_audit_logs  (tenant-aware stub; RLS re-applied here +
+#                                re-confirmed by tenant-schema/030-enable-rls.yaml)
+#
+# WHY THIS IS A REPLACE-AND-RECREATE (not ALTER):
+#   PostgreSQL cannot convert an existing non-partitioned table into a
+#   partitioned one in place. The canonical migration on populated data is:
+#     1) rename old table to *_legacy
+#     2) CREATE TABLE ... PARTITION BY RANGE (created_at)
+#     3) INSERT INTO new SELECT * FROM legacy
+#     4) DROP legacy
+#   In a fresh MVP 1 deployment the old tables are empty, so we collapse to
+#   DROP + CREATE guarded by a count(*) = 0 preCondition. Production
+#   deployments with data MUST follow the ETL runbook documented in
+#   docs/mvp1/05-database-blueprint.md §15.3 (database-architect handoff to
+#   devops-sre) before applying this changeset — the preCondition will
+#   refuse to drop a non-empty table.
+#
+# WHY THE PARTITION KEY IS (id, created_at):
+#   PostgreSQL requires the partition key to be part of EVERY unique
+#   constraint (including the PRIMARY KEY). created_at is the partition
+#   key, therefore PK is composite (id, created_at). This is a database-
+#   side change ONLY — JpaAuditService still INSERTs by (id, created_at)
+#   and never updates or queries by surrogate id alone (audit is append-
+#   only). See RISK note in the database-architect report (Task #4) for
+#   the JPA validation implication.
+#
+# WHY 24 MONTHS OF EAGER PARTITIONS:
+#   No pg_partman, no pg_cron. We pre-provision 2026-01 .. 2027-12 plus a
+#   DEFAULT catch-all so the cluster runs unattended for the next two
+#   years. devops-sre owns the quarterly cron that calls a
+#   create_next_audit_partitions(months int) SQL function — to be added in
+#   a Phase 2 changeset alongside the automated retention sweep. The
+#   DEFAULT partition guarantees inserts never fail even if cron lags.
+#
+# WHAT THIS CHANGESET DOES NOT DO:
+#   - Does NOT create pg_partman.
+#   - Does NOT install pg_cron.
+#   - Does NOT add a retention sweep (Phase 2).
+#   - Does NOT add automatic future-partition creation (Phase 2).
+#   - Does NOT alter the SystemAuditLogJpaEntity @Id mapping (backend-
+#     engineer owns; see Task #4 RISK).
+databaseChangeLog:
+
+  # --------------------------------------------------------------------------
+  # 006.1 — system_audit_log: convert to PARTITION BY RANGE (created_at).
+  # control-plane audit; tenant_id is nullable; NOT subject to tenant RLS.
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 006-partition-system-audit-log
+      author: database-architect
+      context: control-plane
+      labels: mvp1,partitioning,audit
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: SELECT count(*) FROM public.system_audit_log
+      comment: |
+        Replace public.system_audit_log with a partitioned (RANGE created_at)
+        equivalent. Safe only on a fresh DB — the count(*) = 0 preCondition
+        skips this changeset against any deployment that already has audit
+        rows. For populated deployments database-architect ships a separate
+        runbook (RENAME + INSERT-SELECT + DROP legacy).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Drop the non-partitioned predecessor (idempotent on
+              -- fresh DB; preCondition guards data loss). CASCADE removes
+              -- the four indexes from 003-create-system-audit.yaml and
+              -- any GRANT rows from 005-db-role-grants.yaml — both are
+              -- re-applied below.
+              DROP TABLE IF EXISTS public.system_audit_log CASCADE;
+
+              -- 2) Recreate as the partitioned parent. PK must include
+              -- the partition key (created_at), per PostgreSQL.
+              CREATE TABLE public.system_audit_log (
+                id              UUID        NOT NULL DEFAULT gen_random_uuid(),
+                tenant_id       UUID,
+                project_id      UUID,
+                actor_user_id   UUID,
+                action          VARCHAR(100) NOT NULL,
+                entity_type     VARCHAR(100),
+                entity_id       UUID,
+                before_json     JSONB,
+                after_json      JSONB,
+                reason          TEXT,
+                ip_address      VARCHAR(64),
+                user_agent      TEXT,
+                correlation_id  VARCHAR(100),
+                trace_id        VARCHAR(100),
+                created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                hash_prev       TEXT,
+                hash_current    TEXT         NOT NULL,
+                PRIMARY KEY (id, created_at)
+              ) PARTITION BY RANGE (created_at);
+
+              -- 3) Indexes on the parent automatically propagate to all
+              -- existing AND future child partitions (PG 11+ semantics).
+              -- Same names + columns as 003-create-system-audit.yaml.
+              CREATE INDEX idx_system_audit_tenant_created
+                ON public.system_audit_log (tenant_id, created_at DESC);
+              CREATE INDEX idx_system_audit_action
+                ON public.system_audit_log (action);
+              CREATE INDEX idx_system_audit_actor
+                ON public.system_audit_log (actor_user_id);
+              CREATE INDEX idx_system_audit_entity
+                ON public.system_audit_log (entity_type, entity_id);
+
+              -- 4) Pre-provision 24 monthly partitions: 2026-01 .. 2027-12.
+              -- Each row: FROM '<first day of month>' TO '<first day of next>'.
+              CREATE TABLE public.system_audit_log_2026_01 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+              CREATE TABLE public.system_audit_log_2026_02 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
+              CREATE TABLE public.system_audit_log_2026_03 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+              CREATE TABLE public.system_audit_log_2026_04 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-04-01') TO ('2026-05-01');
+              CREATE TABLE public.system_audit_log_2026_05 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+              CREATE TABLE public.system_audit_log_2026_06 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+              CREATE TABLE public.system_audit_log_2026_07 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+              CREATE TABLE public.system_audit_log_2026_08 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
+              CREATE TABLE public.system_audit_log_2026_09 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');
+              CREATE TABLE public.system_audit_log_2026_10 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
+              CREATE TABLE public.system_audit_log_2026_11 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-11-01') TO ('2026-12-01');
+              CREATE TABLE public.system_audit_log_2026_12 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2026-12-01') TO ('2027-01-01');
+              CREATE TABLE public.system_audit_log_2027_01 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-01-01') TO ('2027-02-01');
+              CREATE TABLE public.system_audit_log_2027_02 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-02-01') TO ('2027-03-01');
+              CREATE TABLE public.system_audit_log_2027_03 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-03-01') TO ('2027-04-01');
+              CREATE TABLE public.system_audit_log_2027_04 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-04-01') TO ('2027-05-01');
+              CREATE TABLE public.system_audit_log_2027_05 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-05-01') TO ('2027-06-01');
+              CREATE TABLE public.system_audit_log_2027_06 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-06-01') TO ('2027-07-01');
+              CREATE TABLE public.system_audit_log_2027_07 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-07-01') TO ('2027-08-01');
+              CREATE TABLE public.system_audit_log_2027_08 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-08-01') TO ('2027-09-01');
+              CREATE TABLE public.system_audit_log_2027_09 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-09-01') TO ('2027-10-01');
+              CREATE TABLE public.system_audit_log_2027_10 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-10-01') TO ('2027-11-01');
+              CREATE TABLE public.system_audit_log_2027_11 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-11-01') TO ('2027-12-01');
+              CREATE TABLE public.system_audit_log_2027_12 PARTITION OF public.system_audit_log
+                FOR VALUES FROM ('2027-12-01') TO ('2028-01-01');
+
+              -- 5) DEFAULT catch-all — protects INSERTs if devops cron lags
+              -- behind partition pre-provisioning. Rows here MUST be drained
+              -- before adding the missing partition (PG re-routes on
+              -- ATTACH PARTITION but rejects overlapping ranges).
+              CREATE TABLE public.system_audit_log_default
+                PARTITION OF public.system_audit_log DEFAULT;
+
+              -- 6) Re-apply role grants (CASCADE dropped them).
+              -- grading_runtime: INSERT + SELECT only (NO UPDATE / DELETE).
+              GRANT SELECT, INSERT ON public.system_audit_log              TO grading_runtime;
+              GRANT SELECT, INSERT ON public.system_audit_log_default      TO grading_runtime;
+              -- Per-partition grants are inherited from the parent on
+              -- INSERT/SELECT (PG 11+); explicit grants on partitions are
+              -- still applied for defence-in-depth on the DEFAULT and on
+              -- every monthly child created below.
+              REVOKE UPDATE, DELETE, TRUNCATE ON public.system_audit_log              FROM grading_runtime;
+              REVOKE UPDATE, DELETE, TRUNCATE ON public.system_audit_log_default      FROM grading_runtime;
+
+              -- grading_audit_reader: SELECT only.
+              GRANT SELECT ON public.system_audit_log              TO grading_audit_reader;
+              GRANT SELECT ON public.system_audit_log_default      TO grading_audit_reader;
+
+              -- 7) Documentation comment on the parent table.
+              COMMENT ON TABLE public.system_audit_log IS
+                'Append-only control-plane audit log. RANGE-partitioned by created_at (monthly). 7y retention. DROP partitions in O(1); UPDATE/DELETE revoked from grading_runtime (see control-plane/005). Not subject to tenant RLS — control-plane only.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Reverse strictly: drop the partitioned table (CASCADE drops
+              -- all child partitions + indexes + grants) and recreate the
+              -- non-partitioned predecessor from 003-create-system-audit.yaml
+              -- so 005-db-role-grants.yaml rollback paths remain consistent.
+              DROP TABLE IF EXISTS public.system_audit_log CASCADE;
+              CREATE TABLE public.system_audit_log (
+                id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id       UUID,
+                project_id      UUID,
+                actor_user_id   UUID,
+                action          VARCHAR(100) NOT NULL,
+                entity_type     VARCHAR(100),
+                entity_id       UUID,
+                before_json     JSONB,
+                after_json      JSONB,
+                reason          TEXT,
+                ip_address      VARCHAR(64),
+                user_agent      TEXT,
+                correlation_id  VARCHAR(100),
+                trace_id        VARCHAR(100),
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                hash_prev       TEXT,
+                hash_current    TEXT NOT NULL
+              );
+              CREATE INDEX idx_system_audit_tenant_created
+                ON public.system_audit_log (tenant_id, created_at DESC);
+              CREATE INDEX idx_system_audit_action
+                ON public.system_audit_log (action);
+              CREATE INDEX idx_system_audit_actor
+                ON public.system_audit_log (actor_user_id);
+              CREATE INDEX idx_system_audit_entity
+                ON public.system_audit_log (entity_type, entity_id);
+              GRANT SELECT, INSERT ON public.system_audit_log TO grading_runtime;
+              REVOKE UPDATE, DELETE, TRUNCATE ON public.system_audit_log FROM grading_runtime;
+              GRANT SELECT ON public.system_audit_log TO grading_audit_reader;
+
+  # --------------------------------------------------------------------------
+  # 006.2 — tenant_audit_logs: convert to PARTITION BY RANGE (created_at).
+  # tenant-aware; RLS applied here AND re-confirmed by
+  # tenant-schema/030-enable-rls.yaml (idempotent — uses DROP POLICY IF
+  # EXISTS + CREATE POLICY).
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 006-partition-tenant-audit-logs
+      author: database-architect
+      context: control-plane
+      labels: mvp1,partitioning,audit,rls
+      runOnChange: false
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: SELECT count(*) FROM public.tenant_audit_logs
+      comment: |
+        Replace public.tenant_audit_logs with a partitioned (RANGE created_at)
+        equivalent. RLS is enabled + forced here so the policy survives
+        DROP CASCADE; tenant-schema/030-enable-rls.yaml re-asserts the same
+        policy idempotently downstream.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Drop the non-partitioned predecessor. CASCADE removes
+              -- indexes from 003-create-system-audit.yaml, grants from
+              -- 005-db-role-grants.yaml, AND the RLS policy from
+              -- tenant-schema/030-enable-rls.yaml. All three are re-applied
+              -- below (policy + grants directly here; 030 also re-asserts
+              -- the policy idempotently when it runs later in the same
+              -- changelog pass).
+              DROP TABLE IF EXISTS public.tenant_audit_logs CASCADE;
+
+              -- 2) Recreate as the partitioned parent. tenant_id NOT NULL —
+              -- this table is always tenant-scoped (RLS enforces predicate).
+              CREATE TABLE public.tenant_audit_logs (
+                id              UUID        NOT NULL DEFAULT gen_random_uuid(),
+                tenant_id       UUID        NOT NULL,
+                project_id      UUID,
+                actor_user_id   UUID,
+                action          VARCHAR(100) NOT NULL,
+                entity_type     VARCHAR(100),
+                entity_id       UUID,
+                before_json     JSONB,
+                after_json      JSONB,
+                reason          TEXT,
+                ip_address      VARCHAR(64),
+                user_agent      TEXT,
+                correlation_id  VARCHAR(100),
+                trace_id        VARCHAR(100),
+                created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                hash_prev       TEXT,
+                hash_current    TEXT         NOT NULL,
+                PRIMARY KEY (id, created_at)
+              ) PARTITION BY RANGE (created_at);
+
+              -- 3) Indexes on parent (propagate to all children).
+              CREATE INDEX idx_tenant_audit_tenant_project_created
+                ON public.tenant_audit_logs (tenant_id, project_id, created_at DESC);
+              CREATE INDEX idx_tenant_audit_action
+                ON public.tenant_audit_logs (tenant_id, action);
+
+              -- 4) 24 monthly partitions: 2026-01 .. 2027-12.
+              CREATE TABLE public.tenant_audit_logs_2026_01 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+              CREATE TABLE public.tenant_audit_logs_2026_02 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
+              CREATE TABLE public.tenant_audit_logs_2026_03 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+              CREATE TABLE public.tenant_audit_logs_2026_04 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-04-01') TO ('2026-05-01');
+              CREATE TABLE public.tenant_audit_logs_2026_05 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+              CREATE TABLE public.tenant_audit_logs_2026_06 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+              CREATE TABLE public.tenant_audit_logs_2026_07 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+              CREATE TABLE public.tenant_audit_logs_2026_08 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
+              CREATE TABLE public.tenant_audit_logs_2026_09 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');
+              CREATE TABLE public.tenant_audit_logs_2026_10 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
+              CREATE TABLE public.tenant_audit_logs_2026_11 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-11-01') TO ('2026-12-01');
+              CREATE TABLE public.tenant_audit_logs_2026_12 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2026-12-01') TO ('2027-01-01');
+              CREATE TABLE public.tenant_audit_logs_2027_01 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-01-01') TO ('2027-02-01');
+              CREATE TABLE public.tenant_audit_logs_2027_02 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-02-01') TO ('2027-03-01');
+              CREATE TABLE public.tenant_audit_logs_2027_03 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-03-01') TO ('2027-04-01');
+              CREATE TABLE public.tenant_audit_logs_2027_04 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-04-01') TO ('2027-05-01');
+              CREATE TABLE public.tenant_audit_logs_2027_05 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-05-01') TO ('2027-06-01');
+              CREATE TABLE public.tenant_audit_logs_2027_06 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-06-01') TO ('2027-07-01');
+              CREATE TABLE public.tenant_audit_logs_2027_07 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-07-01') TO ('2027-08-01');
+              CREATE TABLE public.tenant_audit_logs_2027_08 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-08-01') TO ('2027-09-01');
+              CREATE TABLE public.tenant_audit_logs_2027_09 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-09-01') TO ('2027-10-01');
+              CREATE TABLE public.tenant_audit_logs_2027_10 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-10-01') TO ('2027-11-01');
+              CREATE TABLE public.tenant_audit_logs_2027_11 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-11-01') TO ('2027-12-01');
+              CREATE TABLE public.tenant_audit_logs_2027_12 PARTITION OF public.tenant_audit_logs
+                FOR VALUES FROM ('2027-12-01') TO ('2028-01-01');
+
+              -- 5) DEFAULT catch-all.
+              CREATE TABLE public.tenant_audit_logs_default
+                PARTITION OF public.tenant_audit_logs DEFAULT;
+
+              -- 6) RLS — ENABLE + FORCE on the parent. PostgreSQL applies
+              -- the policy to every existing AND future child partition,
+              -- but ONLY if RLS is also enabled per-partition. We enable
+              -- explicitly on parent + DEFAULT here; 030-enable-rls.yaml
+              -- re-asserts on the parent idempotently. Monthly children
+              -- inherit through the parent at planner time.
+              ALTER TABLE public.tenant_audit_logs              ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.tenant_audit_logs              FORCE  ROW LEVEL SECURITY;
+              ALTER TABLE public.tenant_audit_logs_default      ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.tenant_audit_logs_default      FORCE  ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation_tenant_audit_logs
+                ON public.tenant_audit_logs;
+              CREATE POLICY tenant_isolation_tenant_audit_logs
+                ON public.tenant_audit_logs
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              -- 7) Re-apply role grants (CASCADE dropped them).
+              GRANT SELECT, INSERT ON public.tenant_audit_logs              TO grading_runtime;
+              GRANT SELECT, INSERT ON public.tenant_audit_logs_default      TO grading_runtime;
+              REVOKE UPDATE, DELETE, TRUNCATE ON public.tenant_audit_logs              FROM grading_runtime;
+              REVOKE UPDATE, DELETE, TRUNCATE ON public.tenant_audit_logs_default      FROM grading_runtime;
+              GRANT SELECT ON public.tenant_audit_logs              TO grading_audit_reader;
+              GRANT SELECT ON public.tenant_audit_logs_default      TO grading_audit_reader;
+
+              COMMENT ON TABLE public.tenant_audit_logs IS
+                'Append-only tenant-scoped audit log. RANGE-partitioned by created_at (monthly). RLS forced on tenant_id. 7y retention. DROP partitions in O(1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Reverse strictly: drop the partitioned table and recreate
+              -- the non-partitioned stub from 003-create-system-audit.yaml,
+              -- then re-apply RLS policy from 030-enable-rls.yaml so the
+              -- chain stays valid.
+              DROP TABLE IF EXISTS public.tenant_audit_logs CASCADE;
+              CREATE TABLE public.tenant_audit_logs (
+                id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id       UUID NOT NULL,
+                project_id      UUID,
+                actor_user_id   UUID,
+                action          VARCHAR(100) NOT NULL,
+                entity_type     VARCHAR(100),
+                entity_id       UUID,
+                before_json     JSONB,
+                after_json      JSONB,
+                reason          TEXT,
+                ip_address      VARCHAR(64),
+                user_agent      TEXT,
+                correlation_id  VARCHAR(100),
+                trace_id        VARCHAR(100),
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                hash_prev       TEXT,
+                hash_current    TEXT NOT NULL
+              );
+              CREATE INDEX idx_tenant_audit_tenant_project_created
+                ON public.tenant_audit_logs (tenant_id, project_id, created_at DESC);
+              CREATE INDEX idx_tenant_audit_action
+                ON public.tenant_audit_logs (tenant_id, action);
+              ALTER TABLE public.tenant_audit_logs ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.tenant_audit_logs FORCE  ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS tenant_isolation_tenant_audit_logs ON public.tenant_audit_logs;
+              CREATE POLICY tenant_isolation_tenant_audit_logs ON public.tenant_audit_logs
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+              GRANT SELECT, INSERT ON public.tenant_audit_logs TO grading_runtime;
+              REVOKE UPDATE, DELETE, TRUNCATE ON public.tenant_audit_logs FROM grading_runtime;
+              GRANT SELECT ON public.tenant_audit_logs TO grading_audit_reader;

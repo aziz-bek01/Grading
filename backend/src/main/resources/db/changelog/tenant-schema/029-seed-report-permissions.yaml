@@ -1,0 +1,63 @@
+# MVP 2 Phase 3 — report permission role grants.
+#
+# Permissions REPORT_READ / REPORT_CREATE / REPORT_EXPORT already exist (seeded
+# in Phase 0-1 default permissions seed). This changeset only wires the role
+# grants per docs/mvp1/role-permissions-matrix.md.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-029-seed-report-role-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,phase3
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              WITH role_perm_map(role_code, permission_code) AS (
+                VALUES
+                  -- REPORT_READ — broadest visibility
+                  ('HRLAB_SUPER_ADMIN',      'REPORT_READ'),
+                  ('HRLAB_PROJECT_MANAGER',  'REPORT_READ'),
+                  ('HRLAB_CONSULTANT',       'REPORT_READ'),
+                  ('HRLAB_ANALYST',          'REPORT_READ'),
+                  ('CLIENT_COMPANY_ADMIN',   'REPORT_READ'),
+                  ('CLIENT_HR_DIRECTOR',     'REPORT_READ'),
+                  ('CLIENT_HR_SPECIALIST',   'REPORT_READ'),
+                  ('EVALUATION_COMMITTEE',   'REPORT_READ'),
+                  ('DEPT_MANAGER',           'REPORT_READ'),
+                  ('VIEWER',                 'REPORT_READ'),
+                  ('EXTERNAL_AUDITOR',       'REPORT_READ'),
+                  -- REPORT_CREATE — request a report
+                  ('HRLAB_SUPER_ADMIN',      'REPORT_CREATE'),
+                  ('HRLAB_PROJECT_MANAGER',  'REPORT_CREATE'),
+                  ('HRLAB_CONSULTANT',       'REPORT_CREATE'),
+                  ('HRLAB_ANALYST',          'REPORT_CREATE'),
+                  -- REPORT_EXPORT — issue signed download URL
+                  ('HRLAB_SUPER_ADMIN',      'REPORT_EXPORT'),
+                  ('HRLAB_PROJECT_MANAGER',  'REPORT_EXPORT'),
+                  ('CLIENT_COMPANY_ADMIN',   'REPORT_EXPORT'),
+                  ('CLIENT_HR_DIRECTOR',     'REPORT_EXPORT')
+              )
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM role_perm_map m
+                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.permissions p ON p.code = m.permission_code
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              -- Intentional: REPORT_* permission catalog rows persist (used by
+              -- prior phases). We only roll back the role grants added here.
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p, public.roles r
+                WHERE rp.permission_id = p.id
+                  AND rp.role_id       = r.id
+                  AND p.code IN ('REPORT_READ','REPORT_CREATE','REPORT_EXPORT')
+                  AND r.code IN ('HRLAB_SUPER_ADMIN','HRLAB_PROJECT_MANAGER',
+                                 'HRLAB_CONSULTANT','HRLAB_ANALYST',
+                                 'CLIENT_COMPANY_ADMIN','CLIENT_HR_DIRECTOR',
+                                 'CLIENT_HR_SPECIALIST','EVALUATION_COMMITTEE',
+                                 'DEPT_MANAGER','VIEWER','EXTERNAL_AUDITOR');

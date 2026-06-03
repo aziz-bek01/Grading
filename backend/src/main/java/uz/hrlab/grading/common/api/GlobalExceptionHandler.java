@@ -5,16 +5,19 @@ import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
@@ -23,8 +26,10 @@ import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ResourceNotFoundException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
+import uz.hrlab.grading.approval.domain.ApprovalTransitionRejectedException;
 import uz.hrlab.grading.jobanalysis.domain.QuestionnaireTransitionRejectedException;
 import uz.hrlab.grading.jobprofile.domain.JobProfileTransitionRejectedException;
+import uz.hrlab.grading.methodology.domain.MethodologyVersionTransitionRejectedException;
 import uz.hrlab.grading.project.application.ProjectLockedException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
@@ -136,6 +141,37 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
     }
 
+    @ExceptionHandler(MethodologyVersionTransitionRejectedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodologyVersionTransition(
+            MethodologyVersionTransitionRejectedException ex) {
+        return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
+    }
+
+    @ExceptionHandler(ApprovalTransitionRejectedException.class)
+    public ResponseEntity<ErrorResponse> handleApprovalTransition(
+            ApprovalTransitionRejectedException ex) {
+        return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
+    }
+
+    /**
+     * F-307 / F-408 — unique-index and FK violations (e.g. concurrent reorder
+     * collides on {@code uq_factors_version_sort_order}) become 500 by
+     * default. They are not server bugs — they are concurrent modifications.
+     * Map to 409 CONFLICT with a generic {@code CONSTRAINT_VIOLATION} code.
+     * The constraint name and SQL detail are logged internally but NEVER
+     * leaked to the client (security: avoid schema disclosure).
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex) {
+        log.warn("DataIntegrityViolationException cid={}: {}", correlationId(),
+                ex.getMostSpecificCause() != null
+                        ? ex.getMostSpecificCause().getMessage()
+                        : ex.getMessage());
+        return build(HttpStatus.CONFLICT, "CONSTRAINT_VIOLATION",
+                "Concurrent modification or constraint violation. Please retry.");
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleBeanValidation(MethodArgumentNotValidException ex) {
         List<ErrorResponse.FieldError> fields = ex.getBindingResult().getFieldErrors().stream()
@@ -185,6 +221,33 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleDomain(BaseDomainException ex) {
         // Domain-level fall-through: treat as 400 unless subclass already mapped.
         return build(HttpStatus.BAD_REQUEST, ex.getCode(), ex.getMessage());
+    }
+
+    /**
+     * No controller matched the request path — Spring MVC fell through to static
+     * resource resolution and found nothing. Return 404 NOT_FOUND instead of the
+     * catch-all 500 so unimplemented/mistyped routes are reported honestly and
+     * are not mistaken for server crashes (e.g. the not-yet-implemented
+     * GET /api/v1/methodology-templates). The detail is intentionally generic to
+     * avoid disclosing which internal paths do or do not exist.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResource(NoResourceFoundException ex) {
+        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", "Resource not found");
+    }
+
+    /**
+     * The path matched a controller but the HTTP method is wrong (e.g. GET on a
+     * POST-only {@code /users/{id}/memberships}). Without this handler the
+     * request falls through to the catch-all below and is reported as a 500,
+     * masking a client mistake as a server crash. Return 405 METHOD_NOT_ALLOWED
+     * honestly. The detail is generic to avoid disclosing the allowed verbs.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex) {
+        return build(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED",
+                "HTTP method not supported for this resource");
     }
 
     @ExceptionHandler(Exception.class)

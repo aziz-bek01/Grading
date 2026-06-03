@@ -133,7 +133,7 @@ class ProjectControllerSecurityTest {
                   "tenantId": "00000000-0000-0000-0000-000000000001",
                   "tenant_id": "00000000-0000-0000-0000-000000000002",
                   "code": "PRJ-2",
-                  "nameI18n": {"ru-RU": "Проект"}
+                  "name_i18n": {"ru-RU": "Проект"}
                 }
                 """;
         mvc.perform(post("/api/v1/projects")

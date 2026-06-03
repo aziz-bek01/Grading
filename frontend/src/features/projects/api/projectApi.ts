@@ -6,7 +6,6 @@ import type {
   ProjectList,
   ProjectUpdatePayload,
 } from '../types/projectTypes';
-import type { WorkflowProgressResponse } from '@/shared/components/workflow/workflowTypes';
 
 /**
  * React-Query cache keys.
@@ -20,6 +19,7 @@ export const projectKeys = {
   all: ['projects'] as const,
   list: (tenantScope?: string) => ['projects', 'list', tenantScope ?? null] as const,
   detail: (id: string) => ['projects', 'detail', id] as const,
+  /** @deprecated Phase 2 cache key — workflow progress moved to features/workflow. */
   workflowProgress: (id: string) => ['projects', 'workflow-progress', id] as const,
 };
 
@@ -49,7 +49,5 @@ export async function updateProject(id: string, payload: ProjectUpdatePayload): 
   return res.data;
 }
 
-export async function fetchWorkflowProgress(projectId: string): Promise<WorkflowProgressResponse> {
-  const res = await httpClient.get<WorkflowProgressResponse>(endpoints.projects.workflowProgress(projectId));
-  return res.data;
-}
+// Re-export so noTenantIdLeak test + legacy callers keep working.
+export { fetchWorkflowProgress } from '@/features/workflow/api/workflowApi';

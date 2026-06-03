@@ -69,6 +69,17 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_SUPER_PASSWORD}
       # Keep the cluster small; tune for the shared VPS.
       POSTGRES_INITDB_ARGS: "--data-checksums"
+    # Small-VPS tuning (2 GB box shared with quiz.hrlab.uz). Keeps Postgres RSS
+    # modest so the JVM api + the existing services all fit. HikariCP defaults to
+    # ~10 connections, so max_connections=50 is generous.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=96MB
+      - -c
+      - effective_cache_size=256MB
+      - -c
+      - max_connections=50
       # Consumed by ./infra/db/prod/01-create-prod-roles.sh on FIRST init only,
       # to attach LOGIN + passwords to the three F-04 roles. From .env.prod.
       GRADING_MIGRATOR_PASSWORD: ${LIQUIBASE_DATASOURCE_PASSWORD}
@@ -91,11 +102,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2.0"
-          memory: 1536M
+          cpus: "1.0"
+          memory: 384M
         reservations:
-          cpus: "0.25"
-          memory: 256M
+          cpus: "0.10"
+          memory: 96M
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
@@ -125,7 +136,7 @@ services:
       SPRING_DATASOURCE_URL: ${LIQUIBASE_DATASOURCE_URL}
       SPRING_DATASOURCE_USERNAME: ${LIQUIBASE_DATASOURCE_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${LIQUIBASE_DATASOURCE_PASSWORD}
-      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0"
+      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=55.0"
     # Run Liquibase update only, no Spring web server, then exit.
     # NOTE: $$JAVA_OPTS escapes Compose interpolation so the literal $JAVA_OPTS
     # reaches the shell and is expanded from the container env at runtime
@@ -148,7 +159,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 1G
+          memory: 768M
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
@@ -196,7 +207,7 @@ services:
       GRADING_SALARY_KEY_ID: ${GRADING_SALARY_KEY_ID:-prod-stub}
       GRADING_SALARY_KEY_VERSION: ${GRADING_SALARY_KEY_VERSION:-1}
       # --- JVM ---
-      JAVA_OPTS: ${API_JAVA_OPTS:--XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:+ExitOnOutOfMemoryError}
+      JAVA_OPTS: ${API_JAVA_OPTS:--XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0 -XX:+ExitOnOutOfMemoryError}
     networks: [grading-prod]
     security_opt:
       - no-new-privileges:true
@@ -215,11 +226,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2.0"
-          memory: 1536M
+          cpus: "1.5"
+          memory: 1024M
         reservations:
-          cpus: "0.5"
-          memory: 768M
+          cpus: "0.25"
+          memory: 512M
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
@@ -264,10 +275,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 192M
+          memory: 96M
         reservations:
           cpus: "0.05"
-          memory: 32M
+          memory: 24M
     logging: *default-logging
 
 volumes:

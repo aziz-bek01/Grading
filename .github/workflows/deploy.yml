@@ -250,12 +250,23 @@ jobs:
           command_timeout: 5m
           script: |
             set -euo pipefail
-            echo '== API readiness (localhost-bound container) =='
-            curl -fsS --retry 12 --retry-delay 5 --retry-connrefused \
+            echo '== Wait for the API container healthcheck (JVM cold start) =='
+            # The container's own healthcheck is the reliable readiness signal —
+            # poll it before curling so we never race the JVM warm-up. (curl
+            # alone can hit "connection reset by peer" mid-startup, which
+            # --retry-connrefused does NOT retry.)
+            for i in $(seq 1 36); do
+              s=$(docker inspect -f '{{.State.Health.Status}}' grading-api-prod 2>/dev/null || echo none)
+              echo "api health: $s ($i/36)"
+              [ "$s" = "healthy" ] && break
+              sleep 5
+            done
+            echo '== API readiness =='
+            curl -fsS --retry 10 --retry-delay 5 --retry-all-errors \
               http://127.0.0.1:18080/actuator/health/readiness
             echo
-            echo '== Frontend health (localhost-bound container) =='
-            curl -fsS --retry 5 --retry-delay 3 --retry-connrefused \
+            echo '== Frontend health =='
+            curl -fsS --retry 6 --retry-delay 3 --retry-all-errors \
               http://127.0.0.1:18081/healthz
             echo
             echo '== Public same-origin via outer proxy (best-effort) =='

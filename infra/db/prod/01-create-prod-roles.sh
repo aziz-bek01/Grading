@@ -36,37 +36,58 @@ psql -v ON_ERROR_STOP=1 \
      --set=migrator_pwd="$GRADING_MIGRATOR_PASSWORD" \
      --set=runtime_pwd="$GRADING_RUNTIME_PASSWORD" \
      --set=audit_reader_pwd="$GRADING_AUDIT_READER_PASSWORD" <<'SQL'
-DO $$
-DECLARE
-  v_migrator_pwd     text := :'migrator_pwd';
-  v_runtime_pwd      text := :'runtime_pwd';
-  v_audit_reader_pwd text := :'audit_reader_pwd';
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_migrator') THEN
-    EXECUTE format('CREATE ROLE grading_migrator LOGIN PASSWORD %L', v_migrator_pwd);
-  ELSE
-    EXECUTE format('ALTER ROLE grading_migrator LOGIN PASSWORD %L', v_migrator_pwd);
-  END IF;
+-- IMPORTANT: psql performs :'var' / :"var" interpolation ONLY in plain SQL,
+-- NOT inside dollar-quoted blocks ($$...$$). So the password values must NOT
+-- live in a DO block (the server would receive a literal ":" and fail with
+-- 'syntax error at or near ":"'). Each CREATE ROLE is built as a string so the
+-- literal is interpolated by psql, then run with \gexec — guarded by a pg_roles
+-- lookup so the script stays idempotent / safe to re-run.
+SELECT current_database() AS db \gset
 
-  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_runtime') THEN
-    EXECUTE format('CREATE ROLE grading_runtime LOGIN PASSWORD %L', v_runtime_pwd);
-  ELSE
-    EXECUTE format('ALTER ROLE grading_runtime LOGIN PASSWORD %L', v_runtime_pwd);
-  END IF;
+-- grading_migrator -> Liquibase (DDL)
+SELECT format('CREATE ROLE grading_migrator LOGIN PASSWORD %L', :'migrator_pwd')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_migrator') \gexec
+ALTER ROLE grading_migrator LOGIN PASSWORD :'migrator_pwd';
 
-  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_audit_reader') THEN
-    EXECUTE format('CREATE ROLE grading_audit_reader LOGIN PASSWORD %L', v_audit_reader_pwd);
-  ELSE
-    EXECUTE format('ALTER ROLE grading_audit_reader LOGIN PASSWORD %L', v_audit_reader_pwd);
-  END IF;
+-- grading_runtime -> the API at runtime (DML)
+SELECT format('CREATE ROLE grading_runtime LOGIN PASSWORD %L', :'runtime_pwd')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_runtime') \gexec
+ALTER ROLE grading_runtime LOGIN PASSWORD :'runtime_pwd';
 
-  -- grading_migrator must be able to CONNECT to the dedicated db immediately so
-  -- Liquibase can run. Other privileges are granted by changelog 005.
-  EXECUTE format('GRANT CONNECT ON DATABASE %I TO grading_migrator', current_database());
-  EXECUTE format('GRANT CONNECT ON DATABASE %I TO grading_runtime', current_database());
-  EXECUTE format('GRANT CONNECT ON DATABASE %I TO grading_audit_reader', current_database());
-END
-$$;
+-- grading_audit_reader -> audit-query path (SELECT on audit tables)
+SELECT format('CREATE ROLE grading_audit_reader LOGIN PASSWORD %L', :'audit_reader_pwd')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'grading_audit_reader') \gexec
+ALTER ROLE grading_audit_reader LOGIN PASSWORD :'audit_reader_pwd';
+
+-- All three need CONNECT immediately (Liquibase + API + audit reader).
+GRANT CONNECT ON DATABASE :"db" TO grading_migrator;
+GRANT CONNECT ON DATABASE :"db" TO grading_runtime;
+GRANT CONNECT ON DATABASE :"db" TO grading_audit_reader;
+
+-- ---------------------------------------------------------------------------
+-- COLD-START privileges for grading_migrator (granted here, as the bootstrap
+-- superuser, because changelog 005 cannot grant them in time — 005 runs AS
+-- grading_migrator and only AFTER 001-004 have already created tables).
+--
+-- Why each is required for the very FIRST Liquibase run on an empty volume:
+--   * CREATE ON SCHEMA public — Liquibase creates DATABASECHANGELOG /
+--       DATABASECHANGELOGLOCK and control-plane tables (changelogs 001-004) in
+--       `public`. Since PostgreSQL 15 `public` no longer grants CREATE to
+--       non-owner roles, so without this the first migration dies with
+--       "permission denied for schema public".
+--   * CREATE ON DATABASE — changelog 001 runs
+--       `CREATE EXTENSION IF NOT EXISTS pgcrypto`. pgcrypto is TRUSTED (PG13+),
+--       installable by a non-superuser holding database-level CREATE.
+--   * BYPASSRLS — 030-enable-rls applies FORCE ROW LEVEL SECURITY, which
+--       exempts NOBODY by ownership. grading_migrator must behave as the
+--       "DB-owner / superuser-equivalent" that BYPASSES tenant RLS so
+--       migrations/seeds work across tenants. Settable only by a superuser —
+--       which POSTGRES_USER is on first init.
+-- Idempotent and additive; changelog 005 re-asserts the schema grants later.
+-- ---------------------------------------------------------------------------
+GRANT CREATE ON DATABASE :"db" TO grading_migrator;
+GRANT USAGE, CREATE ON SCHEMA public TO grading_migrator;
+ALTER ROLE grading_migrator BYPASSRLS;
 SQL
 
 echo "grading: F-04 roles (migrator/runtime/audit_reader) created with LOGIN."

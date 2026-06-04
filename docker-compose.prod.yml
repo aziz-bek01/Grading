@@ -69,6 +69,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_SUPER_PASSWORD}
       # Keep the cluster small; tune for the shared VPS.
       POSTGRES_INITDB_ARGS: "--data-checksums"
+      # Consumed by ./infra/db/prod/01-create-prod-roles.sh on FIRST init only,
+      # to attach LOGIN + passwords to the three F-04 roles. From .env.prod.
+      GRADING_MIGRATOR_PASSWORD: ${LIQUIBASE_DATASOURCE_PASSWORD}
+      GRADING_RUNTIME_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      GRADING_AUDIT_READER_PASSWORD: ${GRADING_AUDIT_READER_PASSWORD}
     # Small-VPS tuning (2 GB box shared with quiz.hrlab.uz). Keeps Postgres RSS
     # modest so the JVM api + the existing services all fit. HikariCP defaults to
     # ~10 connections, so max_connections=50 is generous.
@@ -80,11 +85,6 @@ services:
       - effective_cache_size=256MB
       - -c
       - max_connections=50
-      # Consumed by ./infra/db/prod/01-create-prod-roles.sh on FIRST init only,
-      # to attach LOGIN + passwords to the three F-04 roles. From .env.prod.
-      GRADING_MIGRATOR_PASSWORD: ${LIQUIBASE_DATASOURCE_PASSWORD}
-      GRADING_RUNTIME_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
-      GRADING_AUDIT_READER_PASSWORD: ${GRADING_AUDIT_READER_PASSWORD}
     volumes:
       - grading-pg-data-prod:/var/lib/postgresql/data
       # One-shot role bootstrap (LOGIN + passwords for the three F-04 roles).
@@ -226,7 +226,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.5"
+          # Single-vCPU shared VPS: a container's cpus limit cannot exceed the
+          # host's 1.00. Containers time-share, so 1.00 lets the JVM burst to the
+          # whole core when postgres/frontend are idle.
+          cpus: "1.0"
           memory: 1024M
         reservations:
           cpus: "0.25"

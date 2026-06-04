@@ -7,13 +7,21 @@
 # -----------------------------------------------------------------------------
 # Stage 1 — Build the SPA bundle.
 # -----------------------------------------------------------------------------
-FROM node:20.18.0-alpine AS builder
+# Node 22 (>= 22.12): Vite 8 is rolldown-based and refuses to build on Node
+# < 20.19 / < 22.12 ("Vite requires Node.js version 20.19+ or 22.12+").
+FROM node:22-alpine AS builder
 
 WORKDIR /workspace
 
 # Install deps first — best cache layer.
+# NOTE: `npm ci` can silently skip platform-specific OPTIONAL native binaries
+# when package-lock.json was generated on another OS (npm/cli#4828). That makes
+# rolldown's native binding (@rolldown/binding-linux-x64-musl on alpine) absent
+# at build time, so `vite build` dies with "Cannot find native binding".
+# `npm install` re-evaluates the os/cpu/libc applicability of optionalDependencies
+# for the running platform and installs the correct musl binding from the lockfile.
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install --no-audit --no-fund
 
 # Build.
 COPY tsconfig*.json vite.config.ts vitest.config.ts postcss.config.js tailwind.config.ts eslint.config.js index.html ./

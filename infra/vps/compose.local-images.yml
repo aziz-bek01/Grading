@@ -1,0 +1,26 @@
+# =============================================================================
+# grading.hrlab.uz — MANUAL first-deploy override: use locally `docker load`ed
+# images instead of pulling from GHCR.
+# =============================================================================
+# WHY: the CI image-publish path to GHCR is not wired yet, so for the bootstrap
+# deploy we build the images locally, `docker save | scp | docker load` them onto
+# the VPS, and run compose with this override so it uses the on-box images and
+# does NOT try (and fail) to pull `ghcr.io/...:sha-...`.
+#
+# USE (bootstrap deploy only), from /opt/grading on the VPS:
+#   docker compose -f docker-compose.prod.yml -f infra/vps/compose.local-images.yml \
+#     --env-file .env.prod --profile db up -d grading-postgres
+#   docker compose -f docker-compose.prod.yml -f infra/vps/compose.local-images.yml \
+#     --env-file .env.prod --profile migrate run --rm grading-migrator
+#   docker compose -f docker-compose.prod.yml -f infra/vps/compose.local-images.yml \
+#     --env-file .env.prod up -d grading-api grading-frontend
+#
+# The CD pipeline (.github/workflows/deploy.yml) must NEVER use this file — it
+# pulls immutable tags from GHCR (pull_policy: always in the base compose).
+services:
+  grading-migrator:
+    pull_policy: never
+  grading-api:
+    pull_policy: never
+  grading-frontend:
+    pull_policy: never

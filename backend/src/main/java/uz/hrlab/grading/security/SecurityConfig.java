@@ -2,6 +2,7 @@ package uz.hrlab.grading.security;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -47,6 +48,10 @@ import java.util.List;
  */
 @Configuration
 @EnableMethodSecurity(prePostEnabled = true)
+// Only load in a servlet web context. The Liquibase migrator runs the SAME jar
+// with web-application-type=none (no web server), where no HttpSecurity bean
+// exists — without this guard the migrator dies wiring securityFilterChain.
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SecurityConfig {
 
     /** Public endpoints that never require auth. */
@@ -151,9 +156,20 @@ public class SecurityConfig {
             name = "issuer-uri")
     public JwtDecoder jwtDecoder(
             @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri,
+            @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:}") String jwkSetUri,
             @Value("${spring.security.oauth2.resourceserver.jwt.audience:grading.hrlab.uz}")
             String expectedAudiencesCsv) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withIssuerLocation(issuerUri).build();
+        // Build from the JWKS endpoint, NOT withIssuerLocation(): the latter does
+        // OIDC discovery EAGERLY at bean creation, so the service cannot start
+        // until the IdP/DNS is reachable. withJwkSetUri() fetches keys LAZILY on
+        // the first token decode, so the API boots before the IdP exists. The
+        // issuer ("iss") claim is still enforced below via createDefaultWithIssuer,
+        // so no validation is lost. jwk-set-uri defaults to the Keycloak
+        // convention derived from the issuer when not explicitly configured.
+        String resolvedJwkSetUri = (jwkSetUri == null || jwkSetUri.isBlank())
+                ? issuerUri.replaceAll("/$", "") + "/protocol/openid-connect/certs"
+                : jwkSetUri;
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(resolvedJwkSetUri).build();
         List<String> expectedAudiences = parseCsv(expectedAudiencesCsv);
         OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(issuerUri);
         OAuth2TokenValidator<Jwt> withAudience = new JwtAudienceValidator(expectedAudiences);

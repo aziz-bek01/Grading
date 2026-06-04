@@ -25,7 +25,7 @@ permissions:
 env:
   JAVA_VERSION: "21"
   JAVA_DIST: temurin
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
   MAVEN_CLI_OPTS: "-B -ntp -e -Dstyle.color=always"
   REGISTRY: ghcr.io
   IMAGE_BACKEND: ghcr.io/${{ github.repository }}/grading-api
@@ -104,7 +104,7 @@ jobs:
           cache: maven
 
       - name: Trivy filesystem scan (backend)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           scan-type: fs
           scan-ref: backend
@@ -144,7 +144,7 @@ jobs:
           npm audit --audit-level=high
 
       - name: Trivy filesystem scan (frontend)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           scan-type: fs
           scan-ref: frontend
@@ -251,7 +251,10 @@ jobs:
       - name: Install + test
         working-directory: frontend
         run: |
-          npm ci --no-audit --no-fund
+          # npm install (not ci) so the platform-specific rolldown optional
+          # native binding is installed for the runner (npm/cli#4828); vitest 4
+          # / vite 8 fail to load it otherwise.
+          npm install --no-audit --no-fund
           npm test
 
       - name: Upload coverage
@@ -513,7 +516,7 @@ jobs:
       security-events: write
     steps:
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ env.IMAGE_BACKEND }}:sha-${{ github.sha }}
           severity: CRITICAL,HIGH
@@ -539,7 +542,7 @@ jobs:
       security-events: write
     steps:
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ env.IMAGE_FRONTEND }}:sha-${{ github.sha }}
           severity: CRITICAL,HIGH

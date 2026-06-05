@@ -9,7 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -51,18 +50,15 @@ public class TenantContextFilter extends OncePerRequestFilter {
     private final UserTenantMembershipRepository memberships;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
-    private final JdbcTemplate jdbcTemplate;
 
     public TenantContextFilter(JwtTenantContextResolver jwtResolver,
                                UserTenantMembershipRepository memberships,
                                AuditService auditService,
-                               ObjectMapper objectMapper,
-                               JdbcTemplate jdbcTemplate) {
+                               ObjectMapper objectMapper) {
         this.jwtResolver = jwtResolver;
         this.memberships = memberships;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
-        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
@@ -98,12 +94,14 @@ public class TenantContextFilter extends OncePerRequestFilter {
                 TenantContextHolder.set(context);
                 if (context.tenantId() != null) {
                     MDC.put("tenantId", context.tenantId().toString());
-                    // RLS defense-in-depth (changelog 030): set the PostgreSQL
-                    // session GUC that tenant-isolation policies read. The
-                    // value is bound for the duration of Spring's request TX;
-                    // SET LOCAL auto-resets at commit/rollback so the GUC
-                    // cannot leak across pooled connections.
-                    setRlsTenantId(context.tenantId());
+                    // RLS GUC (app.tenant_id) is NOT set here on purpose: a
+                    // servlet filter runs outside any DB transaction, so a
+                    // SET LOCAL would land on a pooled connection that is then
+                    // returned before the @Transactional query opens its own
+                    // transaction/connection — the setting would be lost (the
+                    // 22P02/409 root cause). It is now bound inside the active
+                    // transaction by RlsTenantSessionAspect, reading this same
+                    // TenantContext from TenantContextHolder.
                 }
                 if (context.userId() != null) {
                     MDC.put("userId", context.userId().toString());
@@ -191,31 +189,6 @@ public class TenantContextFilter extends OncePerRequestFilter {
             return comma > 0 ? forwarded.substring(0, comma).trim() : forwarded.trim();
         }
         return req.getRemoteAddr();
-    }
-
-    /**
-     * Bind the active tenant id to the PostgreSQL session via {@code SET LOCAL
-     * app.tenant_id = '<uuid>'}. Read by the RLS policies declared in
-     * changelog {@code 030-enable-rls.yaml} as
-     * {@code current_setting('app.tenant_id', true)::uuid}.
-     *
-     * <p>{@code SET LOCAL} is bounded to the current transaction — Spring
-     * opens one for each {@code @Transactional} service call, and HikariCP
-     * resets the connection on return. We tolerate failure here (warn-only)
-     * because (a) the app-level {@code tenant_id} predicate is still in
-     * force, and (b) without the GUC, RLS-protected queries return zero
-     * rows rather than leaking — fail-closed by construction.
-     */
-    private void setRlsTenantId(UUID tenantId) {
-        try {
-            // UUID is generated server-side; toString() yields canonical
-            // hyphenated form, no quoting hazard. Cannot use ? bind because
-            // SET LOCAL does not accept parameters.
-            jdbcTemplate.execute("SET LOCAL app.tenant_id = '" + tenantId + "'");
-        } catch (Exception ex) {
-            log.warn("Failed to SET LOCAL app.tenant_id={} — RLS will reject this request's tenant queries",
-                    tenantId, ex);
-        }
     }
 
     private TenantContext extractContext(Authentication auth) {

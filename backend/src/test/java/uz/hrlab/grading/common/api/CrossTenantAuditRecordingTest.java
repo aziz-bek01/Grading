@@ -8,7 +8,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -124,7 +123,7 @@ class CrossTenantAuditRecordingTest {
 
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         TenantContextFilter filter = new TenantContextFilter(
-                jwtResolver, memberships, audit, objectMapper, mock(JdbcTemplate.class));
+                jwtResolver, memberships, audit, objectMapper);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/positions");
         request.addHeader("User-Agent", "Mozilla/5.0 (test)");
@@ -196,7 +195,7 @@ class CrossTenantAuditRecordingTest {
 
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         TenantContextFilter filter = new TenantContextFilter(
-                jwtResolver, memberships, audit, objectMapper, mock(JdbcTemplate.class));
+                jwtResolver, memberships, audit, objectMapper);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/projects");
         request.setContentType("application/json");
@@ -257,7 +256,7 @@ class CrossTenantAuditRecordingTest {
 
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         TenantContextFilter filter = new TenantContextFilter(
-                jwtResolver, memberships, audit, objectMapper, mock(JdbcTemplate.class));
+                jwtResolver, memberships, audit, objectMapper);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/projects");
         request.setParameter("tenantId", betaTenant.toString());     // forged
@@ -311,7 +310,7 @@ class CrossTenantAuditRecordingTest {
 
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         TenantContextFilter filter = new TenantContextFilter(
-                jwtResolver, memberships, audit, objectMapper, mock(JdbcTemplate.class));
+                jwtResolver, memberships, audit, objectMapper);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/projects");
         request.addHeader("X-Tenant-Id", betaTenant.toString());     // forged

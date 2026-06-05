@@ -49,6 +49,13 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- AOP — used by RlsTenantSessionAspect to set the RLS tenant GUC
+             INSIDE the active @Transactional connection (see common.persistence). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
         <!-- Security + OAuth2 resource server -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

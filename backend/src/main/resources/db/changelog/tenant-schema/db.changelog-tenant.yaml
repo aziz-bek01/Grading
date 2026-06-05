@@ -101,3 +101,6 @@ databaseChangeLog:
   - include:
       file: 030-enable-rls.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 031-rls-nullif.yaml
+      relativeToChangelogFile: true

@@ -1,0 +1,374 @@
+# MVP 1 — RLS policy hardening: blank-safe tenant GUC (defense-in-depth).
+#
+# Background:
+#   Changelog 030-enable-rls.yaml created tenant-isolation policies of the form
+#       USING/WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid)
+#   A PostgreSQL CUSTOM GUC (app.*) does NOT revert to NULL between uses — once
+#   any SET LOCAL has touched it in the session it reverts to the EMPTY STRING
+#   "". When the runtime role (grading_runtime, which is subject to FORCE ROW
+#   LEVEL SECURITY and has no BYPASSRLS) issues a query without the GUC bound to
+#   the current transaction, current_setting('app.tenant_id', true) returns ""
+#   and the policy evaluates ''::uuid -> ERROR 22P02
+#   ("invalid input syntax for type uuid: """), which the API surfaced as 409.
+#
+#   The primary fix (RlsTenantSessionAspect) binds the GUC inside the active
+#   transaction so legitimate requests now match their own rows. THIS migration
+#   is the belt-and-braces companion: it re-creates every policy so that a
+#   missing OR empty GUC yields ZERO ROWS instead of raising 22P02 —
+#       tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+#   NULLIF("", "") -> NULL, NULL::uuid is NULL, and (tenant_id = NULL) is
+#   UNKNOWN -> the row is filtered out. Fail-closed, never an error.
+#
+# Scope:
+#   Same tables and same policy names as 030 — kept in lock-step. Whenever 030
+#   changes, mirror it here.
+#
+# Idempotency:
+#   DROP POLICY IF EXISTS precedes each CREATE POLICY, so this changeset can be
+#   re-applied after a rollback without colliding.
+#
+# Role behaviour (unchanged from 030):
+#   - grading_migrator runs this DDL (owner / BYPASSRLS).
+#   - grading_runtime is subject to FORCE RLS; with no/empty GUC it now sees
+#     zero rows instead of 22P02.
+#
+# Rollback:
+#   Restores the original 030 expression (raw ::uuid cast).
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-031-rls-nullif-blank-safe
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp1,security,defense-in-depth,rls,blank-safe
+      comment: |
+        Re-create every tenant-isolation policy from 030 with a blank-safe GUC
+        expression: tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid.
+        A missing/empty app.tenant_id now yields zero rows instead of 22P02.
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- 001 projects
+              DROP POLICY IF EXISTS tenant_isolation_projects ON public.projects;
+              CREATE POLICY tenant_isolation_projects ON public.projects
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 002 departments
+              DROP POLICY IF EXISTS tenant_isolation_departments ON public.departments;
+              CREATE POLICY tenant_isolation_departments ON public.departments
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 003 positions
+              DROP POLICY IF EXISTS tenant_isolation_positions ON public.positions;
+              CREATE POLICY tenant_isolation_positions ON public.positions
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 005 job_profiles
+              DROP POLICY IF EXISTS tenant_isolation_job_profiles ON public.job_profiles;
+              CREATE POLICY tenant_isolation_job_profiles ON public.job_profiles
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 006 job_analysis_questionnaires
+              DROP POLICY IF EXISTS tenant_isolation_job_analysis_questionnaires ON public.job_analysis_questionnaires;
+              CREATE POLICY tenant_isolation_job_analysis_questionnaires ON public.job_analysis_questionnaires
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 006 job_analysis_answers
+              DROP POLICY IF EXISTS tenant_isolation_job_analysis_answers ON public.job_analysis_answers;
+              CREATE POLICY tenant_isolation_job_analysis_answers ON public.job_analysis_answers
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 010 methodologies
+              DROP POLICY IF EXISTS tenant_isolation_methodologies ON public.methodologies;
+              CREATE POLICY tenant_isolation_methodologies ON public.methodologies
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 010 methodology_versions
+              DROP POLICY IF EXISTS tenant_isolation_methodology_versions ON public.methodology_versions;
+              CREATE POLICY tenant_isolation_methodology_versions ON public.methodology_versions
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 011 factors
+              DROP POLICY IF EXISTS tenant_isolation_factors ON public.factors;
+              CREATE POLICY tenant_isolation_factors ON public.factors
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 011 factor_levels
+              DROP POLICY IF EXISTS tenant_isolation_factor_levels ON public.factor_levels;
+              CREATE POLICY tenant_isolation_factor_levels ON public.factor_levels
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 015 evaluations
+              DROP POLICY IF EXISTS tenant_isolation_evaluations ON public.evaluations;
+              CREATE POLICY tenant_isolation_evaluations ON public.evaluations
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 015 evaluation_scores
+              DROP POLICY IF EXISTS tenant_isolation_evaluation_scores ON public.evaluation_scores;
+              CREATE POLICY tenant_isolation_evaluation_scores ON public.evaluation_scores
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 015 evaluation_calibration_events
+              DROP POLICY IF EXISTS tenant_isolation_evaluation_calibration_events ON public.evaluation_calibration_events;
+              CREATE POLICY tenant_isolation_evaluation_calibration_events ON public.evaluation_calibration_events
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 018 grade_structures
+              DROP POLICY IF EXISTS tenant_isolation_grade_structures ON public.grade_structures;
+              CREATE POLICY tenant_isolation_grade_structures ON public.grade_structures
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 018 grades
+              DROP POLICY IF EXISTS tenant_isolation_grades ON public.grades;
+              CREATE POLICY tenant_isolation_grades ON public.grades
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 018 grade_bands
+              DROP POLICY IF EXISTS tenant_isolation_grade_bands ON public.grade_bands;
+              CREATE POLICY tenant_isolation_grade_bands ON public.grade_bands
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 020 project_workflows
+              DROP POLICY IF EXISTS tenant_isolation_project_workflows ON public.project_workflows;
+              CREATE POLICY tenant_isolation_project_workflows ON public.project_workflows
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 020 project_workflow_stages
+              DROP POLICY IF EXISTS tenant_isolation_project_workflow_stages ON public.project_workflow_stages;
+              CREATE POLICY tenant_isolation_project_workflow_stages ON public.project_workflow_stages
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 021 approval_requests
+              DROP POLICY IF EXISTS tenant_isolation_approval_requests ON public.approval_requests;
+              CREATE POLICY tenant_isolation_approval_requests ON public.approval_requests
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 021 approval_steps
+              DROP POLICY IF EXISTS tenant_isolation_approval_steps ON public.approval_steps;
+              CREATE POLICY tenant_isolation_approval_steps ON public.approval_steps
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 021 approval_decisions
+              DROP POLICY IF EXISTS tenant_isolation_approval_decisions ON public.approval_decisions;
+              CREATE POLICY tenant_isolation_approval_decisions ON public.approval_decisions
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 022 comments
+              DROP POLICY IF EXISTS tenant_isolation_comments ON public.comments;
+              CREATE POLICY tenant_isolation_comments ON public.comments
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 024 import_batches
+              DROP POLICY IF EXISTS tenant_isolation_import_batches ON public.import_batches;
+              CREATE POLICY tenant_isolation_import_batches ON public.import_batches
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 024 import_batch_rows
+              DROP POLICY IF EXISTS tenant_isolation_import_batch_rows ON public.import_batch_rows;
+              CREATE POLICY tenant_isolation_import_batch_rows ON public.import_batch_rows
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 024 import_errors
+              DROP POLICY IF EXISTS tenant_isolation_import_errors ON public.import_errors;
+              CREATE POLICY tenant_isolation_import_errors ON public.import_errors
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 025 export_jobs
+              DROP POLICY IF EXISTS tenant_isolation_export_jobs ON public.export_jobs;
+              CREATE POLICY tenant_isolation_export_jobs ON public.export_jobs
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 026 file_attachments
+              DROP POLICY IF EXISTS tenant_isolation_file_attachments ON public.file_attachments;
+              CREATE POLICY tenant_isolation_file_attachments ON public.file_attachments
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- 028 reports
+              DROP POLICY IF EXISTS tenant_isolation_reports ON public.reports;
+              CREATE POLICY tenant_isolation_reports ON public.reports
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              -- control-plane stub: tenant_audit_logs
+              DROP POLICY IF EXISTS tenant_isolation_tenant_audit_logs ON public.tenant_audit_logs;
+              CREATE POLICY tenant_isolation_tenant_audit_logs ON public.tenant_audit_logs
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              -- Restore the original 030 (raw ::uuid cast) policy expression.
+              DROP POLICY IF EXISTS tenant_isolation_tenant_audit_logs ON public.tenant_audit_logs;
+              CREATE POLICY tenant_isolation_tenant_audit_logs ON public.tenant_audit_logs
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_reports ON public.reports;
+              CREATE POLICY tenant_isolation_reports ON public.reports
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_file_attachments ON public.file_attachments;
+              CREATE POLICY tenant_isolation_file_attachments ON public.file_attachments
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_export_jobs ON public.export_jobs;
+              CREATE POLICY tenant_isolation_export_jobs ON public.export_jobs
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_import_errors ON public.import_errors;
+              CREATE POLICY tenant_isolation_import_errors ON public.import_errors
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_import_batch_rows ON public.import_batch_rows;
+              CREATE POLICY tenant_isolation_import_batch_rows ON public.import_batch_rows
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_import_batches ON public.import_batches;
+              CREATE POLICY tenant_isolation_import_batches ON public.import_batches
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_comments ON public.comments;
+              CREATE POLICY tenant_isolation_comments ON public.comments
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_approval_decisions ON public.approval_decisions;
+              CREATE POLICY tenant_isolation_approval_decisions ON public.approval_decisions
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_approval_steps ON public.approval_steps;
+              CREATE POLICY tenant_isolation_approval_steps ON public.approval_steps
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_approval_requests ON public.approval_requests;
+              CREATE POLICY tenant_isolation_approval_requests ON public.approval_requests
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_project_workflow_stages ON public.project_workflow_stages;
+              CREATE POLICY tenant_isolation_project_workflow_stages ON public.project_workflow_stages
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_project_workflows ON public.project_workflows;
+              CREATE POLICY tenant_isolation_project_workflows ON public.project_workflows
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_grade_bands ON public.grade_bands;
+              CREATE POLICY tenant_isolation_grade_bands ON public.grade_bands
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_grades ON public.grades;
+              CREATE POLICY tenant_isolation_grades ON public.grades
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_grade_structures ON public.grade_structures;
+              CREATE POLICY tenant_isolation_grade_structures ON public.grade_structures
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_evaluation_calibration_events ON public.evaluation_calibration_events;
+              CREATE POLICY tenant_isolation_evaluation_calibration_events ON public.evaluation_calibration_events
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_evaluation_scores ON public.evaluation_scores;
+              CREATE POLICY tenant_isolation_evaluation_scores ON public.evaluation_scores
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_evaluations ON public.evaluations;
+              CREATE POLICY tenant_isolation_evaluations ON public.evaluations
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_factor_levels ON public.factor_levels;
+              CREATE POLICY tenant_isolation_factor_levels ON public.factor_levels
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_factors ON public.factors;
+              CREATE POLICY tenant_isolation_factors ON public.factors
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_methodology_versions ON public.methodology_versions;
+              CREATE POLICY tenant_isolation_methodology_versions ON public.methodology_versions
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_methodologies ON public.methodologies;
+              CREATE POLICY tenant_isolation_methodologies ON public.methodologies
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_job_analysis_answers ON public.job_analysis_answers;
+              CREATE POLICY tenant_isolation_job_analysis_answers ON public.job_analysis_answers
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_job_analysis_questionnaires ON public.job_analysis_questionnaires;
+              CREATE POLICY tenant_isolation_job_analysis_questionnaires ON public.job_analysis_questionnaires
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_job_profiles ON public.job_profiles;
+              CREATE POLICY tenant_isolation_job_profiles ON public.job_profiles
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_positions ON public.positions;
+              CREATE POLICY tenant_isolation_positions ON public.positions
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_departments ON public.departments;
+              CREATE POLICY tenant_isolation_departments ON public.departments
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_projects ON public.projects;
+              CREATE POLICY tenant_isolation_projects ON public.projects
+                USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+                WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);

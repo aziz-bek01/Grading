@@ -38,7 +38,7 @@ public abstract class AbstractIntegrationTest {
 
     @Container
     @ServiceConnection
-    static final PostgreSQLContainer<?> POSTGRES =
+    public static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("grading_test_db")
                     .withUsername("grading_test")

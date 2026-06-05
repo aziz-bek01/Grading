@@ -18,6 +18,9 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
+# .env.production carries ONLY non-secret build flags (VITE_DEV_AUTH=false,
+# VITE_USE_MSW=false) that `vite build` must read — keep it in the build context.
+!.env.production
 
 # Tests not needed in container (CI runs them outside)
 src/**/*.test.ts

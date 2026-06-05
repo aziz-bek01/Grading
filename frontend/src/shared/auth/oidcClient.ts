@@ -45,9 +45,14 @@ async function buildUserManager(): Promise<UserManager | null> {
     post_logout_redirect_uri: oidc.postLogoutRedirectUri,
     response_type: 'code', // Authorization Code + PKCE (automatic).
     scope: oidc.scopes,
-    // Tokens & transient PKCE/state live IN MEMORY only — never web storage.
+    // ACCESS/ID/REFRESH TOKENS live IN MEMORY only (userStore) — never on disk.
     userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
-    stateStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
+    // The transient sign-in STATE (PKCE code_verifier + state) MUST survive the
+    // full-page redirect to the IdP and back, so it CANNOT be in-memory (a normal
+    // navigation wipes it -> "sign-in could not be completed"). sessionStorage is
+    // correct here: it persists across the redirect, is single-use, scoped to the
+    // tab, and cleared after the callback. It never holds the access token.
+    stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
     // We resolve the current user from the backend (/users/me), not the IdP
     // userinfo endpoint — keep the manager lean.
     loadUserInfo: false,

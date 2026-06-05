@@ -23,8 +23,10 @@ WORKDIR /workspace
 COPY package.json package-lock.json ./
 RUN npm install --no-audit --no-fund
 
-# Build.
-COPY tsconfig*.json vite.config.ts vitest.config.ts postcss.config.js tailwind.config.ts eslint.config.js index.html ./
+# Build. NOTE: .env.production MUST be copied so `vite build` (mode=production)
+# picks up VITE_DEV_AUTH=false / VITE_USE_MSW=false — otherwise the dev login
+# (passwordless "Sign in as ...") ships to prod.
+COPY tsconfig*.json vite.config.ts vitest.config.ts postcss.config.js tailwind.config.ts eslint.config.js index.html .env.production ./
 COPY public/ public/
 COPY src/ src/
 RUN npm run build

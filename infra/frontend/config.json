@@ -6,6 +6,6 @@
     "clientId": "376051607294509061",
     "redirectUri": "https://grading.hrlab.uz/auth/callback",
     "postLogoutRedirectUri": "https://grading.hrlab.uz",
-    "scopes": "openid profile email offline_access urn:zitadel:iam:org:project:id:376051031986929669:aud"
+    "scopes": "openid profile email urn:zitadel:iam:org:project:id:376051031986929669:aud"
   }
 }

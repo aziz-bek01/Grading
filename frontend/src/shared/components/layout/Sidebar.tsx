@@ -59,6 +59,10 @@ export function Sidebar({ className }: SidebarProps = {}) {
   const activeProject = useAuthStore((s) => s.activeProject);
   const collapsed = useAuthStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useAuthStore((s) => s.setSidebarCollapsed);
+  // Rules of Hooks: this must run unconditionally on every render, so it has
+  // to be called before the `if (!user)` early return below. The helper masks
+  // the count to 0 when the user is missing or lacks approval permissions.
+  const inboxCount = useApprovalInboxCount(user?.permissions);
 
   if (!user) return null;
   const has = (codes: PermissionCode | PermissionCode[] | undefined) => {
@@ -95,7 +99,6 @@ export function Sidebar({ className }: SidebarProps = {}) {
     tooltip: activeProjectId === null ? noProjectTooltip : undefined,
   }));
 
-  const inboxCount = useApprovalInboxCount(user.permissions);
   const governanceItems: NavItem[] = [
     {
       to: routes.approvalsInbox,
@@ -292,11 +295,12 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed?: boolean }
  * actually has approval permissions. The hook itself is always called
  * (Rules of Hooks), but the count is masked to 0 otherwise.
  */
-function useApprovalInboxCount(permissions: PermissionCode[]): number {
+function useApprovalInboxCount(permissions: PermissionCode[] | undefined): number {
   const inbox = useMyApprovalInbox();
   const canApprove =
-    permissions.includes(PERMISSIONS.APPROVAL_STEP_APPROVE) ||
-    permissions.includes(PERMISSIONS.APPROVAL_REQUEST_CREATE);
+    !!permissions &&
+    (permissions.includes(PERMISSIONS.APPROVAL_STEP_APPROVE) ||
+      permissions.includes(PERMISSIONS.APPROVAL_REQUEST_CREATE));
   if (!canApprove) return 0;
   return inbox.data?.items.length ?? 0;
 }

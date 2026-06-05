@@ -12,7 +12,8 @@
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
-import { ActionIcon, actionIconKind } from './AuditEventRow';
+import { ActionIcon } from './AuditEventRow';
+import { actionIconKind } from './auditActionIcon';
 import type { AuditEvent } from '../types/auditTypes';
 
 interface AuditDetailsDrawerProps {

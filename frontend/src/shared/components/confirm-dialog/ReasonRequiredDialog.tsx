@@ -15,35 +15,35 @@ interface ReasonRequiredDialogProps {
  * Modal that requires a free-text reason (default >=20 chars).
  * Used for manual calibration, score override, archiving, etc. (design foundation §14 #25).
  */
-export function ReasonRequiredDialog({
-  open,
+export function ReasonRequiredDialog({ open, ...rest }: ReasonRequiredDialogProps) {
+  // Mount fresh while open so the reason field starts empty each time.
+  if (!open) return null;
+  return <ReasonRequiredDialogBody {...rest} />;
+}
+
+function ReasonRequiredDialogBody({
   title,
   body,
   minLength = 20,
   onConfirm,
   onCancel,
-}: ReasonRequiredDialogProps) {
+}: Omit<ReasonRequiredDialogProps, 'open'>) {
   const { t } = useTranslation();
   const [reason, setReason] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (open) {
-      setReason('');
-      requestAnimationFrame(() => textareaRef.current?.focus());
-    }
-  }, [open]);
+    const id = requestAnimationFrame(() => textareaRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
+  }, [onCancel]);
 
   const valid = reason.trim().length >= minLength;
 

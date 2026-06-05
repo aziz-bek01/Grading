@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { SUPPORTED_LOCALES, PRIMARY_LOCALE } from '@/shared/types/i18n';
@@ -25,7 +25,16 @@ interface GradeRowEditorProps {
  * with 4 locale tabs + min/max score (4-decimal precision). When `readOnly`
  * is true (APPROVED/LOCKED/ARCHIVED), inputs become divs.
  */
-export function GradeRowEditor({
+export function GradeRowEditor({ open, grade, ...rest }: GradeRowEditorProps) {
+  // Keyed remount per (open, grade) so the body re-initializes its form state
+  // from props instead of resetting via a setState-in-effect.
+  if (!open) return null;
+  return (
+    <GradeRowEditorBody key={`${grade?.id ?? 'new'}`} open={open} grade={grade} {...rest} />
+  );
+}
+
+function GradeRowEditorBody({
   open,
   grade,
   readOnly,
@@ -44,18 +53,6 @@ export function GradeRowEditor({
   );
   const [tab, setTab] = useState<Locale>(PRIMARY_LOCALE);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      setGradeNumber(grade?.grade_number ?? 1);
-      setName(grade?.name ?? {});
-      setDescription(grade?.description ?? {});
-      setMinScore(grade?.band ? String(grade.band.min_score) : '0');
-      setMaxScore(grade?.band ? String(grade.band.max_score) : '0');
-      setTab(PRIMARY_LOCALE);
-      setError(null);
-    }
-  }, [open, grade]);
 
   const minNum = Number(minScore);
   const maxNum = Number(maxScore);

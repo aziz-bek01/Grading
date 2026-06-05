@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
@@ -32,13 +32,19 @@ const REASON_MIN_LEN = 50;
  * The dialog shows a partial-fail summary inline if the backend returns
  * any failures, so the evaluator can decide whether to close or retry.
  */
-export function BulkScoreDialog({
-  open,
+export function BulkScoreDialog({ open, ...rest }: BulkScoreDialogProps) {
+  // Mount fresh while open: each session starts with empty level/reason and no
+  // stale result, so the previous reset-on-close effect is no longer needed.
+  if (!open) return null;
+  return <BulkScoreDialogBody {...rest} />;
+}
+
+function BulkScoreDialogBody({
   factor,
   selectedCount,
   onConfirm,
   onClose,
-}: BulkScoreDialogProps) {
+}: Omit<BulkScoreDialogProps, 'open'>) {
   const { t, i18n } = useTranslation();
   const [levelId, setLevelId] = useState('');
   const [reason, setReason] = useState('');
@@ -46,23 +52,10 @@ export function BulkScoreDialog({
   const [result, setResult] = useState<BulkOperationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      // Reset on close — no stale level/reason between sessions.
-      setLevelId('');
-      setReason('');
-      setResult(null);
-      setError(null);
-      setSubmitting(false);
-    }
-  }, [open]);
-
   const sortedLevels = useMemo(
     () => [...factor.levels].sort((a, b) => a.level_order - b.level_order),
     [factor.levels],
   );
-
-  if (!open) return null;
 
   const reasonValid = reason.trim().length >= REASON_MIN_LEN;
   const canSubmit = Boolean(levelId) && reasonValid && !submitting;

@@ -200,6 +200,9 @@ services:
       # --- Real OAuth2/OIDC JWT validation ---
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ${GRADING_JWT_ISSUER_URI}
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_AUDIENCE: ${GRADING_JWT_AUDIENCE}
+      # ZITADEL's JWKS lives at /oauth/v2/keys (NOT the Keycloak /protocol/... path
+      # the decoder would otherwise derive). Must be injected for token validation.
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${GRADING_JWT_JWK_SET_URI:-}
       # --- Multi-tenancy + CORS (same-origin SPA) ---
       GRADING_TENANCY_MODE: ${GRADING_TENANCY_MODE:-shared}
       GRADING_CORS_ALLOWED_ORIGINS: ${GRADING_CORS_ALLOWED_ORIGINS:-https://grading.hrlab.uz}

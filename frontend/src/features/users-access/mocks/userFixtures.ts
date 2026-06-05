@@ -211,7 +211,6 @@ export const seedUserDetails: UserDetails[] = [
 
 /** Extracts the lightweight list-row shape (without memberships) from a UserDetails. */
 export function toListRow(d: UserDetails): User {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { memberships, ...row } = d;
   return row;
 }

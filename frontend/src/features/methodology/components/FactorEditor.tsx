@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { LocalizedNameTabs } from '@/features/projects/components/LocalizedNameTabs';
@@ -31,7 +31,16 @@ interface FactorEditorProps {
  * Drawer for creating / editing a factor.
  * Mounts a nested FactorLevelEditor when editing an existing factor.
  */
-export function FactorEditor({
+export function FactorEditor({ open, factor, ...rest }: FactorEditorProps) {
+  // Keyed remount per (open, factor) so the body initializes its form state
+  // straight from props instead of resetting through a setState-in-effect.
+  if (!open) return null;
+  return (
+    <FactorEditorBody key={factor?.id ?? 'new'} open={open} factor={factor} {...rest} />
+  );
+}
+
+function FactorEditorBody({
   open,
   factor,
   scoringMode,
@@ -44,34 +53,14 @@ export function FactorEditor({
   onReorderLevel,
 }: FactorEditorProps) {
   const { t } = useTranslation();
-  const [code, setCode] = useState('');
-  const [name, setName] = useState<LocalizedString>({});
+  const [code, setCode] = useState(factor?.code ?? '');
+  const [name, setName] = useState<LocalizedString>(factor?.name_i18n ?? {});
   // description tabs (reserved Phase 4.1 — kept in state so future panel can wire it).
-  const [description, setDescription] = useState<LocalizedString>({});
-  const [weight, setWeight] = useState('0');
-  const [maxPoints, setMaxPoints] = useState('0');
-  const [required, setRequired] = useState(true);
+  const [description, setDescription] = useState<LocalizedString>(factor?.description_i18n ?? {});
+  const [weight, setWeight] = useState(factor ? String(factor.weight) : '0');
+  const [maxPoints, setMaxPoints] = useState(factor ? String(factor.max_points) : '0');
+  const [required, setRequired] = useState(factor ? factor.required : true);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    if (factor) {
-      setCode(factor.code);
-      setName(factor.name_i18n ?? {});
-      setDescription(factor.description_i18n ?? {});
-      setWeight(String(factor.weight));
-      setMaxPoints(String(factor.max_points));
-      setRequired(factor.required);
-    } else {
-      setCode('');
-      setName({});
-      setDescription({});
-      setWeight('0');
-      setMaxPoints('0');
-      setRequired(true);
-    }
-    setError(null);
-  }, [open, factor?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <DrawerForm

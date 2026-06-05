@@ -30,7 +30,7 @@ export async function downloadTemplate(
   // Best-effort filename — backend sends Content-Disposition but axios in
   // some setups does not expose it; we fall back to the convention.
   const cd = (res.headers as Record<string, string>)['content-disposition'];
-  const match = cd ? /filename=\"?([^";]+)\"?/i.exec(cd) : null;
+  const match = cd ? /filename="?([^";]+)"?/i.exec(cd) : null;
   const ext = blob.type.includes('csv') ? 'csv' : 'xlsx';
   const filename = match?.[1] ?? `${code}_${variant}.${ext}`;
 

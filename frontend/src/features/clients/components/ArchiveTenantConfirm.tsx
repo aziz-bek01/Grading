@@ -18,36 +18,36 @@ interface ArchiveTenantConfirmProps {
 
 const MIN_REASON = 20;
 
-export function ArchiveTenantConfirm({
-  open,
+export function ArchiveTenantConfirm({ open, ...rest }: ArchiveTenantConfirmProps) {
+  // Mount the dialog body only while open so its state starts fresh each time
+  // (no reset-on-open effect needed -> no setState-in-effect).
+  if (!open) return null;
+  return <ArchiveTenantConfirmBody {...rest} />;
+}
+
+function ArchiveTenantConfirmBody({
   tenantName,
   onCancel,
   onConfirm,
-}: ArchiveTenantConfirmProps) {
+}: Omit<ArchiveTenantConfirmProps, 'open'>) {
   const { t } = useTranslation();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (open) {
-      setReason('');
-      setBusy(false);
-      // Focus after the dialog mounts.
-      setTimeout(() => taRef.current?.focus(), 0);
-    }
-  }, [open]);
+    // Focus after the dialog mounts.
+    const id = setTimeout(() => taRef.current?.focus(), 0);
+    return () => clearTimeout(id);
+  }, []);
 
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
+  }, [onCancel]);
 
   const trimmed = reason.trim();
   const valid = trimmed.length >= MIN_REASON;

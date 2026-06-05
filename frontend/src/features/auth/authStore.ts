@@ -6,6 +6,10 @@ import type {
   TenantSummary,
 } from '@/shared/auth/authTypes';
 import { tokenStorage } from '@/shared/auth/tokenStorage';
+import {
+  isOidcAvailable,
+  startSignoutRedirect,
+} from '@/shared/auth/oidcClient';
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar.collapsed';
 
@@ -40,6 +44,8 @@ interface AuthState {
   setActiveTenant: (tenant: TenantSummary | null) => void;
   setActiveProject: (project: ProjectSummary | null) => void;
   setSidebarCollapsed: (v: boolean) => void;
+  /** Local-only session clear (no IdP round-trip) — used by the 401 handler. */
+  clearSession: () => void;
   signOut: () => void;
 }
 
@@ -65,7 +71,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     persistSidebarCollapsed(v);
     set({ sidebarCollapsed: v });
   },
-  signOut: () => {
+  clearSession: () => {
     tokenStorage.clear();
     set({
       user: null,
@@ -73,5 +79,21 @@ export const useAuthStore = create<AuthState>((set) => ({
       activeProject: null,
       isAuthenticated: false,
     });
+  },
+  signOut: () => {
+    // 1) Local clear first (synchronous contract — tests rely on immediate state).
+    tokenStorage.clear();
+    set({
+      user: null,
+      activeTenant: null,
+      activeProject: null,
+      isAuthenticated: false,
+    });
+    // 2) OIDC mode: also end the IdP session (RP-initiated logout). Fire-and-
+    //    forget — it triggers a full-page redirect to the post-logout URI.
+    //    No-op when OIDC is disabled (dev / tests), so existing behavior holds.
+    if (isOidcAvailable()) {
+      void startSignoutRedirect();
+    }
   },
 }));

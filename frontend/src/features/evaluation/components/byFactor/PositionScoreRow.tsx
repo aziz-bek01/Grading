@@ -78,20 +78,32 @@ function PositionScoreRowBase({
   const disabled = locked || !canEdit;
 
   // Local optimistic mirror of the saved level value — flips immediately
-  // on change, then resyncs from server when the row prop refreshes.
+  // on change, then resyncs from server when the row prop refreshes. The
+  // resync happens during render via a previous-value ref (React's "adjust
+  // state when a prop changes" pattern) rather than a setState-in-effect.
   const [localLevelId, setLocalLevelId] = useState<string | null>(
     row.current_score_factor_level_id,
   );
-  useEffect(() => {
+  // Track the last server value in state (not a ref) so we can resync the local
+  // mirror during render when the row prop refreshes.
+  const [seenServerLevelId, setSeenServerLevelId] = useState(
+    row.current_score_factor_level_id,
+  );
+  if (seenServerLevelId !== row.current_score_factor_level_id) {
+    setSeenServerLevelId(row.current_score_factor_level_id);
     setLocalLevelId(row.current_score_factor_level_id);
-  }, [row.current_score_factor_level_id]);
+  }
 
-  // Comment local state for debounced autosave.
-  const [comment, setComment] = useState<string>(row.current_comment ?? '');
+  // Comment local state for debounced autosave; resynced from server the same
+  // way (during render, no setState-in-effect).
+  const serverComment = row.current_comment ?? '';
+  const [comment, setComment] = useState<string>(serverComment);
   const [commentFocused, setCommentFocused] = useState(false);
-  useEffect(() => {
-    setComment(row.current_comment ?? '');
-  }, [row.current_comment]);
+  const [seenServerComment, setSeenServerComment] = useState(serverComment);
+  if (seenServerComment !== serverComment) {
+    setSeenServerComment(serverComment);
+    setComment(serverComment);
+  }
 
   // Save state: idle / saving / saved / failed. `saved` clears after
   // 300ms (matches the green left-border flash spec).

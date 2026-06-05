@@ -1,6 +1,7 @@
 package uz.hrlab.grading.access.application;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import uz.hrlab.grading.AbstractIntegrationTest;
@@ -24,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>Uses a real Postgres via {@link AbstractIntegrationTest} so the seed
  * data layout is exercised end-to-end.
  */
+@Tag("integration")
 class GetCurrentUserUseCaseTest extends AbstractIntegrationTest {
 
     @Autowired GetCurrentUserUseCase getCurrentUserUseCase;

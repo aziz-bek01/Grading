@@ -39,7 +39,12 @@ export function ProjectWorkspacePage() {
   const project = useProject(projectId);
   const workflow = useWorkflowProgress(projectId);
   const approvals = useApprovalRequests({ projectId, status: 'PENDING' });
-  const [activeStage, setActiveStage] = useState<WorkflowStageKey>('SETUP');
+  // User's explicit stage selection (null until they click a step). The
+  // effective active stage is derived below so we never need a setState-in-effect
+  // to seed it from the backend `currentStage`.
+  const [selectedStage, setSelectedStage] = useState<WorkflowStageKey | null>(null);
+  const activeStage: WorkflowStageKey =
+    selectedStage ?? workflow.data?.currentStage ?? 'SETUP';
 
   useEffect(() => {
     if (project.data) {
@@ -59,11 +64,6 @@ export function ProjectWorkspacePage() {
     }
   }, [project.data, i18n.language, setActiveProject, activeTenant]);
 
-  // Initial active stage = backend currentStage on first load
-  useEffect(() => {
-    if (workflow.data?.currentStage) setActiveStage(workflow.data.currentStage);
-  }, [workflow.data?.currentStage]);
-
   const stage = useMemo(() => {
     const stages = workflow.data?.stages ?? [];
     return stages.find((s) => s.stage === activeStage) ?? stages[0];
@@ -82,7 +82,7 @@ export function ProjectWorkspacePage() {
   if (!project.data || !workflow.data || !stage) return <EmptyState />;
 
   const onSelectStage = (key: WorkflowStageKey) => {
-    setActiveStage(key);
+    setSelectedStage(key);
   };
   const onOpenStage = () => {
     if (!projectId) return;

@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * itself proof that the context filter is working.
  */
 @Tag("security")
+@Tag("integration")
 class DevSeedSafetyTest extends AbstractIntegrationTest {
 
     @Autowired org.springframework.core.env.Environment env;

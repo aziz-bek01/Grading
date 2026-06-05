@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -190,12 +191,16 @@ export function EvaluationByFactorView({
   const bulkScoreMutation = useBulkScoreSet(activeFactor?.id ?? '');
   const bulkSubmitMutation = useBulkSubmit(activeFactor?.id ?? '');
 
-  // Reset bulk selection when factor changes (per-factor state).
-  useEffect(() => {
+  // Reset bulk selection / active row / page when the factor changes (per-factor
+  // state). Done during render via a previous-id ref (React's "adjust state when
+  // a prop changes" pattern) instead of a synchronous setState-in-effect.
+  const prevFactorIdRef = useRef(activeFactor?.id ?? null);
+  if (prevFactorIdRef.current !== (activeFactor?.id ?? null)) {
+    prevFactorIdRef.current = activeFactor?.id ?? null;
     setBulkSet(new Set());
     setActiveRowId(null);
     setPage(0);
-  }, [activeFactor?.id]);
+  }
 
   // ----- Factor-level completion summary (for tab indicators) -----
   // Aggregated from CURRENT PAGE only — the parent does not have a

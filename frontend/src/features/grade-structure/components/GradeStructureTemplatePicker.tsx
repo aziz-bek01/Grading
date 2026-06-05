@@ -37,25 +37,27 @@ const OPTIONS: {
   },
 ];
 
-export function GradeStructureTemplatePicker({
-  open,
+export function GradeStructureTemplatePicker({ open, ...rest }: GradeStructureTemplatePickerProps) {
+  // Mount fresh while open so the selection starts cleared each time.
+  if (!open) return null;
+  return <GradeStructureTemplatePickerBody {...rest} />;
+}
+
+function GradeStructureTemplatePickerBody({
   onCancel,
   onSelect,
-}: GradeStructureTemplatePickerProps) {
+}: Omit<GradeStructureTemplatePickerProps, 'open'>) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<GradeStructureTemplateCode | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return setSelected(null);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
+  }, [onCancel]);
 
   return (
     <div

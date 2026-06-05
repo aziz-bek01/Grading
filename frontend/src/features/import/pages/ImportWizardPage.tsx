@@ -7,7 +7,7 @@
  *         indicator + summary + errors table
  * Step 4: Confirm commit (POST /imports/{id}/commit) + success page
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, Check, Download, FileText } from 'lucide-react';
@@ -67,18 +67,20 @@ export function ImportWizardPage() {
     [user?.permissions],
   );
 
-  // Once the batch hits READY_FOR_REVIEW / READY_TO_COMMIT, allow user to move to step 4.
-  useEffect(() => {
-    if (!detail.data) return;
-    const s = detail.data.status;
-    if (
-      step === 3 &&
-      (s === 'COMMITTED' || s === 'PARTIALLY_COMMITTED') &&
-      !commit.isPending
-    ) {
-      setStep(4);
-    }
-  }, [detail.data, step, commit.isPending]);
+  // Once the batch is committed, auto-advance to step 4. Done during render via
+  // a one-shot state guard (React's "adjust state when external data changes"
+  // pattern) instead of a setState-in-effect. The guard ensures we advance only
+  // on the transition into the committed state, never on every poll tick.
+  const [autoAdvanced, setAutoAdvanced] = useState(false);
+  if (
+    step === 3 &&
+    !commit.isPending &&
+    (detail.data?.status === 'COMMITTED' || detail.data?.status === 'PARTIALLY_COMMITTED') &&
+    !autoAdvanced
+  ) {
+    setAutoAdvanced(true);
+    setStep(4);
+  }
 
   const onUpload = async () => {
     if (!templateCode || !file) return;

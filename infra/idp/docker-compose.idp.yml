@@ -1,0 +1,156 @@
+# =============================================================================
+# auth.hrlab.uz — Self-hosted OIDC Identity Provider (ZITADEL) for grading.
+# =============================================================================
+# A SEPARATE, self-contained compose project that runs ZITADEL alongside the
+# existing services on the shared 2 GB VPS (95.46.96.210) WITHOUT touching them:
+#
+#   * quiz.hrlab.uz        host Python process on :8080            -> untouched
+#   * grading-api          docker, 127.0.0.1:18080                 -> untouched
+#   * grading-frontend     docker, 127.0.0.1:18081                 -> untouched
+#   * grading-postgres     docker, network grading-prod, NO host port (REUSED)
+#
+# Coexistence rules enforced here:
+#   * Everything is namespaced `zitadel-*` (container name + project).
+#   * The app binds ONLY to 127.0.0.1:18082 (a free high port). NO public host
+#     port — the EXISTING host nginx fronts it with TLS (certbot), exactly like
+#     the grading vhost. The internet cannot reach the container directly.
+#   * It REUSES the existing `grading-postgres` instance over the EXTERNAL docker
+#     network `grading-prod` (declared `external: true` below) — it does NOT
+#     start a second Postgres, saving ~200-300 MB RSS. ZITADEL gets its OWN
+#     database (`zitadel`) + OWN role (`zitadel`) inside that instance; it never
+#     touches grading_control_db. See README-runbook.md §2 for the CREATE SQL.
+#   * Tight, explicit mem limits (see README-runbook.md §5 RAM assessment).
+#
+# All config comes from .env.idp (NEVER committed — see .env.idp.example).
+# This file contains NO secrets.
+#
+# Usage (see README-runbook.md for the full ordered procedure):
+#   docker compose -f docker-compose.idp.yml --env-file .env.idp run --rm zitadel-init
+#   docker compose -f docker-compose.idp.yml --env-file .env.idp up -d zitadel
+#   docker compose -f docker-compose.idp.yml --env-file .env.idp ps
+# =============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # zitadel-init — ONE-SHOT. Creates the ZITADEL database objects in the REUSED
+  # grading-postgres instance and bootstraps the first instance (org + admin).
+  #   * `init` prepares the database/schema; `setup` runs migrations + creates
+  #     the first instance. We run them together via `init-and-setup`-style flow:
+  #     `zitadel start-from-init` would also init on first boot, but running the
+  #     dedicated one-shot first makes failures visible BEFORE the long-running
+  #     service starts (and keeps the migration step out of the restart loop).
+  #   * Connects as the ZITADEL DB *admin* role only for this one-shot, to run
+  #     DDL. Runtime (zitadel service) connects as the unprivileged `zitadel`
+  #     user. Both are SEPARATE from every grading role.
+  #   * restart: "no" — it must run to completion and exit 0, then we start the
+  #     long-running `zitadel` service.
+  # ---------------------------------------------------------------------------
+  zitadel-init:
+    image: ${ZITADEL_IMAGE:-ghcr.io/zitadel/zitadel:v2.66.1}
+    container_name: zitadel-init
+    profiles: ["init"]                 # only started explicitly by `compose run`
+    restart: "no"
+    command: ["init"]
+    env_file:
+      - .env.idp
+    networks: [grading-prod]
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # zitadel-setup — ONE-SHOT. Runs DB migrations + creates the first instance
+  # (default org, admin human user, the machine PAT if requested). Idempotent:
+  # re-running is a no-op once the instance exists.
+  # ---------------------------------------------------------------------------
+  zitadel-setup:
+    image: ${ZITADEL_IMAGE:-ghcr.io/zitadel/zitadel:v2.66.1}
+    container_name: zitadel-setup
+    profiles: ["setup"]                # only started explicitly by `compose run`
+    restart: "no"
+    # `setup` runs DB migrations + creates the first instance. --masterkeyFromEnv
+    # reads ZITADEL_MASTERKEY; --init-projections=true builds read models eagerly
+    # so the first console load is fast. All other config is env-driven (.env.idp).
+    command: ["setup", "--masterkeyFromEnv", "--init-projections=true"]
+    env_file:
+      - .env.idp
+    networks: [grading-prod]
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 384M
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # zitadel — the long-running OIDC IdP.
+  #   * Binds ONLY to 127.0.0.1:18082 -> the host nginx reaches it; the internet
+  #     cannot. TLS is terminated at nginx (ExternalSecure=true, TLS.Enabled=false
+  #     inside the container — see .env.idp). ZITADEL serves plain HTTP/2 (h2c) on
+  #     :8080 internally; nginx adds the X-Forwarded-* headers it needs.
+  #   * `start` (not start-from-init) — init+setup already ran as one-shots.
+  #   * Reaches the REUSED grading-postgres over the external `grading-prod`
+  #     network using the service-discovery name `grading-postgres`.
+  #   * Issuer is the BARE domain https://auth.hrlab.uz (NOT a /realms/... path).
+  #     See README-runbook.md §7 for the exact GRADING_JWT_ISSUER_URI to set.
+  # ---------------------------------------------------------------------------
+  zitadel:
+    image: ${ZITADEL_IMAGE:-ghcr.io/zitadel/zitadel:v2.66.1}
+    container_name: zitadel
+    restart: unless-stopped
+    command: ["start", "--masterkeyFromEnv"]
+    env_file:
+      - .env.idp
+    ports:
+      # localhost-only high port; host nginx fronts it with TLS. h2c on 8080.
+      - "127.0.0.1:18082:8080"
+    networks: [grading-prod]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      # The in-image `zitadel ready` probes /debug/healthz on the listen port.
+      # It reads ZITADEL_TLS_ENABLED from the env (=false here), so it correctly
+      # uses HTTP (not HTTPS) against the container. Do NOT pass --config: that
+      # would discard the env-driven config and make the probe target the wrong
+      # scheme/port.
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          # Tight ceiling for the 2 GB box. ZITADEL (Go) idles ~150-250 MB RSS;
+          # 512M gives burst headroom for projection rebuilds without risking the
+          # neighbours. See README-runbook.md §5 for the OOM trigger to bump.
+          cpus: "0.75"
+          memory: 512M
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+    logging: *default-logging
+
+# The grading-prod network is owned by docker-compose.prod.yml (the grading
+# stack). We ATTACH to it as an EXTERNAL network so ZITADEL can resolve
+# `grading-postgres`. We never create or modify it here.
+networks:
+  grading-prod:
+    name: grading-prod
+    external: true

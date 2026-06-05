@@ -92,6 +92,11 @@
     "as_super_admin": "Войти как HRLab Super Admin",
     "as_consultant": "Войти как HRLab Consultant",
     "as_viewer": "Войти как Viewer",
+    "sign_in": "Войти",
+    "signing_in": "Вход в систему…",
+    "signing_in_body": "Завершаем вход, пожалуйста подождите…",
+    "callback_error": "Не удалось завершить вход. Попробуйте ещё раз.",
+    "back_to_login": "Вернуться ко входу",
     "user_menu": {
       "profile": "Профиль",
       "sign_out": "Выйти"
@@ -259,7 +264,8 @@
     "archive_confirm_body": "Архивные позиции исключаются из активных процессов.",
     "validation_department_required": "Выберите подразделение.",
     "validation_title_required": "Название на основном языке обязательно.",
-    "tab_comments": "Комментарии"
+    "tab_comments": "Комментарии",
+    "no_salary_fields": "Поля заработной платы отсутствуют."
   },
   "workflow": {
     "title": "Поток работ проекта",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
 import { pickLocalized } from '@/shared/lib/localized';
@@ -27,23 +27,18 @@ interface Props {
  *
  * Audited server-side as SCORE_CALIBRATED.
  */
-export function CalibrationDialog({ open, factors, onConfirm, onCancel }: Props) {
+export function CalibrationDialog({ open, ...rest }: Props) {
+  // Mount fresh while open so state initializes from props (no reset effect).
+  if (!open) return null;
+  return <CalibrationDialogBody {...rest} />;
+}
+
+function CalibrationDialogBody({ factors, onConfirm, onCancel }: Omit<Props, 'open'>) {
   const { t, i18n } = useTranslation();
-  const [factorId, setFactorId] = useState('');
+  const [factorId, setFactorId] = useState(factors[0]?.id ?? '');
   const [score, setScore] = useState('');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      setFactorId(factors[0]?.id ?? '');
-      setScore('');
-      setReason('');
-      setError(null);
-    }
-  }, [open, factors]);
-
-  if (!open) return null;
 
   const handleSubmit = () => {
     const parsed = CalibrateScoreSchema.safeParse({

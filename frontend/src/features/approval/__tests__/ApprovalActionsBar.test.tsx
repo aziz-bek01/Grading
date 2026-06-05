@@ -6,7 +6,10 @@ import { ApprovalActionsBar } from '../components/ApprovalActionsBar';
 import type { ApprovalRequest, ApprovalStep } from '../types';
 import { useAuthStore } from '@/features/auth/authStore';
 
-const ME_ID = '00000000-0000-0000-0000-000000000001';
+/** Resolve the currently signed-in user's id (set by `signIn` in beforeEach). */
+function meId(): string {
+  return useAuthStore.getState().user?.id ?? '';
+}
 
 function buildRequest(overrides: Partial<ApprovalRequest> = {}, step?: Partial<ApprovalStep>): ApprovalRequest {
   return {
@@ -80,7 +83,7 @@ describe('<ApprovalActionsBar />', () => {
 
   it('the explicit approver gains authority even without the required permission match', () => {
     const req = buildRequest({}, {
-      approverUserId: ME_ID,
+      approverUserId: meId(),
       requiredPermission: 'SOME_OTHER_PERMISSION',
     });
     render(renderWithProviders(<ApprovalActionsBar request={req} currentStep={req.steps[0]} />));

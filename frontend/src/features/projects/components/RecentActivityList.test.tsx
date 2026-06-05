@@ -6,11 +6,19 @@
  *   2. For users without AUDIT_READ, shows the explanatory no-access
  *      placeholder instead of trying to fetch.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import type { AxiosAdapter } from 'axios';
 import { RecentActivityList } from './RecentActivityList';
 import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
+import { httpClient } from '@/shared/api/httpClient';
+import { createMockAdapter } from '@/shared/api/mocks/handlers';
 import { useAuthStore } from '@/features/auth/authStore';
+
+// Tests run with VITE_USE_MSW unset, so the in-process mock adapter is NOT
+// auto-installed by httpClient. Install it explicitly (same pattern as every
+// other data-driven page test) so the audit feed resolves from fixtures.
+const ORIGINAL_ADAPTER = httpClient.defaults.adapter as AxiosAdapter | undefined;
 
 function activateAcme() {
   const tenants = useAuthStore.getState().user?.tenants ?? [];
@@ -18,8 +26,13 @@ function activateAcme() {
   if (acme) useAuthStore.getState().setActiveTenant(acme);
 }
 
+afterEach(() => {
+  httpClient.defaults.adapter = ORIGINAL_ADAPTER;
+});
+
 describe('<RecentActivityList />', () => {
   beforeEach(() => {
+    httpClient.defaults.adapter = createMockAdapter(ORIGINAL_ADAPTER);
     signOut();
     signIn('super-admin');
     activateAcme();

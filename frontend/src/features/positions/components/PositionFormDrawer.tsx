@@ -198,8 +198,7 @@ export function PositionFormDrawer({
 
       <p className="text-xs text-text-muted">
         {/* Hard rule: NO salary fields on Position in Phase 2. */}
-        {/* eslint-disable-next-line i18next/no-literal-string */}
-        No salary fields.
+        {t('positions.no_salary_fields')}
       </p>
     </DrawerForm>
   );

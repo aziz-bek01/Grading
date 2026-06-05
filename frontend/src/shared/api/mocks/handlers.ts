@@ -643,7 +643,7 @@ function handleJobAnalysis(method: string, path: string, _query: URLSearchParams
     const question = q.questions.find((qq) => qq.id === questionId);
     const body = readBody<{ answer_text?: string | null; answer_choices?: string[] | null; answer_number?: number | null }>(config);
     // Reduce the typed backend body back to the internal union `value`.
-    let value: unknown = null;
+    let value: unknown;
     if (question?.question_type === 'SINGLE_CHOICE') value = body.answer_choices?.[0] ?? null;
     else if (question?.question_type === 'MULTI_CHOICE') value = body.answer_choices ?? [];
     else if (question?.question_type === 'NUMBER' || question?.question_type === 'RATING_SCALE') value = body.answer_number ?? null;

@@ -38,25 +38,27 @@ const OPTIONS: { type: MethodologyType; icon: React.ReactNode; titleKey: string;
  * Modal that asks "Which methodology template do you want to start from?"
  * before the create drawer opens — per PRD MVP1-E7-1.
  */
-export function MethodologyTemplatePicker({
-  open,
+export function MethodologyTemplatePicker({ open, ...rest }: MethodologyTemplatePickerProps) {
+  // Mount fresh while open so the selection starts cleared each time.
+  if (!open) return null;
+  return <MethodologyTemplatePickerBody {...rest} />;
+}
+
+function MethodologyTemplatePickerBody({
   onCancel,
   onSelect,
-}: MethodologyTemplatePickerProps) {
+}: Omit<MethodologyTemplatePickerProps, 'open'>) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<MethodologyType | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return setSelected(null);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
+  }, [onCancel]);
 
   return (
     <div

@@ -1,39 +1,220 @@
 package uz.hrlab.grading.security;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
+import uz.hrlab.grading.access.domain.MembershipStatus;
+import uz.hrlab.grading.access.infrastructure.RolePermissionRepository;
+import uz.hrlab.grading.access.infrastructure.RoleRepository;
+import uz.hrlab.grading.access.infrastructure.UserJpaEntity;
+import uz.hrlab.grading.access.infrastructure.UserRepository;
+import uz.hrlab.grading.access.infrastructure.UserRoleJpaEntity;
+import uz.hrlab.grading.access.infrastructure.UserRoleRepository;
+import uz.hrlab.grading.access.infrastructure.UserTenantMembershipJpaEntity;
+import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Maps a validated {@link Jwt} into a {@link TenantContext}.
  *
  * <p>Authoritative source of {@code tenant_id} — never trust request input
- * (security-blueprint §20.1 finding 2). When the JWT is missing the
- * {@code active_tenant_id} claim for a business endpoint, the resulting
- * context has {@code tenantId=null} and downstream
- * {@code TenantContextHolder.requireActive()} call will fail securely.
+ * (security-blueprint §20.1 finding 2).
+ *
+ * <h3>Two token contracts, one resolver (BE-OIDC-001)</h3>
+ * Real IdP (ZITADEL) access tokens carry only standard OIDC claims
+ * ({@code sub}, {@code email}, ...). They do NOT carry grading's domain claims
+ * ({@code active_tenant_id}, {@code roles}, {@code permissions},
+ * {@code salary_data_permission}). This resolver therefore supports both:
+ *
+ * <ol>
+ *   <li><b>Claim-first (forward compatible):</b> if the token already carries
+ *       domain claims, they are honoured verbatim — this preserves the original
+ *       behaviour and lets a future custom-claims IdP action take over without
+ *       a code change.</li>
+ *   <li><b>DB-backed (the OIDC path used today):</b> when a domain claim is
+ *       absent, the resolver looks the principal up in the grading control
+ *       plane by EMAIL (falling back to {@code external_idp_subject == sub}),
+ *       resolves the user's tenant memberships, picks an active tenant, and
+ *       expands roles + permissions exactly the way the IdP would normally bake
+ *       them into the JWT. This mirrors {@link DevUserAuthorityResolver}.</li>
+ * </ol>
+ *
+ * <p>Fail-closed: if the email maps to no grading user, the resulting context
+ * has {@code userId == null}, so downstream
+ * {@code TenantContextHolder.requireActive()} / {@code GetCurrentUserUseCase}
+ * reject the request (401/404 with a generic message) rather than leaking.
  */
 @Component
 public class JwtTenantContextResolver {
 
+    private static final Logger log = LoggerFactory.getLogger(JwtTenantContextResolver.class);
+
+    private final UserRepository users;
+    private final UserTenantMembershipRepository memberships;
+    private final UserRoleRepository userRoles;
+    private final RoleRepository roles;
+    private final RolePermissionRepository rolePermissions;
+
+    public JwtTenantContextResolver(UserRepository users,
+                                    UserTenantMembershipRepository memberships,
+                                    UserRoleRepository userRoles,
+                                    RoleRepository roles,
+                                    RolePermissionRepository rolePermissions) {
+        this.users = users;
+        this.memberships = memberships;
+        this.userRoles = userRoles;
+        this.roles = roles;
+        this.rolePermissions = rolePermissions;
+    }
+
     public TenantContext resolve(Jwt jwt) {
-        UUID userId = parseUuid(jwt.getSubject());
-        UUID tenantId = parseUuid(jwt.getClaimAsString(JwtClaimNames.ACTIVE_TENANT_ID));
-        Set<UUID> projectIds = parseUuidSet(jwt.getClaim(JwtClaimNames.ACTIVE_PROJECT_IDS));
-        Set<String> roles = parseStringSet(jwt.getClaim(JwtClaimNames.ROLES));
-        Set<String> permissions = parseStringSet(jwt.getClaim(JwtClaimNames.PERMISSIONS));
-        Set<UUID> departmentScope = parseUuidSet(jwt.getClaim(JwtClaimNames.DEPARTMENT_SCOPE));
-        boolean salaryPerm = Boolean.TRUE.equals(jwt.getClaim(JwtClaimNames.SALARY_DATA_PERM));
-        String locale = jwt.getClaimAsString(JwtClaimNames.LOCALE);
-        return new TenantContext(userId, tenantId, projectIds, roles, permissions,
-                departmentScope, salaryPerm, locale);
+        // 1) Claim-first: honour any domain claims the IdP already minted.
+        UUID claimUserId = parseUuid(jwt.getSubject());
+        UUID claimTenantId = parseUuid(jwt.getClaimAsString(JwtClaimNames.ACTIVE_TENANT_ID));
+        Set<UUID> claimProjectIds = parseUuidSet(jwt.getClaim(JwtClaimNames.ACTIVE_PROJECT_IDS));
+        Set<String> claimRoles = parseStringSet(jwt.getClaim(JwtClaimNames.ROLES));
+        Set<String> claimPermissions = parseStringSet(jwt.getClaim(JwtClaimNames.PERMISSIONS));
+        Set<UUID> claimDepartmentScope = parseUuidSet(jwt.getClaim(JwtClaimNames.DEPARTMENT_SCOPE));
+        boolean claimSalaryPerm = Boolean.TRUE.equals(jwt.getClaim(JwtClaimNames.SALARY_DATA_PERM));
+        String claimLocale = jwt.getClaimAsString(JwtClaimNames.LOCALE);
+
+        // 2) Resolve the grading user. With a real ZITADEL token, `sub` is the
+        //    IdP user id (not a grading users.id), so claimUserId rarely matches
+        //    a grading row — resolve by email, then by external_idp_subject.
+        UserJpaEntity user = resolveUser(jwt, claimUserId);
+        if (user == null) {
+            // Authenticated by the IdP but not provisioned in grading — return a
+            // userId-less context. Downstream requireActive()/GetCurrentUserUseCase
+            // fail closed (generic 401/404). Do NOT leak that the email is unknown.
+            log.warn("OIDC principal not provisioned in grading: subject={} emailPresent={}",
+                    jwt.getSubject(), jwt.getClaimAsString(JwtClaimNames.EMAIL) != null);
+            return new TenantContext(null, claimTenantId, claimProjectIds, claimRoles,
+                    claimPermissions, claimDepartmentScope, claimSalaryPerm, claimLocale);
+        }
+
+        UUID userId = user.getId();
+        String locale = (claimLocale != null && !claimLocale.isBlank())
+                ? claimLocale : user.getDefaultLocale();
+
+        // 3) Pick the active tenant. Honour an explicit active_tenant_id claim
+        //    only if the user actually has an ACTIVE membership there; otherwise
+        //    fall back to the user's single ACTIVE membership. With >1 ACTIVE
+        //    memberships and no usable claim, leave tenantId null — the SPA
+        //    renders the tenant switcher and /users/me still works (it sources
+        //    the tenant list from user_tenant_memberships, not the JWT).
+        List<UserTenantMembershipJpaEntity> activeMemberships =
+                memberships.findAllByUserId(userId).stream()
+                        .filter(m -> m.getStatus() == MembershipStatus.ACTIVE)
+                        .toList();
+        UserTenantMembershipJpaEntity activeMembership =
+                pickActiveMembership(activeMemberships, claimTenantId);
+
+        // 4) Expand roles + permissions for the active (user, tenant). When the
+        //    token already carried roles/permissions claims we keep them (the
+        //    IdP is authoritative); otherwise expand from the DB.
+        Set<String> resolvedRoles = claimRoles;
+        Set<String> resolvedPermissions = claimPermissions;
+        boolean salaryPerm = claimSalaryPerm;
+        UUID tenantId = activeMembership != null ? activeMembership.getTenantId() : null;
+
+        if (activeMembership != null && claimRoles.isEmpty() && claimPermissions.isEmpty()) {
+            Authority authority = expandAuthority(activeMembership);
+            resolvedRoles = authority.roleCodes();
+            resolvedPermissions = authority.permissionCodes();
+            // Salary gate is the membership flag unless the token explicitly
+            // asserted it (claim wins when present and true).
+            if (!claimSalaryPerm) {
+                salaryPerm = authority.salaryPermission();
+            }
+        }
+
+        return new TenantContext(userId, tenantId, claimProjectIds, resolvedRoles,
+                resolvedPermissions, claimDepartmentScope, salaryPerm, locale);
+    }
+
+    /**
+     * Resolve the grading control-plane user for this principal. Order:
+     * <ol>
+     *   <li>by {@code sub} when it happens to be a grading {@code users.id};</li>
+     *   <li>by {@code email} claim (case-insensitive) — the ZITADEL path;</li>
+     *   <li>by {@code external_idp_subject == sub} — pre-linked accounts.</li>
+     * </ol>
+     */
+    private UserJpaEntity resolveUser(Jwt jwt, UUID claimUserId) {
+        if (claimUserId != null) {
+            Optional<UserJpaEntity> byId = users.findById(claimUserId);
+            if (byId.isPresent()) {
+                return byId.get();
+            }
+        }
+        String email = jwt.getClaimAsString(JwtClaimNames.EMAIL);
+        if (email != null && !email.isBlank()) {
+            Optional<UserJpaEntity> byEmail = users.findByEmailIgnoreCase(email.trim());
+            if (byEmail.isPresent()) {
+                return byEmail.get();
+            }
+        }
+        String subject = jwt.getSubject();
+        if (subject != null && !subject.isBlank()) {
+            return users.findByExternalIdpSubject(subject).orElse(null);
+        }
+        return null;
+    }
+
+    private UserTenantMembershipJpaEntity pickActiveMembership(
+            List<UserTenantMembershipJpaEntity> active, UUID claimTenantId) {
+        if (active.isEmpty()) {
+            return null;
+        }
+        if (claimTenantId != null) {
+            for (UserTenantMembershipJpaEntity m : active) {
+                if (claimTenantId.equals(m.getTenantId())) {
+                    return m;
+                }
+            }
+        }
+        if (active.size() == 1) {
+            return active.get(0);
+        }
+        // Multiple tenants, no usable claim — defer the choice to the SPA.
+        return null;
+    }
+
+    /** Snapshot of the RBAC expanded for one membership. */
+    private record Authority(Set<String> roleCodes, Set<String> permissionCodes,
+                             boolean salaryPermission) {
+    }
+
+    /**
+     * Expand role codes + permission codes for a membership. Identical query
+     * path to {@link DevUserAuthorityResolver} so dev and prod resolve the same
+     * authority set for the same DB state.
+     */
+    private Authority expandAuthority(UserTenantMembershipJpaEntity membership) {
+        List<UUID> roleIds = userRoles.findAllByMembershipId(membership.getId()).stream()
+                .map(UserRoleJpaEntity::getRoleId)
+                .toList();
+        if (roleIds.isEmpty()) {
+            return new Authority(Set.of(), Set.of(), membership.isSalaryDataPermission());
+        }
+        Set<String> roleCodes = roles.findAllById(roleIds).stream()
+                .map(r -> r.getCode())
+                .collect(Collectors.toUnmodifiableSet());
+        List<String> permissionCodeList = rolePermissions.findPermissionCodesByRoleIds(roleIds);
+        Set<String> permissionCodes = permissionCodeList.isEmpty()
+                ? Set.of()
+                : Set.copyOf(permissionCodeList);
+        return new Authority(roleCodes, permissionCodes, membership.isSalaryDataPermission());
     }
 
     private static UUID parseUuid(String raw) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
@@ -22,28 +22,22 @@ const REASON_MIN_LEN = 20;
  * those inline so the evaluator can correct and retry without losing
  * context.
  */
-export function BulkSubmitDialog({
-  open,
+export function BulkSubmitDialog({ open, ...rest }: BulkSubmitDialogProps) {
+  // Mount fresh while open so each session starts clean (no reset-on-close).
+  if (!open) return null;
+  return <BulkSubmitDialogBody {...rest} />;
+}
+
+function BulkSubmitDialogBody({
   selectedCount,
   onConfirm,
   onClose,
-}: BulkSubmitDialogProps) {
+}: Omit<BulkSubmitDialogProps, 'open'>) {
   const { t } = useTranslation();
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BulkOperationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      setReason('');
-      setResult(null);
-      setError(null);
-      setSubmitting(false);
-    }
-  }, [open]);
-
-  if (!open) return null;
 
   const reasonValid = reason.trim().length >= REASON_MIN_LEN;
   const canSubmit = reasonValid && !submitting;

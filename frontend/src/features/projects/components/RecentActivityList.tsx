@@ -27,7 +27,8 @@ import { usePermission } from '@/features/auth/usePermission';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { routes } from '@/shared/config/routes';
 import { useAuditEvents } from '@/features/audit/hooks/useAuditEvents';
-import { ActionIcon, actionIconKind } from '@/features/audit/components/AuditEventRow';
+import { ActionIcon } from '@/features/audit/components/AuditEventRow';
+import { actionIconKind } from '@/features/audit/components/auditActionIcon';
 import type { AuditEvent } from '@/features/audit/types/auditTypes';
 
 interface RecentActivityListProps {

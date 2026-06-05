@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '@/test/testUtils';
-import { FileDropzone, formatBytes } from './FileDropzone';
+import { FileDropzone } from './FileDropzone';
+import { formatBytes } from './formatBytes';
 import { MAX_UPLOAD_BYTES, XLSX_MIME } from '../schemas/importSchemas';
 
 function makeFile(name: string, size: number, type: string): File {

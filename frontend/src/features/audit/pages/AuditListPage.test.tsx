@@ -6,12 +6,21 @@
  *   2. Action filter narrows results to a single action code.
  *   3. The CSV export button is hidden for users without EXPORT_GENERAL.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { AxiosAdapter } from 'axios';
 import { AuditListPage } from './AuditListPage';
 import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
+import { httpClient } from '@/shared/api/httpClient';
+import { createMockAdapter } from '@/shared/api/mocks/handlers';
 import { useAuthStore } from '@/features/auth/authStore';
+
+// Tests run with VITE_USE_MSW unset, so the in-process mock adapter is NOT
+// auto-installed by httpClient. Install it explicitly (same pattern as every
+// other data-driven page test, e.g. ClientsListPage.test.tsx) so the audit
+// feed resolves from fixtures instead of a non-existent backend.
+const ORIGINAL_ADAPTER = httpClient.defaults.adapter as AxiosAdapter | undefined;
 
 function activateAcme() {
   const tenants = useAuthStore.getState().user?.tenants ?? [];
@@ -21,8 +30,13 @@ function activateAcme() {
   }
 }
 
+afterEach(() => {
+  httpClient.defaults.adapter = ORIGINAL_ADAPTER;
+});
+
 describe('<AuditListPage />', () => {
   beforeEach(() => {
+    httpClient.defaults.adapter = createMockAdapter(ORIGINAL_ADAPTER);
     signOut();
     signIn('super-admin');
     activateAcme();

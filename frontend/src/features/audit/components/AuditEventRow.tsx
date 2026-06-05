@@ -1,9 +1,8 @@
 /**
- * Audit event row helpers (D-1 FE).
+ * Audit event icon renderer (D-1 FE).
  *
- * Exports the action/icon mapping + small badge renderers so they can be
- * reused by both the audit table (this feature) and the Recent Activity
- * list on the Project Workspace (D-2).
+ * The action->kind mapping + its type now live in `auditActionIcon.ts` so that
+ * this .tsx file only exports React components (react-refresh fast refresh).
  */
 import type { ReactNode } from 'react';
 import {
@@ -22,42 +21,7 @@ import {
   UserPlus,
   Wallet,
 } from 'lucide-react';
-
-export type AuditIconKind =
-  | 'auth'
-  | 'security'
-  | 'project'
-  | 'approve'
-  | 'lock'
-  | 'archive'
-  | 'create'
-  | 'update'
-  | 'salary'
-  | 'import'
-  | 'export'
-  | 'report'
-  | 'user'
-  | 'logout';
-
-/** Map a raw action code to a stable icon kind. */
-export function actionIconKind(action: string): AuditIconKind {
-  if (action.startsWith('LOGIN_')) return 'auth';
-  if (action === 'LOGOUT') return 'logout';
-  if (action.startsWith('CROSS_TENANT') || action === 'TENANT_MEMBERSHIP_MISMATCH') return 'security';
-  if (action.startsWith('USER_SALARY_PERMISSION')) return 'salary';
-  if (action.startsWith('USER_')) return 'user';
-  if (action.endsWith('_APPROVED') || action.endsWith('_SUBMITTED')) return 'approve';
-  if (action.endsWith('_LOCKED')) return 'lock';
-  if (action.endsWith('_ARCHIVED')) return 'archive';
-  if (action.endsWith('_CREATED')) return 'create';
-  if (action.endsWith('_UPDATED') || action.endsWith('_REORDERED') || action.endsWith('_UPSERTED'))
-    return 'update';
-  if (action.startsWith('IMPORT_')) return 'import';
-  if (action.startsWith('EXPORT_')) return 'export';
-  if (action.startsWith('REPORT_')) return 'report';
-  if (action.startsWith('PROJECT_') || action.startsWith('TENANT_')) return 'project';
-  return 'update';
-}
+import type { AuditIconKind } from './auditActionIcon';
 
 export function ActionIcon({ kind, size = 14 }: { kind: AuditIconKind; size?: number }): ReactNode {
   switch (kind) {

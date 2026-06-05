@@ -8,6 +8,7 @@ import { PERMISSIONS } from '@/shared/types/permissions';
 import { routes } from '@/shared/config/routes';
 
 import { LoginPage } from '@/pages/LoginPage';
+import { AuthCallbackPage } from '@/pages/AuthCallbackPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { UpcomingFeaturePage } from '@/shared/components/UpcomingFeaturePage';
@@ -47,6 +48,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path={routes.login} element={<LoginPage />} />
+      <Route path={routes.authCallback} element={<AuthCallbackPage />} />
       <Route path={routes.accessDenied} element={<AccessDeniedPage />} />
       <Route path={routes.noAccess} element={<AccessDeniedPage />} />
 

@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Upload, File as FileIcon, X } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { MAX_UPLOAD_BYTES, XLSX_MIME } from '../schemas/importSchemas';
+import { formatBytes } from './formatBytes';
 
 interface Props {
   file: File | null;
@@ -29,12 +30,6 @@ function validate(file: File): string | null {
   // Some browsers report no MIME for drag-drop; allow empty + xlsx ext.
   if (file.type && file.type !== XLSX_MIME) return 'import.file.error.mime';
   return null;
-}
-
-export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function FileDropzone({ file, onFileChange, errorMessage, disabled }: Props) {

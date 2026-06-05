@@ -4,6 +4,8 @@
  */
 export const routes = {
   login: '/login',
+  /** OIDC redirect callback — registered OUTSIDE RequireAuth. */
+  authCallback: '/auth/callback',
   accessDenied: '/access-denied',
   noAccess: '/no-access',
   app: '/app',

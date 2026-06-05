@@ -1,11 +1,13 @@
 import axios, {
   type AxiosError,
   type AxiosInstance,
+  type AxiosRequestConfig,
   type InternalAxiosRequestConfig,
 } from 'axios';
 import { env } from '@/shared/config/env';
 import { tokenStorage } from '@/shared/auth/tokenStorage';
 import { useAuthStore } from '@/features/auth/authStore';
+import { isOidcAvailable, trySilentRenew } from '@/shared/auth/oidcClient';
 import { ApiError } from './apiError';
 import type { ErrorEnvelope } from '@/shared/types/common';
 
@@ -110,14 +112,31 @@ httpClient.interceptors.request.use((req: InternalAxiosRequestConfig) => {
   return req;
 });
 
+/** Marks a request config that already went through one silent-renew retry. */
+type RetryableConfig = InternalAxiosRequestConfig & { _silentRenewRetried?: boolean };
+
 httpClient.interceptors.response.use(
   (res) => res,
-  (error: AxiosError<ErrorEnvelope>) => {
+  async (error: AxiosError<ErrorEnvelope>) => {
     if (error.response) {
       const { status, data } = error.response;
 
-      // 401: trigger logout/redirect, never log the token
+      // 401 handling:
+      //  - OIDC mode: try a SINGLE silent renew (in-memory refresh token), and
+      //    if it yields a fresh token, replay the original request once.
+      //  - On renewal failure (or non-OIDC mode): clear token + redirect.
+      // Never log the token at any point.
       if (status === 401) {
+        const original = error.config as RetryableConfig | undefined;
+        if (isOidcAvailable() && original && !original._silentRenewRetried) {
+          original._silentRenewRetried = true;
+          const newToken = await trySilentRenew();
+          if (newToken) {
+            tokenStorage.set({ value: newToken, expiresAt: Date.now() + 5 * 60 * 1000 });
+            original.headers.set('Authorization', `Bearer ${newToken}`);
+            return httpClient.request(original as AxiosRequestConfig);
+          }
+        }
         tokenStorage.clear();
         if (onUnauthorized) onUnauthorized();
       }

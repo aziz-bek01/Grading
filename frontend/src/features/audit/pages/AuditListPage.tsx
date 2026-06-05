@@ -33,7 +33,8 @@ import { useAuditEvents } from '../hooks/useAuditEvents';
 import { AuditFilterBar } from '../components/AuditFilterBar';
 import { AuditDetailsDrawer } from '../components/AuditDetailsDrawer';
 import { AuditCsvExportButton } from '../components/AuditCsvExportButton';
-import { ActionIcon, actionIconKind } from '../components/AuditEventRow';
+import { ActionIcon } from '../components/AuditEventRow';
+import { actionIconKind } from '../components/auditActionIcon';
 import type { AuditEvent, AuditQuery } from '../types/auditTypes';
 
 const PAGE_SIZE = 20;

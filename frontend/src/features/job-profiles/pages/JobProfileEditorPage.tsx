@@ -101,9 +101,18 @@ export function JobProfileEditorPage() {
   const [draft, setDraft] = useState<JobProfilePatch | null>(null);
   const dirtyRef = useRef(false);
 
-  useEffect(() => {
-    if (profile) setDraft(emptyFromProfile(profile));
-  }, [profile?.id, profile?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Re-seed the draft when a different profile loads or its status changes.
+  // The last-seeded key is tracked in state (not a ref) and the adjustment is
+  // performed during render — React's "adjust state when a prop changes"
+  // pattern — so there is no synchronous setState-in-effect.
+  const [seededKey, setSeededKey] = useState<string | null>(null);
+  if (profile) {
+    const seedKey = `${profile.id}:${profile.status}`;
+    if (seededKey !== seedKey) {
+      setSeededKey(seedKey);
+      setDraft(emptyFromProfile(profile));
+    }
+  }
 
   const readOnly = profile?.status !== 'DRAFT';
 

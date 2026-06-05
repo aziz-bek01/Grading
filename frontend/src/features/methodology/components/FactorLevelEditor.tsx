@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
@@ -186,22 +186,17 @@ function ExistingLevelRow({
   onReorder,
 }: ExistingLevelRowProps) {
   const { t } = useTranslation();
+  // Buffers seed from props on mount. The parent list keys each row by
+  // `level.id` (<ExistingLevelRow key={lvl.id} />), so a different level
+  // occupying this slot (reorder / list change) remounts the row and re-seeds
+  // these buffers — while an in-flight refetch of the SAME level never
+  // clobbers what the user typed. This replaces the previous re-seed effect.
   const [points, setPoints] = useState<string>(String(level.points));
   const [scale, setScale] = useState<string>(String(level.scale_value));
   const [label, setLabel] = useState<LocalizedString>(level.label_i18n ?? {});
   const [description, setDescription] = useState<LocalizedString>(
     level.description_i18n ?? {},
   );
-
-  // Re-seed buffers only when a different level occupies this row (reorder /
-  // list change). Keying on id avoids resync-on-refetch clobbering live edits.
-  useEffect(() => {
-    setPoints(String(level.points));
-    setScale(String(level.scale_value));
-    setLabel(level.label_i18n ?? {});
-    setDescription(level.description_i18n ?? {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [level.id]);
 
   const displayLabel = label?.['ru-RU'] ?? label?.['en-US'] ?? '—';
 

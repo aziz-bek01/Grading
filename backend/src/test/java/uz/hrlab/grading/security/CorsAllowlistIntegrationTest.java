@@ -1,5 +1,6 @@
 package uz.hrlab.grading.security;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -27,6 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code RequiresDocker} — set {@code GRADING_REQUIRE_DOCKER=true} in CI.
  */
 @AutoConfigureMockMvc
+@Tag("security")
+@Tag("integration")
 class CorsAllowlistIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired

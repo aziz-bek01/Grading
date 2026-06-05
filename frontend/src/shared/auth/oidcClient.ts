@@ -19,7 +19,7 @@
  * If OIDC is not provisioned for the deployment (getOidcConfig() === null),
  * every operation here is a safe no-op and callers fall back to dev / login.
  */
-import type { UserManager } from 'oidc-client-ts';
+import type { User, UserManager } from 'oidc-client-ts';
 import { getOidcConfig } from '@/shared/config/runtimeConfig';
 
 let userManager: UserManager | null = null;
@@ -85,6 +85,27 @@ export async function startSignin(returnTo?: string): Promise<void> {
   const mgr = await getUserManager();
   if (!mgr) return;
   await mgr.signinRedirect(returnTo ? { state: { returnTo } } : undefined);
+}
+
+/**
+ * Complete the redirect callback, exchanging the auth code for tokens EXACTLY
+ * ONCE. The OIDC callback is always reached via a full-page redirect from the
+ * IdP, so this module is fresh per real callback; the cached promise therefore
+ * only dedupes a double-invocation within the same page load (React
+ * StrictMode / concurrent render / remount). Without this, the second exchange
+ * of the single-use auth code returns invalid_grant (400) and the sign-in
+ * "could not be completed" even though the first exchange succeeded.
+ */
+let signinCallbackPromise: Promise<User | null> | null = null;
+export function completeSigninCallback(): Promise<User | null> {
+  if (!signinCallbackPromise) {
+    signinCallbackPromise = (async () => {
+      const mgr = await getUserManager();
+      if (!mgr) return null;
+      return mgr.signinRedirectCallback();
+    })();
+  }
+  return signinCallbackPromise;
 }
 
 /** Return the in-memory access token (never persisted), or null. */

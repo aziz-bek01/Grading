@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getUserManager } from '@/shared/auth/oidcClient';
+import { completeSigninCallback } from '@/shared/auth/oidcClient';
 import { useAuthStore } from '@/features/auth/authStore';
 import { fetchCurrentUser } from '@/features/auth/authApi';
 import { mapMeResponse, pickActiveTenant } from '@/features/auth/mapMeResponse';
@@ -36,14 +36,15 @@ export function AuthCallbackPage() {
     ranRef.current = true;
 
     const run = async () => {
-      const mgr = await getUserManager();
-      if (!mgr) {
-        // OIDC disabled — nothing to process; send to login.
-        navigate(routes.login, { replace: true });
-        return;
-      }
       try {
-        const oidcUser = await mgr.signinRedirectCallback();
+        // Exchanges the auth code for tokens EXACTLY ONCE (module-level guard),
+        // immune to StrictMode/remount double-invocation reusing the code.
+        const oidcUser = await completeSigninCallback();
+        if (!oidcUser) {
+          // OIDC disabled — nothing to process; send to login.
+          navigate(routes.login, { replace: true });
+          return;
+        }
         const accessToken = oidcUser.access_token;
         if (!accessToken) {
           throw new Error('no_access_token');

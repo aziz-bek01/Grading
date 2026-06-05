@@ -8,7 +8,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -68,6 +67,7 @@ public class SecurityConfig {
                                                    TenantContextFilter tenantContextFilter,
                                                    CorsConfigurationSource corsConfigurationSource,
                                                    org.springframework.beans.factory.ObjectProvider<DevUserAuthorityResolver> devAuthorityResolver,
+                                                   GradingJwtAuthenticationConverter jwtAuthenticationConverter,
                                                    Environment env) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -79,7 +79,12 @@ public class SecurityConfig {
                         // Deny by default — every endpoint MUST be explicitly allowlisted
                         // or guarded by @PreAuthorize.
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
+                // BE-OIDC-002: map the principal's effective permission/role codes
+                // into Spring GrantedAuthorities so hasAuthority('…') checks pass
+                // under the OIDC path (the default converter mints none for ZITADEL
+                // access tokens, leaving every guarded endpoint 403).
+                .oauth2ResourceServer(oauth ->
+                        oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
 
         // Bind DevAuthFilter ONLY in dev profiles. Its constructor refuses to
         // start otherwise — belt-and-braces. The DB-backed authority resolver

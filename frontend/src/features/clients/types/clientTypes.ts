@@ -85,6 +85,29 @@ export interface ClientCompanyListQuery {
 
 // -------------------- Request payloads --------------------
 
+/**
+ * Isolation strategy for a freshly created tenant. Mirrors the backend
+ * `CreateTenantRequest.isolationMode`. The deployment runs shared mode, so
+ * SCHEMA is the safe default value the form submits.
+ */
+export type TenantIsolationMode = 'SCHEMA' | 'DATABASE';
+
+/**
+ * Body for `POST /admin/tenants` — matches `CreateTenantRequest.java` exactly.
+ * snake_case to mirror the backend JSON contract (rest of this module is
+ * snake_case). tenant_id is NEVER part of this body — the new tenant id is
+ * minted by the backend and returned in the response.
+ */
+export interface CreateTenantPayload {
+  slug: string;
+  display_name: string;
+  default_locale: Locale;
+  isolation_mode: TenantIsolationMode;
+  company_legal_name: string;
+  company_brand_name?: string;
+  company_industry?: string;
+}
+
 export interface UpdateTenantPayload {
   display_name?: string;
   default_locale?: Locale;

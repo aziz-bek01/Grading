@@ -24,6 +24,7 @@ import type {
   ClientCompany,
   ClientCompanyList,
   ClientCompanyListQuery,
+  CreateTenantPayload,
   TenantDetail,
   TenantList,
   TenantListQuery,
@@ -202,6 +203,27 @@ function normalizeStats(raw: Record<string, unknown> | undefined): TenantStats {
     user_count: (pick<number>('user_count', 'userCount') ?? 0) as number,
     last_activity_at: (pick<string>('last_activity_at', 'lastActivityAt') ?? null) as string | null,
   };
+}
+
+/**
+ * Create a new tenant + client-company — `POST /admin/tenants` (TENANT_CREATE).
+ *
+ * The backend mints the tenant id, sets it ACTIVE, and (in shared mode)
+ * auto-members the creator. It returns the created tenant; we run it through
+ * the same {@link normalizeTenantDetail} adapter so callers get a fully shaped
+ * `TenantDetail` regardless of whether the wire payload is the lean create
+ * projection or the full detail shape.
+ *
+ * The 409 `TENANT_SLUG_TAKEN` collision surfaces as an {@link ApiError} (the
+ * httpClient maps the backend ErrorResponse) — the dialog maps it to a friendly
+ * field-level "slug already taken" message.
+ */
+export async function createTenant(
+  payload: CreateTenantPayload,
+): Promise<TenantDetail> {
+  // Raw wire shape — normalised below; type as `unknown` before the adapter.
+  const res = await httpClient.post<unknown>(endpoints.admin.createTenant, payload);
+  return normalizeTenantDetail((res.data ?? {}) as Record<string, unknown>);
 }
 
 export async function fetchTenant(id: string): Promise<TenantDetail> {

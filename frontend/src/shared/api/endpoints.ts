@@ -18,6 +18,8 @@ export const endpoints = {
    */
   admin: {
     tenants: '/admin/tenants',
+    /** POST /admin/tenants — create a new tenant + client-company (TENANT_CREATE). */
+    createTenant: '/admin/tenants',
     tenant: (id: string) => `/admin/tenants/${id}`,
     tenantArchive: (id: string) => `/admin/tenants/${id}/archive`,
     tenantStats: (id: string) => `/admin/tenants/${id}/stats`,

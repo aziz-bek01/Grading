@@ -10,6 +10,53 @@ import { z } from 'zod';
 
 const localeEnum = z.enum(['ru-RU', 'uz-Cyrl-UZ', 'uz-Latn-UZ', 'en-US']);
 
+const isolationModeEnum = z.enum(['SCHEMA', 'DATABASE']);
+
+/**
+ * Create-tenant schema — mirrors backend `CreateTenantRequest.java` exactly:
+ *   - slug: ^[a-z][a-z0-9_]{2,63}$ (lowercase, starts with letter, 3-64 chars)
+ *   - display_name: required, ≤ 255
+ *   - default_locale: one of the 4 supported locales
+ *   - isolation_mode: SCHEMA (default) | DATABASE
+ *   - company_legal_name: required, ≤ 500
+ *   - company_brand_name: optional, ≤ 255
+ *   - company_industry: optional, ≤ 100
+ * Backend remains the authoritative validator (incl. TENANT_SLUG_TAKEN 409).
+ */
+export const CreateTenantSchema = z.object({
+  slug: z
+    .string()
+    .trim()
+    .min(1, { message: 'validation_slug_required' })
+    .regex(/^[a-z][a-z0-9_]{2,63}$/u, { message: 'validation_slug_format' }),
+  display_name: z
+    .string()
+    .trim()
+    .min(1, { message: 'validation_display_name_required' })
+    .max(255, { message: 'validation_display_name_max' }),
+  default_locale: localeEnum,
+  isolation_mode: isolationModeEnum,
+  company_legal_name: z
+    .string()
+    .trim()
+    .min(1, { message: 'validation_legal_name_required' })
+    .max(500, { message: 'validation_legal_name_max' }),
+  company_brand_name: z
+    .string()
+    .trim()
+    .max(255, { message: 'validation_brand_name_max' })
+    .optional()
+    .or(z.literal('')),
+  company_industry: z
+    .string()
+    .trim()
+    .max(100, { message: 'validation_industry_max' })
+    .optional()
+    .or(z.literal('')),
+});
+
+export type CreateTenantInput = z.infer<typeof CreateTenantSchema>;
+
 export const UpdateTenantSchema = z.object({
   display_name: z
     .string()

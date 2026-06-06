@@ -10,6 +10,8 @@ import {
   isOidcAvailable,
   startSignoutRedirect,
 } from '@/shared/auth/oidcClient';
+import { fetchCurrentUser } from './authApi';
+import { mapMeResponse } from './mapMeResponse';
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar.collapsed';
 
@@ -41,6 +43,13 @@ interface AuthState {
   /** Icon-only sidebar preference (persisted to localStorage). */
   sidebarCollapsed: boolean;
   setSession: (user: CurrentUser, token: AccessToken) => void;
+  /**
+   * Re-fetch `/users/me` with the in-memory token and refresh the user object
+   * (notably `user.tenants`, which feeds the TenantSelector) WITHOUT disturbing
+   * the active tenant / project. Used after creating a new company-client so it
+   * appears in the switcher. No-op when there is no live session/token.
+   */
+  refreshUser: () => Promise<void>;
   setActiveTenant: (tenant: TenantSummary | null) => void;
   setActiveProject: (project: ProjectSummary | null) => void;
   setSidebarCollapsed: (v: boolean) => void;
@@ -64,6 +73,21 @@ export const useAuthStore = create<AuthState>((set) => ({
       activeTenant: user.tenants[0] ?? null,
       activeProject: null,
     });
+  },
+  refreshUser: async () => {
+    const token = tokenStorage.get();
+    if (!token) return;
+    const me = await fetchCurrentUser(token.value);
+    const user = mapMeResponse(me);
+    set((state) => ({
+      // Refresh the user (and therefore user.tenants) but preserve the current
+      // active tenant/project selection — refreshing the catalog must not yank
+      // the user out of their current workspace.
+      user,
+      isAuthenticated: state.isAuthenticated,
+      activeTenant: state.activeTenant,
+      activeProject: state.activeProject,
+    }));
   },
   setActiveTenant: (tenant) => set({ activeTenant: tenant, activeProject: null }),
   setActiveProject: (project) => set({ activeProject: project }),

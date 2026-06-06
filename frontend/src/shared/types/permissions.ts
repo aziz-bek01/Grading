@@ -10,6 +10,8 @@ export const PERMISSIONS = {
 
   // Tenants / companies (admin/portfolio scope — HRLAB_SUPER_ADMIN)
   TENANT_READ: 'TENANT_READ',
+  /** Create a new tenant / company-client. Backend `TENANT_CREATE` (POST /admin/tenants). */
+  TENANT_CREATE: 'TENANT_CREATE',
   TENANT_EDIT: 'TENANT_EDIT',
   /** Archive a tenant (soft-delete). Backend `TENANT_ARCHIVE`. */
   TENANT_ARCHIVE: 'TENANT_ARCHIVE',

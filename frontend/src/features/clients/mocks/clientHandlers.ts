@@ -17,6 +17,8 @@
 import type { AxiosRequestConfig } from 'axios';
 import type {
   ArchiveTenantPayload,
+  ClientCompany,
+  CreateTenantPayload,
   TenantStatus,
   UpdateClientCompanyPayload,
   UpdateTenantPayload,
@@ -117,6 +119,64 @@ function handleListTenants(query: URLSearchParams): MatchResult {
   return ok(paginate(rows, page, size));
 }
 
+function uuid(prefix: string): string {
+  const rnd = Math.random().toString(16).slice(2).padEnd(12, '0').slice(0, 12);
+  return `${prefix}-${rnd.slice(0, 4)}-${rnd.slice(4, 8)}-${rnd.slice(8, 12)}-${Date.now().toString(16).padStart(12, '0').slice(-12)}`;
+}
+
+function hueFromString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function handleTenantCreate(config: AxiosRequestConfig): MatchResult {
+  const raw = readBody<CreateTenantPayload & Record<string, unknown>>(config);
+  const body = stripTenantFromBody(raw, '/admin/tenants', 'POST');
+
+  const slug = String(body.slug ?? '').trim();
+  if (!slug || !/^[a-z][a-z0-9_]{2,63}$/.test(slug)) {
+    return badRequest('slug must match ^[a-z][a-z0-9_]{2,63}$', 'VALIDATION_ERROR');
+  }
+  // Slug collision → 409 TENANT_SLUG_TAKEN (matches backend contract).
+  if (clientsDb.tenants.some((tn) => tn.slug === slug)) {
+    return { status: 409, body: { code: 'TENANT_SLUG_TAKEN', message: `slug '${slug}' is already taken` } };
+  }
+  if (!body.display_name || !String(body.display_name).trim()) {
+    return badRequest('display_name is required', 'VALIDATION_ERROR');
+  }
+  if (!body.company_legal_name || !String(body.company_legal_name).trim()) {
+    return badRequest('company_legal_name is required', 'VALIDATION_ERROR');
+  }
+
+  const now = new Date().toISOString();
+  const company: ClientCompany = {
+    id: uuid('cccc1111'),
+    legal_name: String(body.company_legal_name),
+    brand_name: String(body.company_brand_name ?? body.display_name ?? ''),
+    industry: body.company_industry ? String(body.company_industry) : null,
+    country_code: null,
+    tax_id: null,
+    created_at: now,
+    updated_at: now,
+  };
+  const tenant = {
+    id: uuid('eeee1111'),
+    slug,
+    display_name: String(body.display_name),
+    default_locale: body.default_locale,
+    status: 'ACTIVE' as TenantStatus,
+    client_company_id: company.id,
+    fingerprint_hue: hueFromString(slug),
+    created_at: now,
+    updated_at: now,
+    stats: { project_count: 0, user_count: 1, last_activity_at: now },
+  };
+  clientsDb.companies.push(company);
+  clientsDb.tenants.push(tenant);
+  return ok(toTenantDetail(tenant, company), 201);
+}
+
 function handleTenantDetail(id: string): MatchResult {
   const t = clientsDb.tenants.find((x) => x.id === id);
   if (!t) return notFound();
@@ -207,6 +267,7 @@ export function handleClients(config: AxiosRequestConfig): MatchResult | null {
   const { path, query } = parseUrl(url, config.params as Record<string, unknown> | undefined);
 
   if (path === '/admin/tenants' && method === 'GET') return handleListTenants(query);
+  if (path === '/admin/tenants' && method === 'POST') return handleTenantCreate(config);
   if (path === '/admin/clients' && method === 'GET') return handleListClients(query);
 
   const tenantArchive = /^\/admin\/tenants\/([^/]+)\/archive$/.exec(path);

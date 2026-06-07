@@ -601,6 +601,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # syft (anchore/sbom-action) pulls the image from GHCR, which is private —
+      # log in first so the docker source can authenticate.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Backend SBOM
         uses: anchore/sbom-action@v0
         with:

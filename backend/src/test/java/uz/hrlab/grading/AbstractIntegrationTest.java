@@ -98,4 +98,20 @@ public abstract class AbstractIntegrationTest {
     protected UUID newSeededTenantId() {
         return seedTenant(UUID.randomUUID());
     }
+
+    /**
+     * Inserts a minimal {@code public.users} row so subsequent
+     * {@code user_tenant_memberships} inserts satisfy {@code fk_utm_user}
+     * (memberships.user_id → public.users.id). Uses {@code ON CONFLICT DO
+     * NOTHING} so the same id can be requested multiple times. Returns the id
+     * for fluency. {@code external_idp_subject} is left NULL (nullable).
+     */
+    protected UUID seedUser(UUID userId) {
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, 'Test User', 'ACTIVE', 'ru-RU', 0) "
+                        + "ON CONFLICT (id) DO NOTHING",
+                userId, "user-" + userId + "@test.hrlab.uz");
+        return userId;
+    }
 }

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import uz.hrlab.grading.AbstractIntegrationTest;
 
@@ -41,9 +40,6 @@ class AuditRoleGrantsTest extends AbstractIntegrationTest {
     @Autowired
     JdbcTemplate adminJdbc; // connected as the bootstrap superuser
 
-    @Autowired
-    Environment env;
-
     private final List<HikariDataSource> openSources = new ArrayList<>();
 
     @AfterEach
@@ -55,11 +51,11 @@ class AuditRoleGrantsTest extends AbstractIntegrationTest {
     // ----------------------------------------------------------------- helpers
 
     private JdbcTemplate connectAs(String username, String password) {
-        // Spring populates spring.datasource.url from the Testcontainers
-        // @ServiceConnection on the abstract base class, so we read it from
-        // the Environment instead of touching the package-private POSTGRES
-        // field on the base class.
-        String url = env.getRequiredProperty("spring.datasource.url");
+        // Under @ServiceConnection there is no spring.datasource.url property
+        // (connection details are a bean, not env properties). Read the JDBC
+        // URL straight from the singleton Testcontainers container so we can
+        // dial in as the runtime/audit-reader roles directly.
+        String url = POSTGRES.getJdbcUrl();
         HikariDataSource ds = new HikariDataSource();
         ds.setJdbcUrl(url);
         ds.setUsername(username);

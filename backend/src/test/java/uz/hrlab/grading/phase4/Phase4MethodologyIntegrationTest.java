@@ -63,15 +63,17 @@ class Phase4MethodologyIntegrationTest extends AbstractIntegrationTest {
     void factorOnLockedVersionCannotBeInsertedDbLevel() {
         UUID tenant = newSeededTenantId();
         MethodologyJpaEntity m = methodologies.save(newMethodology(tenant, "M-LOCK"));
-        MethodologyVersionJpaEntity v = versions.save(newDraftVersion(tenant, m.getId(), 1));
         // Flip to LOCKED via two transitions to satisfy trg_mv_status_immutability:
-        // DRAFT -> APPROVED -> LOCKED
-        v.setStatus(MethodologyVersionStatus.APPROVED);
-        versions.save(v);
-        v.setStatus(MethodologyVersionStatus.LOCKED);
-        versions.save(v);
+        // DRAFT -> APPROVED -> LOCKED. Each save() is its own tx, so capture the
+        // merged copy to carry the incremented @Version forward (otherwise the
+        // 2nd update reuses a stale version → optimistic-lock failure).
+        MethodologyVersionJpaEntity draft = versions.save(newDraftVersion(tenant, m.getId(), 1));
+        draft.setStatus(MethodologyVersionStatus.APPROVED);
+        MethodologyVersionJpaEntity approved = versions.save(draft);
+        approved.setStatus(MethodologyVersionStatus.LOCKED);
+        MethodologyVersionJpaEntity locked = versions.save(approved);
 
-        FactorJpaEntity newFactor = newFactor(tenant, v.getId(), "F-X");
+        FactorJpaEntity newFactor = newFactor(tenant, locked.getId(), "F-X");
         assertThatThrownBy(() -> factors.save(newFactor))
                 .hasMessageContaining("METHODOLOGY_VERSION_LOCKED");
     }
@@ -80,13 +82,15 @@ class Phase4MethodologyIntegrationTest extends AbstractIntegrationTest {
     void lockedVersionCannotRegressToApproved() {
         UUID tenant = newSeededTenantId();
         MethodologyJpaEntity m = methodologies.save(newMethodology(tenant, "M-REG"));
-        MethodologyVersionJpaEntity v = versions.save(newDraftVersion(tenant, m.getId(), 1));
-        v.setStatus(MethodologyVersionStatus.APPROVED);
-        versions.save(v);
-        v.setStatus(MethodologyVersionStatus.LOCKED);
-        versions.save(v);
-        v.setStatus(MethodologyVersionStatus.APPROVED); // attempt regression
-        assertThatThrownBy(() -> versions.save(v))
+        // Capture each merged copy so the @Version stays in sync across the
+        // separate save() transactions (avoids a stale-version optimistic lock).
+        MethodologyVersionJpaEntity draft = versions.save(newDraftVersion(tenant, m.getId(), 1));
+        draft.setStatus(MethodologyVersionStatus.APPROVED);
+        MethodologyVersionJpaEntity approved = versions.save(draft);
+        approved.setStatus(MethodologyVersionStatus.LOCKED);
+        MethodologyVersionJpaEntity locked = versions.save(approved);
+        locked.setStatus(MethodologyVersionStatus.APPROVED); // attempt regression
+        assertThatThrownBy(() -> versions.save(locked))
                 .hasMessageContaining("METHODOLOGY_VERSION_LOCKED");
     }
 

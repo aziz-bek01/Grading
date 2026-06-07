@@ -107,7 +107,7 @@ class Phase5AuditLifecycleTest extends AbstractIntegrationTest {
     @Test
     void fullEvaluationLifecycleWritesAuditRowsWithHashChainContinuity() {
         UUID tenant = newSeededTenantId();
-        UUID actor = seedUser(tenant);
+        UUID actor = seedActorUser();
         ProjectJpaEntity proj = projects.save(newProject(tenant, "PRJ-EVAL-AL"));
         DepartmentJpaEntity dpt = departments.save(
                 newDept(tenant, proj.getId(), "DPT-EVAL"));
@@ -304,7 +304,7 @@ class Phase5AuditLifecycleTest extends AbstractIntegrationTest {
                 Map.of("ru-RU", code), null, null, null, null, PositionStatus.ACTIVE);
     }
 
-    private UUID seedUser(UUID tenantId) {
+    private UUID seedActorUser() {
         UUID userId = UUID.randomUUID();
         jdbcTemplate.update(
                 "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "

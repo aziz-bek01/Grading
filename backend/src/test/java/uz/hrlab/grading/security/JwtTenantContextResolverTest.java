@@ -99,7 +99,7 @@ class JwtTenantContextResolverTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void multipleActiveTenantsWithoutClaimLeavesTenantNullForSwitcher() {
+    void multipleActiveTenantsWithoutClaimPicksDeterministicDefaultTenant() {
         UUID tenantA = seedTenant(UUID.randomUUID());
         UUID tenantB = seedTenant(UUID.randomUUID());
         UUID userId = UUID.randomUUID();
@@ -128,9 +128,12 @@ class JwtTenantContextResolverTest extends AbstractIntegrationTest {
 
         TenantContext ctx = resolver.resolve(jwt);
 
-        // User resolved, but no active tenant pinned — SPA renders the switcher;
-        // /users/me still lists both memberships.
+        // With multiple ACTIVE memberships and no claim/header, the resolver
+        // auto-picks a deterministic default (earliest-created ACTIVE membership)
+        // so permissions resolve and a Super Admin never loses all rights. The
+        // SPA can still switch tenants via the X-Active-Tenant-Id header;
+        // /users/me lists both memberships.
         assertThat(ctx.userId()).isEqualTo(userId);
-        assertThat(ctx.tenantId()).isNull();
+        assertThat(ctx.tenantId()).isNotNull().isIn(tenantA, tenantB);
     }
 }

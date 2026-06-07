@@ -113,6 +113,8 @@ class TenantIsolationIntegrationTest extends AbstractIntegrationTest {
         TenantJpaEntity acme = saveTenant("acme-rev");
         TenantJpaEntity beta = saveTenant("beta-rev");
         UUID userId = UUID.randomUUID();
+        // FK fk_utm_user requires a public.users row before any membership row.
+        seedUser(userId);
 
         // Active membership in ACME
         memberships.save(new UserTenantMembershipJpaEntity(

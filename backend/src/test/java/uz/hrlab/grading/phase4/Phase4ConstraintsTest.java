@@ -103,15 +103,19 @@ class Phase4ConstraintsTest extends AbstractIntegrationTest {
     void lockedToApprovedUpdateStillRejected() {
         UUID tenant = newSeededTenantId();
         MethodologyJpaEntity m = methodologies.save(newMethodology(tenant, "M-UPD-REG"));
-        MethodologyVersionJpaEntity v = versions.save(newDraftVersion(tenant, m.getId(), 1));
 
-        v.setStatus(MethodologyVersionStatus.APPROVED);
-        versions.save(v);
-        v.setStatus(MethodologyVersionStatus.LOCKED);
-        versions.save(v);
+        // Each save() runs in its own tx (no @Transactional here), so the
+        // entity is detached between calls and save() merges, returning a NEW
+        // managed copy with the incremented @Version. Track that copy or the
+        // next update reuses a stale version → optimistic-lock failure.
+        MethodologyVersionJpaEntity draft = versions.save(newDraftVersion(tenant, m.getId(), 1));
+        draft.setStatus(MethodologyVersionStatus.APPROVED);
+        MethodologyVersionJpaEntity approved = versions.save(draft);
+        approved.setStatus(MethodologyVersionStatus.LOCKED);
+        MethodologyVersionJpaEntity locked = versions.save(approved);
 
-        v.setStatus(MethodologyVersionStatus.APPROVED); // attempt regression
-        assertThatThrownBy(() -> versions.save(v))
+        locked.setStatus(MethodologyVersionStatus.APPROVED); // attempt regression
+        assertThatThrownBy(() -> versions.save(locked))
                 .hasMessageContaining("METHODOLOGY_VERSION_LOCKED");
     }
 

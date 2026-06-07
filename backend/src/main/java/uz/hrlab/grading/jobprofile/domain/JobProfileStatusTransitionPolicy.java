@@ -17,14 +17,17 @@ import java.util.Set;
  *   UNDER_REVIEW → APPROVED      (APPROVE — requires JOB_PROFILE_APPROVE)
  *   UNDER_REVIEW → DRAFT         (REQUEST_CHANGES; reason required)
  *   APPROVED     → ARCHIVED      (ARCHIVE; reason required)
- *   APPROVED     → (new DRAFT)   (CREATE_REVISION — does NOT mutate this row)
+ *   APPROVED     → ARCHIVED      (CREATE_REVISION — archive-on-revision)
  *   ARCHIVED     → ∅             (terminal)
  * </pre>
  *
  * <p>Approved profile EDIT is forbidden — see
- * {@link JobProfileImmutabilityPolicy}. The transition CREATE_REVISION leaves
- * the source row unchanged and creates a separate DRAFT profile with
- * {@code revisionNumber+1} and {@code previousRevisionId = source.id}.
+ * {@link JobProfileImmutabilityPolicy}. CREATE_REVISION is permitted only from
+ * APPROVED and is implemented as <b>archive-on-revision</b>: the source row is
+ * moved APPROVED → ARCHIVED and a separate DRAFT profile is created with
+ * {@code revisionNumber+1} and {@code previousRevisionId = source.id}. This
+ * keeps at most one non-ARCHIVED profile per position, satisfying the partial
+ * unique index without a migration.
  */
 @Component
 public class JobProfileStatusTransitionPolicy {

@@ -1,5 +1,7 @@
 package uz.hrlab.grading.jobprofile.application;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
@@ -18,14 +20,27 @@ import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * APPROVED → new DRAFT (PRD §E6 hard rule). The source row is NOT mutated;
- * a new {@link JobProfileJpaEntity} is created with
+ * APPROVED → new DRAFT (PRD §E6 hard rule), implemented as <b>archive-on-revision</b>.
+ *
+ * <p>In a single transaction the source APPROVED row is moved to ARCHIVED and a
+ * new {@link JobProfileJpaEntity} DRAFT is created with
  * {@code revisionNumber = source.revisionNumber + 1} and
  * {@code previousRevisionId = source.id}. Content is deep-copied so the new
  * revision starts from the approved content.
+ *
+ * <p>Archiving the source is required to satisfy the partial unique index
+ * {@code uq_job_profiles_position_active}
+ * ({@code UNIQUE (tenant_id, project_id, position_id) WHERE status <> 'ARCHIVED'}),
+ * which permits at most ONE non-ARCHIVED job_profile per (tenant, project,
+ * position). After this use case runs the only non-ARCHIVED row is the new
+ * DRAFT, so the index is satisfied without any migration.
+ *
+ * <p>Two audit rows are emitted: {@code JOB_PROFILE_ARCHIVED} for the source and
+ * {@code JOB_PROFILE_REVISION_CREATED} for the new revision.
  */
 @Service
 public class CreateJobProfileRevisionUseCase {
@@ -36,6 +51,9 @@ public class CreateJobProfileRevisionUseCase {
     private final AbacGate abacGate;
     private final JobProfileStatusTransitionPolicy transitionPolicy;
     private final JobProfileAuditSnapshot snapshot;
+
+    @PersistenceContext
+    private EntityManager em;
 
     public CreateJobProfileRevisionUseCase(JobProfileRepository profiles,
                                            PositionRepository positions,
@@ -67,11 +85,38 @@ public class CreateJobProfileRevisionUseCase {
 
         transitionPolicy.check(source.getStatus(), JobProfileTransition.CREATE_REVISION);
 
+        // Archive the source FIRST so the partial unique index
+        // (one non-ARCHIVED profile per position) is never violated by the
+        // new DRAFT insert below — both happen in this single transaction.
+        var sourceBeforeJson = snapshot.of(source);
+        int newRevisionNumber = source.getRevisionNumber() + 1;
+        source.setStatus(JobProfileStatus.ARCHIVED);
+        source.setLockedAt(OffsetDateTime.now());
+        profiles.save(source);
+        // Force the APPROVED→ARCHIVED UPDATE to hit the DB BEFORE the new DRAFT
+        // INSERT below. Hibernate's default action-queue ordering flushes inserts
+        // before updates, which would momentarily leave two non-ARCHIVED rows and
+        // trip the partial unique index uq_job_profiles_position_active. Flushing
+        // here makes the archive durable first so the index is always satisfied.
+        em.flush();
+
+        audit.record(AuditEvent.builder()
+                .tenantId(ctx.tenantId())
+                .projectId(source.getProjectId())
+                .actorUserId(ctx.userId())
+                .action(AuditAction.JOB_PROFILE_ARCHIVED)
+                .entityType("JobProfile")
+                .entityId(source.getId())
+                .reason("Superseded by revision " + newRevisionNumber)
+                .beforeJson(sourceBeforeJson)
+                .afterJson(snapshot.of(source))
+                .build());
+
         UUID newId = UUID.randomUUID();
         JobProfileJpaEntity revision = new JobProfileJpaEntity(
                 newId, ctx.tenantId(), source.getProjectId(), source.getPositionId(),
                 JobProfileStatus.DRAFT,
-                source.getRevisionNumber() + 1,
+                newRevisionNumber,
                 source.getId());
         // Deep-copy content so the new revision is a working draft.
         revision.setPurposeI18n(source.getPurposeI18n());
@@ -97,7 +142,7 @@ public class CreateJobProfileRevisionUseCase {
                 .entityType("JobProfile")
                 .entityId(newId)
                 .reason("Revision of " + source.getId())
-                .beforeJson(snapshot.of(source))
+                .beforeJson(null)
                 .afterJson(snapshot.of(revision))
                 .build());
         return revision.toDomain();

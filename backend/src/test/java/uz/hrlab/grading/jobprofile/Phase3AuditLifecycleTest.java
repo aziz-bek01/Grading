@@ -1,7 +1,6 @@
 package uz.hrlab.grading.jobprofile;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,7 +9,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogJpaEntity;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogRepository;
 import uz.hrlab.grading.jobprofile.application.ApproveJobProfileUseCase;
-import uz.hrlab.grading.jobprofile.application.ArchiveJobProfileUseCase;
 import uz.hrlab.grading.jobprofile.application.CreateJobProfileCommand;
 import uz.hrlab.grading.jobprofile.application.CreateJobProfileRevisionUseCase;
 import uz.hrlab.grading.jobprofile.application.CreateJobProfileUseCase;
@@ -39,11 +37,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * D-313 / PC-4 — end-to-end audit-row write assertion for Phase 3 lifecycles.
  *
- * <p>Runs CREATE → SUBMIT → APPROVE → CREATE_REVISION → ARCHIVE (parent) and
- * asserts each step lands a row in {@code public.system_audit_log} with the
- * correct {@code action}, {@code entity_type}, {@code entity_id},
- * actor + tenant + project fields, and hash continuity
- * ({@code hash_prev → hash_current} chain).
+ * <p>Runs CREATE → SUBMIT → APPROVE → CREATE_REVISION (archive-on-revision:
+ * the revision step also archives the original) and asserts each step lands a
+ * row in {@code public.system_audit_log} with the correct {@code action},
+ * {@code entity_type}, {@code entity_id}, actor + tenant + project fields, and
+ * hash continuity ({@code hash_prev → hash_current} chain).
  */
 @Tag("audit")
 @Tag("integration")
@@ -55,7 +53,6 @@ class Phase3AuditLifecycleTest extends AbstractIntegrationTest {
     @Autowired CreateJobProfileUseCase createUseCase;
     @Autowired SubmitJobProfileForReviewUseCase submitUseCase;
     @Autowired ApproveJobProfileUseCase approveUseCase;
-    @Autowired ArchiveJobProfileUseCase archiveUseCase;
     @Autowired CreateJobProfileRevisionUseCase revisionUseCase;
     @Autowired SystemAuditLogRepository auditLog;
 
@@ -63,15 +60,6 @@ class Phase3AuditLifecycleTest extends AbstractIntegrationTest {
     void cleanup() { TenantContextHolder.clear(); }
 
     @Test
-    @Disabled("BLOCKED on a real production design conflict (NOT a test bug): "
-            + "CreateJobProfileRevisionUseCase creates a new DRAFT revision without "
-            + "archiving the APPROVED source, but the partial unique index "
-            + "uq_job_profiles_position_active permits only ONE non-ARCHIVED job_profile "
-            + "per (tenant, project, position). So CREATE_REVISION on an APPROVED profile "
-            + "always violates the index. This path never executed before (CI singleton-"
-            + "container fix made it run for the first time). Needs a product decision + "
-            + "prod migration: loosen the index to one-APPROVED-per-position (allow a DRAFT "
-            + "revision alongside) vs archive-on-revision. Re-enable once decided.")
     void fullLifecycleWritesAuditRowsWithHashChainContinuity() {
         UUID tenant = newSeededTenantId();
         UUID actor = UUID.randomUUID();
@@ -107,10 +95,9 @@ class Phase3AuditLifecycleTest extends AbstractIntegrationTest {
         submitUseCase.submit(created.id());
         // APPROVE
         approveUseCase.approve(created.id());
-        // CREATE REVISION
+        // CREATE REVISION — archive-on-revision: this archives the original
+        // (emitting JOB_PROFILE_ARCHIVED) and creates the new DRAFT in one tx.
         JobProfile revision = revisionUseCase.createRevision(created.id());
-        // ARCHIVE original
-        archiveUseCase.archive(created.id(), "Superseded by revision two — historical record");
 
         List<SystemAuditLogJpaEntity> rows = auditLog
                 .findByTenantIdOrderByCreatedAtDesc(tenant);

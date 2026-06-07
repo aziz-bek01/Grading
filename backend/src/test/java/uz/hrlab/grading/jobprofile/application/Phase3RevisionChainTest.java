@@ -1,7 +1,6 @@
 package uz.hrlab.grading.jobprofile.application;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,9 +36,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * D-305 — end-to-end test of {@link CreateJobProfileRevisionUseCase}: APPROVED
- * source row stays UNCHANGED, new DRAFT row has correct revisionNumber +
- * previousRevisionId, audit row JOB_PROFILE_REVISION_CREATED is written.
+ * D-305 — end-to-end test of {@link CreateJobProfileRevisionUseCase}
+ * (archive-on-revision): the APPROVED source row is moved to ARCHIVED, a new
+ * DRAFT row is created with correct revisionNumber + previousRevisionId, and the
+ * audit row JOB_PROFILE_REVISION_CREATED is written.
  */
 @Tag("workflow")
 @Tag("integration")
@@ -58,16 +58,7 @@ class Phase3RevisionChainTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @Disabled("BLOCKED on a real production design conflict (NOT a test bug): "
-            + "this test asserts an APPROVED source and a new DRAFT revision COEXIST for "
-            + "the same position, but the partial unique index uq_job_profiles_position_active "
-            + "permits only ONE non-ARCHIVED job_profile per (tenant, project, position). "
-            + "CreateJobProfileRevisionUseCase (correctly, per its contract) does not mutate "
-            + "the source, so the insert always violates the index. This path never executed "
-            + "before (CI singleton-container fix made it run for the first time). Needs a "
-            + "product decision + prod migration: loosen the index to one-APPROVED-per-position "
-            + "(allow a DRAFT revision alongside) vs archive-on-revision. Re-enable once decided.")
-    void createRevisionDoesNotMutateSourceAndCreatesNewDraft() {
+    void createRevisionArchivesSourceAndCreatesNewDraft() {
         UUID tenant = newSeededTenantId();
         UUID actor = UUID.randomUUID();
         ProjectJpaEntity proj = projects.save(newProject(tenant, "PRJ-REV"));
@@ -86,11 +77,7 @@ class Phase3RevisionChainTest extends AbstractIntegrationTest {
         source.setLockedAt(OffsetDateTime.now().minusDays(1));
         source = profiles.save(source);
 
-        // Snapshot expected-immutable fields before the call.
         UUID sourceId = source.getId();
-        JobProfileStatus sourceStatusBefore = source.getStatus();
-        int sourceRevBefore = source.getRevisionNumber();
-        Map<String, String> sourcePurposeBefore = Map.copyOf(source.getPurposeI18n());
 
         TenantContextHolder.set(new TenantContext(
                 actor, tenant, Set.of(proj.getId()),
@@ -107,13 +94,12 @@ class Phase3RevisionChainTest extends AbstractIntegrationTest {
         // Content deep-copied from source.
         assertThat(revision.purposeI18n()).containsEntry("ru-RU", "Цель");
 
-        // Source MUST be unchanged — re-read from DB.
+        // Archive-on-revision: the source is now ARCHIVED — re-read from DB.
         JobProfileJpaEntity sourceReread = profiles
                 .findByIdAndTenantId(sourceId, tenant)
                 .orElseThrow();
-        assertThat(sourceReread.getStatus()).isEqualTo(sourceStatusBefore);
-        assertThat(sourceReread.getRevisionNumber()).isEqualTo(sourceRevBefore);
-        assertThat(sourceReread.getPurposeI18n()).isEqualTo(sourcePurposeBefore);
+        assertThat(sourceReread.getStatus()).isEqualTo(JobProfileStatus.ARCHIVED);
+        assertThat(sourceReread.getRevisionNumber()).isEqualTo(1);
 
         // Descending history: revision 2 first, then revision 1.
         List<JobProfileJpaEntity> history = profiles

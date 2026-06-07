@@ -96,18 +96,18 @@ class AuditRoleGrantsTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> runtime.update(
                 "UPDATE public.system_audit_log SET reason = 'tampered' WHERE id = ?", id))
                 .as("grading_runtime must NOT be allowed to UPDATE system_audit_log")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
 
         // (4) DELETE must fail with permission denied.
         assertThatThrownBy(() -> runtime.update(
                 "DELETE FROM public.system_audit_log WHERE id = ?", id))
                 .as("grading_runtime must NOT be allowed to DELETE from system_audit_log")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
 
         // (5) TRUNCATE must fail too (covers the bulk-wipe attack vector).
         assertThatThrownBy(() -> runtime.execute("TRUNCATE public.system_audit_log"))
                 .as("grading_runtime must NOT be allowed to TRUNCATE system_audit_log")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
     }
 
     @Test
@@ -116,18 +116,32 @@ class AuditRoleGrantsTest extends AbstractIntegrationTest {
         UUID tenantId = UUID.randomUUID();
         UUID id = UUID.randomUUID();
 
-        runtime.update(
-                "INSERT INTO public.tenant_audit_logs "
-                        + "(id, tenant_id, action, created_at, hash_current) "
-                        + "VALUES (?, ?, 'TEST_INSERT', now(), 'h0')",
-                id, tenantId);
+        // tenant_audit_logs is RLS-protected (defense-in-depth, task D-3). The
+        // grading_runtime role is intentionally NOT BYPASSRLS, so — exactly as in
+        // production (RlsTenantSessionAspect) — app.tenant_id must be set before
+        // the insert, or the RLS WITH CHECK policy rejects the row. SET + INSERT
+        // must share one physical connection, hence the ConnectionCallback.
+        runtime.execute((java.sql.Connection conn) -> {
+            try (java.sql.Statement st = conn.createStatement()) {
+                st.execute("SET app.tenant_id = '" + tenantId + "'");
+            }
+            try (java.sql.PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO public.tenant_audit_logs "
+                            + "(id, tenant_id, action, created_at, hash_current) "
+                            + "VALUES (?, ?, 'TEST_INSERT', now(), 'h0')")) {
+                ps.setObject(1, id);
+                ps.setObject(2, tenantId);
+                ps.executeUpdate();
+            }
+            return null;
+        });
 
         assertThatThrownBy(() -> runtime.update(
                 "UPDATE public.tenant_audit_logs SET reason = 'tampered' WHERE id = ?", id))
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
         assertThatThrownBy(() -> runtime.update(
                 "DELETE FROM public.tenant_audit_logs WHERE id = ?", id))
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
     }
 
     @Test
@@ -170,7 +184,7 @@ class AuditRoleGrantsTest extends AbstractIntegrationTest {
                         + "VALUES (?, ?, 'EVIL_INSERT', now(), 'h0')",
                 UUID.randomUUID(), tenantId))
                 .as("grading_audit_reader must NOT be allowed to INSERT into system_audit_log")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
     }
 
     @Test
@@ -180,7 +194,7 @@ class AuditRoleGrantsTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> reader.queryForObject(
                 "SELECT COUNT(*) FROM public.tenants", Long.class))
                 .as("grading_audit_reader must NOT read business tables")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
     }
 
     /**
@@ -205,19 +219,19 @@ class AuditRoleGrantsTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> runtime.update(
                 "DELETE FROM public.system_audit_log WHERE 1=1"))
                 .as("grading_runtime must NOT mass-purge audit rows via tautology")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
 
         // (2) TRUNCATE ... CASCADE (defense in depth even though no FK targets it)
         assertThatThrownBy(() -> runtime.execute(
                 "TRUNCATE public.system_audit_log CASCADE"))
                 .as("grading_runtime must NOT TRUNCATE ... CASCADE on audit log")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
 
         // (3) UPDATE ... WHERE true (mass-tamper via tautology)
         assertThatThrownBy(() -> runtime.update(
                 "UPDATE public.system_audit_log SET reason = 'tampered' WHERE 1=1"))
                 .as("grading_runtime must NOT mass-tamper audit rows")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
     }
 
     /**
@@ -243,12 +257,12 @@ class AuditRoleGrantsTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> runtime.update(
                 "UPDATE public.system_audit_log SET hash_current = 'forged' WHERE id = ?", id))
                 .as("grading_runtime must NOT rewrite hash_current on system_audit_log")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
 
         assertThatThrownBy(() -> runtime.update(
                 "UPDATE public.system_audit_log SET hash_prev = NULL WHERE id = ?", id))
                 .as("grading_runtime must NOT rewrite hash_prev on system_audit_log")
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
     }
 
     @Test

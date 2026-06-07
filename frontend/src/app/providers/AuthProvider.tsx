@@ -1,6 +1,10 @@
 import { useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { setMockActiveTenantId, setUnauthorizedHandler } from '@/shared/api/httpClient';
+import {
+  setActiveTenantHeader,
+  setMockActiveTenantId,
+  setUnauthorizedHandler,
+} from '@/shared/api/httpClient';
 import { useAuthStore } from '@/features/auth/authStore';
 import { isOidcAvailable, startSignin } from '@/shared/auth/oidcClient';
 import { routes } from '@/shared/config/routes';
@@ -38,6 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMockActiveTenantId(activeTenantId);
+    // Real backend: tells the API which company-client is active (validated
+    // against the user's memberships server-side) so data + permissions scope
+    // to it. Without this, a user with >1 tenant gets no active tenant -> 403.
+    setActiveTenantHeader(activeTenantId);
   }, [activeTenantId]);
 
   return <>{children}</>;

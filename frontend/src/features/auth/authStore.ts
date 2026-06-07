@@ -79,15 +79,23 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (!token) return;
     const me = await fetchCurrentUser(token.value);
     const user = mapMeResponse(me);
-    set((state) => ({
-      // Refresh the user (and therefore user.tenants) but preserve the current
-      // active tenant/project selection — refreshing the catalog must not yank
-      // the user out of their current workspace.
-      user,
-      isAuthenticated: state.isAuthenticated,
-      activeTenant: state.activeTenant,
-      activeProject: state.activeProject,
-    }));
+    set((state) => {
+      // Preserve the current active tenant/project selection — refreshing the
+      // catalog must not yank the user out of their current workspace. BUT if no
+      // tenant is active yet (e.g. first /users/me after an OIDC redirect that
+      // skipped setSession) and the user belongs to one, auto-select the first
+      // so a valid X-Active-Tenant-Id is always sent and the backend can resolve
+      // permissions for an actual company.
+      const activeTenant = state.activeTenant ?? user.tenants[0] ?? null;
+      return {
+        user,
+        isAuthenticated: state.isAuthenticated,
+        activeTenant,
+        // Clearing the project only when we just auto-selected a tenant would be
+        // surprising; keep the existing project unless there is no tenant at all.
+        activeProject: activeTenant ? state.activeProject : null,
+      };
+    });
   },
   setActiveTenant: (tenant) => set({ activeTenant: tenant, activeProject: null }),
   setActiveProject: (project) => set({ activeProject: project }),

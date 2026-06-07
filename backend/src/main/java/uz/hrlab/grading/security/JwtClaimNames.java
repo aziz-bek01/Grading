@@ -16,4 +16,13 @@ public final class JwtClaimNames {
     public static final String DEPARTMENT_SCOPE    = "department_scope";
     public static final String LOCALE              = "locale";
     public static final String EMAIL               = "email";
+
+    /**
+     * Request header the SPA tenant switcher sends to declare which company-client
+     * is currently active. Honoured ONLY when the authenticated user has an ACTIVE
+     * membership in that tenant (see {@code JwtTenantContextResolver} precedence);
+     * a header pointing at a non-member tenant is ignored, never honoured —
+     * no cross-tenant escalation via header.
+     */
+    public static final String ACTIVE_TENANT_HEADER = "X-Active-Tenant-Id";
 }

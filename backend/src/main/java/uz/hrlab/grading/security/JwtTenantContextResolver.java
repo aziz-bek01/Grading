@@ -1,9 +1,13 @@
 package uz.hrlab.grading.security;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import uz.hrlab.grading.access.domain.MembershipStatus;
 import uz.hrlab.grading.access.infrastructure.RolePermissionRepository;
 import uz.hrlab.grading.access.infrastructure.RoleRepository;
@@ -16,6 +20,7 @@ import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -106,18 +111,17 @@ public class JwtTenantContextResolver {
         String locale = (claimLocale != null && !claimLocale.isBlank())
                 ? claimLocale : user.getDefaultLocale();
 
-        // 3) Pick the active tenant. Honour an explicit active_tenant_id claim
-        //    only if the user actually has an ACTIVE membership there; otherwise
-        //    fall back to the user's single ACTIVE membership. With >1 ACTIVE
-        //    memberships and no usable claim, leave tenantId null — the SPA
-        //    renders the tenant switcher and /users/me still works (it sources
-        //    the tenant list from user_tenant_memberships, not the JWT).
+        // 3) Pick the active tenant deterministically (see pickActiveMembership
+        //    for the full precedence). A user with at least one ACTIVE membership
+        //    ALWAYS gets a usable active tenant + its roles/permissions — never
+        //    null — so a Super Admin who belongs to multiple company-clients does
+        //    not lose all rights (the multi-membership bug).
         List<UserTenantMembershipJpaEntity> activeMemberships =
                 memberships.findAllByUserId(userId).stream()
                         .filter(m -> m.getStatus() == MembershipStatus.ACTIVE)
                         .toList();
         UserTenantMembershipJpaEntity activeMembership =
-                pickActiveMembership(activeMemberships, claimTenantId);
+                pickActiveMembership(activeMemberships, claimTenantId, readActiveTenantHeader());
 
         // 4) Expand roles + permissions for the active (user, tenant). When the
         //    token already carried roles/permissions claims we keep them (the
@@ -171,22 +175,99 @@ public class JwtTenantContextResolver {
         return null;
     }
 
+    /**
+     * Select the active membership from the user's ACTIVE memberships, applying
+     * a single deterministic precedence used CONSISTENTLY by both the
+     * {@code TenantContext} path ({@code TenantContextFilter}) and the authorities
+     * path ({@code GradingJwtAuthenticationConverter}) — both reach this method
+     * through {@link #resolve(Jwt)}, so they always agree.
+     *
+     * <p>Precedence:
+     * <ol>
+     *   <li><b>{@code X-Active-Tenant-Id} header</b> — the SPA tenant switcher's
+     *       declared active company. Honoured ONLY if the user has an ACTIVE
+     *       membership in it.</li>
+     *   <li><b>{@code active_tenant_id} claim</b> — honoured ONLY if the user has
+     *       an ACTIVE membership in it.</li>
+     *   <li><b>single ACTIVE membership</b> — the one membership.</li>
+     *   <li><b>deterministic default</b> — earliest-created ACTIVE membership
+     *       (tie-broken by membership id). NEVER null when at least one ACTIVE
+     *       membership exists.</li>
+     * </ol>
+     *
+     * <p>SECURITY: only a tenant the user is an ACTIVE member of is ever
+     * selected. A header/claim pointing at a non-member tenant is silently
+     * ignored (falls through) — no cross-tenant escalation. The downstream
+     * {@code TenantContextFilter} membership cross-check stays in place as
+     * defense in depth.
+     */
     private UserTenantMembershipJpaEntity pickActiveMembership(
-            List<UserTenantMembershipJpaEntity> active, UUID claimTenantId) {
+            List<UserTenantMembershipJpaEntity> active, UUID claimTenantId, UUID headerTenantId) {
         if (active.isEmpty()) {
             return null;
         }
-        if (claimTenantId != null) {
-            for (UserTenantMembershipJpaEntity m : active) {
-                if (claimTenantId.equals(m.getTenantId())) {
-                    return m;
-                }
-            }
+        // 1) Header wins — but only for a tenant the user actually belongs to.
+        UserTenantMembershipJpaEntity byHeader = findActiveByTenant(active, headerTenantId);
+        if (byHeader != null) {
+            return byHeader;
         }
+        // 2) active_tenant_id claim — same membership cross-check.
+        UserTenantMembershipJpaEntity byClaim = findActiveByTenant(active, claimTenantId);
+        if (byClaim != null) {
+            return byClaim;
+        }
+        // 3) Exactly one ACTIVE membership.
         if (active.size() == 1) {
             return active.get(0);
         }
-        // Multiple tenants, no usable claim — defer the choice to the SPA.
+        // 4) Deterministic default: earliest-created ACTIVE membership, id as a
+        //    stable tie-breaker. Never null here — the user has memberships.
+        return active.stream()
+                .min(Comparator
+                        .comparing((UserTenantMembershipJpaEntity m) -> m.getCreatedAt(),
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(UserTenantMembershipJpaEntity::getId))
+                .orElse(active.get(0));
+    }
+
+    /**
+     * Return the ACTIVE membership matching {@code wantedTenantId}, or null if the
+     * id is null or the user has no ACTIVE membership in that tenant. This is the
+     * membership cross-check that prevents honouring a header/claim for a tenant
+     * the user does not belong to.
+     */
+    private static UserTenantMembershipJpaEntity findActiveByTenant(
+            List<UserTenantMembershipJpaEntity> active, UUID wantedTenantId) {
+        if (wantedTenantId == null) {
+            return null;
+        }
+        for (UserTenantMembershipJpaEntity m : active) {
+            if (wantedTenantId.equals(m.getTenantId())) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Read the {@code X-Active-Tenant-Id} header from the current request via
+     * {@link RequestContextHolder}. Both the security-filter (converter) path and
+     * the {@code TenantContextFilter} path run on the request thread, so both see
+     * the same header — keeping the two paths in agreement. When no request is
+     * bound (e.g. async/background resolution), returns null and the next
+     * precedence rule applies.
+     */
+    private static UUID readActiveTenantHeader() {
+        try {
+            RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
+            if (attrs instanceof ServletRequestAttributes servletAttrs) {
+                HttpServletRequest request = servletAttrs.getRequest();
+                return parseUuid(request.getHeader(JwtClaimNames.ACTIVE_TENANT_HEADER));
+            }
+        } catch (Exception ex) {
+            // Header resolution must never break authn — fall through to claim/default.
+            log.debug("Could not read {} header from request context", JwtClaimNames.ACTIVE_TENANT_HEADER, ex);
+        }
         return null;
     }
 

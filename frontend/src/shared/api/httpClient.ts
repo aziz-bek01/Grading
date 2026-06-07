@@ -77,6 +77,22 @@ export function setMockActiveTenantId(tenantId: string | null): void {
   }
 }
 
+/**
+ * REAL-BACKEND: holder for the active tenant id, mirrored from the auth store
+ * (see AuthProvider) so the axios interceptor can read it WITHOUT a React hook.
+ *
+ * The HRLab Super Admin can belong to several company-clients and switches the
+ * active one via the TenantSelector. The backend reads `X-Active-Tenant-Id` and
+ * validates it against the user's memberships, then scopes data + permissions to
+ * that company. This is an auth-context header (like a JWT claim), NOT a
+ * business `tenant_id` field — clients still never send tenant_id in path/query/
+ * body (see noTenantIdLeak.test.ts, which explicitly allows this header).
+ */
+let activeTenantId: string | null = null;
+export function setActiveTenantHeader(tenantId: string | null): void {
+  activeTenantId = tenantId;
+}
+
 httpClient.interceptors.request.use((req: InternalAxiosRequestConfig) => {
   // Dev mode against the REAL backend authenticates via X-Dev-* headers
   // (see below), NOT a Bearer token. The local `dev-token-*` placeholder is
@@ -97,6 +113,14 @@ httpClient.interceptors.request.use((req: InternalAxiosRequestConfig) => {
   // entire branch is dead-code-eliminated in production builds.
   if (__ENABLE_MSW__ && env.useMockApi && mockActiveTenantId) {
     req.headers.set('X-Mock-Tenant-Id', mockActiveTenantId);
+  }
+  // Real backend: forward the active company-client so the server can scope
+  // data + permissions to the tenant the user selected in the TenantSelector.
+  // Auth-context header (validated against memberships server-side), NOT a
+  // business tenant_id field. Sent in all non-mock environments whenever an
+  // active tenant is set; the mock adapter uses X-Mock-Tenant-Id instead.
+  if (!env.useMockApi && activeTenantId) {
+    req.headers.set('X-Active-Tenant-Id', activeTenantId);
   }
   // Dev-only: when running against the REAL backend (MSW off), forward the
   // dev identity so DevAuthFilter can resolve roles/permissions from the DB.

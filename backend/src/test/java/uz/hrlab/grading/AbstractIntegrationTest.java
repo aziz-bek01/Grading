@@ -6,9 +6,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
 
@@ -32,11 +31,28 @@ import java.util.UUID;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Testcontainers
 @ExtendWith(RequiresDocker.class)
 public abstract class AbstractIntegrationTest {
 
-    @Container
+    /**
+     * Singleton Testcontainers Postgres shared by ALL integration test classes.
+     *
+     * <p>Started ONCE in a static initializer and intentionally never stopped
+     * between classes (Ryuk reaps it at JVM exit) — the Testcontainers
+     * "singleton container" pattern.
+     *
+     * <p>The previous per-class lifecycle ({@code @Testcontainers} +
+     * {@code @Container}) stopped this static container after the FIRST test
+     * class, while Spring's CACHED application context kept a Hikari DataSource
+     * bound to the now-dead mapped port. Every subsequent class then failed with
+     * {@code Connection refused} in CI (where Surefire fork/timing differs from
+     * a local run, so the bug stayed hidden locally). A stable, always-up
+     * singleton keeps every cached context valid.
+     *
+     * <p>Start is guarded by a Docker-availability check so a developer with no
+     * Docker daemon still gets a clean skip via {@link RequiresDocker} rather
+     * than an {@code ExceptionInInitializerError}.
+     */
     @ServiceConnection
     public static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -44,6 +60,12 @@ public abstract class AbstractIntegrationTest {
                     .withUsername("grading_test")
                     .withPassword("grading_test_pwd")
                     .withReuse(false);
+
+    static {
+        if (DockerClientFactory.instance().isDockerAvailable()) {
+            POSTGRES.start();
+        }
+    }
 
     /**
      * Available for subclasses that need raw SQL access (control-plane row

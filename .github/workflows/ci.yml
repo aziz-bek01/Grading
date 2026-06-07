@@ -438,6 +438,7 @@ jobs:
           images: ${{ env.IMAGE_BACKEND }}
           tags: |
             type=sha,prefix=sha-,format=short
+            type=sha,prefix=sha-,format=long
             type=ref,event=branch
             type=ref,event=pr,prefix=pr-
             type=semver,pattern={{version}}
@@ -494,6 +495,7 @@ jobs:
           images: ${{ env.IMAGE_FRONTEND }}
           tags: |
             type=sha,prefix=sha-,format=short
+            type=sha,prefix=sha-,format=long
             type=ref,event=branch
             type=ref,event=pr,prefix=pr-
             type=semver,pattern={{version}}

@@ -28,8 +28,13 @@ env:
   NODE_VERSION: "22"
   MAVEN_CLI_OPTS: "-B -ntp -e -Dstyle.color=always"
   REGISTRY: ghcr.io
-  IMAGE_BACKEND: ghcr.io/${{ github.repository }}/grading-api
-  IMAGE_FRONTEND: ghcr.io/${{ github.repository }}/grading-frontend
+  # OCI/Docker references MUST be lowercase. github.repository is
+  # "aziz-bek01/Grading" (capital G); docker push normalizes it, but syft
+  # (sbom) and trivy (image-scan) parse the raw ref and reject the capital.
+  # Hardcode the lowercased namespace so build, image-scan, and sbom all agree
+  # — and it matches the images deploy.yml already publishes.
+  IMAGE_BACKEND: ghcr.io/aziz-bek01/grading/grading-api
+  IMAGE_FRONTEND: ghcr.io/aziz-bek01/grading/grading-frontend
 
 jobs:
 

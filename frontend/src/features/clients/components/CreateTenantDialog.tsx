@@ -57,12 +57,19 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
     defaultValues: DEFAULTS,
   });
 
+  // Reset the form fields whenever the drawer (re)opens. Server-error state is
+  // cleared in handleClose() instead, keeping setState out of this effect
+  // (react-hooks/set-state-in-effect).
   useEffect(() => {
     if (open) {
       reset(DEFAULTS);
-      setServerError(null);
     }
   }, [open, reset]);
+
+  const handleClose = () => {
+    setServerError(null);
+    onClose();
+  };
 
   const submit = handleSubmit(async (data) => {
     setServerError(null);
@@ -78,7 +85,7 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
     };
     try {
       await onSubmit(payload);
-      onClose();
+      handleClose();
     } catch (err) {
       // Map the backend slug-collision to a friendly, field-level message.
       if (err instanceof ApiError && err.code === 'TENANT_SLUG_TAKEN') {
@@ -98,7 +105,7 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
       open={open}
       title={t('clients.create.title')}
       subtitle={t('clients.create.subtitle')}
-      onClose={onClose}
+      onClose={handleClose}
       onSubmit={submit}
       submitLabel={t('clients.create.submit')}
     >

@@ -612,12 +612,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # upload-artifact:false — the action auto-uploads the SBOM as a workflow
+      # artifact by default, which fails on the account's hit artifact-storage
+      # quota. We only need the SBOM generated (output-file); the optional
+      # persisted copy is handled by the continue-on-error upload step below.
       - name: Backend SBOM
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.IMAGE_BACKEND }}:sha-${{ github.sha }}
           format: spdx-json
           output-file: sbom-backend.spdx.json
+          upload-artifact: false
 
       - name: Frontend SBOM
         uses: anchore/sbom-action@v0
@@ -625,6 +630,7 @@ jobs:
           image: ${{ env.IMAGE_FRONTEND }}:sha-${{ github.sha }}
           format: spdx-json
           output-file: sbom-frontend.spdx.json
+          upload-artifact: false
 
       - name: Upload SBOM artifacts
         continue-on-error: true

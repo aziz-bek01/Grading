@@ -150,7 +150,7 @@ public class InviteUserUseCase {
         // Validate the admin-set password up-front (before any write) ONLY when
         // the IdP will be used. When disabled, the password is ignored entirely.
         if (idpEnabled) {
-            validatePasswordComplexity(rawPassword);
+            PasswordPolicy.validate(rawPassword, "USER_INVITE_WEAK_PASSWORD");
         }
 
         // Resolve roles + per-role HRLab gate BEFORE any write.
@@ -262,23 +262,6 @@ public class InviteUserUseCase {
             log.warn("IdP provisioning failed during invite; rolling back. email={} code={}",
                     user.getEmail(), ex.getCode());
             throw ex; // rolls back the grading rows — no half-provisioned user
-        }
-    }
-
-    /**
-     * ZITADEL default password policy: min length 8, at least one upper, one
-     * lower, one digit and one symbol. Enforced HERE (not via bean validation)
-     * because it only applies when the IdP feature flag is on.
-     */
-    private static void validatePasswordComplexity(String pw) {
-        if (pw == null || pw.length() < 8
-                || !pw.matches(".*[A-Z].*")
-                || !pw.matches(".*[a-z].*")
-                || !pw.matches(".*[0-9].*")
-                || !pw.matches(".*[^A-Za-z0-9].*")) {
-            throw new ValidationException("USER_INVITE_WEAK_PASSWORD",
-                    "Password must be at least 8 characters and include an uppercase letter, "
-                            + "a lowercase letter, a number and a symbol.");
         }
     }
 

@@ -43,4 +43,16 @@ public class NoOpIdentityProvisioningClient implements IdentityProvisioningPort 
     public void reactivateUser(String externalSubject) {
         // intentionally empty — IdP disabled
     }
+
+    /** No-op: IdP disabled, so there is no credential store to update. */
+    @Override
+    public void setPassword(String externalSubject, String rawPassword) {
+        // intentionally empty — IdP disabled
+    }
+
+    /** No-op: IdP disabled. The grading email is updated by the use case alone. */
+    @Override
+    public void changeEmail(String externalSubject, String newEmail) {
+        // intentionally empty — IdP disabled
+    }
 }

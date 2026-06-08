@@ -118,7 +118,8 @@ public class UserController {
     @PreAuthorize("hasAnyAuthority('USER_UPDATE','USER_ACCESS_MANAGE')")
     public UserDetailsResponse patch(@PathVariable UUID id,
                                      @Valid @RequestBody PatchUserRequest req) {
-        return patchUser.patch(id, req.fullName(), req.locale(), req.status());
+        return patchUser.patch(id, req.fullName(), req.locale(), req.status(),
+                req.email(), req.password());
     }
 
     // 5) POST /api/v1/users/{id}/memberships

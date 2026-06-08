@@ -167,6 +167,92 @@ public class ZitadelIdentityProvisioningClient implements IdentityProvisioningPo
     }
 
     /**
+     * Set the account password: {@code POST /v2/users/{id}/password} with body
+     * {@code {"newPassword":{"password":"<pw>","changeRequired":false}}} (200 on
+     * success). The raw password is NEVER logged — only the subject id, status
+     * and ZITADEL error id appear on failure.
+     */
+    @Override
+    public void setPassword(String externalSubject, String rawPassword) {
+        if (externalSubject == null || externalSubject.isBlank()) {
+            // The use case raises the user-facing "no IdP account" error before
+            // reaching here; this is a defensive short-circuit only.
+            return;
+        }
+        Map<String, Object> body = Map.of(
+                "newPassword", Map.of(
+                        "password", rawPassword,
+                        "changeRequired", false));
+        try {
+            restClient.post()
+                    .uri("/v2/users/{id}/password", externalSubject)
+                    .headers(this::authHeaders)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("IdP password set succeeded. subject={}", externalSubject);
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            // NOTE: the request BODY (which holds the password) is never logged.
+            log.warn("IdP password set failed. subject={} status={} zitadelErr={}",
+                    externalSubject, status, zitadelErrorId(ex));
+            throw new IdentityProvisioningException(
+                    "Identity provider rejected the password change (status " + status + ")", ex);
+        } catch (Exception ex) {
+            log.warn("IdP password set errored. subject={} cause={}", externalSubject,
+                    ex.getClass().getSimpleName());
+            throw new IdentityProvisioningException(
+                    "Identity provider is unreachable; the password change could not be completed", ex);
+        }
+    }
+
+    /**
+     * Change the account email/username: {@code POST /v2/users/{id}/email} with
+     * body {@code {"email":"<new>","isVerified":true}} (200 on success). The new
+     * email is safe to log (it is not a secret); the token is not. A genuine
+     * failure surfaces so the caller's transaction can roll back the grading
+     * email and keep both stores consistent.
+     */
+    @Override
+    public void changeEmail(String externalSubject, String newEmail) {
+        if (externalSubject == null || externalSubject.isBlank()) {
+            return; // defensive — use case guards before calling
+        }
+        String normalised = newEmail == null ? null : newEmail.trim();
+        if (normalised == null || normalised.isBlank()) {
+            throw new IdentityProvisioningException(
+                    "A new email is required to change the IdP account email");
+        }
+        Map<String, Object> body = Map.of(
+                "email", normalised,
+                "isVerified", true);
+        try {
+            restClient.post()
+                    .uri("/v2/users/{id}/email", externalSubject)
+                    .headers(this::authHeaders)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("IdP email change succeeded. subject={} email={}", externalSubject, normalised);
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            log.warn("IdP email change failed. subject={} email={} status={} zitadelErr={}",
+                    externalSubject, normalised, status, zitadelErrorId(ex));
+            throw new IdentityProvisioningException(
+                    "Identity provider rejected the email change (status " + status + ")", ex);
+        } catch (IdentityProvisioningException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.warn("IdP email change errored. subject={} email={} cause={}",
+                    externalSubject, normalised, ex.getClass().getSimpleName());
+            throw new IdentityProvisioningException(
+                    "Identity provider is unreachable; the email change could not be completed", ex);
+        }
+    }
+
+    /**
      * POST {@code /v2/users/{id}/{action}} (action = {@code deactivate} or
      * {@code reactivate}); both take no body and return 200 on success.
      *

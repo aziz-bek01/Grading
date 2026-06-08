@@ -22,7 +22,9 @@ import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * Use case for {@code PATCH /api/v1/users/{id}} — partial update of the
@@ -60,11 +62,39 @@ import java.util.UUID;
  * leave the user fully active because ZITADEL was momentarily down. The
  * deactivate/reactivate calls are themselves idempotent-friendly (see port
  * contract), so a later manual/automated retry is safe.
+ *
+ * <h3>Credential edits (decision doc 08 extension)</h3>
+ * <ul>
+ *   <li><b>password</b> — admin-set IdP credential reset. Requires the IdP
+ *       feature flag ON and an existing {@code external_idp_subject}; a user with
+ *       no IdP account cannot have a password (ValidationException
+ *       {@code USER_NO_IDP_ACCOUNT}). The password is validated against the same
+ *       {@link PasswordPolicy} as invite, pushed via {@code setPassword}, and
+ *       audited as {@code USER_PASSWORD_RESET} — NEVER carrying the value.</li>
+ *   <li><b>email</b> — the principal RESOLVE KEY, so grading and the IdP MUST
+ *       stay in sync. Consistency model here is the OPPOSITE of status:
+ *       ALL-OR-NOTHING. Inside the {@code @Transactional}, {@code users.email} is
+ *       updated and then (if IdP enabled and provisioned) {@code changeEmail} is
+ *       called; if ZITADEL rejects it, the exception PROPAGATES and the tx ROLLS
+ *       BACK the grading email — both stores stay on the OLD value (consistent).
+ *       On success both are NEW (consistent). With the IdP disabled the grading
+ *       email is updated alone. Uniqueness is enforced against
+ *       {@code findByEmailIgnoreCase} ({@code USER_EMAIL_TAKEN}).</li>
+ * </ul>
  */
 @Service
 public class PatchUserUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(PatchUserUseCase.class);
+
+    /**
+     * Lightweight syntactic email guard, mirroring the {@code @Email} bound on
+     * {@link uz.hrlab.grading.access.api.PatchUserRequest}. The bean rule covers
+     * the HTTP path; this re-check guards programmatic callers and keeps the rule
+     * close to the uniqueness check.
+     */
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final UserManagementPolicy policy;
     private final UserRepository userRepo;
@@ -91,7 +121,8 @@ public class PatchUserUseCase {
     }
 
     @Transactional
-    public UserDetailsResponse patch(UUID userId, String fullName, String locale, String status) {
+    public UserDetailsResponse patch(UUID userId, String fullName, String locale, String status,
+                                     String email, String password) {
         TenantContext ctx = TenantContextHolder.requireActive();
 
         UserJpaEntity user = userRepo.findById(userId)
@@ -111,6 +142,9 @@ public class PatchUserUseCase {
         // change but ACTED ON only AFTER the in-app row is persisted (best-effort,
         // never blocks the in-app cutoff). null = no IdP transition this request.
         UserStatus idpTransition = null;
+        // The previous email, captured before any mutation, for the
+        // USER_EMAIL_CHANGED audit (old→new). null = email not changing.
+        String emailChangedFrom = null;
 
         if (fullName != null) {
             String trimmed = fullName.trim();
@@ -128,6 +162,32 @@ public class PatchUserUseCase {
             user.setDefaultLocale(locale);
             reason.append("locale ");
             changed = true;
+        }
+        if (email != null) {
+            String trimmed = email.trim();
+            if (trimmed.isEmpty()) {
+                throw new ValidationException("USER_PATCH_BLANK_EMAIL",
+                        "email cannot be blank when provided");
+            }
+            // Case-insensitive: only act when it genuinely differs.
+            if (!trimmed.equalsIgnoreCase(user.getEmail())) {
+                if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+                    throw new ValidationException("USER_PATCH_BAD_EMAIL",
+                            "email is not a valid address");
+                }
+                // Uniqueness: the principal resolve key must stay 1:1 with a user.
+                userRepo.findByEmailIgnoreCase(trimmed).ifPresent(other -> {
+                    if (!other.getId().equals(user.getId())) {
+                        throw new ValidationException("USER_EMAIL_TAKEN",
+                                "email is already in use by another user");
+                    }
+                });
+                emailChangedFrom = user.getEmail();
+                // Store lower-cased to match the invite flow + the unique index.
+                user.setEmail(trimmed.toLowerCase(Locale.ROOT));
+                reason.append("email ");
+                changed = true;
+            }
         }
         if (status != null) {
             UserStatus target;
@@ -156,6 +216,21 @@ public class PatchUserUseCase {
                 }
             }
         }
+        // Password reset is independent of the grading row (the credential lives
+        // ONLY in the IdP). Validate + require an IdP account BEFORE any write so a
+        // bad request never half-applies. Push happens below, inside the same tx.
+        boolean resetPassword = password != null && !password.isBlank();
+        if (resetPassword) {
+            PasswordPolicy.validate(password, "USER_PASSWORD_WEAK");
+            if (!idpProps.isEnabled() || user.getExternalIdpSubject() == null
+                    || user.getExternalIdpSubject().isBlank()) {
+                // No credential store to write to — surface a clear, actionable error
+                // rather than silently dropping the password.
+                throw new ValidationException("USER_NO_IDP_ACCOUNT",
+                        "This user has no identity-provider account, so a password cannot be set.");
+            }
+        }
+
         if (changed) {
             userRepo.save(user);
             audit.record(AuditEvent.builder()
@@ -167,8 +242,43 @@ public class PatchUserUseCase {
                     .reason(reason.toString().trim())
                     .build());
         }
-        // IdP call runs AFTER the in-app change is persisted — best-effort, never
-        // blocks the in-app cutoff (see class Javadoc, consistency decision).
+
+        // EMAIL — ALL-OR-NOTHING (opposite of status). The grading email is
+        // already set above; if the IdP push fails the exception PROPAGATES so the
+        // @Transactional rolls the grading email back. Both stores stay consistent
+        // (old/old on failure, new/new on success). IdP disabled ⇒ grading only.
+        if (emailChangedFrom != null) {
+            String subject = user.getExternalIdpSubject();
+            if (idpProps.isEnabled() && subject != null && !subject.isBlank()) {
+                identityProvisioning.changeEmail(subject, user.getEmail());
+            }
+            // old→new are not secrets — safe to audit for forensics.
+            audit.record(AuditEvent.builder()
+                    .tenantId(ctx.tenantId())
+                    .actorUserId(ctx.userId())
+                    .action(AuditAction.USER_EMAIL_CHANGED)
+                    .entityType("User")
+                    .entityId(userId)
+                    .reason("from=" + emailChangedFrom + " to=" + user.getEmail())
+                    .build());
+        }
+
+        // PASSWORD — push the validated credential to the IdP inside the tx; if it
+        // throws the whole PATCH rolls back. NEVER audit/log the value.
+        if (resetPassword) {
+            identityProvisioning.setPassword(user.getExternalIdpSubject(), password);
+            audit.record(AuditEvent.builder()
+                    .tenantId(ctx.tenantId())
+                    .actorUserId(ctx.userId())
+                    .action(AuditAction.USER_PASSWORD_RESET)
+                    .entityType("User")
+                    .entityId(userId)
+                    .reason("externalIdpSubject=" + user.getExternalIdpSubject())
+                    .build());
+        }
+
+        // IdP STATUS call runs AFTER the in-app change is persisted — best-effort,
+        // never blocks the in-app cutoff (see class Javadoc, consistency decision).
         if (idpTransition != null) {
             syncIdpStatus(ctx, user, idpTransition);
         }

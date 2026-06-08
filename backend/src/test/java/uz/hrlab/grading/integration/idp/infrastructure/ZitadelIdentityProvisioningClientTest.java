@@ -292,4 +292,112 @@ class ZitadelIdentityProvisioningClientTest {
         assertThatCode(() -> client.deactivateUser("  ")).doesNotThrowAnyException();
         server.verify(); // proves no HTTP call was made
     }
+
+    // --- credential edits: setPassword / changeEmail (validated v2 calls) ---
+
+    @Test
+    void setPasswordPostsValidatedBodyWithBearer() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/password"))
+                .andExpect(method(POST))
+                .andExpect(header("Authorization", "Bearer test-pat"))
+                .andExpect(jsonPath("$.newPassword.password").value("N3wP@ssword"))
+                .andExpect(jsonPath("$.newPassword.changeRequired").value(false))
+                .andRespond(withSuccess()); // 200, no body
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        client.setPassword("zid-123", "N3wP@ssword");
+        server.verify();
+    }
+
+    @Test
+    void setPasswordSkipsCallForNullOrBlankSubject() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        // No expectations: any HTTP call would fail verification.
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        assertThatCode(() -> client.setPassword(null, "N3wP@ssword")).doesNotThrowAnyException();
+        assertThatCode(() -> client.setPassword("  ", "N3wP@ssword")).doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void setPasswordThrowsOnServerError() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/password"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":13,\"message\":\"internal\"}"));
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        assertThatThrownBy(() -> client.setPassword("zid-123", "N3wP@ssword"))
+                .isInstanceOf(IdentityProvisioningException.class);
+        server.verify();
+    }
+
+    @Test
+    void changeEmailPostsPreVerifiedEmailWithBearer() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/email"))
+                .andExpect(method(POST))
+                .andExpect(header("Authorization", "Bearer test-pat"))
+                .andExpect(jsonPath("$.email").value("new@client.uz"))
+                .andExpect(jsonPath("$.isVerified").value(true))
+                .andRespond(withSuccess()); // 200, no body
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        client.changeEmail("zid-123", "new@client.uz");
+        server.verify();
+    }
+
+    @Test
+    void changeEmailSkipsCallForNullSubject() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        // No expectations: any HTTP call would fail verification.
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        assertThatCode(() -> client.changeEmail(null, "new@client.uz")).doesNotThrowAnyException();
+        assertThatCode(() -> client.changeEmail("  ", "new@client.uz")).doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void changeEmailThrowsOnConflict() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        // ZITADEL rejects the new email (e.g. already taken at the IdP) → surface
+        // so the caller's tx rolls the grading email back (consistency).
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/email"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.CONFLICT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":6,\"message\":\"ALREADY_EXISTS\"}"));
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        assertThatThrownBy(() -> client.changeEmail("zid-123", "dup@client.uz"))
+                .isInstanceOf(IdentityProvisioningException.class);
+        server.verify();
+    }
 }

@@ -275,9 +275,34 @@ function handleUpdate(id: string, config: AxiosRequestConfig): MatchResult {
       'USER_PATCH_BAD_STATUS',
     );
   }
+  // Email change — validate syntax + uniqueness (mirror backend USER_EMAIL_TAKEN).
+  if (body.email !== undefined) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
+      return badRequest('email must be a valid RFC address', 'VALIDATION_EMAIL');
+    }
+    const taken = userDb.users.some(
+      (x) => x.id !== id && x.email.toLowerCase() === body.email!.toLowerCase(),
+    );
+    if (taken) {
+      return badRequest('email already in use', 'USER_EMAIL_TAKEN');
+    }
+  }
+  // Password change — enforce the same complexity as the invite flow.
+  if (body.password !== undefined) {
+    const strong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(body.password);
+    if (!strong) {
+      return badRequest(
+        'password does not meet complexity requirements',
+        'USER_INVITE_WEAK_PASSWORD',
+      );
+    }
+  }
   if (body.full_name !== undefined) u.full_name = body.full_name;
+  if (body.email !== undefined) u.email = body.email;
   if (body.locale !== undefined) u.locale = body.locale;
   if (body.status !== undefined) u.status = body.status;
+  // Note: the mock does not persist passwords — it only honours the contract
+  // (validation + acceptance). No password is ever stored or logged.
   u.updated_at = new Date().toISOString();
   return ok(toListRow(u));
 }

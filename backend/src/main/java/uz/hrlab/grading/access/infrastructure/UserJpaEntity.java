@@ -69,6 +69,13 @@ public class UserJpaEntity extends AuditedJpaEntity {
     public void setStatus(UserStatus status) { this.status = status; }
     public void setLastLoginAt(OffsetDateTime lastLoginAt) { this.lastLoginAt = lastLoginAt; }
     /**
+     * Changed only by {@code PatchUserUseCase} (admin user edit). The email is
+     * the principal RESOLVE KEY — {@code JwtTenantContextResolver} matches the
+     * JWT email claim against this column — so the use case keeps it in sync with
+     * the IdP all-or-nothing within its transaction.
+     */
+    public void setEmail(String email) { this.email = email; }
+    /**
      * Populated by {@code InviteUserUseCase} when IdP provisioning succeeds
      * (decision doc 08, Option A) — the stable ZITADEL user id so future logins
      * resolve by {@code sub}, not only by email. Was always null before this

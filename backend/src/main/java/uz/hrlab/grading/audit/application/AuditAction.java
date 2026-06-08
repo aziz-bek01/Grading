@@ -48,6 +48,13 @@ public final class AuditAction {
     public static final String USER_SALARY_PERMISSION_REVOKED     = "USER_SALARY_PERMISSION_REVOKED";
     public static final String CROSS_TENANT_USER_ACCESS_ATTEMPT   = "CROSS_TENANT_USER_ACCESS_ATTEMPT";
 
+    // Credential edits via PATCH /api/v1/users/{id} (decision doc 08 extension).
+    // The IdP is the system of record for credentials, so these reflect changes
+    // pushed to ZITADEL. USER_PASSWORD_RESET NEVER carries the password value;
+    // USER_EMAIL_CHANGED records old→new emails (not secrets) for forensics.
+    public static final String USER_PASSWORD_RESET               = "USER_PASSWORD_RESET";
+    public static final String USER_EMAIL_CHANGED                = "USER_EMAIL_CHANGED";
+
     // IdP provisioning (decision doc 08, Option A — admin-set-password).
     // Emitted by InviteUserUseCase when grading.idp.zitadel.enabled=true.
     // NEVER carry the password or the IdP token in the reason/payload — only the

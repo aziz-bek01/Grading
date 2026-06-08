@@ -95,6 +95,52 @@ public interface IdentityProvisioningPort {
     void reactivateUser(String externalSubject);
 
     /**
+     * Set (reset) the credential of an existing IdP account to {@code rawPassword}.
+     * Symmetric with the admin-set-password invite path — the new password is
+     * applied with {@code changeRequired=false} so the user can log in with it
+     * immediately, no email/verify step.
+     *
+     * <p>Real ZITADEL call: {@code POST /v2/users/{id}/password} with body
+     * {@code {"newPassword":{"password":"<pw>","changeRequired":false}}} ⇒ 200.
+     *
+     * <h3>Security contract</h3>
+     * The {@code rawPassword} is NEVER logged, never echoed, never placed in an
+     * exception message. Implementations guard for a null/blank subject and
+     * short-circuit (a user with no IdP account is the caller's concern — the
+     * use case raises the user-facing error before calling here).
+     *
+     * @param externalSubject the {@code external_idp_subject} whose password to
+     *                        set; null/blank short-circuits to a no-op
+     * @param rawPassword     the new credential, meeting the IdP complexity policy
+     * @throws IdentityProvisioningException on a genuine, non-recoverable failure
+     *         (auth, 5xx, network); the message carries NO password/token
+     */
+    void setPassword(String externalSubject, String rawPassword);
+
+    /**
+     * Change the e-mail/username of an existing IdP account to {@code newEmail},
+     * pre-verified so it is usable as the login identity immediately. The email
+     * is the principal resolve key (the JWT email claim is matched against
+     * {@code public.users.email}), so the caller keeps grading and the IdP in
+     * sync; see {@code PatchUserUseCase} for the all-or-nothing wiring.
+     *
+     * <p>Real ZITADEL call: {@code POST /v2/users/{id}/email} with body
+     * {@code {"email":"<new>","isVerified":true}} ⇒ 200.
+     *
+     * <h3>Idempotency / failure contract</h3>
+     * A genuine failure (auth, 5xx, network) surfaces as
+     * {@link IdentityProvisioningException} so the caller's transaction can roll
+     * back the grading email and keep both stores consistent. Implementations
+     * guard for a null/blank subject and short-circuit.
+     *
+     * @param externalSubject the {@code external_idp_subject} to update;
+     *                        null/blank short-circuits to a no-op
+     * @param newEmail        the new, already-uniqueness-checked email
+     * @throws IdentityProvisioningException on a genuine, non-recoverable failure
+     */
+    void changeEmail(String externalSubject, String newEmail);
+
+    /**
      * Outcome of {@link #provisionUser}. Distinguishes a freshly created IdP
      * account from a link to a pre-existing one so the caller can emit the
      * correct audit action ({@code USER_IDP_ACCOUNT_CREATED} vs

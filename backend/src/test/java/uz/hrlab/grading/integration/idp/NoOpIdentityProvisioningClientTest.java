@@ -38,4 +38,16 @@ class NoOpIdentityProvisioningClientTest {
         assertThatCode(() -> client.reactivateUser("any-subject"))
                 .doesNotThrowAnyException();
     }
+
+    @Test
+    void setPasswordIsANoOp() {
+        assertThatCode(() -> client.setPassword("any-subject", "irrelevant"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void changeEmailIsANoOp() {
+        assertThatCode(() -> client.changeEmail("any-subject", "new@client.uz"))
+                .doesNotThrowAnyException();
+    }
 }

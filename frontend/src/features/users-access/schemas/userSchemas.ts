@@ -140,6 +140,25 @@ export const UpdateUserSchema = z.object({
     .min(2, { message: 'validation_fullname_min' })
     .max(200, { message: 'validation_fullname_max' })
     .optional(),
+  /**
+   * New email. Editable on the PATCH endpoint; the backend validates syntax +
+   * uniqueness and rejects a clash with 400 `USER_EMAIL_TAKEN`. We mirror the
+   * syntax check client-side so the admin gets immediate feedback.
+   */
+  email: z.string().trim().email({ message: 'validation_email' }).optional(),
+  /**
+   * Optional new login password. Empty string means "leave password unchanged"
+   * and is stripped before submit (never sent). When non-empty it must satisfy
+   * the same complexity policy as the invite flow ({@link PASSWORD_COMPLEXITY});
+   * the backend re-validates and rejects a weak value with 400
+   * `USER_INVITE_WEAK_PASSWORD`.
+   */
+  password: z
+    .string()
+    .refine((v) => v === '' || PASSWORD_COMPLEXITY.test(v), {
+      message: 'validation_password_complexity',
+    })
+    .optional(),
   locale: localeEnum.optional(),
   status: z.enum(EDITABLE_USER_STATUSES).optional(),
 });

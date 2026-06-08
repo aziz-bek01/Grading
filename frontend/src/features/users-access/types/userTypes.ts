@@ -122,6 +122,20 @@ export interface InviteUserPayload {
 
 export interface UpdateUserPayload {
   full_name?: string;
+  /**
+   * New email. Sent ONLY when changed from the current value. The backend
+   * validates syntax + uniqueness and rejects a clash with 400
+   * `USER_EMAIL_TAKEN`.
+   */
+  email?: string;
+  /**
+   * New login password. Sent ONLY when the admin entered one (omitted when the
+   * field is left blank → password unchanged). The backend enforces the same
+   * complexity as the invite flow (≥ 8 chars; upper, lower, number, symbol) and
+   * rejects a weak value with 400 `USER_INVITE_WEAK_PASSWORD`; if the user has
+   * no IdP account it returns 400 `USER_NO_IDP_ACCOUNT`.
+   */
+  password?: string;
   locale?: Locale;
   status?: UserStatus;
 }

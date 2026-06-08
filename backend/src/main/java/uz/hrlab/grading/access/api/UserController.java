@@ -101,7 +101,8 @@ public class UserController {
     @PreAuthorize("hasAnyAuthority('USER_INVITE','USER_ACCESS_MANAGE')")
     public ResponseEntity<UserDetailsResponse> invite(@Valid @RequestBody InviteUserRequest req) {
         UserDetailsResponse body = inviteUser.invite(
-                req.email(), req.fullName(), req.locale(), req.tenantId(), req.roleCodes());
+                req.email(), req.fullName(), req.locale(), req.tenantId(), req.roleCodes(),
+                req.password());
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 

@@ -89,6 +89,14 @@ export interface InviteUserPayload {
   full_name: string;
   locale: Locale;
   /**
+   * Initial login password the admin issues to the new user. The backend
+   * provisions the IdP (Zitadel) account from it and enforces Zitadel default
+   * complexity (≥ 8 chars; upper, lower, number, symbol) — a weak password is
+   * rejected with 400 `USER_INVITE_WEAK_PASSWORD`. Optional on the wire
+   * (omitted when the server's IdP is disabled), required by the UI form.
+   */
+  password?: string;
+  /**
    * Required ONLY for HRLAB_SUPER_ADMIN — they may target an arbitrary tenant.
    * For regular client admins, the backend derives tenant from the JWT and
    * the frontend MUST NOT send it.

@@ -15,17 +15,20 @@
  *   - CLIENT_GRANTABLE_ROLES for client admins.
  *   - SUPER_ADMIN_GRANTABLE_ROLES (full list) for super-admins.
  */
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Eye, EyeOff, Wand2 } from 'lucide-react';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
+import { ApiError } from '@/shared/api/apiError';
 import { useAuthStore } from '@/features/auth/authStore';
 import type { RoleCode } from '@/shared/auth/authTypes';
 import {
   CLIENT_GRANTABLE_ROLES,
   InviteUserSchema,
   SUPER_ADMIN_GRANTABLE_ROLES,
+  generateStrongPassword,
   type InviteUserInput,
 } from '../schemas/userSchemas';
 import type { InviteUserPayload } from '../types/userTypes';
@@ -46,11 +49,14 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
     ? SUPER_ADMIN_GRANTABLE_ROLES
     : CLIENT_GRANTABLE_ROLES;
 
+  const [showPassword, setShowPassword] = useState(false);
+
   const defaultValues = useMemo<InviteUserInput>(
     () => ({
       email: '',
       full_name: '',
       locale: user?.locale ?? 'ru-RU',
+      password: '',
       role_codes: [],
       tenant_id: isSuperAdmin ? activeTenant?.id : undefined,
     }),
@@ -62,6 +68,8 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
     handleSubmit,
     control,
     reset,
+    setValue,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<InviteUserInput>({
     resolver: zodResolver(InviteUserSchema),
@@ -72,19 +80,52 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
     if (open) reset(defaultValues);
   }, [open, defaultValues, reset]);
 
+  // Always hide the (cleartext) password when the drawer is dismissed so a
+  // freshly reopened invite never starts with a revealed value.
+  const handleClose = () => {
+    setShowPassword(false);
+    onClose();
+  };
+
   const submit = handleSubmit(async (data) => {
     const payload: InviteUserPayload = {
       email: data.email,
       full_name: data.full_name,
       locale: data.locale,
+      password: data.password,
       role_codes: data.role_codes,
       // Only super-admins can override; for everyone else the backend
       // derives from JWT and we MUST NOT include tenant_id.
       ...(isSuperAdmin && data.tenant_id ? { tenant_id: data.tenant_id } : {}),
     };
-    await onSubmit(payload);
-    onClose();
+    try {
+      await onSubmit(payload);
+      handleClose();
+    } catch (err) {
+      // Map known backend error codes to an inline field error and keep the
+      // drawer open so the admin can correct the input. Unknown errors are
+      // re-thrown for the surrounding mutation/toast handling.
+      if (err instanceof ApiError) {
+        const code = err.code;
+        if (code === 'USER_INVITE_WEAK_PASSWORD') {
+          setShowPassword(true);
+          setError('password', { type: 'server', message: 'validation_password_complexity' });
+          return;
+        }
+        if (code === 'USER_INVITE_UNKNOWN_ROLE' || code === 'UNKNOWN_ROLE_CODE') {
+          setError('role_codes', { type: 'server', message: 'validation_roles_unknown' });
+          return;
+        }
+      }
+      throw err;
+    }
   });
+
+  const onGeneratePassword = () => {
+    const generated = generateStrongPassword();
+    setValue('password', generated, { shouldValidate: true, shouldDirty: true });
+    setShowPassword(true);
+  };
 
   const errKey = (k: string | undefined) =>
     k ? t(`users.invite.${k}`, { defaultValue: k }) : undefined;
@@ -94,7 +135,7 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
       open={open}
       title={t('users.invite.title')}
       subtitle={t('users.invite.subtitle')}
-      onClose={onClose}
+      onClose={handleClose}
       onSubmit={submit}
       submitLabel={t('users.invite.submit')}
     >
@@ -132,6 +173,49 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
         {errors.full_name ? (
           <p className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.full_name.message)}
+          </p>
+        ) : null}
+      </div>
+
+      <div>
+        <label htmlFor="invite-password" className="text-sm font-medium text-text-primary">
+          {t('users.invite.password')} <span className="text-danger-700">*</span>
+        </label>
+        <div className="mt-1 flex items-stretch gap-2">
+          <div className="relative flex-1">
+            <input
+              id="invite-password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              {...register('password')}
+              className="w-full h-10 pl-3 pr-10 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
+              data-testid="invite-password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? t('users.invite.passwordHide') : t('users.invite.passwordShow')}
+              aria-pressed={showPassword}
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-text-secondary hover:text-text-primary"
+              data-testid="invite-password-toggle"
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={onGeneratePassword}
+            className="inline-flex items-center gap-1.5 h-10 px-3 border border-border-strong rounded-md text-sm text-text-primary bg-surface hover:bg-divider whitespace-nowrap"
+            data-testid="invite-password-generate"
+          >
+            <Wand2 size={14} />
+            {t('users.invite.passwordGenerate')}
+          </button>
+        </div>
+        <p className="text-xs text-text-muted mt-1">{t('users.invite.passwordHint')}</p>
+        {errors.password ? (
+          <p className="text-xs text-danger-700 mt-1" role="alert">
+            {errKey(errors.password.message)}
           </p>
         ) : null}
       </div>

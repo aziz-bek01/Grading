@@ -187,6 +187,19 @@ function handleInvite(config: AxiosRequestConfig): MatchResult {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
     return badRequest('email must be a valid RFC address', 'VALIDATION_EMAIL');
   }
+  // Password complexity guard — mirrors the backend (Zitadel default policy:
+  // min 8 chars, at least one upper, one lower, one number, one symbol). The
+  // password is OPTIONAL on the wire (IdP may be disabled), but when present it
+  // must be strong, so local stays honest against the real contract.
+  if (body.password !== undefined) {
+    const strong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(body.password);
+    if (!strong) {
+      return badRequest(
+        'password does not meet complexity requirements',
+        'USER_INVITE_WEAK_PASSWORD',
+      );
+    }
+  }
   // Role-code guard (mirror backend role catalog).
   const unknownInvite = unknownRoleCodes(body.role_codes);
   if (unknownInvite.length > 0) {

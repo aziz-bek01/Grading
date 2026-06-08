@@ -85,3 +85,15 @@ grading:
       # Stub key id/version for SalaryEncryptionConverter (MVP 3 ships real KMS).
       key-id: ${GRADING_SALARY_KEY_ID:dev-stub}
       key-version: ${GRADING_SALARY_KEY_VERSION:1}
+  idp:
+    # IdP provisioning (decision doc 08, Option A — admin-set-password, NO SMTP).
+    # FEATURE-FLAGGED: disabled by default so local/test/CI keep DB-only invites
+    # (no IdP, no network). Production turns it on via env vars sourced from the
+    # VPS .env.prod secret file (see docker-compose.prod.yml). The token is a
+    # high-value platform secret — NEVER committed, NEVER logged. Only ${VAR}
+    # placeholders appear here; the real values live only in the environment.
+    zitadel:
+      enabled:  ${GRADING_IDP_ZITADEL_ENABLED:false}
+      api-base: ${GRADING_IDP_ZITADEL_API_BASE:}
+      org-id:   ${GRADING_IDP_ZITADEL_ORG_ID:}
+      token:    ${GRADING_IDP_ZITADEL_TOKEN:}

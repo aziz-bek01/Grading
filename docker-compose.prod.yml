@@ -209,6 +209,17 @@ services:
       # --- Salary field encryption (MVP1 stub key id/version; real KMS in MVP3) ---
       GRADING_SALARY_KEY_ID: ${GRADING_SALARY_KEY_ID:-prod-stub}
       GRADING_SALARY_KEY_VERSION: ${GRADING_SALARY_KEY_VERSION:-1}
+      # --- IdP provisioning (decision doc 08, Option A — admin-set-password, NO SMTP) ---
+      # When ENABLED=true, an admin invite ALSO creates/links a ZITADEL login
+      # account so the invited user can sign in via OIDC. All four values are
+      # sourced from .env.prod on the VPS (NEVER committed). GRADING_IDP_ZITADEL_TOKEN
+      # is a machine-user PAT and a high-value platform secret — keep it out of git,
+      # logs and images. Spring relaxed-binds these to grading.idp.zitadel.*.
+      # Leave ENABLED unset/false to keep DB-only invites (no IdP side effects).
+      GRADING_IDP_ZITADEL_ENABLED: ${GRADING_IDP_ZITADEL_ENABLED:-false}
+      GRADING_IDP_ZITADEL_API_BASE: ${GRADING_IDP_ZITADEL_API_BASE:-}
+      GRADING_IDP_ZITADEL_ORG_ID: ${GRADING_IDP_ZITADEL_ORG_ID:-}
+      GRADING_IDP_ZITADEL_TOKEN: ${GRADING_IDP_ZITADEL_TOKEN:-}
       # --- JVM ---
       JAVA_OPTS: ${API_JAVA_OPTS:--XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0 -XX:+ExitOnOutOfMemoryError}
     networks: [grading-prod]

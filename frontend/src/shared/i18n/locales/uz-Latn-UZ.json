@@ -1326,7 +1326,7 @@
     "invite": {
       "button": "Foydalanuvchini taklif qilish",
       "title": "Foydalanuvchini taklif etish",
-      "subtitle": "Yangi foydalanuvchi aktivatsiya havolasi bilan xat oladi.",
+      "subtitle": "Boshlang‘ich parolni belgilang — foydalanuvchi ko‘rsatilgan email va parol bilan kiradi.",
       "submit": "Taklifni yuborish",
       "email": "Email",
       "fullName": "To'liq ism",
@@ -1339,7 +1339,14 @@
       "validation_email": "To'g'ri email kiriting.",
       "validation_fullname_min": "Ism kamida 2 ta belgidan iborat bo'lishi kerak.",
       "validation_fullname_max": "Ism 200 belgidan oshmasligi kerak.",
-      "validation_roles_min": "Kamida bitta rolni tanlang."
+      "validation_roles_min": "Kamida bitta rolni tanlang.",
+      "password": "Kirish paroli",
+      "passwordHint": "Bu — foydalanuvchining birinchi login paroli; uni xodimga bering.",
+      "passwordGenerate": "Kuchli parol yaratish",
+      "passwordShow": "Parolni ko‘rsatish",
+      "passwordHide": "Parolni yashirish",
+      "validation_password_complexity": "Kamida 8 ta belgi: katta va kichik harf, raqam va maxsus belgi.",
+      "validation_roles_unknown": "Notog‘ri rol tanlandi."
     },
     "assignRole": {
       "title": "Rol qo'shish",

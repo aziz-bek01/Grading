@@ -68,6 +68,15 @@ public class UserJpaEntity extends AuditedJpaEntity {
 
     public void setStatus(UserStatus status) { this.status = status; }
     public void setLastLoginAt(OffsetDateTime lastLoginAt) { this.lastLoginAt = lastLoginAt; }
+    /**
+     * Populated by {@code InviteUserUseCase} when IdP provisioning succeeds
+     * (decision doc 08, Option A) — the stable ZITADEL user id so future logins
+     * resolve by {@code sub}, not only by email. Was always null before this
+     * feature; never overwritten with null by the invite path.
+     */
+    public void setExternalIdpSubject(String externalIdpSubject) {
+        this.externalIdpSubject = externalIdpSubject;
+    }
     public void setFullName(String fullName) { this.fullName = fullName; }
     public void setDefaultLocale(String defaultLocale) { this.defaultLocale = defaultLocale; }
 }

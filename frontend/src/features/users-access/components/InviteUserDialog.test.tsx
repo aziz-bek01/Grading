@@ -39,15 +39,43 @@ describe('<InviteUserDialog />', () => {
     expect(screen.getByTestId('invite-tenant')).toBeInTheDocument();
     await user.type(screen.getByTestId('invite-email'), 'new@example.com');
     await user.type(screen.getByTestId('invite-fullname'), 'Anna Test');
+    await user.type(screen.getByTestId('invite-password'), 'Str0ng!Pass1');
     await user.click(screen.getByTestId('invite-role-CLIENT_HR_DIRECTOR'));
     await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const payload = onSubmit.mock.calls[0][0];
     expect(payload.email).toBe('new@example.com');
     expect(payload.full_name).toBe('Anna Test');
+    expect(payload.password).toBe('Str0ng!Pass1');
     expect(payload.role_codes).toContain('CLIENT_HR_DIRECTOR');
     // Super-admin payload may include tenant_id (selected tenant).
     expect(typeof payload.tenant_id === 'string').toBe(true);
+  });
+
+  it('refuses submission and shows an inline error when the password is weak', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={onSubmit} />));
+    await user.type(screen.getByTestId('invite-email'), 'weak@example.com');
+    await user.type(screen.getByTestId('invite-fullname'), 'Weak Pass');
+    // Missing uppercase / symbol → fails client-side complexity rule.
+    await user.type(screen.getByTestId('invite-password'), 'abc12345');
+    await user.click(screen.getByTestId('invite-role-CLIENT_HR_DIRECTOR'));
+    await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
+    // Zod blocks submit; an inline alert surfaces and onSubmit is never called.
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('generate button fills a strong, compliant password and reveals it', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={onSubmit} />));
+    await user.click(screen.getByTestId('invite-password-generate'));
+    const input = screen.getByTestId('invite-password') as HTMLInputElement;
+    // Revealed (type=text) so the admin can copy it.
+    expect(input.type).toBe('text');
+    expect(input.value).toMatch(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/);
   });
 });
 
@@ -67,6 +95,7 @@ describe('<InviteUserDialog /> as client admin (non-super)', () => {
     expect(screen.queryByTestId('invite-tenant')).not.toBeInTheDocument();
     await user.type(screen.getByTestId('invite-email'), 'newuser@example.com');
     await user.type(screen.getByTestId('invite-fullname'), 'Some User');
+    await user.type(screen.getByTestId('invite-password'), 'Str0ng!Pass1');
     await user.click(screen.getByTestId('invite-role-VIEWER'));
     await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
     await new Promise((r) => setTimeout(r, 0));

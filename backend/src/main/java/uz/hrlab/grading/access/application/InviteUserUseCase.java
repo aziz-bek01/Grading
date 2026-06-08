@@ -1,5 +1,7 @@
 package uz.hrlab.grading.access.application;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.api.UserDetailsResponse;
@@ -17,6 +19,9 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ValidationException;
+import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
+import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
+import uz.hrlab.grading.integration.idp.infrastructure.ZitadelIdpProperties;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
@@ -40,15 +45,47 @@ import java.util.UUID;
  *   <li>Find-or-create {@code user_tenant_memberships} with status
  *       {@code INVITED} (or re-activate from {@code REVOKED} to {@code ACTIVE}).</li>
  *   <li>Insert any missing {@code user_roles}; duplicates ignored.</li>
+ *   <li><b>IdP provisioning (decision doc 08, Option A — admin-set-password,
+ *       NO SMTP):</b> when {@code grading.idp.zitadel.enabled=true}, create or
+ *       link the ZITADEL login account, set {@code external_idp_subject}, and
+ *       flip the user + membership to {@code ACTIVE} so the invitee can log in
+ *       immediately (see login-ability decision below). When the flag is off
+ *       this step is a NO-OP and the invite stays DB-only exactly as before.</li>
  *   <li>Audit: USER_CREATED (if new), USER_INVITED, USER_MEMBERSHIP_ADDED,
- *       USER_ROLE_ASSIGNED per attached role.</li>
+ *       USER_ROLE_ASSIGNED per attached role, plus USER_IDP_ACCOUNT_CREATED /
+ *       USER_IDP_ACCOUNT_LINKED on provisioning, or USER_IDP_PROVISIONING_FAILED
+ *       on failure.</li>
  * </ol>
+ *
+ * <h3>Login-ability / status decision (deliberate)</h3>
+ * {@code JwtTenantContextResolver.pickActiveMembership} selects ONLY memberships
+ * whose status is {@code ACTIVE}. A user left {@code INVITED} (user and/or
+ * membership) therefore authenticates but resolves to a context with no active
+ * tenant and no roles — they can sign in but cannot actually work. Because the
+ * admin-set password is pre-verified at the IdP ({@code isVerified:true},
+ * {@code changeRequired:false}), there is NO second verification step that would
+ * justify keeping the user {@code INVITED}. So, ON SUCCESSFUL PROVISIONING, this
+ * use case flips both the {@code public.users} row and the target membership to
+ * {@code ACTIVE}. When IdP is disabled the legacy {@code INVITED} state is kept
+ * (Option B manual flow: the row flips to ACTIVE on first login elsewhere).
+ *
+ * <h3>Consistency (all-or-nothing)</h3>
+ * Provisioning runs inside the same {@code @Transactional} boundary. If it
+ * fails, the method throws {@link IdentityProvisioningException} and the whole
+ * invite ROLLS BACK — we never leave a user who looks invited in-app but cannot
+ * log in. The {@code USER_IDP_PROVISIONING_FAILED} audit row is written by
+ * {@code JpaAuditService} in {@code REQUIRES_NEW} propagation, so the failure
+ * remains on record even though the business rows are rolled back. This is the
+ * simplest correct behaviour; the commit-then-reconcile / PENDING mode in the
+ * decision doc is a later additive option and is intentionally NOT built here.
  *
  * <p>Returns the freshly built {@link UserDetailsResponse} so the frontend can
  * render the new user card without a follow-up GET.
  */
 @Service
 public class InviteUserUseCase {
+
+    private static final Logger log = LoggerFactory.getLogger(InviteUserUseCase.class);
 
     private final UserManagementPolicy policy;
     private final UserRepository userRepo;
@@ -58,6 +95,8 @@ public class InviteUserUseCase {
     private final TenantRepository tenantRepo;
     private final GetUserDetailsQuery detailsQuery;
     private final AuditService audit;
+    private final IdentityProvisioningPort identityProvisioning;
+    private final ZitadelIdpProperties idpProps;
 
     public InviteUserUseCase(UserManagementPolicy policy,
                              UserRepository userRepo,
@@ -66,7 +105,9 @@ public class InviteUserUseCase {
                              RoleRepository roleRepo,
                              TenantRepository tenantRepo,
                              GetUserDetailsQuery detailsQuery,
-                             AuditService audit) {
+                             AuditService audit,
+                             IdentityProvisioningPort identityProvisioning,
+                             ZitadelIdpProperties idpProps) {
         this.policy = policy;
         this.userRepo = userRepo;
         this.membershipRepo = membershipRepo;
@@ -75,11 +116,27 @@ public class InviteUserUseCase {
         this.tenantRepo = tenantRepo;
         this.detailsQuery = detailsQuery;
         this.audit = audit;
+        this.identityProvisioning = identityProvisioning;
+        this.idpProps = idpProps;
+    }
+
+    /**
+     * Back-compat overload (no password) — used by any caller/test that predates
+     * IdP provisioning. Behaves identically to the legacy DB-only invite when
+     * the IdP flag is off; if the flag is ON it will fail password validation,
+     * which is the correct contract (a password is required to make a real
+     * login account).
+     */
+    @Transactional
+    public UserDetailsResponse invite(String email, String fullName, String locale,
+                                      UUID tenantId, List<String> roleCodes) {
+        return invite(email, fullName, locale, tenantId, roleCodes, null);
     }
 
     @Transactional
     public UserDetailsResponse invite(String email, String fullName, String locale,
-                                      UUID tenantId, List<String> roleCodes) {
+                                      UUID tenantId, List<String> roleCodes,
+                                      String rawPassword) {
         TenantContext ctx = TenantContextHolder.requireActive();
         policy.requireCanManageInTenant(ctx, tenantId);
 
@@ -87,6 +144,13 @@ public class InviteUserUseCase {
             // Tenant does not exist → 404 (no probing).
             throw new ValidationException("USER_INVITE_INVALID_TENANT",
                     "Target tenant not found");
+        }
+
+        boolean idpEnabled = idpProps.isEnabled();
+        // Validate the admin-set password up-front (before any write) ONLY when
+        // the IdP will be used. When disabled, the password is ignored entirely.
+        if (idpEnabled) {
+            validatePasswordComplexity(rawPassword);
         }
 
         // Resolve roles + per-role HRLab gate BEFORE any write.
@@ -146,7 +210,97 @@ public class InviteUserUseCase {
             }
         }
 
+        // IdP provisioning — create/link the ZITADEL login account and make the
+        // invitee LOGIN-ABLE immediately. NO-OP when the flag is off.
+        if (idpEnabled) {
+            provisionAndActivate(ctx, tenantId, user, membership, rawPassword);
+        }
+
         return detailsQuery.byId(user.getId());
+    }
+
+    /**
+     * Create-or-link the IdP account, persist {@code external_idp_subject}, and
+     * flip the user + membership to {@code ACTIVE}. On failure: record
+     * {@code USER_IDP_PROVISIONING_FAILED} (survives via REQUIRES_NEW) and
+     * rethrow so the whole invite rolls back.
+     */
+    private void provisionAndActivate(TenantContext ctx, UUID tenantId,
+                                      UserJpaEntity user,
+                                      UserTenantMembershipJpaEntity membership,
+                                      String rawPassword) {
+        String[] names = splitName(user.getFullName());
+        try {
+            IdentityProvisioningPort.ProvisionResult result =
+                    identityProvisioning.provisionUser(user.getEmail(), names[0], names[1], rawPassword);
+
+            // Persist the stable external subject so future logins resolve by `sub`,
+            // not only by email (decision doc §4.6 — prefer external_idp_subject).
+            user.setExternalIdpSubject(result.externalSubject());
+
+            // Login-ability: admin-set password is pre-verified ⇒ activate now.
+            if (user.getStatus() == UserStatus.INVITED) {
+                user.setStatus(UserStatus.ACTIVE);
+            }
+            if (membership.getStatus() == MembershipStatus.INVITED) {
+                membership.setStatus(MembershipStatus.ACTIVE);
+            }
+            userRepo.save(user);
+            membershipRepo.save(membership);
+
+            String action = result.linkedExisting()
+                    ? AuditAction.USER_IDP_ACCOUNT_LINKED
+                    : AuditAction.USER_IDP_ACCOUNT_CREATED;
+            // Audit carries the external subject + email ONLY — never the password.
+            audit(ctx, tenantId, user.getId(), action,
+                    "externalIdpSubject=" + result.externalSubject() + " email=" + user.getEmail());
+        } catch (IdentityProvisioningException ex) {
+            // Failure audit (no password, no token). Written in REQUIRES_NEW so it
+            // is committed even though the invite transaction is about to roll back.
+            audit(ctx, tenantId, user.getId(), AuditAction.USER_IDP_PROVISIONING_FAILED,
+                    "email=" + user.getEmail() + " reason=" + ex.getCode());
+            log.warn("IdP provisioning failed during invite; rolling back. email={} code={}",
+                    user.getEmail(), ex.getCode());
+            throw ex; // rolls back the grading rows — no half-provisioned user
+        }
+    }
+
+    /**
+     * ZITADEL default password policy: min length 8, at least one upper, one
+     * lower, one digit and one symbol. Enforced HERE (not via bean validation)
+     * because it only applies when the IdP feature flag is on.
+     */
+    private static void validatePasswordComplexity(String pw) {
+        if (pw == null || pw.length() < 8
+                || !pw.matches(".*[A-Z].*")
+                || !pw.matches(".*[a-z].*")
+                || !pw.matches(".*[0-9].*")
+                || !pw.matches(".*[^A-Za-z0-9].*")) {
+            throw new ValidationException("USER_INVITE_WEAK_PASSWORD",
+                    "Password must be at least 8 characters and include an uppercase letter, "
+                            + "a lowercase letter, a number and a symbol.");
+        }
+    }
+
+    /**
+     * Split a full name into [givenName, familyName] for the IdP profile. The
+     * first whitespace-separated token is the given name; the remainder is the
+     * family name. A single-token name uses it for both so neither IdP field is
+     * blank.
+     */
+    private static String[] splitName(String fullName) {
+        String trimmed = fullName == null ? "" : fullName.trim();
+        if (trimmed.isEmpty()) {
+            return new String[]{"User", "User"};
+        }
+        int sp = trimmed.indexOf(' ');
+        if (sp < 0) {
+            return new String[]{trimmed, trimmed};
+        }
+        String given = trimmed.substring(0, sp).trim();
+        String family = trimmed.substring(sp + 1).trim();
+        return new String[]{given.isEmpty() ? trimmed : given,
+                family.isEmpty() ? trimmed : family};
     }
 
     private void audit(TenantContext ctx, UUID tenantId, UUID targetUserId,

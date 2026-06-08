@@ -48,6 +48,14 @@ public final class AuditAction {
     public static final String USER_SALARY_PERMISSION_REVOKED     = "USER_SALARY_PERMISSION_REVOKED";
     public static final String CROSS_TENANT_USER_ACCESS_ATTEMPT   = "CROSS_TENANT_USER_ACCESS_ATTEMPT";
 
+    // IdP provisioning (decision doc 08, Option A — admin-set-password).
+    // Emitted by InviteUserUseCase when grading.idp.zitadel.enabled=true.
+    // NEVER carry the password or the IdP token in the reason/payload — only the
+    // external subject id and email.
+    public static final String USER_IDP_ACCOUNT_CREATED    = "USER_IDP_ACCOUNT_CREATED";
+    public static final String USER_IDP_ACCOUNT_LINKED     = "USER_IDP_ACCOUNT_LINKED";
+    public static final String USER_IDP_PROVISIONING_FAILED = "USER_IDP_PROVISIONING_FAILED";
+
     // Project / org
     public static final String PROJECT_CREATED   = "PROJECT_CREATED";
     public static final String PROJECT_UPDATED   = "PROJECT_UPDATED";

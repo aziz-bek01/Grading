@@ -26,6 +26,7 @@ import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ResourceNotFoundException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
+import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
 import uz.hrlab.grading.approval.domain.ApprovalTransitionRejectedException;
 import uz.hrlab.grading.jobanalysis.domain.QuestionnaireTransitionRejectedException;
 import uz.hrlab.grading.jobprofile.domain.JobProfileTransitionRejectedException;
@@ -127,6 +128,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ProjectLockedException.class)
     public ResponseEntity<ErrorResponse> handleProjectLocked(ProjectLockedException ex) {
         return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
+    }
+
+    /**
+     * IdP-provisioning gap (decision doc 08): the grading request was valid but
+     * the upstream Identity Provider (ZITADEL) failed, so the login account
+     * could not be created/linked and the invite was rolled back. Map to
+     * {@code 502 BAD_GATEWAY} — it is an upstream dependency failure, not a
+     * client error and not an internal bug. The message is already sanitised by
+     * the exception (no password/token).
+     */
+    @ExceptionHandler(IdentityProvisioningException.class)
+    public ResponseEntity<ErrorResponse> handleIdpProvisioning(IdentityProvisioningException ex) {
+        log.warn("IdP provisioning failed cid={} code={}: {}", correlationId(),
+                ex.getCode(), ex.getMessage());
+        return build(HttpStatus.BAD_GATEWAY, ex.getCode(), ex.getMessage());
     }
 
     @ExceptionHandler(JobProfileTransitionRejectedException.class)

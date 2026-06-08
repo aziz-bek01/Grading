@@ -1326,7 +1326,7 @@
     "invite": {
       "button": "Invite user",
       "title": "Invite a user",
-      "subtitle": "The new user receives an email with an activation link.",
+      "subtitle": "Set an initial password — the user signs in with the email and password you provide.",
       "submit": "Send invitation",
       "email": "Email",
       "fullName": "Full name",
@@ -1339,7 +1339,14 @@
       "validation_email": "Enter a valid email address.",
       "validation_fullname_min": "Name must be at least 2 characters.",
       "validation_fullname_max": "Name must be at most 200 characters.",
-      "validation_roles_min": "Select at least one role."
+      "validation_roles_min": "Select at least one role.",
+      "password": "Login password",
+      "passwordHint": "This is the user’s initial login password — share it with the employee.",
+      "passwordGenerate": "Generate strong password",
+      "passwordShow": "Show password",
+      "passwordHide": "Hide password",
+      "validation_password_complexity": "At least 8 characters with an uppercase, lowercase, number and symbol.",
+      "validation_roles_unknown": "Selected role is not allowed."
     },
     "assignRole": {
       "title": "Add role",

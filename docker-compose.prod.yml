@@ -76,15 +76,25 @@ services:
       GRADING_AUDIT_READER_PASSWORD: ${GRADING_AUDIT_READER_PASSWORD}
     # Small-VPS tuning (2 GB box shared with quiz.hrlab.uz). Keeps Postgres RSS
     # modest so the JVM api + the existing services all fit. HikariCP defaults to
-    # ~10 connections, so max_connections=50 is generous.
+    # ~10 connections, so max_connections=40 is generous (api pool ~10).
+    #
+    # Memory math for the 320m mem_limit below:
+    #   shared_buffers 80MB  + per-backend (work_mem 4MB * a few sorts * ~15 live
+    #   backends worst case) + maintenance_work_mem 32MB + WAL/overhead. Observed
+    #   RSS under light load ~58MB, so 320m leaves comfortable burst headroom for
+    #   autovacuum / index builds without ballooning past the limit.
     command:
       - postgres
       - -c
-      - shared_buffers=96MB
+      - shared_buffers=80MB
       - -c
-      - effective_cache_size=256MB
+      - effective_cache_size=192MB
       - -c
-      - max_connections=50
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=40
     volumes:
       - grading-pg-data-prod:/var/lib/postgresql/data
       # One-shot role bootstrap (LOGIN + passwords for the three F-04 roles).
@@ -99,11 +109,20 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    # ENFORCED hard limits — `docker compose up` (non-swarm) honors these
+    # top-level keys; it IGNORES `deploy.resources.limits`. memswap_limit ==
+    # mem_limit disables this container's access to host swap, so a Postgres
+    # spike pages nothing and stays bounded (the JVM is the only thing we let
+    # touch swap, and only as a crash-avoidance buffer). Kept in sync with the
+    # documentary `deploy.resources` block below.
+    mem_limit: 320m
+    memswap_limit: 320m
+    cpus: 0.75
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: 384M
+          cpus: "0.75"
+          memory: 320M
         reservations:
           cpus: "0.10"
           memory: 96M
@@ -136,7 +155,10 @@ services:
       SPRING_DATASOURCE_URL: ${LIQUIBASE_DATASOURCE_URL}
       SPRING_DATASOURCE_USERNAME: ${LIQUIBASE_DATASOURCE_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${LIQUIBASE_DATASOURCE_PASSWORD}
-      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=55.0"
+      # One-shot Liquibase run — a small heap is plenty. SerialGC + low metaspace
+      # keeps its transient RSS modest so it does not contend with the still-
+      # running old api during a deploy on the 2GB box.
+      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=55.0 -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
     # Run Liquibase update only, no Spring web server, then exit.
     # NOTE: $$JAVA_OPTS escapes Compose interpolation so the literal $JAVA_OPTS
     # reaches the shell and is expanded from the container env at runtime
@@ -155,11 +177,17 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=128m
+    # ENFORCED limit — `compose run` (like `up`) ignores `deploy.resources`.
+    # Capped at 512m so the transient migrator + the still-running old api fit
+    # within the box during a deploy. memswap_limit gives a small swap cushion.
+    mem_limit: 512m
+    memswap_limit: 640m
+    cpus: 1.0
     deploy:
       resources:
         limits:
           cpus: "1.0"
-          memory: 768M
+          memory: 512M
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
@@ -221,7 +249,13 @@ services:
       GRADING_IDP_ZITADEL_ORG_ID: ${GRADING_IDP_ZITADEL_ORG_ID:-}
       GRADING_IDP_ZITADEL_TOKEN: ${GRADING_IDP_ZITADEL_TOKEN:-}
       # --- JVM ---
-      JAVA_OPTS: ${API_JAVA_OPTS:--XX:+UseContainerSupport -XX:MaxRAMPercentage=60.0 -XX:+ExitOnOutOfMemoryError}
+      # Heap is sized as a percentage of the ENFORCED container limit (mem_limit
+      # below). With mem_limit=820m and MaxRAMPercentage=62 -> max heap ~508MB,
+      # leaving ~310MB for metaspace (capped at 192m), thread stacks, code cache,
+      # direct buffers and the tmpfs writes — total RSS stays under 820m so the
+      # OOM-killer never fires. The literal default here mirrors .env.prod's
+      # API_JAVA_OPTS; .env.prod wins when present (keep the two in sync).
+      JAVA_OPTS: ${API_JAVA_OPTS:--XX:+UseContainerSupport -XX:MaxRAMPercentage=62.0 -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=96m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom}
     networks: [grading-prod]
     security_opt:
       - no-new-privileges:true
@@ -237,6 +271,15 @@ services:
       timeout: 5s
       retries: 3
       start_period: 90s
+    # ENFORCED hard limits — honored by `docker compose up` (non-swarm), unlike
+    # `deploy.resources.limits`. 820m comfortably exceeds the ~380MB working set
+    # (and the ~508MB max heap), so the JVM never OOM-kills. memswap_limit is set
+    # ABOVE mem_limit (820m RAM + 256m swap = 1076m total) so a transient spike
+    # during cold-start warm-up can lean on swap as a crash-avoidance buffer
+    # rather than being killed — but steady-state lives entirely in RAM.
+    mem_limit: 820m
+    memswap_limit: 1076m
+    cpus: 1.0
     deploy:
       resources:
         limits:
@@ -244,10 +287,10 @@ services:
           # host's 1.00. Containers time-share, so 1.00 lets the JVM burst to the
           # whole core when postgres/frontend are idle.
           cpus: "1.0"
-          memory: 1024M
+          memory: 820M
         reservations:
           cpus: "0.25"
-          memory: 512M
+          memory: 448M
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
@@ -288,14 +331,20 @@ services:
       timeout: 3s
       retries: 3
       start_period: 15s
+    # ENFORCED hard limits — honored by `docker compose up` (non-swarm). nginx
+    # serving static assets uses ~2MB RSS; 64m is ample and disabling swap keeps
+    # it predictable. memswap_limit == mem_limit -> no swap for the frontend.
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.5
     deploy:
       resources:
         limits:
           cpus: "0.5"
-          memory: 96M
+          memory: 64M
         reservations:
           cpus: "0.05"
-          memory: 24M
+          memory: 16M
     logging: *default-logging
 
 volumes:

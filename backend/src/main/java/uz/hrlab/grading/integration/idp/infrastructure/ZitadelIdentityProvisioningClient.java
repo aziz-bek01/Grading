@@ -3,6 +3,7 @@ package uz.hrlab.grading.integration.idp.infrastructure;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
@@ -47,6 +48,7 @@ public class ZitadelIdentityProvisioningClient implements IdentityProvisioningPo
     private final ZitadelIdpProperties props;
     private final RestClient restClient;
 
+    @Autowired
     public ZitadelIdentityProvisioningClient(ZitadelIdpProperties props) {
         this(props, defaultRestClient(props));
     }

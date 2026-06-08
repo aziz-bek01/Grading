@@ -5,7 +5,7 @@
  *   - Tenant name + status badge
  *   - List of roles with per-role remove buttons (gated by USER_ACCESS_MANAGE)
  *   - "Add role" CTA
- *   - SalaryPermissionToggle (gated by USER_SALARY_PERMISSION_GRANT)
+ *   - SalaryPermissionToggle (gated by USER_SALARY_PERMISSION_TOGGLE)
  *   - "Revoke membership" destructive CTA (gated by USER_ACCESS_MANAGE)
  */
 import { useState } from 'react';

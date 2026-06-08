@@ -2,36 +2,44 @@ import { z } from 'zod';
 
 const localeEnum = z.enum(['ru-RU', 'uz-Cyrl-UZ', 'uz-Latn-UZ', 'en-US']);
 
-const ROLE_CODES = [
+/**
+ * Canonical role catalog — MUST mirror the backend `roles` table seeded in
+ * `backend/.../seeds/002-default-roles.yaml`. Divergence here causes the
+ * invite / assign-role endpoints to reject the payload (400) in production.
+ */
+export const ROLE_CODES = [
   'HRLAB_SUPER_ADMIN',
   'HRLAB_PROJECT_MANAGER',
   'HRLAB_CONSULTANT',
   'HRLAB_ANALYST',
-  'CLIENT_ADMIN',
+  'CLIENT_COMPANY_ADMIN',
   'CLIENT_HR_DIRECTOR',
   'CLIENT_HR_SPECIALIST',
-  'CLIENT_COMMITTEE_MEMBER',
-  'CLIENT_DEPARTMENT_MANAGER',
-  'CLIENT_VIEWER',
-  'AUDITOR',
+  'EVALUATION_COMMITTEE_MEMBER',
+  'DEPARTMENT_MANAGER',
+  'VIEWER',
+  'EXTERNAL_AUDITOR',
 ] as const;
 
 const roleEnum = z.enum(ROLE_CODES);
 
 /**
  * Whitelist of roles that may be granted by non-super-admin client admins.
+ * CLIENT_COMPANY_ADMIN holds USER_ROLE_ASSIGN (tenant-scope) but NOT
+ * USER_ROLE_ASSIGN_HRLAB, so it may grant any TENANT-scope role but no
+ * HRLAB_* platform role (see seed 004-default-role-permissions.yaml).
  * Frontend renders the multi-select from this list when the active user is
  * NOT HRLAB_SUPER_ADMIN. Backend remains source of truth (it will reject
  * elevated role grants regardless of what the UI sent).
  */
 export const CLIENT_GRANTABLE_ROLES = [
-  'CLIENT_ADMIN',
+  'CLIENT_COMPANY_ADMIN',
   'CLIENT_HR_DIRECTOR',
   'CLIENT_HR_SPECIALIST',
-  'CLIENT_COMMITTEE_MEMBER',
-  'CLIENT_DEPARTMENT_MANAGER',
-  'CLIENT_VIEWER',
-  'AUDITOR',
+  'EVALUATION_COMMITTEE_MEMBER',
+  'DEPARTMENT_MANAGER',
+  'VIEWER',
+  'EXTERNAL_AUDITOR',
 ] as const;
 
 export const SUPER_ADMIN_GRANTABLE_ROLES = ROLE_CODES;

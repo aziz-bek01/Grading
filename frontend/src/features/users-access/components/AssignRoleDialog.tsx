@@ -36,11 +36,11 @@ export function AssignRoleDialog({ open, alreadyAssigned, tenantBrand, onClose, 
 
   const { register, handleSubmit, reset, formState } = useForm<AddRoleInput>({
     resolver: zodResolver(AddRoleSchema),
-    defaultValues: { role_code: grantable[0] ?? 'CLIENT_VIEWER' },
+    defaultValues: { role_code: grantable[0] ?? 'VIEWER' },
   });
 
   useEffect(() => {
-    if (open) reset({ role_code: grantable[0] ?? 'CLIENT_VIEWER' });
+    if (open) reset({ role_code: grantable[0] ?? 'VIEWER' });
   }, [open, grantable, reset]);
 
   const submit = handleSubmit(async (data) => {

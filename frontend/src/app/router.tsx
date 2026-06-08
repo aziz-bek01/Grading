@@ -180,7 +180,7 @@ export function AppRouter() {
 
           <Route
             element={
-              <RequirePermission permissions={[PERMISSIONS.USER_READ, PERMISSIONS.USER_ACCESS_MANAGE]} mode="any" />
+              <RequirePermission permissions={[PERMISSIONS.USER_LIST, PERMISSIONS.USER_ACCESS_MANAGE]} mode="any" />
             }
           >
             <Route path="users" element={<UsersListPage />} />

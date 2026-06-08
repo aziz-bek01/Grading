@@ -94,13 +94,16 @@ export const PERMISSIONS = {
   AUDIT_READ_CROSS_TENANT: 'AUDIT_READ_CROSS_TENANT',
 
   // Users & access
-  USER_READ: 'USER_READ',
+  /** List users — backend `hasAnyAuthority('USER_LIST','USER_ACCESS_MANAGE')`. */
+  USER_LIST: 'USER_LIST',
+  /** View a single user (GET /users/:id). */
+  USER_VIEW: 'USER_VIEW',
   USER_EDIT: 'USER_EDIT',
   USER_ACCESS_MANAGE: 'USER_ACCESS_MANAGE',
   /** Invite a new user (POST /users). Backend code `USER_INVITE`. */
   USER_INVITE: 'USER_INVITE',
   /** Toggle salary_data_permission on a membership — audit-sensitive. */
-  USER_SALARY_PERMISSION_GRANT: 'USER_SALARY_PERMISSION_GRANT',
+  USER_SALARY_PERMISSION_TOGGLE: 'USER_SALARY_PERMISSION_TOGGLE',
 
   // AI
   AI_ASSIST_USE: 'AI_ASSIST_USE',

@@ -16,7 +16,7 @@ describe('<InviteUserDialog />', () => {
     render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={onSubmit} />));
     // Fill name + role only — email missing → Zod must block.
     await user.type(screen.getByTestId('invite-fullname'), 'Test User');
-    await user.click(screen.getByTestId('invite-role-CLIENT_VIEWER'));
+    await user.click(screen.getByTestId('invite-role-VIEWER'));
     await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -67,7 +67,7 @@ describe('<InviteUserDialog /> as client admin (non-super)', () => {
     expect(screen.queryByTestId('invite-tenant')).not.toBeInTheDocument();
     await user.type(screen.getByTestId('invite-email'), 'newuser@example.com');
     await user.type(screen.getByTestId('invite-fullname'), 'Some User');
-    await user.click(screen.getByTestId('invite-role-CLIENT_VIEWER'));
+    await user.click(screen.getByTestId('invite-role-VIEWER'));
     await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
     await new Promise((r) => setTimeout(r, 0));
     expect(onSubmit).toHaveBeenCalledTimes(1);

@@ -1386,13 +1386,13 @@
       "HRLAB_PROJECT_MANAGER": "HRLab loyiha menejeri",
       "HRLAB_CONSULTANT": "HRLab konsultanti",
       "HRLAB_ANALYST": "HRLab tahlilchi",
-      "CLIENT_ADMIN": "Kompaniya administratori",
+      "CLIENT_COMPANY_ADMIN": "Mijoz kompaniya administratori",
       "CLIENT_HR_DIRECTOR": "HR-direktor",
       "CLIENT_HR_SPECIALIST": "HR-mutaxassis",
-      "CLIENT_COMMITTEE_MEMBER": "Baholash qo'mitasi a'zosi",
-      "CLIENT_DEPARTMENT_MANAGER": "Bo'lim rahbari",
-      "CLIENT_VIEWER": "Kuzatuvchi",
-      "AUDITOR": "Auditor"
+      "EVALUATION_COMMITTEE_MEMBER": "Baholash qo'mitasi a'zosi",
+      "DEPARTMENT_MANAGER": "Bo'lim rahbari",
+      "VIEWER": "Kuzatuvchi (faqat o'qish)",
+      "EXTERNAL_AUDITOR": "Tashqi auditor"
     }
   },
   "clients": {

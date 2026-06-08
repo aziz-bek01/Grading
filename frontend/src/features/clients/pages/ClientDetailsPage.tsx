@@ -153,7 +153,7 @@ export function ClientDetailsPage() {
                 {t('clients.detail.open_projects')}
               </Button>
             </PermissionGate>
-            <PermissionGate permission={[PERMISSIONS.USER_READ, PERMISSIONS.USER_ACCESS_MANAGE]} mode="any">
+            <PermissionGate permission={[PERMISSIONS.USER_LIST, PERMISSIONS.USER_ACCESS_MANAGE]} mode="any">
               <Button
                 variant="secondary"
                 size="sm"

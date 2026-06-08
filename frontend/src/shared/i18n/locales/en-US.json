@@ -1386,13 +1386,13 @@
       "HRLAB_PROJECT_MANAGER": "HRLab Project Manager",
       "HRLAB_CONSULTANT": "HRLab Consultant",
       "HRLAB_ANALYST": "HRLab Analyst",
-      "CLIENT_ADMIN": "Company admin",
+      "CLIENT_COMPANY_ADMIN": "Client Company Admin",
       "CLIENT_HR_DIRECTOR": "HR Director",
       "CLIENT_HR_SPECIALIST": "HR Specialist",
-      "CLIENT_COMMITTEE_MEMBER": "Evaluation committee member",
-      "CLIENT_DEPARTMENT_MANAGER": "Department manager",
-      "CLIENT_VIEWER": "Viewer",
-      "AUDITOR": "Auditor"
+      "EVALUATION_COMMITTEE_MEMBER": "Evaluation Committee Member",
+      "DEPARTMENT_MANAGER": "Department Manager",
+      "VIEWER": "Viewer (read-only)",
+      "EXTERNAL_AUDITOR": "External Auditor"
     }
   },
   "clients": {

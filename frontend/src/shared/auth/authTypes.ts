@@ -18,18 +18,23 @@ export interface ProjectSummary {
   archived?: boolean;
 }
 
+/**
+ * Canonical role codes — MUST match the backend `roles` table seeded in
+ * `backend/.../seeds/002-default-roles.yaml`. Frontend constants that diverge
+ * from this catalog cause invite/role-assign 400s in production.
+ */
 export type RoleCode =
   | 'HRLAB_SUPER_ADMIN'
   | 'HRLAB_PROJECT_MANAGER'
   | 'HRLAB_CONSULTANT'
   | 'HRLAB_ANALYST'
-  | 'CLIENT_ADMIN'
+  | 'CLIENT_COMPANY_ADMIN'
   | 'CLIENT_HR_DIRECTOR'
   | 'CLIENT_HR_SPECIALIST'
-  | 'CLIENT_COMMITTEE_MEMBER'
-  | 'CLIENT_DEPARTMENT_MANAGER'
-  | 'CLIENT_VIEWER'
-  | 'AUDITOR';
+  | 'EVALUATION_COMMITTEE_MEMBER'
+  | 'DEPARTMENT_MANAGER'
+  | 'VIEWER'
+  | 'EXTERNAL_AUDITOR';
 
 export interface CurrentUser {
   id: string;

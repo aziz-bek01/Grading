@@ -30,12 +30,13 @@ import { useInviteUser } from '../hooks/useUserMutations';
 import type { UserListQuery, UserStatus } from '../types/userTypes';
 
 const FILTERABLE_ROLES: RoleCode[] = [
-  'CLIENT_ADMIN',
+  'CLIENT_COMPANY_ADMIN',
   'CLIENT_HR_DIRECTOR',
   'CLIENT_HR_SPECIALIST',
-  'CLIENT_COMMITTEE_MEMBER',
-  'CLIENT_DEPARTMENT_MANAGER',
-  'CLIENT_VIEWER',
+  'EVALUATION_COMMITTEE_MEMBER',
+  'DEPARTMENT_MANAGER',
+  'VIEWER',
+  'EXTERNAL_AUDITOR',
 ];
 
 export function UsersListPage() {

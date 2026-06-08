@@ -7,7 +7,7 @@ import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
 describe('<SalaryPermissionToggle />', () => {
   beforeEach(() => {
     signOut();
-    signIn('super-admin'); // has USER_SALARY_PERMISSION_GRANT
+    signIn('super-admin'); // has USER_SALARY_PERMISSION_TOGGLE
   });
 
   it('opens 2-step confirmation dialog and refuses submit without a 10+ char reason', async () => {
@@ -41,9 +41,9 @@ describe('<SalaryPermissionToggle />', () => {
 });
 
 describe('<SalaryPermissionToggle /> permission gating', () => {
-  it('does not render the toggle button for a user without USER_SALARY_PERMISSION_GRANT', () => {
+  it('does not render the toggle button for a user without USER_SALARY_PERMISSION_TOGGLE', () => {
     signOut();
-    signIn('viewer'); // viewer has no USER_SALARY_PERMISSION_GRANT
+    signIn('viewer'); // viewer has no USER_SALARY_PERMISSION_TOGGLE
     render(renderWithProviders(<SalaryPermissionToggle enabled onSubmit={vi.fn()} />));
     expect(screen.queryByTestId('salary-permission-toggle')).not.toBeInTheDocument();
   });

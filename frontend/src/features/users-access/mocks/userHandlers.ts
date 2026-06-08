@@ -18,7 +18,20 @@ import type {
   UserMembership,
   UserStatus,
 } from '../types/userTypes';
+import { ROLE_CODES } from '../schemas/userSchemas';
 import { toListRow, userDb } from './userFixtures';
+
+/**
+ * Canonical role catalog (mirrors the backend `roles` table). The mock
+ * validates incoming role codes against this set exactly as the backend does,
+ * so a divergent FE role constant surfaces as a 400 in tests instead of being
+ * silently accepted (which previously masked the prod invite failure).
+ */
+const VALID_ROLE_CODES = new Set<string>(ROLE_CODES);
+
+function unknownRoleCodes(codes: readonly string[]): string[] {
+  return codes.filter((c) => !VALID_ROLE_CODES.has(c));
+}
 
 interface MatchResult {
   status: number;
@@ -174,6 +187,11 @@ function handleInvite(config: AxiosRequestConfig): MatchResult {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
     return badRequest('email must be a valid RFC address', 'VALIDATION_EMAIL');
   }
+  // Role-code guard (mirror backend role catalog).
+  const unknownInvite = unknownRoleCodes(body.role_codes);
+  if (unknownInvite.length > 0) {
+    return badRequest(`unknown role_code(s): ${unknownInvite.join(', ')}`, 'UNKNOWN_ROLE_CODE');
+  }
   if (userDb.users.some((u) => u.email.toLowerCase() === body.email.toLowerCase())) {
     return { status: 409, body: { code: 'EMAIL_EXISTS', message: 'Email already in use' } };
   }
@@ -248,6 +266,10 @@ function handleAddMembership(id: string, config: AxiosRequestConfig): MatchResul
   if (!raw.tenant_id || !raw.role_codes || raw.role_codes.length === 0) {
     return badRequest('tenant_id and at least one role_code required', 'VALIDATION_ERROR');
   }
+  const unknownMembership = unknownRoleCodes(raw.role_codes);
+  if (unknownMembership.length > 0) {
+    return badRequest(`unknown role_code(s): ${unknownMembership.join(', ')}`, 'UNKNOWN_ROLE_CODE');
+  }
   if (u.memberships.some((m) => m.tenant_id === raw.tenant_id && m.status !== 'REVOKED')) {
     return { status: 409, body: { code: 'MEMBERSHIP_EXISTS', message: 'Active membership exists' } };
   }
@@ -295,6 +317,9 @@ function handleAddRole(id: string, tenantId: string, config: AxiosRequestConfig)
   const raw = readBody<AddRolePayload & Record<string, unknown>>(config);
   const body = stripTenantFromBody(raw, `/users/${id}/memberships/${tenantId}/roles`, 'POST');
   if (!body.role_code) return badRequest('role_code required', 'VALIDATION_ERROR');
+  if (!VALID_ROLE_CODES.has(body.role_code)) {
+    return badRequest(`unknown role_code: ${body.role_code}`, 'UNKNOWN_ROLE_CODE');
+  }
   if (m.roles.some((r) => r.role_code === body.role_code)) {
     return { status: 409, body: { code: 'ROLE_EXISTS', message: 'Role already assigned' } };
   }

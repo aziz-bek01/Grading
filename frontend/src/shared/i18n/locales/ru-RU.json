@@ -1386,13 +1386,13 @@
       "HRLAB_PROJECT_MANAGER": "HRLab менеджер проекта",
       "HRLAB_CONSULTANT": "HRLab консультант",
       "HRLAB_ANALYST": "HRLab аналитик",
-      "CLIENT_ADMIN": "Администратор компании",
+      "CLIENT_COMPANY_ADMIN": "Администратор компании-клиента",
       "CLIENT_HR_DIRECTOR": "HR-директор",
       "CLIENT_HR_SPECIALIST": "HR-специалист",
-      "CLIENT_COMMITTEE_MEMBER": "Член оценочного комитета",
-      "CLIENT_DEPARTMENT_MANAGER": "Руководитель подразделения",
-      "CLIENT_VIEWER": "Наблюдатель",
-      "AUDITOR": "Аудитор"
+      "EVALUATION_COMMITTEE_MEMBER": "Член оценочного комитета",
+      "DEPARTMENT_MANAGER": "Руководитель подразделения",
+      "VIEWER": "Наблюдатель (только чтение)",
+      "EXTERNAL_AUDITOR": "Внешний аудитор"
     }
   },
   "clients": {

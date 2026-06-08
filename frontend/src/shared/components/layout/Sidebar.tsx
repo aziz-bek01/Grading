@@ -128,7 +128,7 @@ export function Sidebar({ className }: SidebarProps = {}) {
     },
     { to: routes.audit, label: t('nav.audit'), icon: <ScrollText size={18} aria-hidden />, permission: PERMISSIONS.AUDIT_READ },
     // FE-UA-001: Users & Access lives at /app/users (was /app/users-access placeholder).
-    { to: routes.usersAccess, label: t('nav.users_access'), icon: <Users size={18} aria-hidden />, permission: PERMISSIONS.USER_READ },
+    { to: routes.usersAccess, label: t('nav.users_access'), icon: <Users size={18} aria-hidden />, permission: [PERMISSIONS.USER_LIST, PERMISSIONS.USER_ACCESS_MANAGE] },
   ];
 
   // Always rendered as locked stubs for MVP 1 (design-foundation §6.3).

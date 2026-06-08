@@ -40,7 +40,7 @@ export function buildDevUser(role: 'super-admin' | 'consultant' | 'viewer' = 'su
         ...base,
         roles: ['HRLAB_SUPER_ADMIN'],
         // Super-admin has every permission except salary visibility (granted
-        // explicitly per-membership). USER_INVITE / USER_SALARY_PERMISSION_GRANT
+        // explicitly per-membership). USER_INVITE / USER_SALARY_PERMISSION_TOGGLE
         // are part of the full set via Object.values(PERMISSIONS).
         permissions: Object.values(PERMISSIONS).filter(
           (p) => p !== PERMISSIONS.SALARY_VIEW && p !== PERMISSIONS.SALARY_EDIT && p !== PERMISSIONS.SALARY_EXPORT,
@@ -88,7 +88,7 @@ export function buildDevUser(role: 'super-admin' | 'consultant' | 'viewer' = 'su
     default:
       return {
         ...base,
-        roles: ['CLIENT_VIEWER'],
+        roles: ['VIEWER'],
         permissions: [
           PERMISSIONS.PROJECT_READ,
           PERMISSIONS.ORG_READ,

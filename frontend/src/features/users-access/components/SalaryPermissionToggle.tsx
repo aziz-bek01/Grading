@@ -8,7 +8,7 @@
  *
  * Visual contract:
  *   - Always rendered with a red-tinted Shield icon when active.
- *   - Even if the actor LACKS USER_SALARY_PERMISSION_GRANT, the toggle is
+ *   - Even if the actor LACKS USER_SALARY_PERMISSION_TOGGLE, the toggle is
  *     rendered disabled (so the security state is visible) — but no clicks
  *     are accepted.
  */
@@ -71,7 +71,7 @@ export function SalaryPermissionToggle({
               : t('users.salary.disabledHint')}
           </p>
         </div>
-        <PermissionGate permission={PERMISSIONS.USER_SALARY_PERMISSION_GRANT}>
+        <PermissionGate permission={PERMISSIONS.USER_SALARY_PERMISSION_TOGGLE}>
           <Button
             variant={enabled ? 'secondary' : 'danger'}
             size="sm"

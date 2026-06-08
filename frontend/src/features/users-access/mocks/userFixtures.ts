@@ -119,7 +119,7 @@ export const seedUserDetails: UserDetails[] = [
         'ACTIVE',
         [
           { id: 'r-001', role_code: 'CLIENT_HR_DIRECTOR' },
-          { id: 'r-002', role_code: 'CLIENT_COMMITTEE_MEMBER' },
+          { id: 'r-002', role_code: 'EVALUATION_COMMITTEE_MEMBER' },
         ],
         {
           salary_data_permission: true,
@@ -130,7 +130,7 @@ export const seedUserDetails: UserDetails[] = [
     ],
     tenant_count: 1,
     role_count: 2,
-    role_codes: ['CLIENT_HR_DIRECTOR', 'CLIENT_COMMITTEE_MEMBER'],
+    role_codes: ['CLIENT_HR_DIRECTOR', 'EVALUATION_COMMITTEE_MEMBER'],
   },
   {
     ...userBase[1],
@@ -139,12 +139,12 @@ export const seedUserDetails: UserDetails[] = [
         TENANT_ACME,
         'ACME Holdings',
         'ACTIVE',
-        [{ id: 'r-003', role_code: 'CLIENT_ADMIN' }],
+        [{ id: 'r-003', role_code: 'CLIENT_COMPANY_ADMIN' }],
       ),
     ],
     tenant_count: 1,
     role_count: 1,
-    role_codes: ['CLIENT_ADMIN'],
+    role_codes: ['CLIENT_COMPANY_ADMIN'],
   },
   {
     ...userBase[2],
@@ -168,7 +168,7 @@ export const seedUserDetails: UserDetails[] = [
         TENANT_ACME,
         'ACME Holdings',
         'REVOKED',
-        [{ id: 'r-005', role_code: 'CLIENT_VIEWER' }],
+        [{ id: 'r-005', role_code: 'VIEWER' }],
         { revoked_at: '2026-03-10T12:00:00Z' },
       ),
     ],
@@ -184,14 +184,14 @@ export const seedUserDetails: UserDetails[] = [
         'Beta University',
         'ACTIVE',
         [
-          { id: 'r-006', role_code: 'CLIENT_ADMIN' },
+          { id: 'r-006', role_code: 'CLIENT_COMPANY_ADMIN' },
           { id: 'r-007', role_code: 'CLIENT_HR_DIRECTOR' },
         ],
       ),
     ],
     tenant_count: 1,
     role_count: 2,
-    role_codes: ['CLIENT_ADMIN', 'CLIENT_HR_DIRECTOR'],
+    role_codes: ['CLIENT_COMPANY_ADMIN', 'CLIENT_HR_DIRECTOR'],
   },
   {
     ...userBase[5],
@@ -200,12 +200,12 @@ export const seedUserDetails: UserDetails[] = [
         TENANT_BETA,
         'Beta University',
         'ACTIVE',
-        [{ id: 'r-008', role_code: 'CLIENT_COMMITTEE_MEMBER' }],
+        [{ id: 'r-008', role_code: 'EVALUATION_COMMITTEE_MEMBER' }],
       ),
     ],
     tenant_count: 1,
     role_count: 1,
-    role_codes: ['CLIENT_COMMITTEE_MEMBER'],
+    role_codes: ['EVALUATION_COMMITTEE_MEMBER'],
   },
 ];
 

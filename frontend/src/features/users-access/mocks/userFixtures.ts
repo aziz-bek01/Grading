@@ -2,9 +2,10 @@
  * MSW fixtures for the Users & Access feature.
  *
  * 6 sample users across two tenants (ACME = 11111…, Beta = 22222…) covering
- * ACTIVE / INVITED / REVOKED / SUSPENDED statuses, a mix of role codes, and
- * exactly ONE membership with salary_data_permission=true (Anna at ACME) so
- * the salary-visibility UI is exercised in the dev preview.
+ * the real USER-level statuses (ACTIVE / INVITED / DISABLED / LOCKED), a mix
+ * of MEMBERSHIP-level statuses (ACTIVE / INVITED / SUSPENDED / REVOKED), a mix
+ * of role codes, and exactly ONE membership with salary_data_permission=true
+ * (Anna at ACME) so the salary-visibility UI is exercised in the dev preview.
  *
  * Tenant ids match `devAuth.ts` tenant catalog so the active-tenant filter
  * works against the same scope the auth store sees.
@@ -79,10 +80,12 @@ const userBase: Omit<UserDetails, 'memberships' | 'role_codes' | 'role_count' | 
   },
   {
     id: 'u-acme-yulia',
+    // Soft-disabled USER (the product's "delete user"). Their single ACME
+    // membership is REVOKED — exercises a DISABLED user whose access is gone.
     email: 'y.petrova@acme.test',
     full_name: 'Yulia Petrova',
     locale: 'ru-RU',
-    status: 'REVOKED',
+    status: 'DISABLED',
     last_login_at: '2026-02-14T16:00:00Z',
     created_at: '2025-09-01T10:00:00Z',
     updated_at: '2026-03-10T12:00:00Z',
@@ -99,10 +102,13 @@ const userBase: Omit<UserDetails, 'memberships' | 'role_codes' | 'role_count' | 
   },
   {
     id: 'u-beta-malika',
+    // LOCKED USER (IdP / security lockout) — surfaced read-only. Their Beta
+    // membership is SUSPENDED, exercising a membership status distinct from the
+    // user status.
     email: 'm.salimova@beta-university.test',
     full_name: 'Malika Salimova',
     locale: 'uz-Latn-UZ',
-    status: 'ACTIVE',
+    status: 'LOCKED',
     last_login_at: '2026-05-19T14:00:00Z',
     created_at: '2026-02-05T09:00:00Z',
     updated_at: '2026-05-19T14:00:00Z',
@@ -199,7 +205,7 @@ export const seedUserDetails: UserDetails[] = [
       membership(
         TENANT_BETA,
         'Beta University',
-        'ACTIVE',
+        'SUSPENDED',
         [{ id: 'r-008', role_code: 'EVALUATION_COMMITTEE_MEMBER' }],
       ),
     ],

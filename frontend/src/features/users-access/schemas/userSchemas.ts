@@ -124,13 +124,40 @@ export const InviteUserSchema = z.object({
 
 export type InviteUserInput = z.infer<typeof InviteUserSchema>;
 
+/**
+ * PATCH /users/:id body. The backend status field accepts ONLY `ACTIVE` or
+ * `DISABLED` (any other value → 400 `USER_PATCH_BAD_STATUS`); INVITED and
+ * LOCKED are system-managed and cannot be set via this endpoint. We mirror that
+ * constraint here so the Edit-user / Disable-user UI can never submit an
+ * illegal status.
+ */
+export const EDITABLE_USER_STATUSES = ['ACTIVE', 'DISABLED'] as const;
+
 export const UpdateUserSchema = z.object({
-  full_name: z.string().trim().min(2).max(200).optional(),
+  full_name: z
+    .string()
+    .trim()
+    .min(2, { message: 'validation_fullname_min' })
+    .max(200, { message: 'validation_fullname_max' })
+    .optional(),
   locale: localeEnum.optional(),
-  status: z.enum(['ACTIVE', 'INVITED', 'REVOKED', 'SUSPENDED']).optional(),
+  status: z.enum(EDITABLE_USER_STATUSES).optional(),
 });
 
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
+
+/**
+ * Membership-creation form (POST /users/:id/memberships). `tenant_id` is the
+ * explicit target of a NEW membership row (legal in the path/body for this
+ * cross-tenant endpoint — it is NOT a tenant-scope marker), so unlike business
+ * forms it is required here.
+ */
+export const AddMembershipSchema = z.object({
+  tenant_id: z.string().min(1, { message: 'validation_tenant_required' }),
+  role_codes: z.array(roleEnum).min(1, { message: 'validation_roles_min' }),
+});
+
+export type AddMembershipInput = z.infer<typeof AddMembershipSchema>;
 
 export const AddRoleSchema = z.object({
   role_code: roleEnum,

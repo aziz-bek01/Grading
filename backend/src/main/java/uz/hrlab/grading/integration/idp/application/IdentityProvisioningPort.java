@@ -56,17 +56,43 @@ public interface IdentityProvisioningPort {
      * longer authenticate, preserving audit/history. Symmetric-offboarding hook
      * for US-3 in the decision doc.
      *
-     * <p>NOTE (scope): the real ZITADEL call ({@code POST /v2/users/{id}/deactivate})
-     * is intentionally left as a documented TODO in the adapter — wiring the
-     * revoke side into {@code RevokeMembershipUseCase}/{@code PatchUserUseCase}
-     * is out of scope for this change. The no-op implementation is a clean
-     * no-op. This method exists so the port shape is final and the offboarding
-     * step is a pure additive follow-up, not a rewrite.
+     * <p>Real ZITADEL call: {@code POST /v2/users/{id}/deactivate} (no body, 200
+     * on success). Wired into {@code PatchUserUseCase} (status →{@code DISABLED})
+     * and {@code RevokeMembershipUseCase} (last active membership revoked).
      *
-     * @param externalSubject the {@code external_idp_subject} to deactivate
-     * @throws IdentityProvisioningException on failure
+     * <h3>Idempotency contract</h3>
+     * Implementations MUST be idempotent-friendly: deactivating an account that
+     * is already inactive — or whose id no longer exists in the IdP — MUST be
+     * logged and SWALLOWED, not turned into an {@link IdentityProvisioningException}.
+     * Offboarding the same user twice, or after the IdP account was removed out
+     * of band, must never break the admin operation. Only genuinely unexpected
+     * failures (auth, 5xx, network) surface as exceptions for the caller to flag.
+     *
+     * @param externalSubject the {@code external_idp_subject} to deactivate;
+     *                        callers guard for null and skip the call entirely
+     * @throws IdentityProvisioningException on a genuine, non-idempotent failure
      */
     void deactivateUser(String externalSubject);
+
+    /**
+     * Reactivate a previously deactivated IdP account so a re-enabled person can
+     * authenticate again. Symmetric counterpart of {@link #deactivateUser} for
+     * the re-enable path ({@code PatchUserUseCase} status {@code DISABLED}→
+     * {@code ACTIVE}).
+     *
+     * <p>Real ZITADEL call: {@code POST /v2/users/{id}/reactivate} (no body, 200
+     * on success).
+     *
+     * <h3>Idempotency contract</h3>
+     * As with {@link #deactivateUser}: reactivating an already-active account, or
+     * one that no longer exists, MUST be logged and swallowed rather than failing
+     * the admin operation. Only genuine failures surface as exceptions.
+     *
+     * @param externalSubject the {@code external_idp_subject} to reactivate;
+     *                        callers guard for null and skip the call entirely
+     * @throws IdentityProvisioningException on a genuine, non-idempotent failure
+     */
+    void reactivateUser(String externalSubject);
 
     /**
      * Outcome of {@link #provisionUser}. Distinguishes a freshly created IdP

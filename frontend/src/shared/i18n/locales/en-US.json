@@ -1316,6 +1316,8 @@
     "status": {
       "active": "Active",
       "invited": "Invited",
+      "disabled": "Disabled",
+      "locked": "Locked",
       "revoked": "Revoked",
       "suspended": "Suspended"
     },
@@ -1360,6 +1362,43 @@
       "title": "Revoke membership?",
       "body": "User {{user}} will lose access to all resources of company \"{{tenant}}\". The action can only be undone by re-inviting.",
       "confirm": "Revoke membership"
+    },
+    "edit": {
+      "button": "Edit",
+      "title": "Edit user",
+      "subtitle": "Change the user's name, interface language and status.",
+      "submit": "Save",
+      "fullName": "Full name",
+      "locale": "Interface language",
+      "status": "Status",
+      "statusHint": "Only Active and Disabled can be set here. Invited and Locked are managed by the system.",
+      "validation_fullname_min": "Name must be at least 2 characters.",
+      "validation_fullname_max": "Name must be at most 200 characters.",
+      "validation_status_invalid": "Invalid status: only Active or Disabled can be set."
+    },
+    "disable": {
+      "button": "Disable user",
+      "title": "Disable user?",
+      "body": "User {{user}} will lose access to every company and their login account will be deactivated. The action is reversible via reactivation.",
+      "confirm": "Disable user"
+    },
+    "reactivate": {
+      "button": "Reactivate"
+    },
+    "addMembership": {
+      "button": "Add to company",
+      "title": "Add to company",
+      "subtitle": "Attach the user to a client company and assign initial roles.",
+      "submit": "Add membership",
+      "tenant": "Client company",
+      "noneLeft": "No companies available",
+      "noneLeftHint": "The user already belongs to every available company.",
+      "roles": "Initial roles",
+      "rolesHint": "Pick one or more roles. Can be changed later.",
+      "validation_tenant_required": "Select a company.",
+      "validation_roles_min": "Select at least one role.",
+      "validation_roles_unknown": "Selected role is not allowed.",
+      "validation_membership_exists": "The user already belongs to this company."
     },
     "salary": {
       "label": "Compensation data access",

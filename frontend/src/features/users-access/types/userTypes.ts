@@ -17,9 +17,24 @@
 import type { RoleCode } from '@/shared/auth/authTypes';
 import type { Locale, PageEnvelope } from '@/shared/types/common';
 
-export type UserStatus = 'ACTIVE' | 'INVITED' | 'REVOKED' | 'SUSPENDED';
+/**
+ * USER-level lifecycle status. Mirrors the backend user status enum
+ * (`ACTIVE, INVITED, DISABLED, LOCKED`). DISABLED is the product's
+ * soft-disable ("delete user" — there is intentionally no hard delete);
+ * LOCKED is an IdP / security lockout surfaced read-only in the UI.
+ *
+ * NOTE: this is NOT the same enum as {@link MembershipStatus}. A membership
+ * can be SUSPENDED / REVOKED without the user being DISABLED, and vice-versa —
+ * do not conflate the two.
+ */
+export type UserStatus = 'ACTIVE' | 'INVITED' | 'DISABLED' | 'LOCKED';
 
-export type MembershipStatus = 'ACTIVE' | 'INVITED' | 'REVOKED';
+/**
+ * MEMBERSHIP-level status (per tenant). Mirrors the backend membership status
+ * enum (`ACTIVE, INVITED, SUSPENDED, REVOKED`). Kept separate from
+ * {@link UserStatus} on purpose.
+ */
+export type MembershipStatus = 'ACTIVE' | 'INVITED' | 'SUSPENDED' | 'REVOKED';
 
 export interface UserRoleAssignment {
   /** Stable id of the role assignment row — used for DELETE. */

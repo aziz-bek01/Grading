@@ -1316,6 +1316,8 @@
     "status": {
       "active": "Faol",
       "invited": "Taklif qilingan",
+      "disabled": "O'chirilgan",
+      "locked": "Bloklangan",
       "revoked": "Qaytarilgan",
       "suspended": "To'xtatilgan"
     },
@@ -1360,6 +1362,43 @@
       "title": "A'zolikni bekor qilish?",
       "body": "{{user}} foydalanuvchi «{{tenant}}» kompaniyasining barcha resurslariga kirishni yo'qotadi. Amalni faqat qayta tiklash bilan bekor qilish mumkin.",
       "confirm": "A'zolikni bekor qilish"
+    },
+    "edit": {
+      "button": "Tahrirlash",
+      "title": "Foydalanuvchini tahrirlash",
+      "subtitle": "Foydalanuvchining ismi, tizim tili va statusini o'zgartiring.",
+      "submit": "Saqlash",
+      "fullName": "To'liq ism",
+      "locale": "Tizim tili",
+      "status": "Status",
+      "statusHint": "Bu yerda faqat «Faol» va «O'chirilgan» tanlanadi. «Taklif qilingan» va «Bloklangan» tizim tomonidan boshqariladi.",
+      "validation_fullname_min": "Ism kamida 2 ta belgidan iborat bo'lishi kerak.",
+      "validation_fullname_max": "Ism 200 belgidan oshmasligi kerak.",
+      "validation_status_invalid": "Notog‘ri status: faqat «Faol» yoki «O'chirilgan» belgilash mumkin."
+    },
+    "disable": {
+      "button": "Foydalanuvchini o'chirish",
+      "title": "Foydalanuvchini o'chirish?",
+      "body": "{{user}} foydalanuvchi barcha kompaniyalarga kirishni yo'qotadi va uning login hisobi faolsizlantiriladi. Amal qayta faollashtirish orqali qaytariladi.",
+      "confirm": "Foydalanuvchini o'chirish"
+    },
+    "reactivate": {
+      "button": "Qayta faollashtirish"
+    },
+    "addMembership": {
+      "button": "Kompaniyaga qo'shish",
+      "title": "Kompaniyaga qo'shish",
+      "subtitle": "Foydalanuvchini mijoz-kompaniyaga biriktiring va boshlang'ich rollar biriktiring.",
+      "submit": "A'zolik qo'shish",
+      "tenant": "Mijoz-kompaniya",
+      "noneLeft": "Mavjud kompaniyalar yo'q",
+      "noneLeftHint": "Foydalanuvchi allaqachon barcha mavjud kompaniyalarga a'zo.",
+      "roles": "Boshlang'ich rollar",
+      "rolesHint": "Bir yoki bir nechta rol tanlash mumkin. Keyin o'zgartiriladi.",
+      "validation_tenant_required": "Kompaniyani tanlang.",
+      "validation_roles_min": "Kamida bitta rolni tanlang.",
+      "validation_roles_unknown": "Notog‘ri rol tanlandi.",
+      "validation_membership_exists": "Foydalanuvchi allaqachon ushbu kompaniyaga a'zo."
     },
     "salary": {
       "label": "Ish haqi ma'lumotlariga kirish",

@@ -256,11 +256,25 @@ function handleDetail(id: string): MatchResult {
   return ok(u);
 }
 
+/**
+ * Statuses the PATCH endpoint accepts. Mirrors the real backend: only ACTIVE
+ * and DISABLED may be set here; INVITED / LOCKED are system-managed and a
+ * request to set them is rejected 400 `USER_PATCH_BAD_STATUS` so local stays
+ * honest against the contract.
+ */
+const PATCHABLE_USER_STATUSES = new Set<UserStatus>(['ACTIVE', 'DISABLED']);
+
 function handleUpdate(id: string, config: AxiosRequestConfig): MatchResult {
   const u = userDb.users.find((x) => x.id === id);
   if (!u) return notFound();
   const raw = readBody<UpdateUserPayload & Record<string, unknown>>(config);
   const body = stripTenantFromBody(raw, `/users/${id}`, 'PATCH');
+  if (body.status !== undefined && !PATCHABLE_USER_STATUSES.has(body.status)) {
+    return badRequest(
+      'status must be ACTIVE or DISABLED',
+      'USER_PATCH_BAD_STATUS',
+    );
+  }
   if (body.full_name !== undefined) u.full_name = body.full_name;
   if (body.locale !== undefined) u.locale = body.locale;
   if (body.status !== undefined) u.status = body.status;

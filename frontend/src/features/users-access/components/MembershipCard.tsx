@@ -3,10 +3,16 @@
  *
  * Renders:
  *   - Tenant name + status badge
- *   - List of roles with per-role remove buttons (gated by USER_ACCESS_MANAGE)
- *   - "Add role" CTA
+ *   - List of roles with per-role remove buttons (USER_ROLE_ASSIGN OR
+ *     USER_ACCESS_MANAGE)
+ *   - "Add role" CTA (USER_ROLE_ASSIGN OR USER_ACCESS_MANAGE)
  *   - SalaryPermissionToggle (gated by USER_SALARY_PERMISSION_TOGGLE)
- *   - "Revoke membership" destructive CTA (gated by USER_ACCESS_MANAGE)
+ *   - "Revoke membership" destructive CTA (USER_MEMBERSHIP_MANAGE OR
+ *     USER_ACCESS_MANAGE)
+ *
+ * Gate codes mirror the backend `@PreAuthorize hasAnyAuthority(...)`: the
+ * fine-grained code is checked first, with USER_ACCESS_MANAGE as the umbrella
+ * OR-fallback (PermissionGate `mode="any"`).
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -73,7 +79,10 @@ export function MembershipCard({ userId, userName, membership }: MembershipCardP
           </div>
         </div>
         {!isRevoked ? (
-          <PermissionGate permission={PERMISSIONS.USER_ACCESS_MANAGE}>
+          <PermissionGate
+            permission={[PERMISSIONS.USER_MEMBERSHIP_MANAGE, PERMISSIONS.USER_ACCESS_MANAGE]}
+            mode="any"
+          >
             <Button
               variant="ghost"
               size="sm"
@@ -95,7 +104,10 @@ export function MembershipCard({ userId, userName, membership }: MembershipCardP
             {t('users.membership.rolesLabel', { count: membership.roles.length })}
           </h4>
           {!isRevoked ? (
-            <PermissionGate permission={PERMISSIONS.USER_ACCESS_MANAGE}>
+            <PermissionGate
+              permission={[PERMISSIONS.USER_ROLE_ASSIGN, PERMISSIONS.USER_ACCESS_MANAGE]}
+              mode="any"
+            >
               <Button
                 variant="ghost"
                 size="sm"
@@ -119,7 +131,10 @@ export function MembershipCard({ userId, userName, membership }: MembershipCardP
               >
                 <span>{t(`users.role.${r.role_code}`, { defaultValue: r.role_code })}</span>
                 {!isRevoked ? (
-                  <PermissionGate permission={PERMISSIONS.USER_ACCESS_MANAGE}>
+                  <PermissionGate
+                    permission={[PERMISSIONS.USER_ROLE_ASSIGN, PERMISSIONS.USER_ACCESS_MANAGE]}
+                    mode="any"
+                  >
                     <button
                       type="button"
                       aria-label={t('users.membership.removeRoleAria', {

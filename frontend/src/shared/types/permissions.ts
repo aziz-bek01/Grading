@@ -98,7 +98,27 @@ export const PERMISSIONS = {
   USER_LIST: 'USER_LIST',
   /** View a single user (GET /users/:id). */
   USER_VIEW: 'USER_VIEW',
-  USER_EDIT: 'USER_EDIT',
+  /**
+   * Edit user profile / status (PATCH /users/:id) — backend
+   * `hasAnyAuthority('USER_UPDATE','USER_ACCESS_MANAGE')`. Drives the
+   * Edit-user and Disable/Reactivate actions on the user details page.
+   */
+  USER_UPDATE: 'USER_UPDATE',
+  /**
+   * Add a membership (POST /users/:id/memberships) — backend
+   * `hasAnyAuthority('USER_MEMBERSHIP_MANAGE','USER_ACCESS_MANAGE')`. Also
+   * gates membership-level role grant/revoke alongside USER_ROLE_ASSIGN.
+   */
+  USER_MEMBERSHIP_MANAGE: 'USER_MEMBERSHIP_MANAGE',
+  /**
+   * Assign / remove a role on a membership — backend
+   * `hasAnyAuthority('USER_ROLE_ASSIGN','USER_ACCESS_MANAGE')`.
+   */
+  USER_ROLE_ASSIGN: 'USER_ROLE_ASSIGN',
+  /**
+   * Umbrella users-&-access management authority. Backend treats it as an
+   * OR-fallback for the fine-grained USER_* codes (see each `@PreAuthorize`).
+   */
   USER_ACCESS_MANAGE: 'USER_ACCESS_MANAGE',
   /** Invite a new user (POST /users). Backend code `USER_INVITE`. */
   USER_INVITE: 'USER_INVITE',

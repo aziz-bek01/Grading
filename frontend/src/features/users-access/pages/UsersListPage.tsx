@@ -71,8 +71,8 @@ export function UsersListPage() {
       options: [
         { value: 'ACTIVE', label: t('users.status.active') },
         { value: 'INVITED', label: t('users.status.invited') },
-        { value: 'REVOKED', label: t('users.status.revoked') },
-        { value: 'SUSPENDED', label: t('users.status.suspended') },
+        { value: 'DISABLED', label: t('users.status.disabled') },
+        { value: 'LOCKED', label: t('users.status.locked') },
       ],
     },
     {

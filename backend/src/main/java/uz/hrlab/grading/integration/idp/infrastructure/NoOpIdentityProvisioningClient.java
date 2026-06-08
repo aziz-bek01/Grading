@@ -37,4 +37,10 @@ public class NoOpIdentityProvisioningClient implements IdentityProvisioningPort 
     public void deactivateUser(String externalSubject) {
         // intentionally empty — IdP disabled
     }
+
+    /** No-op. */
+    @Override
+    public void reactivateUser(String externalSubject) {
+        // intentionally empty — IdP disabled
+    }
 }

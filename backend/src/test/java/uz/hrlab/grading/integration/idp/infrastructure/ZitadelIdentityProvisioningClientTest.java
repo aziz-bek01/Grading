@@ -10,6 +10,7 @@ import uz.hrlab.grading.integration.idp.application.IdentityProvisioningExceptio
 import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
@@ -162,5 +163,133 @@ class ZitadelIdentityProvisioningClientTest {
         assertThatThrownBy(() ->
                 new ZitadelIdentityProvisioningClient(bad, RestClient.builder().build()))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    // --- offboarding: deactivate / reactivate (validated v2 lifecycle calls) ---
+
+    @Test
+    void deactivatePostsToDeactivateEndpointWithBearerAndNoBody() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/deactivate"))
+                .andExpect(method(POST))
+                .andExpect(header("Authorization", "Bearer test-pat"))
+                .andRespond(withSuccess()); // 200, no body
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        client.deactivateUser("zid-123");
+        server.verify();
+    }
+
+    @Test
+    void reactivatePostsToReactivateEndpointWithBearerAndNoBody() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/reactivate"))
+                .andExpect(method(POST))
+                .andExpect(header("Authorization", "Bearer test-pat"))
+                .andRespond(withSuccess()); // 200, no body
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        client.reactivateUser("zid-123");
+        server.verify();
+    }
+
+    @Test
+    void deactivateSwallows404WhenUserAlreadyGone() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-gone/deactivate"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":5,\"message\":\"NOT_FOUND\"}"));
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        // idempotent-friendly: desired end-state (no active login) holds → swallow
+        assertThatCode(() -> client.deactivateUser("zid-gone")).doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void deactivateSwallowsPreconditionWhenAlreadyInactive() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        // ZITADEL returns a 4xx precondition for "user is already inactive".
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-inactive/deactivate"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":9,\"message\":\"FAILED_PRECONDITION\"}"));
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        assertThatCode(() -> client.deactivateUser("zid-inactive")).doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void deactivateThrowsOnServerError() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/deactivate"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":13,\"message\":\"internal\"}"));
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        // genuine failure (5xx) surfaces so the caller can flag a retry
+        assertThatThrownBy(() -> client.deactivateUser("zid-123"))
+                .isInstanceOf(IdentityProvisioningException.class);
+        server.verify();
+    }
+
+    @Test
+    void deactivateThrowsOnAuthFailure() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/deactivate"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.UNAUTHORIZED)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":16,\"message\":\"unauthenticated\"}"));
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        // 401 is NOT an idempotent no-op — surface it
+        assertThatThrownBy(() -> client.deactivateUser("zid-123"))
+                .isInstanceOf(IdentityProvisioningException.class);
+        server.verify();
+    }
+
+    @Test
+    void deactivateSkipsCallForNullSubject() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        // No expectations registered: any HTTP call would fail verification.
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        assertThatCode(() -> client.deactivateUser(null)).doesNotThrowAnyException();
+        assertThatCode(() -> client.deactivateUser("  ")).doesNotThrowAnyException();
+        server.verify(); // proves no HTTP call was made
     }
 }

@@ -158,12 +158,60 @@ public class ZitadelIdentityProvisioningClient implements IdentityProvisioningPo
 
     @Override
     public void deactivateUser(String externalSubject) {
-        // TODO (offboarding symmetry, US-3): call POST /v2/users/{id}/deactivate.
-        // Wiring the revoke side into RevokeMembershipUseCase / PatchUserUseCase is
-        // intentionally out of scope for this change (see decision doc §5). The port
-        // method exists so that step is a pure additive follow-up.
-        throw new UnsupportedOperationException(
-                "ZITADEL deactivateUser is a documented TODO (offboarding symmetry, decision doc §5)");
+        lifecycle(externalSubject, "deactivate");
+    }
+
+    @Override
+    public void reactivateUser(String externalSubject) {
+        lifecycle(externalSubject, "reactivate");
+    }
+
+    /**
+     * POST {@code /v2/users/{id}/{action}} (action = {@code deactivate} or
+     * {@code reactivate}); both take no body and return 200 on success.
+     *
+     * <p>Idempotency-friendly per the port contract: a 404 (user gone) or a 4xx
+     * "already in that state" precondition is logged at WARN and SWALLOWED so the
+     * admin's offboarding/re-enable op is not broken by repeating it or by the
+     * IdP account having been removed out of band. Auth (401/403) and 5xx are
+     * genuine failures and surface as {@link IdentityProvisioningException} so the
+     * caller can flag them. The token is NEVER logged — only action, status and
+     * the subject id.
+     */
+    private void lifecycle(String externalSubject, String action) {
+        if (externalSubject == null || externalSubject.isBlank()) {
+            // Defensive — callers already guard for null; never call the IdP for
+            // a user that was never provisioned.
+            return;
+        }
+        try {
+            restClient.post()
+                    .uri("/v2/users/{id}/{action}", externalSubject, action)
+                    .headers(this::authHeaders)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("IdP {} succeeded. subject={}", action, externalSubject);
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            if (status == 404 || (status >= 400 && status < 500 && status != 401 && status != 403)) {
+                // Already inactive/active, or the account no longer exists: the
+                // desired end-state holds (or is moot) — log + swallow, stay idempotent.
+                log.warn("IdP {} no-op (idempotent). subject={} status={} zitadelErr={}",
+                        action, externalSubject, status, zitadelErrorId(ex));
+                return;
+            }
+            // Auth or 5xx — a real failure; surface so the caller can flag a retry.
+            log.warn("IdP {} failed. subject={} status={} zitadelErr={}",
+                    action, externalSubject, status, zitadelErrorId(ex));
+            throw new IdentityProvisioningException(
+                    "Identity provider rejected the account " + action + " (status " + status + ")", ex);
+        } catch (Exception ex) {
+            // Network / timeout / unexpected — never leak internals.
+            log.warn("IdP {} errored. subject={} cause={}", action, externalSubject,
+                    ex.getClass().getSimpleName());
+            throw new IdentityProvisioningException(
+                    "Identity provider is unreachable; the account " + action + " could not be completed", ex);
+        }
     }
 
     /**

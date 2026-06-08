@@ -56,6 +56,16 @@ public final class AuditAction {
     public static final String USER_IDP_ACCOUNT_LINKED     = "USER_IDP_ACCOUNT_LINKED";
     public static final String USER_IDP_PROVISIONING_FAILED = "USER_IDP_PROVISIONING_FAILED";
 
+    // IdP offboarding symmetry (decision doc 08, US-3). Emitted when a user is
+    // disabled / has their last active membership revoked (deactivate) or is
+    // re-enabled (reactivate) while grading.idp.zitadel.enabled=true. The
+    // FAILED variant is written in REQUIRES_NEW so the in-app cutoff is never
+    // blocked by a transient IdP outage — it remains on record for retry.
+    // NEVER carry the IdP token; only the external subject id.
+    public static final String USER_IDP_ACCOUNT_DEACTIVATED = "USER_IDP_ACCOUNT_DEACTIVATED";
+    public static final String USER_IDP_ACCOUNT_REACTIVATED  = "USER_IDP_ACCOUNT_REACTIVATED";
+    public static final String USER_IDP_DEACTIVATION_FAILED  = "USER_IDP_DEACTIVATION_FAILED";
+
     // Project / org
     public static final String PROJECT_CREATED   = "PROJECT_CREATED";
     public static final String PROJECT_UPDATED   = "PROJECT_UPDATED";

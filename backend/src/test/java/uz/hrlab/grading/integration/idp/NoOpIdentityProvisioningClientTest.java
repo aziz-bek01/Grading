@@ -32,4 +32,10 @@ class NoOpIdentityProvisioningClientTest {
         assertThatCode(() -> client.deactivateUser("any-subject"))
                 .doesNotThrowAnyException();
     }
+
+    @Test
+    void reactivateIsANoOp() {
+        assertThatCode(() -> client.reactivateUser("any-subject"))
+                .doesNotThrowAnyException();
+    }
 }

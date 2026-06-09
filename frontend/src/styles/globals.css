@@ -3,23 +3,27 @@
 @tailwind utilities;
 
 :root {
-  --color-primary-500: #1f4f86;
-  --color-accent-500: #06b6d4;
+  /* HR LABORATORIES brand remap — see docs/mvp1/07b-hrl-brand-tokens.md */
+  --color-primary-500: #0739b9;
+  --color-accent-500: #9529f4;
   --color-success-500: #10b981;
   --color-warning-500: #f59e0b;
   --color-danger-500: #ef4444;
   --color-info-500: #3b82f6;
   --color-locked: #64748b;
-  --color-salary-sensitive: #7c3aed;
+  --color-salary-sensitive: #0f766e;
   --color-ai-suggestion: #0ea5e9;
-  --color-chart-1: #1f4f86;
-  --color-chart-2: #06b6d4;
+  --color-chart-1: #0739b9;
+  --color-chart-2: #9529f4;
   --color-chart-3: #10b981;
   --color-chart-4: #f59e0b;
-  --color-chart-5: #7c3aed;
+  --color-chart-5: #0f766e;
   --color-chart-6: #0ea5e9;
   --color-chart-7: #64748b;
   --color-chart-8: #dc2626;
+  /* Signature HRL gradients for non-Tailwind / SVG / chart consumers (07b §3). */
+  --gradient-brand: linear-gradient(135deg, #0739b9 0%, #6e2ee4 55%, #ab27fd 100%);
+  --gradient-brand-wash: linear-gradient(160deg, #f4f1fb 0%, #faf0fe 100%);
 }
 
 html,
@@ -49,6 +53,6 @@ body {
 
 *:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(31, 79, 134, 0.25);
+  box-shadow: 0 0 0 3px rgba(7, 57, 185, 0.3);
   border-radius: 4px;
 }

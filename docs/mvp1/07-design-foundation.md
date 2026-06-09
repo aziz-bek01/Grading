@@ -119,35 +119,40 @@ The matrix below drives which nav groups each role sees. Items not visible are *
 
 ## 3. Design Tokens (Tailwind theme)
 
-All values below must ship as CSS custom properties (`--color-*`, `--space-*` …) and be mirrored in `tailwind.config.ts`. **No hardcoded colors or pixel values in components.** Use tokens.
+> **Color values are overridden by the HR LABORATORIES brand remap — see [`docs/mvp1/07b-hrl-brand-tokens.md`](07b-hrl-brand-tokens.md) (authoritative for brand color).** The §3.1 / §3.6 / §3.7 tables below reflect that remap. Token *slots and meanings* are unchanged; only hex values moved.
+
+All values below must ship as CSS custom properties (`--color-*`, `--space-*` …) and be mirrored in `tailwind.config.ts`. **No hardcoded colors or pixel values in components.** Use tokens. Brand = HR LABORATORIES; gradient `--gradient-brand` / utility `bg-brand`; see `07b-hrl-brand-tokens.md`.
 
 ### 3.1 Color tokens
 
 ```ts
 // tailwind.config.ts — theme.extend.colors
 colors: {
-  // Brand
+  // Brand — HRL blue (gradient start). 500 = #0739B9.
   primary: {
-    50:  '#EFF6FF',
-    100: '#DBE7F5',
-    200: '#B3C7E4',
-    300: '#7C9EC9',
-    400: '#3F6EA8',
-    500: '#1F4F86',  // primary-default (deep navy)
-    600: '#163E6C',  // primary-hover
-    700: '#0F2E54',  // primary-pressed
-    800: '#0A2240',
-    900: '#061833',
-    DEFAULT: '#1F4F86',
+    50:  '#EEF2FD',
+    100: '#D6E0FA',
+    200: '#AEC0F4',
+    300: '#7C95EC',
+    400: '#3F63DC',
+    500: '#0739B9',  // primary-default (HRL brand blue)
+    600: '#062F9C',  // primary-hover
+    700: '#06277F',  // primary-pressed / active-route text
+    800: '#051E63',
+    900: '#041444',
+    DEFAULT: '#0739B9',
   },
+  // Brand accent — HRL violet/magenta (gradient far end). 500 = #9529F4.
   accent: {
-    50:  '#ECFEFF',
-    100: '#CFFAFE',
-    300: '#67E8F9',
-    500: '#06B6D4',  // cyan accent
-    600: '#0891B2',
-    700: '#0E7490',
-    DEFAULT: '#06B6D4',
+    50:  '#FAF0FE',
+    100: '#F1DCFD',
+    200: '#E1B8FB',
+    300: '#C983F8',
+    400: '#B14FF6',
+    500: '#9529F4',  // brand violet
+    600: '#AB27FD',  // magenta tip / accent-strong
+    700: '#7A1FC9',  // accent-on-light (AA links)
+    DEFAULT: '#9529F4',
   },
 
   // Neutrals (slate)
@@ -173,19 +178,27 @@ colors: {
   // Specialised states
   locked:           '#64748B',  // slate-500: locked / read-only
   'locked-bg':      '#F1F5F9',  // slate-100
-  'salary-sensitive':    '#7C3AED',  // violet-600: salary-protected accent
-  'salary-sensitive-bg': '#F5F3FF',
+  'salary-sensitive':    '#0F766E',  // deep teal: salary-protected (off the brand axis)
+  'salary-sensitive-bg': '#ECFDF8',
   'ai-suggestion':       '#0EA5E9',  // sky-500: AI advisory accent
   'ai-suggestion-bg':    '#F0F9FF',
   'audit-alert':         '#DC2626',
   'audit-alert-bg':      '#FEF2F2',
 }
+
+// theme.extend.backgroundImage — HRL signature gradients (07b §3)
+backgroundImage: {
+  brand:        'linear-gradient(135deg, #0739B9 0%, #6E2EE4 55%, #AB27FD 100%)',
+  'brand-wash': 'linear-gradient(160deg, #F4F1FB 0%, #FAF0FE 100%)',
+}
+// Also exposed as CSS vars --gradient-brand / --gradient-brand-wash for SVG/charts.
 ```
 
 Notes:
 
-* Brand primary is "deep navy 500"; primary-hover is 600; pressed is 700. Use the 50/100 tints for backgrounds of badges and selected rows.
-* `salary-sensitive` and `ai-suggestion` are deliberately not red/green — they need their own semantic slot so that "salary protected" never looks like "danger" and "AI suggestion" never looks like "success".
+* Brand primary is HRL blue `#0739B9` (gradient start); primary-hover is 600; pressed is 700. Use the 50/100 tints for backgrounds of badges and selected rows. The gradient (`bg-brand`) is reserved for hero moments (Login hero, dashboard hero, decorative rings) — in-app primary buttons stay solid `primary-500`.
+* `salary-sensitive` is a reserved **deep teal** `#0F766E`, deliberately off the blue→magenta brand axis so it never reads as the brand accent (security signal, 07b §4). It still always pairs with the shield icon + label — color is defense-in-depth, never the sole cue.
+* `ai-suggestion` stays sky `#0EA5E9` — the only blue-cyan accent left, clearly distinct from the darker brand blue. `salary-sensitive` and `ai-suggestion` are deliberately not red/green so "salary protected" never looks like "danger" and "AI suggestion" never looks like "success".
 * `locked` reuses slate so that the read-only feel is visually heavier than disabled.
 
 ### 3.2 Typography
@@ -268,7 +281,7 @@ shadow-sm   = 0 1px 2px rgba(15, 23, 42, 0.04)
 shadow      = 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)
 shadow-md   = 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04)
 shadow-lg   = 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04)
-shadow-focus = 0 0 0 3px rgba(31, 79, 134, 0.25)   // primary-500 @ 25%
+shadow-focus = 0 0 0 3px rgba(7, 57, 185, 0.30)   // brand blue primary-500 @ 30%
 ```
 
 `shadow-focus` is the visible focus ring for keyboard navigation (a11y).
@@ -296,12 +309,12 @@ All badges render icon + label and **never rely on color alone** (a11y rule).
 Sequence used by data viz (Recharts/ECharts) — 8 colors in fixed order, optimised for both light/dark backgrounds and color-blind safety (Okabe-Ito-inspired with brand alignment):
 
 ```
-chart-1 = #1F4F86  // primary navy
-chart-2 = #06B6D4  // cyan accent
+chart-1 = #0739B9  // brand blue (primary)
+chart-2 = #9529F4  // brand violet (accent)
 chart-3 = #10B981  // success
 chart-4 = #F59E0B  // warning
-chart-5 = #7C3AED  // violet (salary band)
-chart-6 = #0EA5E9  // sky (AI)
+chart-5 = #0F766E  // deep teal (salary band — matches salary-sensitive)
+chart-6 = #0EA5E9  // sky (AI / info)
 chart-7 = #64748B  // slate
 chart-8 = #DC2626  // danger (reserved last, used only when semantic)
 ```

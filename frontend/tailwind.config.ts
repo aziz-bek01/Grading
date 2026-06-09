@@ -9,27 +9,31 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // HRL brand blue — gradient start. See docs/mvp1/07b-hrl-brand-tokens.md §1.
         primary: {
-          50: '#EFF6FF',
-          100: '#DBE7F5',
-          200: '#B3C7E4',
-          300: '#7C9EC9',
-          400: '#3F6EA8',
-          500: '#1F4F86',
-          600: '#163E6C',
-          700: '#0F2E54',
-          800: '#0A2240',
-          900: '#061833',
-          DEFAULT: '#1F4F86',
+          50: '#EEF2FD',
+          100: '#D6E0FA',
+          200: '#AEC0F4',
+          300: '#7C95EC',
+          400: '#3F63DC',
+          500: '#0739B9',
+          600: '#062F9C',
+          700: '#06277F',
+          800: '#051E63',
+          900: '#041444',
+          DEFAULT: '#0739B9',
         },
+        // HRL brand violet/magenta — gradient far end. See 07b §2.
         accent: {
-          50: '#ECFEFF',
-          100: '#CFFAFE',
-          300: '#67E8F9',
-          500: '#06B6D4',
-          600: '#0891B2',
-          700: '#0E7490',
-          DEFAULT: '#06B6D4',
+          50: '#FAF0FE',
+          100: '#F1DCFD',
+          200: '#E1B8FB',
+          300: '#C983F8',
+          400: '#B14FF6',
+          500: '#9529F4',
+          600: '#AB27FD',
+          700: '#7A1FC9',
+          DEFAULT: '#9529F4',
         },
         surface: '#FFFFFF',
         background: '#F8FAFC',
@@ -47,20 +51,22 @@ const config: Config = {
         info: { 50: '#EFF6FF', 500: '#3B82F6', 600: '#2563EB', DEFAULT: '#3B82F6' },
         locked: '#64748B',
         'locked-bg': '#F1F5F9',
-        'salary-sensitive': '#7C3AED',
-        'salary-sensitive-bg': '#F5F3FF',
+        // Deep teal — reserved security signal, deliberately off the brand axis. See 07b §4.
+        'salary-sensitive': '#0F766E',
+        'salary-sensitive-bg': '#ECFDF8',
         'ai-suggestion': '#0EA5E9',
         'ai-suggestion-bg': '#F0F9FF',
         'audit-alert': '#DC2626',
         'audit-alert-bg': '#FEF2F2',
-        'chart-1': '#1F4F86',
-        'chart-2': '#06B6D4',
-        'chart-3': '#10B981',
-        'chart-4': '#F59E0B',
-        'chart-5': '#7C3AED',
-        'chart-6': '#0EA5E9',
-        'chart-7': '#64748B',
-        'chart-8': '#DC2626',
+        // Chart palette — brand-harmonious, 8 distinguishable series. See 07b §5.
+        'chart-1': '#0739B9', // brand blue (primary)
+        'chart-2': '#9529F4', // brand violet (accent)
+        'chart-3': '#10B981', // success green
+        'chart-4': '#F59E0B', // warning amber
+        'chart-5': '#0F766E', // deep teal (salary band — matches salary-sensitive)
+        'chart-6': '#0EA5E9', // sky (AI / info series)
+        'chart-7': '#64748B', // slate (neutral)
+        'chart-8': '#DC2626', // danger (semantic only)
       },
       fontFamily: {
         sans: [
@@ -103,7 +109,12 @@ const config: Config = {
           '0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)',
         md: '0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04)',
         lg: '0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04)',
-        focus: '0 0 0 3px rgba(31, 79, 134, 0.25)',
+        focus: '0 0 0 3px rgba(7, 57, 185, 0.30)',
+      },
+      backgroundImage: {
+        // HRL signature gradient (blue → violet → magenta). See 07b §3.
+        brand: 'linear-gradient(135deg, #0739B9 0%, #6E2EE4 55%, #AB27FD 100%)',
+        'brand-wash': 'linear-gradient(160deg, #F4F1FB 0%, #FAF0FE 100%)',
       },
     },
   },

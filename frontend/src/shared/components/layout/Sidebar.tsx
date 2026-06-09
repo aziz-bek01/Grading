@@ -30,6 +30,7 @@ import { routes } from '@/shared/config/routes';
 import { LockedBadge } from '@/shared/components/status/LockedBadge';
 import { useMyApprovalInbox } from '@/features/approval/hooks/useApprovals';
 import { cn } from '@/shared/lib/cn';
+import hrlMark from '@/assets/brand/hrl-mark-gradient.svg';
 
 interface NavItem {
   to: string;
@@ -173,9 +174,12 @@ export function Sidebar({ className }: SidebarProps = {}) {
       <div
         className={cn(
           'flex items-center px-2 py-2 border-b border-border',
-          collapsed ? 'justify-center' : 'justify-end',
+          collapsed ? 'justify-center' : 'justify-between',
         )}
       >
+        {!collapsed && (
+          <img src={hrlMark} alt="HR LABORATORIES" className="h-6 w-auto ml-1" />
+        )}
         <button
           type="button"
           onClick={() => setSidebarCollapsed(!collapsed)}

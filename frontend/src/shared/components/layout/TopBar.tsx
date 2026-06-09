@@ -5,6 +5,7 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 import { UserMenu } from './UserMenu';
 import { useAuthStore } from '@/features/auth/authStore';
 import { routes } from '@/shared/config/routes';
+import hrlMark from '@/assets/brand/hrl-mark-gradient.svg';
 
 /**
  * TopBar — always visible. Shows active company-client + active project (design foundation §5).
@@ -24,12 +25,7 @@ export function TopBar() {
       <div className="h-14 flex items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-3">
           <Link to={routes.dashboard} className="flex items-center gap-2" aria-label="grading.hrlab.uz home">
-            <span
-              className="w-8 h-8 rounded-md bg-primary-500 text-text-inverse text-sm font-semibold inline-flex items-center justify-center"
-              aria-hidden
-            >
-              HRL
-            </span>
+            <img src={hrlMark} alt="HR LABORATORIES" className="h-8 w-auto" />
           </Link>
           <TenantSelector />
           <ProjectSelector />

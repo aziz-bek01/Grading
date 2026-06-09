@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
+import uz.hrlab.grading.access.application.UserScopeExpander;
 import uz.hrlab.grading.access.infrastructure.RolePermissionRepository;
 import uz.hrlab.grading.access.infrastructure.RoleRepository;
 import uz.hrlab.grading.access.infrastructure.UserRoleJpaEntity;
@@ -55,30 +56,37 @@ public class DevUserAuthorityResolver {
     private final UserRoleRepository userRoles;
     private final RoleRepository roles;
     private final RolePermissionRepository rolePermissions;
+    private final UserScopeExpander scopeExpander;
 
     public DevUserAuthorityResolver(UserTenantMembershipRepository memberships,
                                     UserRoleRepository userRoles,
                                     RoleRepository roles,
-                                    RolePermissionRepository rolePermissions) {
+                                    RolePermissionRepository rolePermissions,
+                                    UserScopeExpander scopeExpander) {
         this.memberships = memberships;
         this.userRoles = userRoles;
         this.roles = roles;
         this.rolePermissions = rolePermissions;
+        this.scopeExpander = scopeExpander;
     }
 
     /**
-     * Resolved RBAC snapshot for a (user, tenant) pair.
+     * Resolved RBAC + ABAC-scope snapshot for a (user, tenant) pair.
      *
      * @param roleCodes        role codes attached to the active-tenant membership
      * @param permissionCodes  permission codes expanded from those roles
      * @param salaryPermission whether the membership carries the salary gate
+     * @param projectIds       ACTIVE project assignments (E4-S0)
+     * @param departmentScope  ACTIVE department scope roots expanded to subtree (E4-S0)
      */
     public record DevAuthority(Set<String> roleCodes,
                                Set<String> permissionCodes,
-                               boolean salaryPermission) {
+                               boolean salaryPermission,
+                               Set<UUID> projectIds,
+                               Set<UUID> departmentScope) {
 
         public static DevAuthority empty() {
-            return new DevAuthority(Set.of(), Set.of(), false);
+            return new DevAuthority(Set.of(), Set.of(), false, Set.of(), Set.of());
         }
     }
 
@@ -99,11 +107,18 @@ public class DevUserAuthorityResolver {
             return DevAuthority.empty();
         }
 
+        // E4-S0: expand ABAC scope from the DB (no claim in the dev path → always
+        // the DB fallback). Fail-closed inside the expander; an unscoped dev user
+        // gets empty sets and is unaffected.
+        Set<UUID> projectIds = scopeExpander.resolveProjectIds(userId, tenantId, Set.of());
+        Set<UUID> departmentScope = scopeExpander.resolveDepartmentScope(userId, tenantId, Set.of());
+
         List<UUID> roleIds = userRoles.findAllByMembershipId(membership.getId()).stream()
                 .map(UserRoleJpaEntity::getRoleId)
                 .toList();
         if (roleIds.isEmpty()) {
-            return new DevAuthority(Set.of(), Set.of(), membership.isSalaryDataPermission());
+            return new DevAuthority(Set.of(), Set.of(), membership.isSalaryDataPermission(),
+                    projectIds, departmentScope);
         }
 
         Set<String> roleCodes = roles.findAllById(roleIds).stream()
@@ -115,6 +130,7 @@ public class DevUserAuthorityResolver {
                 ? Set.of()
                 : Collections.unmodifiableSet(permissionCodeList.stream().collect(Collectors.toSet()));
 
-        return new DevAuthority(roleCodes, permissionCodes, membership.isSalaryDataPermission());
+        return new DevAuthority(roleCodes, permissionCodes, membership.isSalaryDataPermission(),
+                projectIds, departmentScope);
     }
 }

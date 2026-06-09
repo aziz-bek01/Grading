@@ -106,29 +106,50 @@ public class DevAuthFilter extends OncePerRequestFilter {
             Set<String> roles = parseStringSet(request.getHeader(HEADER_ROLES));
             Set<String> permissions = parseStringSet(request.getHeader(HEADER_PERMISSIONS));
             boolean salary = Boolean.parseBoolean(request.getHeader(HEADER_SALARY));
+            // E4-S0: scope is claim-first too — explicit X-Dev-Projects /
+            // X-Dev-Departments headers win; otherwise fall back to the
+            // DB-expanded scope below (mirrors roles/permissions).
+            Set<UUID> projectIds = parseUuidSet(request.getHeader(HEADER_PROJECTS));
+            Set<UUID> departmentScope = parseUuidSet(request.getHeader(HEADER_DEPTS));
 
             // BE-DEVAUTH-002: if no roles/permissions were supplied via headers
             // (the normal frontend dev flow), expand the user's real RBAC from
             // the database so business endpoints stop returning PERMISSION_DENIED.
-            if (authorityResolver != null && roles.isEmpty() && permissions.isEmpty() && tenantId != null) {
-                DevUserAuthorityResolver.DevAuthority authority =
-                        authorityResolver.resolve(userId, tenantId);
-                roles = authority.roleCodes();
-                permissions = authority.permissionCodes();
-                // Salary header still takes precedence when explicitly set true;
-                // otherwise fall back to the membership's salary_data_permission.
-                if (request.getHeader(HEADER_SALARY) == null) {
-                    salary = authority.salaryPermission();
+            // E4-S0: the same resolver call also returns the user's DB-expanded
+            // project + department-subtree scope.
+            if (authorityResolver != null && tenantId != null) {
+                DevUserAuthorityResolver.DevAuthority authority = null;
+                if (roles.isEmpty() && permissions.isEmpty()) {
+                    authority = authorityResolver.resolve(userId, tenantId);
+                    roles = authority.roleCodes();
+                    permissions = authority.permissionCodes();
+                    // Salary header still takes precedence when explicitly set true;
+                    // otherwise fall back to the membership's salary_data_permission.
+                    if (request.getHeader(HEADER_SALARY) == null) {
+                        salary = authority.salaryPermission();
+                    }
+                }
+                // Scope DB-fallback: only when the corresponding header was empty.
+                if (projectIds.isEmpty() || departmentScope.isEmpty()) {
+                    if (authority == null) {
+                        authority = authorityResolver.resolve(userId, tenantId);
+                    }
+                    if (projectIds.isEmpty()) {
+                        projectIds = authority.projectIds();
+                    }
+                    if (departmentScope.isEmpty()) {
+                        departmentScope = authority.departmentScope();
+                    }
                 }
             }
 
             TenantContext ctx = new TenantContext(
                     userId,
                     tenantId,
-                    parseUuidSet(request.getHeader(HEADER_PROJECTS)),
+                    projectIds,
                     roles,
                     permissions,
-                    parseUuidSet(request.getHeader(HEADER_DEPTS)),
+                    departmentScope,
                     salary,
                     request.getHeader(HEADER_LOCALE)
             );

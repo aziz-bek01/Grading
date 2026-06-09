@@ -24,6 +24,11 @@ databaseChangeLog:
   - include:
       file: control-plane/006-audit-logs-partitioning.yaml
       relativeToChangelogFile: true
+  # E4-S0 — per-tenant user→department scope (ABAC). Depends only on
+  # control-plane users + tenants (001/002); no tenant-schema dependency.
+  - include:
+      file: control-plane/007-create-user-department-scopes.yaml
+      relativeToChangelogFile: true
   - include:
       file: seeds/001-default-permissions.yaml
       relativeToChangelogFile: true

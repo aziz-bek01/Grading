@@ -48,6 +48,14 @@ public final class AuditAction {
     public static final String USER_SALARY_PERMISSION_REVOKED     = "USER_SALARY_PERMISSION_REVOKED";
     public static final String CROSS_TENANT_USER_ACCESS_ATTEMPT   = "CROSS_TENANT_USER_ACCESS_ATTEMPT";
 
+    // ABAC scope assignment (E4-S1 — admin grants/revokes per-row department
+    // scope + project assignments). One row per individual change so SIEM can
+    // reconstruct the exact delta of a replace-set operation.
+    public static final String USER_DEPARTMENT_SCOPE_GRANTED      = "USER_DEPARTMENT_SCOPE_GRANTED";
+    public static final String USER_DEPARTMENT_SCOPE_REVOKED      = "USER_DEPARTMENT_SCOPE_REVOKED";
+    public static final String USER_PROJECT_ASSIGNMENT_ADDED      = "USER_PROJECT_ASSIGNMENT_ADDED";
+    public static final String USER_PROJECT_ASSIGNMENT_REMOVED    = "USER_PROJECT_ASSIGNMENT_REMOVED";
+
     // Credential edits via PATCH /api/v1/users/{id} (decision doc 08 extension).
     // The IdP is the system of record for credentials, so these reflect changes
     // pushed to ZITADEL. USER_PASSWORD_RESET NEVER carries the password value;

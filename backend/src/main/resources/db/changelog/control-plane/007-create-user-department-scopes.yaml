@@ -1,0 +1,143 @@
+# Control plane: user_department_scopes (RBAC slice E4-S0).
+#
+# WHY:
+#   ABAC department scoping already exists in the application
+#   (DepartmentScopePolicy + TenantContext.departmentScope) but is never
+#   populated for real users, so the requirement "an evaluation expert sees
+#   only the departments assigned to them; a department manager sees only
+#   their own department" does not actually take effect. This table is the
+#   persistence layer the backend (next task) reads to expand
+#   TenantContext.departmentScope per (user, tenant).
+#
+# WHERE IT LIVES:
+#   Control plane, public schema — alongside users / user_tenant_memberships
+#   / user_roles / user_project_assignments. This is access mapping
+#   (which user may see which department), NOT tenant business data, so it
+#   belongs in the control plane next to the other RBAC/ABAC mapping tables.
+#
+# CROSS-SCHEMA REFERENCE RULE (integration/data blueprint §6.2):
+#   Departments live in the TENANT schema (public.departments in mode-shared,
+#   tenant_xxx.departments in schema-per-tenant). A control-plane table must
+#   NOT carry a cross-schema / cross-database FK to a tenant object — that
+#   would break the database-per-tenant isolation boundary. department_id is
+#   therefore stored as a PLAIN, INDEXED UUID reference; its existence +
+#   tenant ownership are validated in application code (the backend resolves
+#   it against the tenant's departments under the active tenant context).
+#   This mirrors how user_project_assignments stores project_id with no FK.
+#
+# RLS — DELIBERATELY NOT ENABLED (E4-S0 backend correction):
+#   This table is read DURING TenantContext construction
+#   (JwtTenantContextResolver / DevUserAuthorityResolver) — i.e. on the
+#   authentication path, BEFORE the request transaction opens and BEFORE the
+#   RLS GUC `app.tenant_id` is SET LOCAL by RlsTenantSessionAspect. If forced
+#   RLS were enabled here, the blank/unset GUC would make every scope-expansion
+#   query return ZERO ROWS (the exact async-worker RLS bug class fixed by 031),
+#   silently emptying every user's department scope. So this table follows the
+#   SAME convention as its sibling control-plane RBAC mapping tables
+#   (user_roles, user_tenant_memberships, user_project_assignments): it is
+#   RLS-FREE and APP-GATED. 030-enable-rls.yaml documents this explicitly —
+#   "control-plane tables (tenants, users, system_audit_log, ...) are NOT
+#   subject to tenant RLS — they are application-wide and gated by app-layer
+#   RBAC/ABAC." Isolation here is enforced by EXPLICIT
+#   `WHERE tenant_id = ? AND user_id = ?` predicates in every query (tenant
+#   sourced from TenantContext, never from input), never by RLS.
+#
+# ROLES (no explicit grants needed here):
+#   control-plane/005-db-role-grants.yaml runs earlier and applies
+#   ALTER DEFAULT PRIVILEGES ... GRANT SELECT,INSERT,UPDATE,DELETE ON TABLES
+#   TO grading_runtime, so the runtime role automatically receives DML on
+#   this future table. grading_migrator (the Liquibase runner) owns DDL and
+#   bypasses RLS. No audit-style REVOKE is required — this is not an audit
+#   table.
+#
+# IDEMPOTENCY:
+#   Table/constraints/indexes are created once (Liquibase tracks the
+#   changeset). No RLS policy is created here (see the RLS note above), so
+#   there is no policy collision to guard against on re-apply.
+#
+# NO $$ DOLLAR-BLOCK:
+#   This changeset is plain DDL only; every SQL block uses
+#   splitStatements: true and contains NO PL/pgSQL DO $$ ... $$ blocks
+#   (see project memory: raw $$ blocks break Liquibase ';' splitting).
+databaseChangeLog:
+
+  - changeSet:
+      id: 007-create-user-department-scopes
+      author: database-architect
+      context: control-plane
+      labels: mvp1,rbac,abac,e4-s0
+      comment: |
+        Per-tenant DEPARTMENT scope for a user (E4-S0). Backend expands
+        TenantContext.departmentScope from these rows. department_id is a
+        plain indexed UUID (no cross-schema FK); user_id + tenant_id FK into
+        the control-plane users + tenants tables exactly like
+        user_tenant_memberships / user_roles.
+      changes:
+        - createTable:
+            tableName: user_department_scopes
+            schemaName: public
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(),
+                          constraints: { primaryKey: true, nullable: false } }
+              - column:
+                  name: user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_uds_user
+                    referencedTableSchemaName: public
+                    referencedTableName: users
+                    referencedColumnNames: id
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_uds_tenant
+                    referencedTableSchemaName: public
+                    referencedTableName: tenants
+                    referencedColumnNames: id
+              # Plain reference to a TENANT-schema department. NO cross-schema FK.
+              # Existence + tenant ownership validated in application code.
+              - column: { name: department_id, type: UUID,
+                          constraints: { nullable: false } }
+              - column: { name: status, type: VARCHAR(32),
+                          defaultValue: ACTIVE,
+                          constraints: { nullable: false } }
+              # Actor who granted the scope (mirrors invited_by on
+              # user_tenant_memberships). Nullable: system/seed grants.
+              - column: { name: granted_by_user_id, type: UUID }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0,
+                          constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(),
+                          constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+        - addUniqueConstraint:
+            tableName: user_department_scopes
+            schemaName: public
+            constraintName: uq_uds_user_tenant_department
+            columnNames: user_id, tenant_id, department_id
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Status domain: ACTIVE scope is honoured; REVOKED rows are kept
+              -- for audit/history and ignored by the scope-expansion query.
+              ALTER TABLE public.user_department_scopes
+                ADD CONSTRAINT chk_uds_status
+                CHECK (status IN ('ACTIVE','REVOKED'));
+
+              -- Lookup direction 1 — expand-by-user: "which departments is this
+              -- user scoped to in this tenant?" (TenantContext expansion path).
+              CREATE INDEX idx_uds_tenant_user
+                ON public.user_department_scopes (tenant_id, user_id);
+
+              -- Lookup direction 2 — reverse: "who is scoped to this department?"
+              CREATE INDEX idx_uds_tenant_department
+                ON public.user_department_scopes (tenant_id, department_id);
+      rollback:
+        - dropTable:
+            tableName: user_department_scopes
+            schemaName: public

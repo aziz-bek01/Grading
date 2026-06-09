@@ -11,6 +11,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
+import uz.hrlab.grading.access.application.UserScopeExpander;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
 import uz.hrlab.grading.audit.application.AuditAction;
@@ -28,6 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -122,8 +124,11 @@ class CrossTenantAuditRecordingTest {
         SecurityContextHolder.getContext().setAuthentication(forgedAuth);
 
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        UserScopeExpander scopeExpander = mock(UserScopeExpander.class);
+        when(scopeExpander.resolveProjectIds(any(), any(), any())).thenReturn(Set.of());
+        when(scopeExpander.resolveDepartmentScope(any(), any(), any())).thenReturn(Set.of());
         TenantContextFilter filter = new TenantContextFilter(
-                jwtResolver, memberships, audit, objectMapper);
+                jwtResolver, memberships, scopeExpander, audit, objectMapper);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/positions");
         request.addHeader("User-Agent", "Mozilla/5.0 (test)");
@@ -194,8 +199,11 @@ class CrossTenantAuditRecordingTest {
                 new DevAuthentication(userId.toString(), acmeCtx));
 
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        UserScopeExpander scopeExpander = mock(UserScopeExpander.class);
+        when(scopeExpander.resolveProjectIds(any(), any(), any())).thenReturn(Set.of());
+        when(scopeExpander.resolveDepartmentScope(any(), any(), any())).thenReturn(Set.of());
         TenantContextFilter filter = new TenantContextFilter(
-                jwtResolver, memberships, audit, objectMapper);
+                jwtResolver, memberships, scopeExpander, audit, objectMapper);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/projects");
         request.setContentType("application/json");
@@ -255,8 +263,11 @@ class CrossTenantAuditRecordingTest {
                 new DevAuthentication(userId.toString(), acmeCtx));
 
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        UserScopeExpander scopeExpander = mock(UserScopeExpander.class);
+        when(scopeExpander.resolveProjectIds(any(), any(), any())).thenReturn(Set.of());
+        when(scopeExpander.resolveDepartmentScope(any(), any(), any())).thenReturn(Set.of());
         TenantContextFilter filter = new TenantContextFilter(
-                jwtResolver, memberships, audit, objectMapper);
+                jwtResolver, memberships, scopeExpander, audit, objectMapper);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/projects");
         request.setParameter("tenantId", betaTenant.toString());     // forged
@@ -309,8 +320,11 @@ class CrossTenantAuditRecordingTest {
                 new DevAuthentication(userId.toString(), acmeCtx));
 
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        UserScopeExpander scopeExpander = mock(UserScopeExpander.class);
+        when(scopeExpander.resolveProjectIds(any(), any(), any())).thenReturn(Set.of());
+        when(scopeExpander.resolveDepartmentScope(any(), any(), any())).thenReturn(Set.of());
         TenantContextFilter filter = new TenantContextFilter(
-                jwtResolver, memberships, audit, objectMapper);
+                jwtResolver, memberships, scopeExpander, audit, objectMapper);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/projects");
         request.addHeader("X-Tenant-Id", betaTenant.toString());     // forged

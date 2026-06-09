@@ -15,6 +15,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import uz.hrlab.grading.access.application.UserScopeExpander;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
 import uz.hrlab.grading.audit.application.AuditAction;
@@ -48,15 +49,18 @@ public class TenantContextFilter extends OncePerRequestFilter {
 
     private final JwtTenantContextResolver jwtResolver;
     private final UserTenantMembershipRepository memberships;
+    private final UserScopeExpander scopeExpander;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
 
     public TenantContextFilter(JwtTenantContextResolver jwtResolver,
                                UserTenantMembershipRepository memberships,
+                               UserScopeExpander scopeExpander,
                                AuditService auditService,
                                ObjectMapper objectMapper) {
         this.jwtResolver = jwtResolver;
         this.memberships = memberships;
+        this.scopeExpander = scopeExpander;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
     }
@@ -119,6 +123,14 @@ public class TenantContextFilter extends OncePerRequestFilter {
     /**
      * Eagerly load this user's tenant memberships ONCE per request and stash
      * the tenant-id set on the {@link TenantContext} (F-205).
+     *
+     * <p>E4-S0: also acts as the scope safety-net. The JWT resolver and dev-auth
+     * filter already populate {@code projectIds} / {@code departmentScope}, so
+     * this is CLAIM-FIRST — a non-empty scope already on the context is preserved
+     * verbatim (passing it as the "claim" to the expander means no re-query).
+     * Only a context that arrived with EMPTY scope (e.g. a future context source
+     * that forgot to expand) gets a DB fallback here. Fail-closed: scope errors
+     * leave the existing (possibly empty) scope untouched — never widened.
      */
     private TenantContext withMemberships(TenantContext ctx) {
         if (ctx == null || ctx.userId() == null) return ctx;
@@ -126,9 +138,15 @@ public class TenantContextFilter extends OncePerRequestFilter {
             Set<UUID> tenantIds = memberships.findAllByUserId(ctx.userId()).stream()
                     .map(UserTenantMembershipJpaEntity::getTenantId)
                     .collect(Collectors.toUnmodifiableSet());
+            // Claim-first scope safety-net — preserves a populated set, only
+            // DB-expands an empty one.
+            Set<UUID> projectIds = scopeExpander.resolveProjectIds(
+                    ctx.userId(), ctx.tenantId(), ctx.projectIds());
+            Set<UUID> departmentScope = scopeExpander.resolveDepartmentScope(
+                    ctx.userId(), ctx.tenantId(), ctx.departmentScope());
             return new TenantContext(
-                    ctx.userId(), ctx.tenantId(), ctx.projectIds(),
-                    ctx.roles(), ctx.permissions(), ctx.departmentScope(),
+                    ctx.userId(), ctx.tenantId(), projectIds,
+                    ctx.roles(), ctx.permissions(), departmentScope,
                     ctx.salaryPermission(), ctx.locale(), tenantIds);
         } catch (Exception ex) {
             // Don't fail the request if the memberships query errors —

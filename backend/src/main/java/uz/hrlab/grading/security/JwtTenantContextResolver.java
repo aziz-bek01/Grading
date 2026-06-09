@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import uz.hrlab.grading.access.application.UserScopeExpander;
 import uz.hrlab.grading.access.domain.MembershipStatus;
 import uz.hrlab.grading.access.infrastructure.RolePermissionRepository;
 import uz.hrlab.grading.access.infrastructure.RoleRepository;
@@ -69,17 +70,20 @@ public class JwtTenantContextResolver {
     private final UserRoleRepository userRoles;
     private final RoleRepository roles;
     private final RolePermissionRepository rolePermissions;
+    private final UserScopeExpander scopeExpander;
 
     public JwtTenantContextResolver(UserRepository users,
                                     UserTenantMembershipRepository memberships,
                                     UserRoleRepository userRoles,
                                     RoleRepository roles,
-                                    RolePermissionRepository rolePermissions) {
+                                    RolePermissionRepository rolePermissions,
+                                    UserScopeExpander scopeExpander) {
         this.users = users;
         this.memberships = memberships;
         this.userRoles = userRoles;
         this.roles = roles;
         this.rolePermissions = rolePermissions;
+        this.scopeExpander = scopeExpander;
     }
 
     public TenantContext resolve(Jwt jwt) {
@@ -142,8 +146,18 @@ public class JwtTenantContextResolver {
             }
         }
 
-        return new TenantContext(userId, tenantId, claimProjectIds, resolvedRoles,
-                resolvedPermissions, claimDepartmentScope, salaryPerm, locale);
+        // E4-S0: populate ABAC scope claim-first, then DB fallback (mirrors the
+        // role/permission expansion above). projectIds come from
+        // user_project_assignments; departmentScope is the user_department_scopes
+        // roots EXPANDED to the department subtree. Fail-closed inside the
+        // expander — an unscoped user gets empty sets and is unaffected.
+        Set<UUID> resolvedProjectIds =
+                scopeExpander.resolveProjectIds(userId, tenantId, claimProjectIds);
+        Set<UUID> resolvedDepartmentScope =
+                scopeExpander.resolveDepartmentScope(userId, tenantId, claimDepartmentScope);
+
+        return new TenantContext(userId, tenantId, resolvedProjectIds, resolvedRoles,
+                resolvedPermissions, resolvedDepartmentScope, salaryPerm, locale);
     }
 
     /**

@@ -51,11 +51,25 @@ public class DepartmentScopePolicy implements ScopePolicy {
     }
 
     private boolean isBypass(TenantContext ctx) {
-        return ctx.hasRole(RoleCodes.HRLAB_SUPER_ADMIN)
+        return isTenantWideBypass(ctx);
+    }
+
+    /**
+     * Single source of truth for "this caller sees EVERY department within their
+     * tenant without an explicit manager-scope" — the bypass set above.
+     *
+     * <p>Exposed (P2-2) so {@code SetUserDepartmentScopesUseCase} can reuse the
+     * exact same role set when deciding whether a department-scope GRANT must be
+     * constrained to the caller's own subtree. Keeping it here avoids re-listing
+     * role codes in the use case and keeps the bypass definition in one place.
+     */
+    public static boolean isTenantWideBypass(TenantContext ctx) {
+        return ctx != null
+                && (ctx.hasRole(RoleCodes.HRLAB_SUPER_ADMIN)
                 || ctx.hasRole(RoleCodes.HRLAB_PROJECT_MANAGER)
                 || ctx.hasRole(RoleCodes.HRLAB_CONSULTANT)
                 || ctx.hasRole(RoleCodes.HRLAB_ANALYST)
                 || ctx.hasRole(RoleCodes.CLIENT_COMPANY_ADMIN)
-                || ctx.hasRole(RoleCodes.CLIENT_HR_DIRECTOR);
+                || ctx.hasRole(RoleCodes.CLIENT_HR_DIRECTOR));
     }
 }

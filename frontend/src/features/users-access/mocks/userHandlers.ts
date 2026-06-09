@@ -8,6 +8,7 @@
  */
 import type { AxiosRequestConfig } from 'axios';
 import type { RoleCode } from '@/shared/auth/authTypes';
+import { useAuthStore } from '@/features/auth/authStore';
 import type {
   AddMembershipPayload,
   AddRolePayload,
@@ -223,7 +224,7 @@ function handleInvite(config: AxiosRequestConfig): MatchResult {
     salary_data_permission_granted_by: null,
     roles: body.role_codes.map((rc) => ({
       id: uuid(),
-      role_code: rc,
+      role_code: rc as RoleCode,
       granted_at: now,
       granted_by: 'u-mock-actor',
     })),
@@ -239,7 +240,7 @@ function handleInvite(config: AxiosRequestConfig): MatchResult {
     status: 'INVITED',
     tenant_count: 1,
     role_count: body.role_codes.length,
-    role_codes: [...body.role_codes],
+    role_codes: [...body.role_codes] as RoleCode[],
     last_login_at: null,
     created_at: now,
     updated_at: now,
@@ -354,7 +355,7 @@ function handleAddMembership(id: string, config: AxiosRequestConfig): MatchResul
     salary_data_permission_granted_by: null,
     roles: raw.role_codes.map((rc) => ({
       id: uuid(),
-      role_code: rc,
+      role_code: rc as RoleCode,
       granted_at: now,
       granted_by: 'u-mock-actor',
     })),
@@ -396,7 +397,7 @@ function handleAddRole(id: string, tenantId: string, config: AxiosRequestConfig)
   }
   m.roles.push({
     id: uuid(),
-    role_code: body.role_code,
+    role_code: body.role_code as RoleCode,
     granted_at: new Date().toISOString(),
     granted_by: 'u-mock-actor',
   });
@@ -531,6 +532,184 @@ function handleAudit(id: string, query: URLSearchParams): MatchResult {
 }
 
 // ---------------------------------------------------------------
+// Role catalog (GET /roles) — backs the DATA-DRIVEN role pickers (slice E1)
+// ---------------------------------------------------------------
+
+/**
+ * Wire shape returned by `GET /roles` (snake_case). `assignable_by_caller` and
+ * `reason_if_not` are computed below per the mock current-user role so dev/tests
+ * are honest: a non-super caller sees PLATFORM/HRLAB rows disabled with a reason.
+ */
+interface RoleCatalogRow {
+  code: RoleCode;
+  scope: 'PLATFORM' | 'TENANT';
+  is_system: boolean;
+  name_i18n: Record<string, string>;
+}
+
+/** System role catalog (mirrors the seeded `roles` table). */
+const ROLE_CATALOG: RoleCatalogRow[] = [
+  {
+    code: 'HRLAB_SUPER_ADMIN',
+    scope: 'PLATFORM',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'HRLab Super Admin',
+      'uz-Cyrl-UZ': 'HRLab бош администратор',
+      'uz-Latn-UZ': 'HRLab bosh administrator',
+      'en-US': 'HRLab Super Admin',
+    },
+  },
+  {
+    code: 'HRLAB_PROJECT_MANAGER',
+    scope: 'PLATFORM',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'HRLab менеджер проекта',
+      'uz-Cyrl-UZ': 'HRLab лойиҳа менежери',
+      'uz-Latn-UZ': 'HRLab loyiha menejeri',
+      'en-US': 'HRLab Project Manager',
+    },
+  },
+  {
+    code: 'HRLAB_CONSULTANT',
+    scope: 'PLATFORM',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'HRLab консультант',
+      'uz-Cyrl-UZ': 'HRLab консультант',
+      'uz-Latn-UZ': 'HRLab konsultant',
+      'en-US': 'HRLab Consultant',
+    },
+  },
+  {
+    code: 'HRLAB_ANALYST',
+    scope: 'PLATFORM',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'HRLab аналитик',
+      'uz-Cyrl-UZ': 'HRLab таҳлилчи',
+      'uz-Latn-UZ': 'HRLab tahlilchi',
+      'en-US': 'HRLab Analyst',
+    },
+  },
+  {
+    code: 'CLIENT_COMPANY_ADMIN',
+    scope: 'TENANT',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'Администратор компании-клиента',
+      'uz-Cyrl-UZ': 'Мижоз компания администратори',
+      'uz-Latn-UZ': 'Mijoz kompaniya administratori',
+      'en-US': 'Client Company Admin',
+    },
+  },
+  {
+    code: 'CLIENT_HR_DIRECTOR',
+    scope: 'TENANT',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'HR-директор',
+      'uz-Cyrl-UZ': 'HR директор',
+      'uz-Latn-UZ': 'HR direktor',
+      'en-US': 'HR Director',
+    },
+  },
+  {
+    code: 'CLIENT_HR_SPECIALIST',
+    scope: 'TENANT',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'HR-специалист',
+      'uz-Cyrl-UZ': 'HR мутахассис',
+      'uz-Latn-UZ': 'HR mutaxassis',
+      'en-US': 'HR Specialist',
+    },
+  },
+  {
+    code: 'EVALUATION_COMMITTEE_MEMBER',
+    scope: 'TENANT',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'Член оценочного комитета',
+      'uz-Cyrl-UZ': 'Баҳолаш қўмитаси аъзоси',
+      'uz-Latn-UZ': 'Baholash qoʻmitasi aʼzosi',
+      'en-US': 'Evaluation Committee Member',
+    },
+  },
+  {
+    code: 'DEPARTMENT_MANAGER',
+    scope: 'TENANT',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'Руководитель подразделения',
+      'uz-Cyrl-UZ': 'Бўлим раҳбари',
+      'uz-Latn-UZ': 'Boʻlim rahbari',
+      'en-US': 'Department Manager',
+    },
+  },
+  {
+    code: 'VIEWER',
+    scope: 'TENANT',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'Наблюдатель (только чтение)',
+      'uz-Cyrl-UZ': 'Кузатувчи (фақат ўқиш)',
+      'uz-Latn-UZ': 'Kuzatuvchi (faqat oʻqish)',
+      'en-US': 'Viewer (read-only)',
+    },
+  },
+  {
+    code: 'EXTERNAL_AUDITOR',
+    scope: 'TENANT',
+    is_system: true,
+    name_i18n: {
+      'ru-RU': 'Внешний аудитор',
+      'uz-Cyrl-UZ': 'Ташқи аудитор',
+      'uz-Latn-UZ': 'Tashqi auditor',
+      'en-US': 'External Auditor',
+    },
+  },
+];
+
+/**
+ * GET /roles[?assignableOnly=true] — DATA-DRIVEN role catalog.
+ *
+ * Computes `assignable_by_caller` + `reason_if_not` from the mock current-user
+ * role (read from the auth store, which `signIn()` populates):
+ *   - HRLAB_SUPER_ADMIN can grant every role.
+ *   - any other caller can grant TENANT-scope roles only; PLATFORM rows come
+ *     back disabled — HRLAB_SUPER_ADMIN specifically with `HRLAB_ONLY`, the
+ *     other HRLAB_* platform roles with `PLATFORM_SCOPE`.
+ *
+ * `assignableOnly` is honoured loosely (the mock returns the full catalog either
+ * way) so the picker can still render disabled rows with reasons — exactly the
+ * behavior the dialogs exercise. The real backend may trim rows more strictly.
+ */
+function handleRoles(): MatchResult {
+  const callerRoles = useAuthStore.getState().user?.roles ?? [];
+  const isSuperAdmin = callerRoles.includes('HRLAB_SUPER_ADMIN');
+  const body = ROLE_CATALOG.map((r) => {
+    let assignable = true;
+    let reason: 'HRLAB_ONLY' | 'PLATFORM_SCOPE' | null = null;
+    if (!isSuperAdmin && r.scope === 'PLATFORM') {
+      assignable = false;
+      reason = r.code === 'HRLAB_SUPER_ADMIN' ? 'HRLAB_ONLY' : 'PLATFORM_SCOPE';
+    }
+    return {
+      code: r.code,
+      name_i18n: r.name_i18n,
+      scope: r.scope,
+      is_system: r.is_system,
+      is_custom: false,
+      assignable_by_caller: assignable,
+      reason_if_not: reason,
+    };
+  });
+  return ok(body);
+}
+
+// ---------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------
 
@@ -538,6 +717,8 @@ export function handleUsers(config: AxiosRequestConfig): MatchResult | null {
   const method = (config.method ?? 'get').toUpperCase();
   const url = config.url ?? '';
   const { path, query } = parseUrl(url, config.params as Record<string, unknown> | undefined);
+
+  if (path === '/roles' && method === 'GET') return handleRoles();
 
   if (path === '/users' && method === 'GET') return handleList(query, config);
   if (path === '/users' && method === 'POST') return handleInvite(config);

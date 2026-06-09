@@ -3,9 +3,15 @@ import { z } from 'zod';
 const localeEnum = z.enum(['ru-RU', 'uz-Cyrl-UZ', 'uz-Latn-UZ', 'en-US']);
 
 /**
- * Canonical role catalog — MUST mirror the backend `roles` table seeded in
- * `backend/.../seeds/002-default-roles.yaml`. Divergence here causes the
- * invite / assign-role endpoints to reject the payload (400) in production.
+ * Canonical catalog of SYSTEM role codes — mirrors the backend `roles` table
+ * seeded in `backend/.../seeds/002-default-roles.yaml`. This list is the set of
+ * built-in roles only; it is NOT the source of which roles a picker shows. The
+ * assignment pickers are now DATA-DRIVEN from `GET /roles?assignableOnly=true`
+ * (see {@link useAssignableRoles}), so custom roles created at runtime appear
+ * automatically and the previously-hardcoded grantable arrays are gone.
+ *
+ * Still referenced by the MSW mock (`userHandlers.ts`) as the seed catalog it
+ * validates incoming role codes against, mirroring the backend.
  */
 export const ROLE_CODES = [
   'HRLAB_SUPER_ADMIN',
@@ -21,28 +27,13 @@ export const ROLE_CODES = [
   'EXTERNAL_AUDITOR',
 ] as const;
 
-const roleEnum = z.enum(ROLE_CODES);
-
 /**
- * Whitelist of roles that may be granted by non-super-admin client admins.
- * CLIENT_COMPANY_ADMIN holds USER_ROLE_ASSIGN (tenant-scope) but NOT
- * USER_ROLE_ASSIGN_HRLAB, so it may grant any TENANT-scope role but no
- * HRLAB_* platform role (see seed 004-default-role-permissions.yaml).
- * Frontend renders the multi-select from this list when the active user is
- * NOT HRLAB_SUPER_ADMIN. Backend remains source of truth (it will reject
- * elevated role grants regardless of what the UI sent).
+ * Role-code field validator. Permissive on purpose: the picker is data-driven
+ * (custom roles are not known at build time), so we only assert "a non-empty
+ * code was chosen". The backend is the source of truth and rejects an unknown
+ * or non-grantable code (400 `UNKNOWN_ROLE_CODE` / `USER_INVITE_UNKNOWN_ROLE`).
  */
-export const CLIENT_GRANTABLE_ROLES = [
-  'CLIENT_COMPANY_ADMIN',
-  'CLIENT_HR_DIRECTOR',
-  'CLIENT_HR_SPECIALIST',
-  'EVALUATION_COMMITTEE_MEMBER',
-  'DEPARTMENT_MANAGER',
-  'VIEWER',
-  'EXTERNAL_AUDITOR',
-] as const;
-
-export const SUPER_ADMIN_GRANTABLE_ROLES = ROLE_CODES;
+const roleCodeField = z.string().min(1, { message: 'validation_roles_min' });
 
 /**
  * Initial login password issued by the inviting admin.
@@ -119,7 +110,7 @@ export const InviteUserSchema = z.object({
    * shape AND enforces super-admin authority before honouring this field.
    */
   tenant_id: z.string().min(1).optional(),
-  role_codes: z.array(roleEnum).min(1, { message: 'validation_roles_min' }),
+  role_codes: z.array(roleCodeField).min(1, { message: 'validation_roles_min' }),
 });
 
 export type InviteUserInput = z.infer<typeof InviteUserSchema>;
@@ -187,13 +178,13 @@ export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
  */
 export const AddMembershipSchema = z.object({
   tenant_id: z.string().min(1, { message: 'validation_tenant_required' }),
-  role_codes: z.array(roleEnum).min(1, { message: 'validation_roles_min' }),
+  role_codes: z.array(roleCodeField).min(1, { message: 'validation_roles_min' }),
 });
 
 export type AddMembershipInput = z.infer<typeof AddMembershipSchema>;
 
 export const AddRoleSchema = z.object({
-  role_code: roleEnum,
+  role_code: roleCodeField,
 });
 
 export type AddRoleInput = z.infer<typeof AddRoleSchema>;

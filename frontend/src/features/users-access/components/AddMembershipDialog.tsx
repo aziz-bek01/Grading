@@ -9,8 +9,9 @@
  * unlike business forms — it is required and sent).
  *
  * Tenants already held by the user are excluded from the picker so the UI can't
- * trigger the backend's `MEMBERSHIP_EXISTS` (409). Role catalog is the same
- * backend-aligned whitelist the invite/assign dialogs use.
+ * trigger the backend's `MEMBERSHIP_EXISTS` (409). The role picker is
+ * DATA-DRIVEN from the backend role catalog (`GET /roles?assignableOnly=true`)
+ * via the shared <RolePicker /> — the same picker the invite/assign dialogs use.
  */
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,13 +20,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { ApiError } from '@/shared/api/apiError';
 import { useAuthStore } from '@/features/auth/authStore';
-import type { RoleCode } from '@/shared/auth/authTypes';
-import {
-  AddMembershipSchema,
-  CLIENT_GRANTABLE_ROLES,
-  SUPER_ADMIN_GRANTABLE_ROLES,
-  type AddMembershipInput,
-} from '../schemas/userSchemas';
+import { RolePicker } from './RolePicker';
+import { AddMembershipSchema, type AddMembershipInput } from '../schemas/userSchemas';
 import type { AddMembershipPayload } from '../types/userTypes';
 
 interface AddMembershipDialogProps {
@@ -44,11 +40,6 @@ export function AddMembershipDialog({
 }: AddMembershipDialogProps) {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
-  const isSuperAdmin = user?.roles.includes('HRLAB_SUPER_ADMIN') ?? false;
-
-  const grantableRoles: readonly RoleCode[] = isSuperAdmin
-    ? SUPER_ADMIN_GRANTABLE_ROLES
-    : CLIENT_GRANTABLE_ROLES;
 
   const availableTenants = useMemo(
     () => (user?.tenants ?? []).filter((tn) => !existingTenantIds.includes(tn.id)),
@@ -153,28 +144,12 @@ export function AddMembershipDialog({
               {t('users.addMembership.roles')} <span className="text-danger-700">*</span>
             </legend>
             <p className="text-xs text-text-muted mb-2">{t('users.addMembership.rolesHint')}</p>
-            <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto">
-              {grantableRoles.map((rc) => {
-                const checked = field.value?.includes(rc) ?? false;
-                return (
-                  <label key={rc} className="inline-flex items-center gap-2 text-sm text-text-primary">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        const next = new Set(field.value ?? []);
-                        if (e.target.checked) next.add(rc);
-                        else next.delete(rc);
-                        field.onChange([...next]);
-                      }}
-                      className="h-4 w-4 rounded border-border-strong text-primary-500 focus:ring-primary-500"
-                      data-testid={`add-membership-role-${rc}`}
-                    />
-                    <span>{t(`users.role.${rc}`, { defaultValue: rc })}</span>
-                  </label>
-                );
-              })}
-            </div>
+            <RolePicker
+              mode="multi"
+              value={field.value ?? []}
+              onChange={field.onChange}
+              testIdPrefix="add-membership-role"
+            />
             {fieldState.error ? (
               <p className="text-xs text-danger-700 mt-2" role="alert">
                 {errKey(fieldState.error.message)}

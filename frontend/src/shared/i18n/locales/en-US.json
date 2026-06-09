@@ -1356,7 +1356,16 @@
       "submit": "Add role",
       "role": "Role",
       "noneLeft": "All roles already assigned",
-      "noneLeftHint": "This membership already has every available role."
+      "noneLeftHint": "This membership already has every available role.",
+      "validation_roles_min": "Select a role."
+    },
+    "rolePicker": {
+      "loading": "Loading roles…",
+      "error": "Could not load the role list. Please try again.",
+      "empty": "No roles available.",
+      "placeholder": "Select a role",
+      "reasonHrlabOnly": "HRLab Super Admin only",
+      "reasonPlatformScope": "Platform-level role"
     },
     "revokeMembership": {
       "title": "Revoke membership?",

@@ -1356,7 +1356,16 @@
       "submit": "Rol qo'shish",
       "role": "Rol",
       "noneLeft": "Barcha rollar biriktirilgan",
-      "noneLeftHint": "Ushbu a'zolikda barcha mavjud rollar bor."
+      "noneLeftHint": "Ushbu a'zolikda barcha mavjud rollar bor.",
+      "validation_roles_min": "Rol tanlang."
+    },
+    "rolePicker": {
+      "loading": "Rollar yuklanmoqda…",
+      "error": "Rollar ro'yxatini yuklab bo'lmadi. Qayta urinib ko'ring.",
+      "empty": "Mavjud rollar yo'q.",
+      "placeholder": "Rol tanlang",
+      "reasonHrlabOnly": "Faqat HRLab super admin",
+      "reasonPlatformScope": "Platforma darajasidagi rol"
     },
     "revokeMembership": {
       "title": "A'zolikni bekor qilish?",

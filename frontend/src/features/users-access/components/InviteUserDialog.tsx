@@ -12,8 +12,10 @@
  *     can be targeted across tenants.
  *
  * Role catalogue:
- *   - CLIENT_GRANTABLE_ROLES for client admins.
- *   - SUPER_ADMIN_GRANTABLE_ROLES (full list) for super-admins.
+ *   DATA-DRIVEN from the backend role catalog (`GET /roles?assignableOnly=true`)
+ *   via the shared <RolePicker />. Every assignable role — including future
+ *   custom roles — appears; roles the caller may not grant are shown disabled
+ *   with a reason. The backend re-enforces grant authority on submit.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,11 +25,9 @@ import { Eye, EyeOff, Wand2 } from 'lucide-react';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { ApiError } from '@/shared/api/apiError';
 import { useAuthStore } from '@/features/auth/authStore';
-import type { RoleCode } from '@/shared/auth/authTypes';
+import { RolePicker } from './RolePicker';
 import {
-  CLIENT_GRANTABLE_ROLES,
   InviteUserSchema,
-  SUPER_ADMIN_GRANTABLE_ROLES,
   generateStrongPassword,
   type InviteUserInput,
 } from '../schemas/userSchemas';
@@ -44,10 +44,6 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
   const user = useAuthStore((s) => s.user);
   const activeTenant = useAuthStore((s) => s.activeTenant);
   const isSuperAdmin = user?.roles.includes('HRLAB_SUPER_ADMIN') ?? false;
-
-  const grantableRoles: readonly RoleCode[] = isSuperAdmin
-    ? SUPER_ADMIN_GRANTABLE_ROLES
-    : CLIENT_GRANTABLE_ROLES;
 
   const [showPassword, setShowPassword] = useState(false);
 
@@ -271,31 +267,12 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
               {t('users.invite.roles')} <span className="text-danger-700">*</span>
             </legend>
             <p className="text-xs text-text-muted mb-2">{t('users.invite.rolesHint')}</p>
-            <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto">
-              {grantableRoles.map((rc) => {
-                const checked = field.value?.includes(rc) ?? false;
-                return (
-                  <label
-                    key={rc}
-                    className="inline-flex items-center gap-2 text-sm text-text-primary"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        const next = new Set(field.value ?? []);
-                        if (e.target.checked) next.add(rc);
-                        else next.delete(rc);
-                        field.onChange([...next]);
-                      }}
-                      className="h-4 w-4 rounded border-border-strong text-primary-500 focus:ring-primary-500"
-                      data-testid={`invite-role-${rc}`}
-                    />
-                    <span>{t(`users.role.${rc}`, { defaultValue: rc })}</span>
-                  </label>
-                );
-              })}
-            </div>
+            <RolePicker
+              mode="multi"
+              value={field.value ?? []}
+              onChange={field.onChange}
+              testIdPrefix="invite-role"
+            />
             {fieldState.error ? (
               <p className="text-xs text-danger-700 mt-2" role="alert">
                 {errKey(fieldState.error.message)}

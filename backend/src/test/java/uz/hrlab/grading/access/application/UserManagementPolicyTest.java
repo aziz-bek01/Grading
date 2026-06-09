@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -141,6 +142,64 @@ class UserManagementPolicyTest {
     }
 
     // ------------------------------------------------------------------------
+    //  Non-throwing canAssignRole predicate (slice E1) + denial reasons
+    // ------------------------------------------------------------------------
+
+    @Test
+    void superAdminCanAssignEveryRole() {
+        // HRLAB_SUPER_ADMIN holds USER_ROLE_ASSIGN_HRLAB → every role assignable,
+        // no denial reason for any scope/prefix.
+        TenantContext ctx = ctx(Set.of(RoleCodes.HRLAB_SUPER_ADMIN),
+                Set.of(PermissionCodes.USER_ROLE_ASSIGN,
+                        PermissionCodes.USER_ROLE_ASSIGN_HRLAB));
+
+        RoleJpaEntity hrlab = role(RoleCodes.HRLAB_PROJECT_MANAGER, RoleScope.PLATFORM);
+        RoleJpaEntity platformNonHrlab = role("PLATFORM_OPS", RoleScope.PLATFORM);
+        RoleJpaEntity tenant = role(RoleCodes.CLIENT_HR_DIRECTOR, RoleScope.TENANT);
+
+        assertThat(policy.canAssignRole(ctx, hrlab)).isTrue();
+        assertThat(policy.canAssignRole(ctx, platformNonHrlab)).isTrue();
+        assertThat(policy.canAssignRole(ctx, tenant)).isTrue();
+        assertThat(policy.roleAssignDenialReason(ctx, hrlab)).isNull();
+        assertThat(policy.roleAssignDenialReason(ctx, platformNonHrlab)).isNull();
+        assertThat(policy.roleAssignDenialReason(ctx, tenant)).isNull();
+    }
+
+    @Test
+    void tenantAdminCannotAssignHrlabRoleWithHrlabOnlyReason() {
+        TenantContext ctx = ctx(Set.of(RoleCodes.CLIENT_COMPANY_ADMIN),
+                Set.of(PermissionCodes.USER_ROLE_ASSIGN));
+        RoleJpaEntity hrlab = role(RoleCodes.HRLAB_CONSULTANT, RoleScope.PLATFORM);
+
+        assertThat(policy.canAssignRole(ctx, hrlab)).isFalse();
+        assertThat(policy.roleAssignDenialReason(ctx, hrlab))
+                .isEqualTo(UserManagementPolicy.RoleAssignDenialReason.HRLAB_ONLY);
+    }
+
+    @Test
+    void tenantAdminCannotAssignNonHrlabPlatformRoleWithPlatformScopeReason() {
+        // A PLATFORM-scoped role whose code does NOT start with HRLAB_ — gated
+        // by scope (defense-in-depth, forward-compatible). Reason = PLATFORM_SCOPE.
+        TenantContext ctx = ctx(Set.of(RoleCodes.CLIENT_COMPANY_ADMIN),
+                Set.of(PermissionCodes.USER_ROLE_ASSIGN));
+        RoleJpaEntity platformNonHrlab = role("PLATFORM_OPS", RoleScope.PLATFORM);
+
+        assertThat(policy.canAssignRole(ctx, platformNonHrlab)).isFalse();
+        assertThat(policy.roleAssignDenialReason(ctx, platformNonHrlab))
+                .isEqualTo(UserManagementPolicy.RoleAssignDenialReason.PLATFORM_SCOPE);
+    }
+
+    @Test
+    void tenantAdminCanAssignTenantRole() {
+        TenantContext ctx = ctx(Set.of(RoleCodes.CLIENT_COMPANY_ADMIN),
+                Set.of(PermissionCodes.USER_ROLE_ASSIGN));
+        RoleJpaEntity tenant = role(RoleCodes.EVALUATION_COMMITTEE_MEMBER, RoleScope.TENANT);
+
+        assertThat(policy.canAssignRole(ctx, tenant)).isTrue();
+        assertThat(policy.roleAssignDenialReason(ctx, tenant)).isNull();
+    }
+
+    // ------------------------------------------------------------------------
     //  Cross-tenant view denial
     // ------------------------------------------------------------------------
 
@@ -198,5 +257,9 @@ class UserManagementPolicyTest {
     private static UserTenantMembershipJpaEntity membership(UUID userId, UUID tenantId) {
         return new UserTenantMembershipJpaEntity(UUID.randomUUID(), userId, tenantId,
                 MembershipStatus.ACTIVE, false);
+    }
+
+    private static RoleJpaEntity role(String code, RoleScope scope) {
+        return new RoleJpaEntity(UUID.randomUUID(), code, code, scope);
     }
 }

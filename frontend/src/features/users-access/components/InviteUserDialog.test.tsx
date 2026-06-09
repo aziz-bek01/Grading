@@ -1,13 +1,40 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { AxiosAdapter } from 'axios';
 import { InviteUserDialog } from './InviteUserDialog';
 import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
+import { httpClient } from '@/shared/api/httpClient';
+import { createMockAdapter } from '@/shared/api/mocks/handlers';
+
+const ORIGINAL_ADAPTER = httpClient.defaults.adapter as AxiosAdapter | undefined;
+
+// The role picker is now DATA-DRIVEN (GET /roles). Install the mock adapter so
+// the catalog resolves; without it the picker would stay in its loading/error
+// state and no role options would render.
+beforeEach(() => {
+  httpClient.defaults.adapter = createMockAdapter(ORIGINAL_ADAPTER);
+});
+
+afterEach(() => {
+  httpClient.defaults.adapter = ORIGINAL_ADAPTER;
+});
+
+const SUBMIT = /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i;
 
 describe('<InviteUserDialog />', () => {
   beforeEach(() => {
     signOut();
     signIn('super-admin');
+  });
+
+  it('renders the role picker from the API catalog, not a hardcoded list', async () => {
+    render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={() => {}} />));
+    // These roles only appear because the GET /roles catalog returned them.
+    expect(await screen.findByTestId('invite-role-CLIENT_HR_DIRECTOR')).toBeInTheDocument();
+    expect(screen.getByTestId('invite-role-VIEWER')).toBeInTheDocument();
+    // Super-admin can grant every role, including platform/HRLab ones.
+    expect(screen.getByTestId('invite-role-HRLAB_CONSULTANT')).not.toBeDisabled();
   });
 
   it('refuses submission when email is missing', async () => {
@@ -16,8 +43,8 @@ describe('<InviteUserDialog />', () => {
     render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={onSubmit} />));
     // Fill name + role only — email missing → Zod must block.
     await user.type(screen.getByTestId('invite-fullname'), 'Test User');
-    await user.click(screen.getByTestId('invite-role-VIEWER'));
-    await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
+    await user.click(await screen.findByTestId('invite-role-VIEWER'));
+    await user.click(screen.getByRole('button', { name: SUBMIT }));
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -27,11 +54,11 @@ describe('<InviteUserDialog />', () => {
     render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={onSubmit} />));
     await user.type(screen.getByTestId('invite-email'), 'new@example.com');
     await user.type(screen.getByTestId('invite-fullname'), 'Test User');
-    await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
+    await user.click(screen.getByRole('button', { name: SUBMIT }));
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('calls onSubmit with valid values (super-admin sees tenant selector)', async () => {
+  it('calls onSubmit with the selected role code (super-admin sees tenant selector)', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
     render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={onSubmit} />));
@@ -40,8 +67,8 @@ describe('<InviteUserDialog />', () => {
     await user.type(screen.getByTestId('invite-email'), 'new@example.com');
     await user.type(screen.getByTestId('invite-fullname'), 'Anna Test');
     await user.type(screen.getByTestId('invite-password'), 'Str0ng!Pass1');
-    await user.click(screen.getByTestId('invite-role-CLIENT_HR_DIRECTOR'));
-    await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
+    await user.click(await screen.findByTestId('invite-role-CLIENT_HR_DIRECTOR'));
+    await user.click(screen.getByRole('button', { name: SUBMIT }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const payload = onSubmit.mock.calls[0][0];
     expect(payload.email).toBe('new@example.com');
@@ -60,8 +87,8 @@ describe('<InviteUserDialog />', () => {
     await user.type(screen.getByTestId('invite-fullname'), 'Weak Pass');
     // Missing uppercase / symbol → fails client-side complexity rule.
     await user.type(screen.getByTestId('invite-password'), 'abc12345');
-    await user.click(screen.getByTestId('invite-role-CLIENT_HR_DIRECTOR'));
-    await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
+    await user.click(await screen.findByTestId('invite-role-CLIENT_HR_DIRECTOR'));
+    await user.click(screen.getByRole('button', { name: SUBMIT }));
     // Zod blocks submit; an inline alert surfaces and onSubmit is never called.
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
@@ -84,7 +111,8 @@ describe('<InviteUserDialog /> as client admin (non-super)', () => {
     signOut();
     // Consultant has neither USER_INVITE nor HRLAB_SUPER_ADMIN role; the
     // dialog itself does not gate visibility (the toolbar button does).
-    // We use consultant here only to confirm the tenant selector is hidden.
+    // We use consultant here only to confirm the tenant selector is hidden
+    // AND that platform roles render disabled with a reason.
     signIn('consultant');
   });
 
@@ -96,12 +124,23 @@ describe('<InviteUserDialog /> as client admin (non-super)', () => {
     await user.type(screen.getByTestId('invite-email'), 'newuser@example.com');
     await user.type(screen.getByTestId('invite-fullname'), 'Some User');
     await user.type(screen.getByTestId('invite-password'), 'Str0ng!Pass1');
-    await user.click(screen.getByTestId('invite-role-VIEWER'));
-    await user.click(screen.getByRole('button', { name: /Отправить приглашение|Send invitation|Таклифни юбориш|Taklifni yuborish/i }));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(onSubmit).toHaveBeenCalledTimes(1);
+    await user.click(await screen.findByTestId('invite-role-VIEWER'));
+    await user.click(screen.getByRole('button', { name: SUBMIT }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const payload = onSubmit.mock.calls[0][0];
     // FE-TI-004: client admins must never send tenant_id — backend derives from JWT.
     expect(payload.tenant_id).toBeUndefined();
+  });
+
+  it('renders platform/HRLab roles as disabled with a reason for a non-super caller', async () => {
+    render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={() => {}} />));
+    // HRLAB_SUPER_ADMIN → disabled with the HRLab-only reason hint.
+    const superAdmin = await screen.findByTestId('invite-role-HRLAB_SUPER_ADMIN');
+    expect(superAdmin).toBeDisabled();
+    expect(screen.getByTestId('invite-role-HRLAB_SUPER_ADMIN-reason')).toHaveTextContent(
+      /Только HRLab Super Admin/i,
+    );
+    // Tenant-scope role stays selectable.
+    expect(screen.getByTestId('invite-role-VIEWER')).not.toBeDisabled();
   });
 });

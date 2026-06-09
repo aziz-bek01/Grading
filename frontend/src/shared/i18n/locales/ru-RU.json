@@ -1356,7 +1356,16 @@
       "submit": "Добавить роль",
       "role": "Роль",
       "noneLeft": "Все роли уже назначены",
-      "noneLeftHint": "У этого членства уже есть все доступные роли."
+      "noneLeftHint": "У этого членства уже есть все доступные роли.",
+      "validation_roles_min": "Выберите роль."
+    },
+    "rolePicker": {
+      "loading": "Загрузка ролей…",
+      "error": "Не удалось загрузить список ролей. Повторите попытку.",
+      "empty": "Нет доступных ролей.",
+      "placeholder": "Выберите роль",
+      "reasonHrlabOnly": "Только HRLab Super Admin",
+      "reasonPlatformScope": "Роль уровня платформы"
     },
     "revokeMembership": {
       "title": "Отозвать членство?",

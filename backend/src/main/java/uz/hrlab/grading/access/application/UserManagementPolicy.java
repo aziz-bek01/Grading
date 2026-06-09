@@ -1,6 +1,7 @@
 package uz.hrlab.grading.access.application;
 
 import org.springframework.stereotype.Component;
+import uz.hrlab.grading.access.domain.RoleScope;
 import uz.hrlab.grading.access.infrastructure.RoleJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
@@ -123,21 +124,81 @@ public class UserManagementPolicy {
     }
 
     /**
+     * Stable reason codes for a role being non-assignable by the caller —
+     * surfaced to the frontend via the assignable-role catalog
+     * ({@code GET /api/v1/roles}, slice E1) as {@code reason_if_not}.
+     */
+    public enum RoleAssignDenialReason {
+        /** Target role uses the {@code HRLAB_*} code prefix. */
+        HRLAB_ONLY,
+        /** Target role has {@link RoleScope#PLATFORM} scope. */
+        PLATFORM_SCOPE
+    }
+
+    /**
      * Role-assign helper. If the target role is an HRLab platform role
      * ({@code HRLAB_*}) the caller MUST additionally hold
      * {@link PermissionCodes#USER_ROLE_ASSIGN_HRLAB}; otherwise the standard
      * {@code USER_ROLE_ASSIGN} check at the controller suffices.
+     *
+     * <p>Throwing wrapper preserved for existing callers
+     * ({@link AssignRoleUseCase}). Delegates to the non-throwing
+     * {@link #canAssignRole(TenantContext, RoleJpaEntity)} so the rule lives in
+     * exactly one place.
      */
     public void requireCanAssignRole(TenantContext ctx, RoleJpaEntity role) {
         if (role == null) {
             throw new TenantAccessDeniedException();
         }
-        if (isHrlabRole(role.getCode())
-                && !ctx.hasPermission(PermissionCodes.USER_ROLE_ASSIGN_HRLAB)) {
+        if (!canAssignRole(ctx, role)) {
             // PermissionDenied → 403, not 404: the role exists and is well-
             // known, no probing risk.
             throw new PermissionDeniedException("Action not permitted");
         }
+    }
+
+    /**
+     * Non-throwing predicate capturing the role-assign rule (slice E1). Used to
+     * compute {@code assignable_by_caller} in the role catalog AND, via
+     * {@link #requireCanAssignRole}, to enforce the same rule on mutation.
+     *
+     * <p>Rule (defense-in-depth, forward-compatible): a role that is either an
+     * {@code HRLAB_*} code OR carries {@link RoleScope#PLATFORM} scope requires
+     * the caller to hold {@link PermissionCodes#USER_ROLE_ASSIGN_HRLAB} (granted
+     * only to HRLAB_SUPER_ADMIN). Any other (tenant-scoped, non-HRLab) role is
+     * assignable by a caller who already passed the controller-layer
+     * {@code USER_ROLE_ASSIGN} check.
+     *
+     * @return {@code true} when the caller may assign {@code role}; {@code false}
+     *         (with a reason available via {@link #roleAssignDenialReason}) otherwise.
+     */
+    public boolean canAssignRole(TenantContext ctx, RoleJpaEntity role) {
+        return roleAssignDenialReason(ctx, role) == null;
+    }
+
+    /**
+     * Companion to {@link #canAssignRole}: returns {@code null} when the role is
+     * assignable, otherwise the stable {@link RoleAssignDenialReason}. The
+     * {@code HRLAB_*} code prefix is reported as {@link RoleAssignDenialReason#HRLAB_ONLY};
+     * a non-prefixed PLATFORM-scoped role is reported as
+     * {@link RoleAssignDenialReason#PLATFORM_SCOPE}.
+     */
+    public RoleAssignDenialReason roleAssignDenialReason(TenantContext ctx, RoleJpaEntity role) {
+        if (role == null) {
+            return RoleAssignDenialReason.HRLAB_ONLY;
+        }
+        boolean hasHrlabAssign = ctx != null
+                && ctx.hasPermission(PermissionCodes.USER_ROLE_ASSIGN_HRLAB);
+        if (hasHrlabAssign) {
+            return null; // Super Admin may assign every role.
+        }
+        if (isHrlabRole(role.getCode())) {
+            return RoleAssignDenialReason.HRLAB_ONLY;
+        }
+        if (role.getScope() == RoleScope.PLATFORM) {
+            return RoleAssignDenialReason.PLATFORM_SCOPE;
+        }
+        return null;
     }
 
     /**

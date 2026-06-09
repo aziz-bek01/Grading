@@ -117,7 +117,13 @@ export interface InviteUserPayload {
    * the frontend MUST NOT send it.
    */
   tenant_id?: string;
-  role_codes: RoleCode[];
+  /**
+   * Role codes to grant. Typed as `string[]` (not `RoleCode[]`) because the
+   * picker is DATA-DRIVEN from `GET /roles` — custom roles created at runtime
+   * are not in the build-time {@link RoleCode} union. The backend validates each
+   * code against the live catalog and rejects unknown/non-grantable ones.
+   */
+  role_codes: string[];
 }
 
 export interface UpdateUserPayload {
@@ -154,11 +160,13 @@ export interface ResetLoginPayload {
 
 export interface AddMembershipPayload {
   tenant_id: string;
-  role_codes: RoleCode[];
+  /** Data-driven role codes — see {@link InviteUserPayload.role_codes}. */
+  role_codes: string[];
 }
 
 export interface AddRolePayload {
-  role_code: RoleCode;
+  /** Data-driven role code — see {@link InviteUserPayload.role_codes}. */
+  role_code: string;
 }
 
 export interface UpdateSalaryPermissionPayload {

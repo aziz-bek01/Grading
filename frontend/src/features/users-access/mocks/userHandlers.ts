@@ -286,8 +286,17 @@ function handleUpdate(id: string, config: AxiosRequestConfig): MatchResult {
     if (taken) {
       return badRequest('email already in use', 'USER_EMAIL_TAKEN');
     }
+    // Sentinel: the IdP rejects this new email (mirror backend
+    // USER_IDP_EMAIL_REJECTED). Any address on the `idp-reject.test` domain
+    // triggers it so dev/tests can exercise the email-rejected mapping.
+    if (/@idp-reject\.test$/i.test(body.email)) {
+      return badRequest('identity provider rejected the email', 'USER_IDP_EMAIL_REJECTED');
+    }
   }
-  // Password change — enforce the same complexity as the invite flow.
+  // Password change — enforce the same complexity as the invite flow, then
+  // surface the IdP-specific failures the backend can now return. Each is keyed
+  // off a sentinel that is itself complexity-valid (so it reaches the IdP step
+  // instead of failing the complexity check first), keeping the mock honest.
   if (body.password !== undefined) {
     const strong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(body.password);
     if (!strong) {
@@ -295,6 +304,16 @@ function handleUpdate(id: string, config: AxiosRequestConfig): MatchResult {
         'password does not meet complexity requirements',
         'USER_INVITE_WEAK_PASSWORD',
       );
+    }
+    // Sentinel: user's IdP (login) account isn't activated yet, so a password
+    // cannot be set here (mirror backend USER_IDP_NOT_INITIALIZED).
+    if (body.password.includes('IdpNotInit')) {
+      return badRequest('idp account not initialized', 'USER_IDP_NOT_INITIALIZED');
+    }
+    // Sentinel: IdP rejected the password (e.g. provider policy) — mirror
+    // backend USER_IDP_PASSWORD_REJECTED.
+    if (body.password.includes('IdpReject')) {
+      return badRequest('identity provider rejected the password', 'USER_IDP_PASSWORD_REJECTED');
     }
   }
   if (body.full_name !== undefined) u.full_name = body.full_name;

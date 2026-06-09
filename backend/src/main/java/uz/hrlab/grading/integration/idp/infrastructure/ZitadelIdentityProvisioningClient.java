@@ -197,6 +197,17 @@ public class ZitadelIdentityProvisioningClient implements IdentityProvisioningPo
             // NOTE: the request BODY (which holds the password) is never logged.
             log.warn("IdP password set failed. subject={} status={} zitadelErr={}",
                     externalSubject, status, zitadelErrorId(ex));
+            // A 4xx is the admin's to fix: the target account is not yet
+            // initialised (legacy/never-activated), or the password violates the
+            // IdP policy. Surface a SPECIFIC reason so the API returns a clear 400
+            // (not a confusing 502). 5xx/auth keep the generic upstream failure.
+            if (isClientError(status)) {
+                IdentityProvisioningException.Reason reason = isNotInitialized(ex)
+                        ? IdentityProvisioningException.Reason.USER_NOT_INITIALIZED
+                        : IdentityProvisioningException.Reason.PASSWORD_REJECTED;
+                throw new IdentityProvisioningException(reason,
+                        passwordReasonMessage(reason), ex);
+            }
             throw new IdentityProvisioningException(
                     "Identity provider rejected the password change (status " + status + ")", ex);
         } catch (Exception ex) {
@@ -205,6 +216,13 @@ public class ZitadelIdentityProvisioningClient implements IdentityProvisioningPo
             throw new IdentityProvisioningException(
                     "Identity provider is unreachable; the password change could not be completed", ex);
         }
+    }
+
+    private static String passwordReasonMessage(IdentityProvisioningException.Reason reason) {
+        return reason == IdentityProvisioningException.Reason.USER_NOT_INITIALIZED
+                ? "This account has not been activated in the identity provider yet, "
+                        + "so a password cannot be set. (Re)send the invite to initialise it first."
+                : "The identity provider rejected this password. Choose a different one.";
     }
 
     /**
@@ -240,6 +258,16 @@ public class ZitadelIdentityProvisioningClient implements IdentityProvisioningPo
             int status = ex.getStatusCode().value();
             log.warn("IdP email change failed. subject={} email={} status={} zitadelErr={}",
                     externalSubject, normalised, status, zitadelErrorId(ex));
+            // A 4xx (e.g. the email is already used by another IdP account) is the
+            // admin's to fix: surface a SPECIFIC reason → clear 400. 5xx/auth keep
+            // the generic upstream failure → 502 so the caller's tx rolls back.
+            if (isClientError(status)) {
+                throw new IdentityProvisioningException(
+                        IdentityProvisioningException.Reason.EMAIL_REJECTED,
+                        "The identity provider rejected this email (it may already be in use). "
+                                + "Choose a different one.",
+                        ex);
+            }
             throw new IdentityProvisioningException(
                     "Identity provider rejected the email change (status " + status + ")", ex);
         } catch (IdentityProvisioningException ex) {
@@ -344,6 +372,31 @@ public class ZitadelIdentityProvisioningClient implements IdentityProvisioningPo
         // Built per request; the Bearer value (the PAT) is never logged or echoed.
         headers.setBearerAuth(props.getToken());
         headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+    }
+
+    /** A 4xx (except auth) is an admin-actionable rejection the API should surface as a clear 400. */
+    private static boolean isClientError(int status) {
+        return status >= 400 && status < 500 && status != 401 && status != 403;
+    }
+
+    /**
+     * True when ZITADEL rejected the call because the target account is in state
+     * {@code USER_STATE_INITIAL} (never activated). ZITADEL returns HTTP 400 with
+     * a body like {@code {"code":9,"message":"User is not yet initialized
+     * (COMMAND-M9dse)"}}. We match on the stable command id and the phrase, but
+     * NEVER log the body verbatim (it could echo input).
+     */
+    private static boolean isNotInitialized(RestClientResponseException ex) {
+        try {
+            String raw = ex.getResponseBodyAsString();
+            if (raw == null || raw.isBlank()) {
+                return false;
+            }
+            String lower = raw.toLowerCase(java.util.Locale.ROOT);
+            return lower.contains("command-m9dse") || lower.contains("not yet initialized");
+        } catch (Exception ignore) {
+            return false;
+        }
     }
 
     /** Extract the ZITADEL structured error id from a response body, if present. Never the message body verbatim. */

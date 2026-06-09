@@ -342,8 +342,63 @@ class ZitadelIdentityProvisioningClientTest {
         ZitadelIdentityProvisioningClient client =
                 new ZitadelIdentityProvisioningClient(props(), builder.build());
 
+        // 5xx is a genuine upstream failure → generic IDP_PROVISIONING_FAILED (→502)
         assertThatThrownBy(() -> client.setPassword("zid-123", "N3wP@ssword"))
-                .isInstanceOf(IdentityProvisioningException.class);
+                .isInstanceOf(IdentityProvisioningException.class)
+                .extracting(ex -> ((IdentityProvisioningException) ex).getCode())
+                .isEqualTo("IDP_PROVISIONING_FAILED");
+        server.verify();
+    }
+
+    @Test
+    void setPasswordMapsNotYetInitialized400ToSpecificReason() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        // Real prod body for a USER_STATE_INITIAL account.
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-legacy/password"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":9,\"message\":\"User is not yet initialized (COMMAND-M9dse)\"}"));
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        assertThatThrownBy(() -> client.setPassword("zid-legacy", "N3wP@ssword"))
+                .isInstanceOf(IdentityProvisioningException.class)
+                .satisfies(ex -> {
+                    IdentityProvisioningException ipe = (IdentityProvisioningException) ex;
+                    assertThat(ipe.isActionable()).isTrue();
+                    assertThat(ipe.getCode()).isEqualTo("USER_IDP_NOT_INITIALIZED");
+                    // the password must never appear in the sanitised message
+                    assertThat(ipe.getMessage()).doesNotContain("N3wP@ssword");
+                });
+        server.verify();
+    }
+
+    @Test
+    void setPasswordMapsOther400ToPasswordRejected() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        // A different 4xx policy rejection (not the not-initialized case).
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/password"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":3,\"message\":\"Password does not match policy\"}"));
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        assertThatThrownBy(() -> client.setPassword("zid-123", "N3wP@ssword"))
+                .isInstanceOf(IdentityProvisioningException.class)
+                .satisfies(ex -> {
+                    IdentityProvisioningException ipe = (IdentityProvisioningException) ex;
+                    assertThat(ipe.isActionable()).isTrue();
+                    assertThat(ipe.getCode()).isEqualTo("USER_IDP_PASSWORD_REJECTED");
+                });
         server.verify();
     }
 
@@ -386,7 +441,8 @@ class ZitadelIdentityProvisioningClientTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 
         // ZITADEL rejects the new email (e.g. already taken at the IdP) → surface
-        // so the caller's tx rolls the grading email back (consistency).
+        // a SPECIFIC, actionable reason (→ 400) so the admin can pick another one,
+        // while the caller's tx still rolls the grading email back (consistency).
         server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/email"))
                 .andExpect(method(POST))
                 .andRespond(withStatus(HttpStatus.CONFLICT)
@@ -397,7 +453,34 @@ class ZitadelIdentityProvisioningClientTest {
                 new ZitadelIdentityProvisioningClient(props(), builder.build());
 
         assertThatThrownBy(() -> client.changeEmail("zid-123", "dup@client.uz"))
-                .isInstanceOf(IdentityProvisioningException.class);
+                .isInstanceOf(IdentityProvisioningException.class)
+                .satisfies(ex -> {
+                    IdentityProvisioningException ipe = (IdentityProvisioningException) ex;
+                    assertThat(ipe.isActionable()).isTrue();
+                    assertThat(ipe.getCode()).isEqualTo("USER_IDP_EMAIL_REJECTED");
+                });
+        server.verify();
+    }
+
+    @Test
+    void changeEmailKeepsGenericFailureOnServerError() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://auth.hrlab.uz");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+
+        // 5xx is a genuine upstream failure → generic IDP_PROVISIONING_FAILED (→502).
+        server.expect(requestTo("https://auth.hrlab.uz/v2/users/zid-123/email"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":13,\"message\":\"internal\"}"));
+
+        ZitadelIdentityProvisioningClient client =
+                new ZitadelIdentityProvisioningClient(props(), builder.build());
+
+        assertThatThrownBy(() -> client.changeEmail("zid-123", "new@client.uz"))
+                .isInstanceOf(IdentityProvisioningException.class)
+                .extracting(ex -> ((IdentityProvisioningException) ex).getCode())
+                .isEqualTo("IDP_PROVISIONING_FAILED");
         server.verify();
     }
 }

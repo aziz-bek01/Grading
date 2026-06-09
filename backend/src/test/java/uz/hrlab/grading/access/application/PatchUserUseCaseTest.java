@@ -168,6 +168,49 @@ class PatchUserUseCaseTest {
         verify(idp, never()).setPassword(any(), any());
     }
 
+    @Test
+    void notInitializedReasonFromIdpPropagatesAsActionable400() {
+        idpProps.setEnabled(true);
+        UserJpaEntity user = user("jane@client.uz", "zid-legacy");
+        when(userRepo.findById(userId)).thenReturn(Optional.of(user));
+        doThrow(new IdentityProvisioningException(
+                IdentityProvisioningException.Reason.USER_NOT_INITIALIZED,
+                "not initialised", null))
+                .when(idp).setPassword(eq("zid-legacy"), eq("N3wP@ssword"));
+
+        // The specific, actionable reason propagates so the API returns a clear
+        // 400 USER_IDP_NOT_INITIALIZED rather than a confusing 502.
+        assertThatThrownBy(() ->
+                useCase.patch(userId, null, null, null, null, "N3wP@ssword"))
+                .isInstanceOf(IdentityProvisioningException.class)
+                .satisfies(ex -> {
+                    IdentityProvisioningException ipe = (IdentityProvisioningException) ex;
+                    assertThat(ipe.isActionable()).isTrue();
+                    assertThat(ipe.getCode()).isEqualTo("USER_IDP_NOT_INITIALIZED");
+                });
+    }
+
+    @Test
+    void passwordFailureLeavesProfileUnsaved_failFast() {
+        idpProps.setEnabled(true);
+        UserJpaEntity user = user("jane@client.uz", "zid-legacy");
+        when(userRepo.findById(userId)).thenReturn(Optional.of(user));
+        doThrow(new IdentityProvisioningException(
+                IdentityProvisioningException.Reason.USER_NOT_INITIALIZED,
+                "not initialised", null))
+                .when(idp).setPassword(eq("zid-legacy"), eq("N3wP@ssword"));
+
+        // A profile field is changed alongside the password. Because the IdP push
+        // runs BEFORE any DB write, the failure means NOTHING is half-saved.
+        assertThatThrownBy(() ->
+                useCase.patch(userId, "New Name", null, null, null, "N3wP@ssword"))
+                .isInstanceOf(IdentityProvisioningException.class);
+
+        verify(userRepo, never()).save(any());
+        // no USER_PASSWORD_RESET / USER_UPDATED audit was written either
+        verify(audit, never()).record(any());
+    }
+
     // --- EMAIL ---
 
     @Test

@@ -70,7 +70,17 @@ import java.util.regex.Pattern;
  *       no IdP account cannot have a password (ValidationException
  *       {@code USER_NO_IDP_ACCOUNT}). The password is validated against the same
  *       {@link PasswordPolicy} as invite, pushed via {@code setPassword}, and
- *       audited as {@code USER_PASSWORD_RESET} — NEVER carrying the value.</li>
+ *       audited as {@code USER_PASSWORD_RESET} — NEVER carrying the value.
+ *       <b>Fail-fast (decouple decision):</b> the IdP push runs BEFORE any DB
+ *       write, so a password failure leaves NOTHING half-saved. When ZITADEL
+ *       returns an actionable 4xx (e.g. the legacy account is not yet
+ *       initialised), {@code setPassword} throws an
+ *       {@link IdentityProvisioningException} carrying a SPECIFIC reason that the
+ *       API surfaces as a clear {@code 400} ({@code USER_IDP_NOT_INITIALIZED} /
+ *       {@code USER_IDP_PASSWORD_REJECTED}) instead of a confusing {@code 502}.
+ *       The admin clears the password field and re-saves; a blank password never
+ *       calls the IdP, so profile-only edits always save. A genuine upstream
+ *       failure still surfaces as {@code 502 IDP_PROVISIONING_FAILED}.</li>
  *   <li><b>email</b> — the principal RESOLVE KEY, so grading and the IdP MUST
  *       stay in sync. Consistency model here is the OPPOSITE of status:
  *       ALL-OR-NOTHING. Inside the {@code @Transactional}, {@code users.email} is
@@ -231,6 +241,28 @@ public class PatchUserUseCase {
             }
         }
 
+        // PASSWORD — attempt the IdP push FIRST, before any DB write, so a
+        // password failure leaves NOTHING half-saved (fail-fast). This is the
+        // decouple decision: rather than a partial-success envelope, we fail the
+        // whole PATCH cleanly with a SPECIFIC, actionable code when the password
+        // is the problem (e.g. the legacy account is not yet initialised → 400
+        // USER_IDP_NOT_INITIALIZED). The admin can then clear the password field
+        // and re-save the profile, which always succeeds (blank password never
+        // calls the IdP — see the resetPassword guard above). NEVER audit/log the
+        // value. If the IdP rejects, the exception propagates and the
+        // @Transactional rolls back (no row was written yet anyway).
+        if (resetPassword) {
+            identityProvisioning.setPassword(user.getExternalIdpSubject(), password);
+            audit.record(AuditEvent.builder()
+                    .tenantId(ctx.tenantId())
+                    .actorUserId(ctx.userId())
+                    .action(AuditAction.USER_PASSWORD_RESET)
+                    .entityType("User")
+                    .entityId(userId)
+                    .reason("externalIdpSubject=" + user.getExternalIdpSubject())
+                    .build());
+        }
+
         if (changed) {
             userRepo.save(user);
             audit.record(AuditEvent.builder()
@@ -260,20 +292,6 @@ public class PatchUserUseCase {
                     .entityType("User")
                     .entityId(userId)
                     .reason("from=" + emailChangedFrom + " to=" + user.getEmail())
-                    .build());
-        }
-
-        // PASSWORD — push the validated credential to the IdP inside the tx; if it
-        // throws the whole PATCH rolls back. NEVER audit/log the value.
-        if (resetPassword) {
-            identityProvisioning.setPassword(user.getExternalIdpSubject(), password);
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
-                    .action(AuditAction.USER_PASSWORD_RESET)
-                    .entityType("User")
-                    .entityId(userId)
-                    .reason("externalIdpSubject=" + user.getExternalIdpSubject())
                     .build());
         }
 

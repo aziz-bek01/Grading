@@ -231,4 +231,101 @@ describe('<EditUserDialog />', () => {
     await user.click(screen.getByRole('button', { name: /Сохранить|Save|Saqlash|Сақлаш/i }));
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
+
+  it('maps USER_IDP_NOT_INITIALIZED to a helpful inline password error and keeps the drawer open', async () => {
+    const { ApiError } = await import('@/shared/api/apiError');
+    const onClose = vi.fn();
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError(400, { code: 'USER_IDP_NOT_INITIALIZED', message: 'not initialized' }),
+      );
+    const user = userEvent.setup();
+    render(
+      renderWithProviders(
+        <EditUserDialog open user={baseUser} onClose={onClose} onSubmit={onSubmit} />,
+      ),
+    );
+    await user.type(screen.getByTestId('edit-password'), 'Str0ng!Passw0rd');
+    await user.click(screen.getByRole('button', { name: /Сохранить|Save|Saqlash|Сақлаш/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toBeInTheDocument();
+    // Helpful, localized copy (ru-RU is the test-default locale, see test/setup.ts).
+    expect(alert.textContent).toMatch(/ещё не активирована/i);
+    // Drawer stays open so the admin can fix/clear the field and retry.
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('maps USER_IDP_PASSWORD_REJECTED to an inline password error', async () => {
+    const { ApiError } = await import('@/shared/api/apiError');
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError(400, { code: 'USER_IDP_PASSWORD_REJECTED', message: 'rejected' }),
+      );
+    const user = userEvent.setup();
+    render(
+      renderWithProviders(
+        <EditUserDialog open user={baseUser} onClose={() => {}} onSubmit={onSubmit} />,
+      ),
+    );
+    await user.type(screen.getByTestId('edit-password'), 'Str0ng!Passw0rd');
+    await user.click(screen.getByRole('button', { name: /Сохранить|Save|Saqlash|Сақлаш/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/отклонил этот пароль/i);
+  });
+
+  it('maps USER_IDP_EMAIL_REJECTED to an inline email error', async () => {
+    const { ApiError } = await import('@/shared/api/apiError');
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError(400, { code: 'USER_IDP_EMAIL_REJECTED', message: 'rejected' }),
+      );
+    const user = userEvent.setup();
+    render(
+      renderWithProviders(
+        <EditUserDialog open user={baseUser} onClose={() => {}} onSubmit={onSubmit} />,
+      ),
+    );
+    await user.clear(screen.getByTestId('edit-email'));
+    await user.type(screen.getByTestId('edit-email'), 'rejected@idp-reject.test');
+    await user.click(screen.getByRole('button', { name: /Сохранить|Save|Saqlash|Сақлаш/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/отклонил этот email/i);
+  });
+
+  it('lets the admin clear a rejected password and save profile-only changes', async () => {
+    const { ApiError } = await import('@/shared/api/apiError');
+    // First attempt (with a password) is rejected by the IdP; second attempt
+    // (password cleared) succeeds and sends no password.
+    const onClose = vi.fn();
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new ApiError(400, { code: 'USER_IDP_NOT_INITIALIZED', message: 'not initialized' }),
+      )
+      .mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    render(
+      renderWithProviders(
+        <EditUserDialog open user={baseUser} onClose={onClose} onSubmit={onSubmit} />,
+      ),
+    );
+    await user.clear(screen.getByTestId('edit-fullname'));
+    await user.type(screen.getByTestId('edit-fullname'), 'Anna Karimova-Petrova');
+    await user.type(screen.getByTestId('edit-password'), 'Str0ng!Passw0rd');
+    await user.click(screen.getByRole('button', { name: /Сохранить|Save|Saqlash|Сақлаш/i }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Clear the offending password and retry — profile-only save must succeed.
+    await user.clear(screen.getByTestId('edit-password'));
+    await user.click(screen.getByRole('button', { name: /Сохранить|Save|Saqlash|Сақлаш/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    const secondPayload = onSubmit.mock.calls[1][0];
+    expect('password' in secondPayload).toBe(false);
+    expect(secondPayload.full_name).toBe('Anna Karimova-Petrova');
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
 });

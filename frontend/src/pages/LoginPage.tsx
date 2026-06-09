@@ -50,7 +50,7 @@ export function LoginPage() {
           <img src={hrlMarkWhite} alt="HR LABORATORIES" className="h-12 w-auto" />
         </div>
         <div className="relative z-10">
-          <h1 className="text-3xl font-semibold tracking-tight">HR LABORATORIES</h1>
+          <h1 className="text-3xl font-bold tracking-tight">HR LABORATORIES</h1>
           {/* Brand tagline is an English constant per 07b §6. */}
           <p className="mt-2 text-lg text-white/85">People. Systems. Results.</p>
         </div>
@@ -110,19 +110,19 @@ function BrandRings() {
         fill="none"
         stroke="currentColor"
       >
-        <circle cx="200" cy="200" r="190" strokeWidth="8" />
-        <circle cx="200" cy="200" r="140" strokeWidth="8" />
-        <circle cx="200" cy="200" r="90" strokeWidth="8" />
+        <circle cx="200" cy="200" r="190" strokeWidth="10" />
+        <circle cx="200" cy="200" r="140" strokeWidth="10" />
+        <circle cx="200" cy="200" r="90" strokeWidth="10" />
       </svg>
       {/* bottom-left cluster */}
       <svg
-        className="absolute -bottom-28 -left-28 h-[26rem] w-[26rem] text-white/10"
+        className="absolute -bottom-28 -left-28 h-[26rem] w-[26rem] text-white/14"
         viewBox="0 0 400 400"
         fill="none"
         stroke="currentColor"
       >
-        <circle cx="200" cy="200" r="190" strokeWidth="8" />
-        <circle cx="200" cy="200" r="130" strokeWidth="8" />
+        <circle cx="200" cy="200" r="190" strokeWidth="10" />
+        <circle cx="200" cy="200" r="130" strokeWidth="10" />
       </svg>
     </div>
   );

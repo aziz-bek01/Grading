@@ -131,18 +131,30 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * IdP-provisioning gap (decision doc 08): the grading request was valid but
-     * the upstream Identity Provider (ZITADEL) failed, so the login account
-     * could not be created/linked and the invite was rolled back. Map to
-     * {@code 502 BAD_GATEWAY} — it is an upstream dependency failure, not a
-     * client error and not an internal bug. The message is already sanitised by
-     * the exception (no password/token).
+     * IdP-provisioning failures (decision doc 08). Two outcomes, by exception
+     * class:
+     * <ul>
+     *   <li><b>Actionable rejection</b> ({@link IdentityProvisioningException#isActionable()}):
+     *       a 4xx the admin can fix — the target IdP account is not yet
+     *       initialised ({@code USER_IDP_NOT_INITIALIZED}), the new password was
+     *       rejected ({@code USER_IDP_PASSWORD_REJECTED}), or the new email was
+     *       rejected ({@code USER_IDP_EMAIL_REJECTED}). Map to {@code 400
+     *       BAD_REQUEST} with the specific {@code code} the frontend switches on,
+     *       so the admin gets a clear, fixable message instead of a confusing
+     *       502.</li>
+     *   <li><b>Genuine upstream failure</b> ({@code IDP_PROVISIONING_FAILED}): the
+     *       grading request was valid but ZITADEL is unreachable/broken. Keep the
+     *       historical {@code 502 BAD_GATEWAY} — an upstream dependency failure,
+     *       not a client error.</li>
+     * </ul>
+     * The message is already sanitised by the exception (no password/token).
      */
     @ExceptionHandler(IdentityProvisioningException.class)
     public ResponseEntity<ErrorResponse> handleIdpProvisioning(IdentityProvisioningException ex) {
-        log.warn("IdP provisioning failed cid={} code={}: {}", correlationId(),
-                ex.getCode(), ex.getMessage());
-        return build(HttpStatus.BAD_GATEWAY, ex.getCode(), ex.getMessage());
+        HttpStatus status = ex.isActionable() ? HttpStatus.BAD_REQUEST : HttpStatus.BAD_GATEWAY;
+        log.warn("IdP provisioning failed cid={} code={} http={}: {}", correlationId(),
+                ex.getCode(), status.value(), ex.getMessage());
+        return build(status, ex.getCode(), ex.getMessage());
     }
 
     @ExceptionHandler(JobProfileTransitionRejectedException.class)

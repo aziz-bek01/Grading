@@ -1384,6 +1384,9 @@
       "validation_email_taken": "Bu email boshqa foydalanuvchi tomonidan ishlatilmoqda.",
       "validation_password_complexity": "Kamida 8 belgi: bosh va kichik harf, raqam va maxsus belgi.",
       "validation_no_idp_account": "Bu foydalanuvchining login (IdP) akkaunti yo'q — avval taklif orqali yarating.",
+      "validation_idp_not_initialized": "Bu foydalanuvchining login akkaunti hali faollashtirilmagan — parolni shu yerdan o'rnatib bo'lmaydi. Avval uni qayta taklif qiling yoki u birinchi marta o'zi kirib parol o'rnatsin.",
+      "validation_idp_password_rejected": "Autentifikatsiya provayderi (IdP) bu parolni rad etdi. Xavfsizlik siyosatiga mos keladigan boshqa parolni sinab ko'ring.",
+      "validation_idp_email_rejected": "Autentifikatsiya provayderi (IdP) bu email'ni rad etdi. Boshqa manzil kiriting.",
       "validation_status_invalid": "Notog‘ri status: faqat «Faol» yoki «O'chirilgan» belgilash mumkin."
     },
     "disable": {

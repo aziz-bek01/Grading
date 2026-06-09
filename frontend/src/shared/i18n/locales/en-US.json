@@ -1384,6 +1384,9 @@
       "validation_email_taken": "This email is already used by another user.",
       "validation_password_complexity": "At least 8 characters: uppercase and lowercase letters, a number and a symbol.",
       "validation_no_idp_account": "This user has no login (IdP) account — create one via invite first.",
+      "validation_idp_not_initialized": "This user's login account isn't activated yet — you can't set a password here. Re-invite them first, or let them sign in for the first time and set it themselves.",
+      "validation_idp_password_rejected": "The identity provider (IdP) rejected this password. Try another one that meets the security policy.",
+      "validation_idp_email_rejected": "The identity provider (IdP) rejected this email. Enter a different address.",
       "validation_status_invalid": "Invalid status: only Active or Disabled can be set."
     },
     "disable": {

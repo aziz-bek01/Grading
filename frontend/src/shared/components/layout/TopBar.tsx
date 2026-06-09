@@ -25,7 +25,7 @@ export function TopBar() {
       <div className="h-14 flex items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-3">
           <Link to={routes.dashboard} className="flex items-center gap-2" aria-label="grading.hrlab.uz home">
-            <img src={hrlMark} alt="HR LABORATORIES" className="h-8 w-auto" />
+            <img src={hrlMark} alt="HR LABORATORIES" className="h-7 w-auto" />
           </Link>
           <TenantSelector />
           <ProjectSelector />

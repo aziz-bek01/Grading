@@ -115,6 +115,10 @@ export function EditUserDialog({ open, user, onClose, onSubmit }: EditUserDialog
       await onSubmit(payload);
       handleClose();
     } catch (err) {
+      // On any mapped failure we keep the drawer OPEN so the admin can fix or
+      // clear the offending field (e.g. blank out the password and re-save
+      // profile-only changes) and retry. Each code is mapped to an inline
+      // message on the field that caused it: password vs. email.
       if (err instanceof ApiError) {
         const code = err.code;
         if (code === 'USER_PATCH_BAD_STATUS') {
@@ -125,9 +129,29 @@ export function EditUserDialog({ open, user, onClose, onSubmit }: EditUserDialog
           setError('email', { type: 'server', message: 'validation_email_taken' });
           return;
         }
+        // IdP rejected the new email (e.g. provider-side policy / format).
+        if (code === 'USER_IDP_EMAIL_REJECTED') {
+          setError('email', { type: 'server', message: 'validation_idp_email_rejected' });
+          return;
+        }
         if (code === 'USER_INVITE_WEAK_PASSWORD') {
           setShowPassword(true);
           setError('password', { type: 'server', message: 'validation_password_complexity' });
+          return;
+        }
+        // IdP rejected the new password (e.g. provider password policy).
+        if (code === 'USER_IDP_PASSWORD_REJECTED') {
+          setShowPassword(true);
+          setError('password', { type: 'server', message: 'validation_idp_password_rejected' });
+          return;
+        }
+        // The user's IdP (login) account is not activated yet, so an admin
+        // cannot set a password from here. Guide them to re-invite / let the
+        // user set it themselves on first login. Clearing the password and
+        // re-saving profile-only changes then succeeds.
+        if (code === 'USER_IDP_NOT_INITIALIZED') {
+          setShowPassword(true);
+          setError('password', { type: 'server', message: 'validation_idp_not_initialized' });
           return;
         }
         if (code === 'USER_NO_IDP_ACCOUNT') {

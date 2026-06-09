@@ -7,12 +7,23 @@ import org.springframework.data.repository.query.Param;
 import uz.hrlab.grading.common.infrastructure.TenantAwareRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface PositionRepository
         extends TenantAwareRepository<PositionJpaEntity, UUID> {
 
     boolean existsByTenantIdAndProjectIdAndCode(UUID tenantId, UUID projectId, String code);
+
+    /**
+     * Tenant- + project-scoped lookup by external code (the {@code code}
+     * column populated from the import {@code external_id}). Used by the
+     * JOB_PROFILE_V1 importer to resolve {@code position_external_id} → a
+     * Position. Cross-tenant safety: a code that exists in another tenant /
+     * project cannot resolve through this scoped query.
+     */
+    Optional<PositionJpaEntity> findByTenantIdAndProjectIdAndCode(
+            UUID tenantId, UUID projectId, String code);
 
     /**
      * Tenant-scoped paged listing with optional filters

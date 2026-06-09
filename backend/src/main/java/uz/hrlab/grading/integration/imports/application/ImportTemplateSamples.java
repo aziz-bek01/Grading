@@ -162,6 +162,17 @@ public class ImportTemplateSamples {
         return r;
     }
 
+    /**
+     * Job-profile sample. IMPORT ORDER MATTERS: every {@code position_external_id}
+     * below (POS-CFO, POS-CTO, POS-SR-SWE, POS-HRD, POS-OPS-MGR) is one of the
+     * codes created by {@link #positionCatalogSample()} — so this sample is only
+     * importable AFTER the org-structure and position-catalog templates have
+     * been imported into the same project. {@code JobProfileRowCommitter} fails
+     * a row with MISSING_POSITION when the referenced position does not yet
+     * exist. The full import order is: org structure → positions → job profiles.
+     * Each row creates a single DRAFT profile; re-importing the same position
+     * yields PROFILE_ALREADY_EXISTS (one active profile per position).
+     */
     private List<Map<String, String>> jobProfileSample() {
         List<Map<String, String>> out = new ArrayList<>();
         out.add(profileRow("POS-CFO",

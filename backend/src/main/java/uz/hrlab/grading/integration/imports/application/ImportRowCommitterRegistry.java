@@ -12,11 +12,11 @@ import java.util.Optional;
  * lookup by template code (PO-11). Spring auto-collects every committer
  * from the application context.
  *
- * <p>Templates without a committer in MVP 2 Phase 3
- * ({@code JOB_PROFILE_V1}, {@code METHODOLOGY_FACTORS_V1}) are NOT silently
- * ignored — the caller must either look up via {@link #findCommitter(String)}
- * or invoke {@link #requireCommitter(String)} which throws
- * {@link UnsupportedOperationException} so the failure is explicit.
+ * <p>Templates still without a committer ({@code METHODOLOGY_FACTORS_V1}) are
+ * NOT silently ignored — the caller must either look up via
+ * {@link #findCommitter(String)} or invoke {@link #requireCommitter(String)}
+ * which throws {@link UnsupportedOperationException} so the failure is
+ * explicit.
  */
 @Component
 public class ImportRowCommitterRegistry {

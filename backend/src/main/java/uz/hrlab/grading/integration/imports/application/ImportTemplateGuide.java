@@ -245,33 +245,46 @@ public class ImportTemplateGuide {
     }
 
     /**
-     * JOB_PROFILE_V1 — columns are validated (required fields) but commit is
-     * deferred. See {@code ImportTemplateRegistry} requiredFields.
+     * JOB_PROFILE_V1 — see {@code JobProfileRowCommitter}. Each row creates a
+     * DRAFT job profile (version 1) for the referenced position. Required:
+     * {@code position_external_id}, {@code purpose}. Other rich columns map to
+     * extra i18n fields and are optional (a DRAFT may be partial). The position
+     * MUST already exist (import positions first) and only ONE active profile
+     * per position is allowed.
      */
     private static List<ColumnSpec> jobProfileColumns() {
-        String defer = "Эслатма: бу шаблон ҳозирча фақат текширилади, commit кейинги босқичда. "
-                + "Примечание: шаблон пока только валидируется, commit будет позже.";
         return List.of(
                 new ColumnSpec("position_external_id", true,
-                        "Матн / Текст. Лавозимнинг external_id'си. external_id должности.",
-                        "Лойиҳадаги мавжуд лавозим коди. Существующий код должности в проекте.",
+                        "Матн / Текст. Лавозимнинг external_id'си. external_id должности. "
+                                + "→ профиль шу лавозимга боғланади. → профиль привязывается к этой должности.",
+                        "Лойиҳада АВВАЛ импорт қилинган лавозим коди (импорт тартиби: "
+                                + "оргструктура → лавозимлар → лавозим профиллари). "
+                                + "Код должности, импортированной РАНЕЕ (порядок импорта: "
+                                + "оргструктура → должности → профили должностей).",
                         "POS-CFO",
-                        defer),
+                        "Лавозим топилмаса → MISSING_POSITION. Олдин лавозимларни импорт қилинг. "
+                                + "Если должность не найдена → MISSING_POSITION. Сначала импортируйте должности. "
+                                + "Бир лавозимда фаол профиль битта бўлади (такрор → PROFILE_ALREADY_EXISTS). "
+                                + "У должности может быть только один активный профиль (дубль → PROFILE_ALREADY_EXISTS)."),
                 new ColumnSpec("purpose", true,
-                        "Матн / Текст",
+                        "Матн / Текст → purpose (мақсад) майдонига. Текст → поле purpose (цель).",
                         "Эркин матн / Свободный текст",
                         "Холдинг молиявий стратегиясини бошқариш",
-                        "Бўш қолдириш мумкин эмас. Нельзя оставлять пустым."),
-                new ColumnSpec("responsibilities", true,
-                        "Матн / Текст",
+                        "Бўш қолдириш мумкин эмас (мажбурий). Нельзя оставлять пустым (обязательно)."),
+                new ColumnSpec("responsibilities", false,
+                        "Матн / Текст → main_duties (асосий вазифалар) майдонига. "
+                                + "Текст → поле main_duties (основные обязанности).",
                         "Эркин матн / Свободный текст",
                         "Бюджетни бошқариш; аудитни юритиш",
-                        "Бўш қолдириш мумкин эмас. Нельзя оставлять пустым."),
-                new ColumnSpec("requirements", true,
-                        "Матн / Текст",
+                        "Бўш бўлса профиль барибир яратилади (DRAFT). "
+                                + "Если пусто — профиль всё равно создаётся (DRAFT)."),
+                new ColumnSpec("requirements", false,
+                        "Матн / Текст → knowledge_skills (билим/кўникма) майдонига. "
+                                + "Текст → поле knowledge_skills (знания/навыки).",
                         "Эркин матн / Свободный текст",
                         "10+ йил молия соҳасида тажриба",
-                        "Бўш қолдириш мумкин эмас. Нельзя оставлять пустым."),
+                        "Бўш бўлса профиль барибир яратилади (DRAFT). "
+                                + "Если пусто — профиль всё равно создаётся (DRAFT)."),
                 new ColumnSpec("main_duties", false,
                         "Матн / Текст", "Эркин матн / Свободный текст",
                         "Бюджетни эгаллаш; кенгашга ҳисобот", "—"),

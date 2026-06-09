@@ -16,7 +16,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, ChevronDown, ChevronRight, ShieldCheck } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
 import { Card } from '@/shared/components/ui/Card';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
@@ -26,6 +26,7 @@ import { UserStatusBadge } from './UserStatusBadge';
 import { AssignRoleDialog } from './AssignRoleDialog';
 import { RevokeMembershipConfirm } from './RevokeMembershipConfirm';
 import { SalaryPermissionToggle } from './SalaryPermissionToggle';
+import { AccessScopeSection } from './AccessScopeSection';
 import {
   useAddRole,
   useRemoveRole,
@@ -43,6 +44,7 @@ export function MembershipCard({ userId, userName, membership }: MembershipCardP
   const { t } = useTranslation();
   const [assignOpen, setAssignOpen] = useState(false);
   const [revokeOpen, setRevokeOpen] = useState(false);
+  const [scopeOpen, setScopeOpen] = useState(false);
   const isRevoked = membership.status === 'REVOKED';
 
   const addRole = useAddRole(userId, membership.tenant_id);
@@ -163,6 +165,49 @@ export function MembershipCard({ userId, userName, membership }: MembershipCardP
             await updateSalary.mutateAsync({ enabled: next, reason });
           }}
         />
+      ) : null}
+
+      {/*
+        Access scope (department + project) — slice E4-S1. Gated by the same
+        membership-management authority the backend enforces. Collapsed by
+        default so the scope queries only fire when the admin opens it.
+      */}
+      {!isRevoked ? (
+        <PermissionGate
+          permission={[PERMISSIONS.USER_MEMBERSHIP_MANAGE, PERMISSIONS.USER_ACCESS_MANAGE]}
+          mode="any"
+        >
+          <section
+            aria-labelledby={`scope-${membership.tenant_id}`}
+            className="rounded-md border border-border bg-background/60 p-3"
+          >
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 text-left"
+              aria-expanded={scopeOpen}
+              onClick={() => setScopeOpen((v) => !v)}
+              data-testid={`toggle-scope-${membership.tenant_id}`}
+            >
+              <span
+                id={`scope-${membership.tenant_id}`}
+                className="flex items-center gap-1.5 text-sm font-medium text-text-secondary"
+              >
+                <ShieldCheck size={15} aria-hidden />
+                {t('users.scope.section')}
+              </span>
+              {scopeOpen ? (
+                <ChevronDown size={16} aria-hidden className="text-text-muted" />
+              ) : (
+                <ChevronRight size={16} aria-hidden className="text-text-muted" />
+              )}
+            </button>
+            {scopeOpen ? (
+              <div className="mt-4">
+                <AccessScopeSection userId={userId} tenantId={membership.tenant_id} />
+              </div>
+            ) : null}
+          </section>
+        </PermissionGate>
       ) : null}
 
       <AssignRoleDialog

@@ -105,5 +105,16 @@ export const endpoints = {
     membershipSalaryPermission: (id: string, tenantId: string) =>
       `/users/${id}/memberships/${tenantId}/salary-permission`,
     audit: (id: string) => `/users/${id}/audit`,
+    /**
+     * RBAC access-scope endpoints (slice E4-S1).
+     *
+     * Unlike the rest of the users contract, `tenant_id` is an explicit field
+     * here (query param on GET, body field on the PUTs) because these are
+     * cross-tenant admin surfaces — the caller names the membership being
+     * edited. Both PUTs are REPLACE-set: the body carries the full desired set.
+     */
+    scopes: (id: string) => `/users/${id}/scopes`,
+    departmentScopes: (id: string) => `/users/${id}/department-scopes`,
+    projectAssignments: (id: string) => `/users/${id}/project-assignments`,
   },
 } as const;

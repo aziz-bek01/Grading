@@ -20,7 +20,7 @@ import type {
   UserStatus,
 } from '../types/userTypes';
 import { ROLE_CODES } from '../schemas/userSchemas';
-import { toListRow, userDb } from './userFixtures';
+import { scopeKey, toListRow, userDb } from './userFixtures';
 
 /**
  * Canonical role catalog (mirrors the backend `roles` table). The mock
@@ -532,6 +532,98 @@ function handleAudit(id: string, query: URLSearchParams): MatchResult {
 }
 
 // ---------------------------------------------------------------
+// Access-scope handlers (slice E4-S1)
+// ---------------------------------------------------------------
+//
+// Unlike the rest of the users contract, `tenant_id` is an EXPLICIT field here
+// (query param on GET, body field on the PUTs) — these are cross-tenant admin
+// surfaces. The mock therefore does NOT strip it; instead it validates the
+// caller named a tenant and that the user is a member of it (mirrors the
+// backend's membership check).
+
+/** Read-or-create the scope record for a (user, tenant) pair. */
+function scopeRecord(userId: string, tenantId: string) {
+  const key = scopeKey(userId, tenantId);
+  return (userDb.scopes[key] ??= { department_ids: [], project_ids: [] });
+}
+
+function userIsMember(userId: string, tenantId: string): boolean {
+  const u = userDb.users.find((x) => x.id === userId);
+  if (!u) return false;
+  return u.memberships.some((m) => m.tenant_id === tenantId && m.status !== 'REVOKED');
+}
+
+function handleGetScopes(userId: string, query: URLSearchParams): MatchResult {
+  const u = userDb.users.find((x) => x.id === userId);
+  if (!u) return notFound();
+  const tenantId = query.get('tenantId') ?? query.get('tenant_id');
+  if (!tenantId) {
+    return badRequest('tenantId query parameter is required', 'VALIDATION_ERROR');
+  }
+  if (!userIsMember(userId, tenantId)) {
+    // Mirror the backend "not found or no access" probe-resistant response.
+    return notFound();
+  }
+  const rec = scopeRecord(userId, tenantId);
+  return ok({
+    user_id: userId,
+    tenant_id: tenantId,
+    department_ids: [...rec.department_ids],
+    project_ids: [...rec.project_ids],
+  });
+}
+
+function handleSetDepartmentScopes(userId: string, config: AxiosRequestConfig): MatchResult {
+  const u = userDb.users.find((x) => x.id === userId);
+  if (!u) return notFound();
+  const body = readBody<{ tenant_id?: string; department_ids?: unknown }>(config);
+  if (!body.tenant_id) {
+    return badRequest('tenant_id is required', 'VALIDATION_ERROR');
+  }
+  if (!Array.isArray(body.department_ids)) {
+    return badRequest('department_ids must be an array', 'VALIDATION_ERROR');
+  }
+  if (!userIsMember(userId, body.tenant_id)) {
+    return notFound();
+  }
+  const rec = scopeRecord(userId, body.tenant_id);
+  // REPLACE-set: overwrite the department array wholesale.
+  rec.department_ids = body.department_ids.map((x) => String(x));
+  u.updated_at = new Date().toISOString();
+  return ok({
+    user_id: userId,
+    tenant_id: body.tenant_id,
+    department_ids: [...rec.department_ids],
+    project_ids: [...rec.project_ids],
+  });
+}
+
+function handleSetProjectAssignments(userId: string, config: AxiosRequestConfig): MatchResult {
+  const u = userDb.users.find((x) => x.id === userId);
+  if (!u) return notFound();
+  const body = readBody<{ tenant_id?: string; project_ids?: unknown }>(config);
+  if (!body.tenant_id) {
+    return badRequest('tenant_id is required', 'VALIDATION_ERROR');
+  }
+  if (!Array.isArray(body.project_ids)) {
+    return badRequest('project_ids must be an array', 'VALIDATION_ERROR');
+  }
+  if (!userIsMember(userId, body.tenant_id)) {
+    return notFound();
+  }
+  const rec = scopeRecord(userId, body.tenant_id);
+  // REPLACE-set: overwrite the project array wholesale.
+  rec.project_ids = body.project_ids.map((x) => String(x));
+  u.updated_at = new Date().toISOString();
+  return ok({
+    user_id: userId,
+    tenant_id: body.tenant_id,
+    department_ids: [...rec.department_ids],
+    project_ids: [...rec.project_ids],
+  });
+}
+
+// ---------------------------------------------------------------
 // Role catalog (GET /roles) — backs the DATA-DRIVEN role pickers (slice E1)
 // ---------------------------------------------------------------
 
@@ -725,6 +817,20 @@ export function handleUsers(config: AxiosRequestConfig): MatchResult | null {
 
   const auditMatch = /^\/users\/([^/]+)\/audit$/.exec(path);
   if (auditMatch && method === 'GET') return handleAudit(auditMatch[1], query);
+
+  // Access-scope endpoints (slice E4-S1).
+  const scopesMatch = /^\/users\/([^/]+)\/scopes$/.exec(path);
+  if (scopesMatch && method === 'GET') return handleGetScopes(scopesMatch[1], query);
+
+  const deptScopesMatch = /^\/users\/([^/]+)\/department-scopes$/.exec(path);
+  if (deptScopesMatch && method === 'PUT') {
+    return handleSetDepartmentScopes(deptScopesMatch[1], config);
+  }
+
+  const projectAssignMatch = /^\/users\/([^/]+)\/project-assignments$/.exec(path);
+  if (projectAssignMatch && method === 'PUT') {
+    return handleSetProjectAssignments(projectAssignMatch[1], config);
+  }
 
   const salaryMatch = /^\/users\/([^/]+)\/memberships\/([^/]+)\/salary-permission$/.exec(path);
   if (salaryMatch && method === 'PATCH') {

@@ -1452,6 +1452,30 @@
       "revokeWarning": "Foydalanuvchi ish haqi ma'lumotlarini barcha modullarda ko'ra olmaydi. Amal audit jurnalida qayd qilinadi.",
       "reasonHint": "Biznes-asosni kiriting (kamida 10 belgi)."
     },
+    "scope": {
+      "section": "Kirish doirasi",
+      "intro": "Bu foydalanuvchi ushbu kompaniya doirasida qaysi bo'limlar va loyihalarni ko'rishi hamda ularda ishlashi mumkinligini cheklab qo'ying. Bu uning rollariga qo'shimcha — ro'yxatlardagi cheklov modullar bo'yicha bosqichma-bosqich joriy etilmoqda.",
+      "loading": "Kirish doirasi yuklanmoqda…",
+      "loadError": "Kirish doirasini yuklab bo'lmadi. Qayta urinib ko'ring.",
+      "noAccess": "Sizda ushbu foydalanuvchining kirish doirasini boshqarish huquqi yo'q.",
+      "dept": {
+        "title": "Bo'limlar doirasi",
+        "help": "Bo'limlarni tanlang. Bo'lim tanlanganda uning ichidagi barcha bo'limlar ham qamrab olinadi (tanlangan bo'lim + uning ichidagi barcha bo'limlar). Bo'limlar bo'yicha cheklovsiz qoldirish uchun bo'sh qoldiring (foydalanuvchi rollariga bog'liq).",
+        "save": "Bo'limlarni saqlash",
+        "saved": "Bo'limlar doirasi saqlandi.",
+        "saveError": "Bo'limlar doirasini saqlab bo'lmadi. Qayta urinib ko'ring.",
+        "loadError": "Bo'limlarni yuklab bo'lmadi. Qayta urinib ko'ring.",
+        "empty": "Ushbu kompaniya uchun bo'limlar topilmadi."
+      },
+      "project": {
+        "title": "Loyihalar doirasi",
+        "help": "Foydalanuvchi kirishi mumkin bo'lgan loyihalarni tanlang. Loyihalar bo'yicha cheklovsiz qoldirish uchun bo'sh qoldiring (foydalanuvchi rollariga bog'liq).",
+        "save": "Loyihalarni saqlash",
+        "saved": "Loyihalar doirasi saqlandi.",
+        "saveError": "Loyihalar doirasini saqlab bo'lmadi. Qayta urinib ko'ring.",
+        "empty": "Ushbu kompaniya uchun loyihalar topilmadi."
+      }
+    },
     "memberships": {
       "title": "Kompaniyalardagi a'zolik",
       "count": "Jami: {{count}}",

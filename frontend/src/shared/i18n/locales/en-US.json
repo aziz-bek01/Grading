@@ -1452,6 +1452,30 @@
       "revokeWarning": "The user will no longer see salary data across any module. The action is logged in the audit trail.",
       "reasonHint": "Provide a business justification (minimum 10 characters)."
     },
+    "scope": {
+      "section": "Access scope",
+      "intro": "Limit which departments and projects this user can see and act on within this company. This is in addition to their roles — enforcement on lists is rolling out across the modules.",
+      "loading": "Loading scope…",
+      "loadError": "Could not load the access scope. Please try again.",
+      "noAccess": "You don't have permission to manage this user's access scope.",
+      "dept": {
+        "title": "Department scope",
+        "help": "Select departments. Choosing a department also covers every department inside it (the selected department + all of its sub-departments). Leave empty for no department restriction (subject to the user's roles).",
+        "save": "Save departments",
+        "saved": "Department scope saved.",
+        "saveError": "Could not save the department scope. Please try again.",
+        "loadError": "Could not load departments. Please try again.",
+        "empty": "No departments found for this company."
+      },
+      "project": {
+        "title": "Project scope",
+        "help": "Select the projects this user may access. Leave empty for no project restriction (subject to the user's roles).",
+        "save": "Save projects",
+        "saved": "Project scope saved.",
+        "saveError": "Could not save the project scope. Please try again.",
+        "empty": "No projects found for this company."
+      }
+    },
     "memberships": {
       "title": "Company memberships",
       "count": "Total: {{count}}",

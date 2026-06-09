@@ -61,7 +61,9 @@ class ArchitectureTest {
             "RolePermissionRepository",
             "RoleRepository",
             "PermissionRepository",
-            "SystemAuditLogRepository"
+            "SystemAuditLogRepository",
+            "UserProjectAssignmentRepository",
+            "UserDepartmentScopeRepository"
     );
 
     /**
@@ -78,7 +80,9 @@ class ArchitectureTest {
      */
     private static final Set<String> TENANT_ID_REQUEST_WHITELIST = Set.of(
             "InviteUserRequest",
-            "AddMembershipRequest"
+            "AddMembershipRequest",
+            "SetDepartmentScopesRequest",
+            "SetProjectAssignmentsRequest"
     );
 
     @Test

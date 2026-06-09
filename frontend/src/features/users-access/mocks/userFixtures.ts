@@ -271,8 +271,33 @@ export const seedUserAudit: Record<string, UserAuditEvent[]> = {
   ],
 };
 
+/**
+ * Access-scope store (slice E4-S1). Keyed by `userId::tenantId` so a user can
+ * carry a distinct scope set per tenant membership. Values are REPLACE-set:
+ * each PUT overwrites the array wholesale.
+ *
+ * Seeds:
+ *   - Anna (ACME) is pre-scoped to the ACME Finance department (+ its Treasury
+ *     subtree) and one project, so the dev preview opens with a populated form.
+ *     Department/project ids match `shared/api/mocks/fixtures.ts`.
+ */
+export interface ScopeRecord {
+  department_ids: string[];
+  project_ids: string[];
+}
+
+export const scopeKey = (userId: string, tenantId: string) => `${userId}::${tenantId}`;
+
+const seedScopes: Record<string, ScopeRecord> = {
+  [scopeKey('u-acme-anna', TENANT_ACME)]: {
+    department_ids: ['dep-acme-fin', 'dep-acme-fin-treasury'],
+    project_ids: ['proj-acme-2026'],
+  },
+};
+
 /** Mutable in-memory database mirrored from seeds. */
 export const userDb = {
   users: seedUserDetails.map((u) => ({ ...u, memberships: u.memberships.map((m) => ({ ...m, roles: [...m.roles] })) })),
   audit: { ...seedUserAudit },
+  scopes: { ...seedScopes } as Record<string, ScopeRecord>,
 };

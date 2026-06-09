@@ -2,6 +2,7 @@ package uz.hrlab.grading.integration.imports.application;
 
 import org.springframework.stereotype.Component;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
+import uz.hrlab.grading.integration.excel.GuideSheet;
 import uz.hrlab.grading.integration.imports.domain.ImportTemplateCode;
 
 import java.util.ArrayList;
@@ -29,9 +30,11 @@ public class ImportTemplateSamples {
 
     private final ExcelWriter excelWriter = new ExcelWriter();
     private final ImportTemplateRegistry registry;
+    private final ImportTemplateGuide guide;
 
-    public ImportTemplateSamples(ImportTemplateRegistry registry) {
+    public ImportTemplateSamples(ImportTemplateRegistry registry, ImportTemplateGuide guide) {
         this.registry = registry;
+        this.guide = guide;
     }
 
     public List<String> headersFor(String templateCode) {
@@ -53,7 +56,9 @@ public class ImportTemplateSamples {
         // One "instructions" row carrying the DEMO banner in the first column.
         Map<String, String> banner = new HashMap<>();
         banner.put(headers.get(0), DEMO_HEADER);
-        return excelWriter.write(sheetName(templateCode), headers, List.of(banner));
+        String dataSheet = sheetName(templateCode);
+        GuideSheet guideSheet = guide.buildFor(templateCode, dataSheet);
+        return excelWriter.write(dataSheet, headers, List.of(banner), guideSheet);
     }
 
     /** Sample template = headers + ACME sample rows per §5 of the PO spec. */
@@ -73,7 +78,9 @@ public class ImportTemplateSamples {
             case ImportTemplateCode.GRADE_BANDS_V1       -> rows.addAll(gradeBandsSample());
             default -> throw new IllegalArgumentException("Unknown template: " + templateCode);
         }
-        return excelWriter.write(sheetName(templateCode), headers, rows);
+        String dataSheet = sheetName(templateCode);
+        GuideSheet guideSheet = guide.buildFor(templateCode, dataSheet);
+        return excelWriter.write(dataSheet, headers, rows, guideSheet);
     }
 
     /** Suggested filename (no extension) for HTTP Content-Disposition. */
@@ -87,11 +94,11 @@ public class ImportTemplateSamples {
 
     private List<Map<String, String>> orgStructureSample() {
         List<Map<String, String>> out = new ArrayList<>();
-        out.add(orgRow("CEO-OFFICE",     "CEO Office",              "",            1, "OFFICE",     "HQ", "CC-001", "Holding executive office"));
-        out.add(orgRow("CFO-OFFICE",     "CFO Office",              "CEO-OFFICE",  2, "OFFICE",     "HQ", "CC-100", "Finance"));
-        out.add(orgRow("CTO-OFFICE",     "CTO Office",              "CEO-OFFICE",  2, "OFFICE",     "HQ", "CC-200", "Technology"));
-        out.add(orgRow("HR-OFFICE",      "HR Office",               "CEO-OFFICE",  2, "OFFICE",     "HQ", "CC-300", "People"));
-        out.add(orgRow("OPS-OFFICE",     "Operations Office",       "CEO-OFFICE",  2, "OFFICE",     "HQ", "CC-400", "Operations"));
+        out.add(orgRow("CEO-OFFICE",     "CEO Office",              "",            1, "DIVISION",   "HQ", "CC-001", "Holding executive office"));
+        out.add(orgRow("CFO-OFFICE",     "CFO Office",              "CEO-OFFICE",  2, "DIVISION",   "HQ", "CC-100", "Finance"));
+        out.add(orgRow("CTO-OFFICE",     "CTO Office",              "CEO-OFFICE",  2, "DIVISION",   "HQ", "CC-200", "Technology"));
+        out.add(orgRow("HR-OFFICE",      "HR Office",               "CEO-OFFICE",  2, "DIVISION",   "HQ", "CC-300", "People"));
+        out.add(orgRow("OPS-OFFICE",     "Operations Office",       "CEO-OFFICE",  2, "DIVISION",   "HQ", "CC-400", "Operations"));
         out.add(orgRow("FIN-DEPT",       "Finance Department",      "CFO-OFFICE",  3, "DEPARTMENT", "HQ", "CC-110", "FP&A"));
         out.add(orgRow("TREASURY-DEPT",  "Treasury Department",     "CFO-OFFICE",  3, "DEPARTMENT", "HQ", "CC-120", "Cash & banking"));
         out.add(orgRow("IT-INFRA-DEPT",  "IT Infrastructure",       "CTO-OFFICE",  3, "DEPARTMENT", "HQ", "CC-210", "Infra"));
@@ -259,9 +266,13 @@ public class ImportTemplateSamples {
                 Map<String, String> r = new LinkedHashMap<>();
                 r.put("factor_code", code);
                 r.put("factor_name", name);
-                r.put("factor_weight", weight);
+                // Registry-required columns for METHODOLOGY_FACTORS_V1.
+                r.put("weight", weight);
+                r.put("score", String.valueOf(points[l]));
                 r.put("level_code", "L" + (l + 1));
                 r.put("level_name", levels[l]);
+                // Duplicate informational columns (kept in sync with weight/score).
+                r.put("factor_weight", weight);
                 r.put("level_points", String.valueOf(points[l]));
                 r.put("level_order", String.valueOf(l + 1));
                 r.put("level_description", name + " - " + levels[l]);
@@ -283,7 +294,9 @@ public class ImportTemplateSamples {
             String min = i == 0 ? "0" : (i * 50) + ".0001";
             String max = ((i + 1) * 50) + "";
             Map<String, String> r = new LinkedHashMap<>();
-            r.put("grade_code", "G" + (i + 1));
+            // grade_code is parsed as a positive integer grade_number by
+            // GradeBandsRowCommitter — plain digits, not a letter-prefixed code.
+            r.put("grade_code", String.valueOf(i + 1));
             r.put("min_score", min);
             r.put("max_score", max);
             r.put("label", labels[i]);

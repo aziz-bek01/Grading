@@ -22,8 +22,19 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Apache POI XSSF parser that reads the first sheet of an .xlsx file and
+ * Apache POI XSSF parser that reads the DATA sheet of an .xlsx file and
  * yields one {@code Map<String,String>} per data row, keyed by header.
+ *
+ * <p><b>Sheet selection.</b> Every downloadable template now ships TWO sheets:
+ * the data sheet at index 0 and a human-readable guide sheet (named
+ * {@value #GUIDE_SHEET_NAME}) at index 1. Users may fill the data sheet and
+ * re-upload the whole workbook including the guide. The parser therefore:
+ * <ol>
+ *   <li>skips any sheet whose name equals the guide sheet name (case-
+ *       insensitive), so a re-ordered workbook still resolves the data sheet;</li>
+ *   <li>otherwise takes the FIRST remaining sheet (index 0 in the canonical
+ *       layout) — never "the last sheet", never an iterate-all heuristic.</li>
+ * </ol>
  *
  * <p>Rejects:
  * <ul>
@@ -39,6 +50,14 @@ public class ExcelParser {
 
     private static final DataFormatter FORMATTER = new DataFormatter();
 
+    /**
+     * Name of the informational guide sheet shipped as sheet #2 of every
+     * template. Kept in lock-step with
+     * {@code ImportTemplateGuide.GUIDE_SHEET_NAME}; the parser skips it so the
+     * guide is never mistaken for the data sheet on upload.
+     */
+    static final String GUIDE_SHEET_NAME = "Йўриқнома-Инструкция";
+
     public ParsedSheet parse(byte[] xlsxBytes) {
         if (xlsxBytes == null || xlsxBytes.length == 0) {
             throw new ExcelParseException("EMPTY_FILE", "Workbook is empty");
@@ -47,7 +66,7 @@ public class ExcelParser {
             if (wb.getNumberOfSheets() == 0) {
                 throw new ExcelParseException("NO_SHEETS", "Workbook contains no sheets");
             }
-            Sheet sheet = wb.getSheetAt(0);
+            Sheet sheet = selectDataSheet(wb);
             FormulaEvaluator evaluator = wb.getCreationHelper().createFormulaEvaluator();
 
             // Headers from row 0
@@ -93,6 +112,22 @@ public class ExcelParser {
         } catch (IOException e) {
             throw new ExcelParseException("IO_ERROR", "Failed to read workbook: " + e.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Resolve the DATA sheet: the first sheet that is NOT the guide sheet.
+     * Falls back to sheet index 0 if every sheet looks like a guide (defensive
+     * — should never happen for a platform-generated template).
+     */
+    private static Sheet selectDataSheet(Workbook wb) {
+        for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+            Sheet s = wb.getSheetAt(i);
+            String name = s.getSheetName();
+            if (name == null || !name.trim().equalsIgnoreCase(GUIDE_SHEET_NAME)) {
+                return s;
+            }
+        }
+        return wb.getSheetAt(0);
     }
 
     private static String readCell(Cell cell, FormulaEvaluator evaluator) {

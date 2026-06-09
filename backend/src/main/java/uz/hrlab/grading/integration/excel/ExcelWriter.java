@@ -1,8 +1,11 @@
 package uz.hrlab.grading.integration.excel;
 
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.springframework.stereotype.Component;
@@ -32,6 +35,28 @@ public class ExcelWriter {
      *                   sanitized via {@link SafeCellWriter}.
      */
     public byte[] write(String sheetName, List<String> headers, List<Map<String, String>> rows) {
+        return write(sheetName, headers, rows, null);
+    }
+
+    /**
+     * Write a workbook whose FIRST (index-0) sheet is the canonical data sheet
+     * and whose SECOND sheet is an optional human-readable guide. The data
+     * sheet layout is byte-for-byte identical to {@link #write(String, List,
+     * List)} — the guide is appended afterwards, so the parser (which reads
+     * sheet index 0 by name) is unaffected.
+     *
+     * <p>Guide cells are still routed through {@link SafeCellWriter}; bold +
+     * wrapped header styling is applied to the marked header rows and column
+     * widths come from {@link GuideSheet}. The guide is never parsed on
+     * upload (the importer targets the data sheet explicitly).
+     *
+     * @param sheetName  data-sheet POI name (≤ 31 chars) — sheet index 0
+     * @param headers    column titles for the data sheet
+     * @param rows       data rows for the data sheet
+     * @param guide      optional second guide sheet; {@code null} = no guide
+     */
+    public byte[] write(String sheetName, List<String> headers,
+                        List<Map<String, String>> rows, GuideSheet guide) {
         try (Workbook wb = new SXSSFWorkbook(100);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet(sheetName == null ? "Sheet1" : sheetName);
@@ -52,6 +77,10 @@ public class ExcelWriter {
                 }
             }
 
+            if (guide != null) {
+                writeGuideSheet(wb, guide);
+            }
+
             wb.write(out);
             if (wb instanceof SXSSFWorkbook s) {
                 s.dispose();
@@ -59,6 +88,39 @@ public class ExcelWriter {
             return out.toByteArray();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    private static void writeGuideSheet(Workbook wb, GuideSheet guide) {
+        Sheet sheet = wb.createSheet(guide.sheetName());
+
+        CellStyle headerStyle = wb.createCellStyle();
+        Font bold = wb.createFont();
+        bold.setBold(true);
+        headerStyle.setFont(bold);
+        headerStyle.setWrapText(true);
+        headerStyle.setVerticalAlignment(VerticalAlignment.TOP);
+
+        CellStyle bodyStyle = wb.createCellStyle();
+        bodyStyle.setWrapText(true);
+        bodyStyle.setVerticalAlignment(VerticalAlignment.TOP);
+
+        List<GuideSheet.GuideRow> guideRows = guide.rows();
+        for (int r = 0; r < guideRows.size(); r++) {
+            GuideSheet.GuideRow gr = guideRows.get(r);
+            Row row = sheet.createRow(r);
+            List<String> cells = gr.cells();
+            for (int c = 0; c < cells.size(); c++) {
+                Cell cell = row.createCell(c);
+                SafeCellWriter.writeString(cell, cells.get(c) == null ? "" : cells.get(c));
+                cell.setCellStyle(gr.header() ? headerStyle : bodyStyle);
+            }
+        }
+
+        int[] widths = guide.columnWidthsChars();
+        for (int c = 0; c < widths.length; c++) {
+            // POI width unit = 1/256th of a character.
+            sheet.setColumnWidth(c, Math.min(widths[c], 255) * 256);
         }
     }
 }

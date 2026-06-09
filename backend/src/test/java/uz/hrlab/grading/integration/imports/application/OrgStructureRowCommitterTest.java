@@ -156,6 +156,53 @@ class OrgStructureRowCommitterTest {
     }
 
     @Test
+    void unknownType_throwsInvalidDepartmentType_listingAllowedValues() {
+        Map<String, String> row = new HashMap<>();
+        row.put("external_id", "BAD-TYPE");
+        row.put("name", "Bad type row");
+        row.put("type", "OFFICE"); // not a DepartmentType
+
+        ImportRowCommitException err = (ImportRowCommitException) org.junit.jupiter.api.Assertions
+                .assertThrows(ImportRowCommitException.class,
+                        () -> committer.commit(row, ctx));
+        assertThat(err.getCode()).isEqualTo("INVALID_DEPARTMENT_TYPE");
+        // Message lists the exact allowed enum values.
+        assertThat(err.getMessage())
+                .contains("BRANCH").contains("DEPARTMENT")
+                .contains("DIVISION").contains("UNIT");
+        // Nothing persisted for a rejected row.
+        verify(departments, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void blankType_defaultsToDepartment_notRejected() {
+        Map<String, String> row = new HashMap<>();
+        row.put("external_id", "BLANK-TYPE");
+        row.put("name", "Blank type row");
+        row.put("type", "   "); // blank → intentional default
+
+        committer.commit(row, ctx);
+
+        ArgumentCaptor<DepartmentJpaEntity> saved = ArgumentCaptor.forClass(DepartmentJpaEntity.class);
+        verify(departments).save(saved.capture());
+        assertThat(saved.getValue().getType()).isEqualTo(DepartmentType.DEPARTMENT);
+    }
+
+    @Test
+    void missingType_defaultsToDepartment_notRejected() {
+        Map<String, String> row = new HashMap<>();
+        row.put("external_id", "NO-TYPE");
+        row.put("name", "No type column");
+        // type column absent entirely → intentional default.
+
+        committer.commit(row, ctx);
+
+        ArgumentCaptor<DepartmentJpaEntity> saved = ArgumentCaptor.forClass(DepartmentJpaEntity.class);
+        verify(departments).save(saved.capture());
+        assertThat(saved.getValue().getType()).isEqualTo(DepartmentType.DEPARTMENT);
+    }
+
+    @Test
     void noProjectInContext_throws() {
         ImportRowCommitContext noProject = new ImportRowCommitContext(
                 tenantId, null, UUID.randomUUID(), UUID.randomUUID(), "t");

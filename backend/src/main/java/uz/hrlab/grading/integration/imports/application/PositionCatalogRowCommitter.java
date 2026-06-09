@@ -110,11 +110,22 @@ public class PositionCatalogRowCommitter implements ImportRowCommitter {
     }
 
     private static PositionStatus parseStatus(String raw) {
+        // Blank intentionally defaults to ACTIVE (status is an optional
+        // column). An unknown/typo value is rejected with a clear row error
+        // instead of being silently coerced.
         if (raw == null || raw.isBlank()) return PositionStatus.ACTIVE;
         try {
             return PositionStatus.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            return PositionStatus.ACTIVE;
+            throw new ImportRowCommitException("INVALID_POSITION_STATUS",
+                    "Invalid status '" + raw.trim() + "'. Allowed values: "
+                            + allowedStatuses());
         }
+    }
+
+    private static String allowedStatuses() {
+        return String.join(", ",
+                java.util.Arrays.stream(PositionStatus.values())
+                        .map(Enum::name).toArray(String[]::new));
     }
 }

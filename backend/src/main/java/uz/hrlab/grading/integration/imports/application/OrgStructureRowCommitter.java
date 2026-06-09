@@ -111,11 +111,22 @@ public class OrgStructureRowCommitter implements ImportRowCommitter {
     }
 
     private static DepartmentType parseType(String raw) {
+        // Blank intentionally defaults to DEPARTMENT (type is an optional
+        // column). An unknown/typo value is rejected with a clear row error
+        // instead of being silently coerced.
         if (raw == null || raw.isBlank()) return DepartmentType.DEPARTMENT;
         try {
             return DepartmentType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            return DepartmentType.DEPARTMENT;
+            throw new ImportRowCommitException("INVALID_DEPARTMENT_TYPE",
+                    "Invalid type '" + raw.trim() + "'. Allowed values: "
+                            + allowedTypes());
         }
+    }
+
+    private static String allowedTypes() {
+        return String.join(", ",
+                java.util.Arrays.stream(DepartmentType.values())
+                        .map(Enum::name).toArray(String[]::new));
     }
 }

@@ -129,6 +129,68 @@ class PositionCatalogRowCommitterTest {
     }
 
     @Test
+    void unknownStatus_throwsInvalidPositionStatus_listingAllowedValues() {
+        given(departments.findByTenantIdAndProjectIdAndCode(any(), any(), any()))
+                .willReturn(Optional.of(mock(DepartmentJpaEntity.class)));
+
+        Map<String, String> row = new HashMap<>();
+        row.put("external_id", "POS-BAD");
+        row.put("title", "Bad status");
+        row.put("department_external_id", "DEPT-1");
+        row.put("status", "OPEN"); // not a PositionStatus
+
+        ImportRowCommitException err = (ImportRowCommitException) org.junit.jupiter.api.Assertions
+                .assertThrows(ImportRowCommitException.class,
+                        () -> committer.commit(row, ctx));
+        assertThat(err.getCode()).isEqualTo("INVALID_POSITION_STATUS");
+        assertThat(err.getMessage())
+                .contains("DRAFT").contains("ACTIVE").contains("ARCHIVED");
+        verify(positions, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void blankStatus_defaultsToActive_notRejected() {
+        UUID deptId = UUID.randomUUID();
+        DepartmentJpaEntity dept = mock(DepartmentJpaEntity.class);
+        given(dept.getId()).willReturn(deptId);
+        given(departments.findByTenantIdAndProjectIdAndCode(any(), any(), any()))
+                .willReturn(Optional.of(dept));
+
+        Map<String, String> row = new HashMap<>();
+        row.put("external_id", "POS-BLANK");
+        row.put("title", "Blank status");
+        row.put("department_external_id", "DEPT-1");
+        row.put("status", "  "); // blank → intentional default
+
+        committer.commit(row, ctx);
+
+        ArgumentCaptor<PositionJpaEntity> cap = ArgumentCaptor.forClass(PositionJpaEntity.class);
+        verify(positions).save(cap.capture());
+        assertThat(cap.getValue().getStatus()).isEqualTo(PositionStatus.ACTIVE);
+    }
+
+    @Test
+    void missingStatus_defaultsToActive_notRejected() {
+        UUID deptId = UUID.randomUUID();
+        DepartmentJpaEntity dept = mock(DepartmentJpaEntity.class);
+        given(dept.getId()).willReturn(deptId);
+        given(departments.findByTenantIdAndProjectIdAndCode(any(), any(), any()))
+                .willReturn(Optional.of(dept));
+
+        Map<String, String> row = new HashMap<>();
+        row.put("external_id", "POS-NOSTATUS");
+        row.put("title", "No status column");
+        row.put("department_external_id", "DEPT-1");
+        // status column absent entirely → intentional default.
+
+        committer.commit(row, ctx);
+
+        ArgumentCaptor<PositionJpaEntity> cap = ArgumentCaptor.forClass(PositionJpaEntity.class);
+        verify(positions).save(cap.capture());
+        assertThat(cap.getValue().getStatus()).isEqualTo(PositionStatus.ACTIVE);
+    }
+
+    @Test
     void missingTitle_throws() {
         Map<String, String> row = new HashMap<>();
         row.put("external_id", "POS-X");

@@ -20,7 +20,7 @@ export function DashboardPage() {
         <AuditLogStatCard />
       </div>
       <Card title={t('nav.projects')}>
-        <EmptyState />
+        <EmptyState className="py-10" />
       </Card>
     </div>
   );

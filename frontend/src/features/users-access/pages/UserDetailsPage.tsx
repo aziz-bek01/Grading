@@ -7,7 +7,7 @@
  * Audit view itself lives in /app/audit?userId= and requires AUDIT_READ;
  * here we just deep-link to it.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -19,6 +19,7 @@ import {
   Ban,
   CheckCircle2,
   Building2,
+  KeyRound,
 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
 import { Card } from '@/shared/components/ui/Card';
@@ -31,12 +32,13 @@ import { PERMISSIONS } from '@/shared/types/permissions';
 import { routes } from '@/shared/config/routes';
 import { ApiError } from '@/shared/api/apiError';
 import { useUser } from '../hooks/useUser';
-import { useAddMembership, useUpdateUser } from '../hooks/useUserMutations';
+import { useAddMembership, useResetLogin, useUpdateUser } from '../hooks/useUserMutations';
 import { UserStatusBadge } from '../components/UserStatusBadge';
 import { MembershipCard } from '../components/MembershipCard';
 import { EditUserDialog } from '../components/EditUserDialog';
 import { AddMembershipDialog } from '../components/AddMembershipDialog';
 import { DisableUserConfirm } from '../components/DisableUserConfirm';
+import { ResetLoginDialog } from '../components/ResetLoginDialog';
 
 const USER_EDIT_GATE = [PERMISSIONS.USER_UPDATE, PERMISSIONS.USER_ACCESS_MANAGE];
 const MEMBERSHIP_GATE = [PERMISSIONS.USER_MEMBERSHIP_MANAGE, PERMISSIONS.USER_ACCESS_MANAGE];
@@ -50,9 +52,19 @@ export function UserDetailsPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [addMembershipOpen, setAddMembershipOpen] = useState(false);
   const [disableOpen, setDisableOpen] = useState(false);
+  const [resetLoginOpen, setResetLoginOpen] = useState(false);
+  const [resetLoginDone, setResetLoginDone] = useState(false);
 
   const updateUser = useUpdateUser(userId ?? '');
   const addMembership = useAddMembership(userId ?? '');
+  const resetLogin = useResetLogin(userId ?? '');
+
+  // Auto-dismiss the reset-login success banner like a transient toast.
+  useEffect(() => {
+    if (!resetLoginDone) return;
+    const id = window.setTimeout(() => setResetLoginDone(false), 5000);
+    return () => window.clearTimeout(id);
+  }, [resetLoginDone]);
 
   if (isLoading) {
     return (
@@ -108,6 +120,16 @@ export function UserDetailsPage() {
         </Button>
       </div>
 
+      {resetLoginDone ? (
+        <div
+          role="status"
+          className="rounded-md border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700"
+          data-testid="reset-login-success"
+        >
+          {t('users.resetLogin.success', { name: data.full_name })}
+        </div>
+      ) : null}
+
       <Card>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -138,6 +160,18 @@ export function UserDetailsPage() {
                 data-testid="edit-user-button"
               >
                 {t('users.edit.button')}
+              </Button>
+            </PermissionGate>
+
+            <PermissionGate permission={USER_EDIT_GATE} mode="any">
+              <Button
+                variant="secondary"
+                size="sm"
+                leadingIcon={<KeyRound size={14} />}
+                onClick={() => setResetLoginOpen(true)}
+                data-testid="reset-login-button"
+              >
+                {t('users.resetLogin.button')}
               </Button>
             </PermissionGate>
 
@@ -245,6 +279,15 @@ export function UserDetailsPage() {
         onConfirm={async () => {
           await updateUser.mutateAsync({ status: 'DISABLED' });
           setDisableOpen(false);
+        }}
+      />
+
+      <ResetLoginDialog
+        open={resetLoginOpen}
+        onClose={() => setResetLoginOpen(false)}
+        onSubmit={async (payload) => {
+          await resetLogin.mutateAsync(payload);
+          setResetLoginDone(true);
         }}
       />
     </div>

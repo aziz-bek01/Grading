@@ -68,7 +68,7 @@ export function ClientsListPage() {
           <p className="text-sm text-text-secondary mt-1">{t('clients.list.subtitle')}</p>
         </div>
         <div
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary-50 border border-primary-200 text-primary-700 text-xs"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary-50 border border-primary-200 text-primary-700 text-xs font-medium"
           title={t('clients.list.super_admin_hint')}
         >
           {t('clients.list.super_admin_badge')}

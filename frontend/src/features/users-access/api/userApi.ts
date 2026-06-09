@@ -27,6 +27,7 @@ import type {
   AddMembershipPayload,
   AddRolePayload,
   InviteUserPayload,
+  ResetLoginPayload,
   UpdateSalaryPermissionPayload,
   UpdateUserPayload,
   User,
@@ -196,6 +197,21 @@ export async function inviteUser(payload: InviteUserPayload): Promise<User> {
 export async function updateUser(id: string, payload: UpdateUserPayload): Promise<User> {
   const res = await httpClient.patch<User>(endpoints.users.detail(id), payload);
   return res.data;
+}
+
+/**
+ * POST /users/:id/reset-login — re-provision the user's IdP (login) account and
+ * set an admin-chosen password. Returns the standard UserDetails (same shape as
+ * the detail endpoint); normalised through the same adapter so memberships /
+ * aggregates stay consistent. The password is sent in the body only and is
+ * never logged here.
+ */
+export async function resetLogin(
+  userId: string,
+  payload: ResetLoginPayload,
+): Promise<UserDetails> {
+  const res = await httpClient.post<unknown>(endpoints.users.resetLogin(userId), payload);
+  return normalizeUserDetails((res.data ?? {}) as Record<string, unknown>);
 }
 
 export async function addMembership(

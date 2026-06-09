@@ -55,6 +55,14 @@ public final class AuditAction {
     public static final String USER_PASSWORD_RESET               = "USER_PASSWORD_RESET";
     public static final String USER_EMAIL_CHANGED                = "USER_EMAIL_CHANGED";
 
+    // Login recovery via POST /api/v1/users/{id}/reset-login (re-issue a working
+    // login for a user whose IdP account is missing, in USER_STATE_INITIAL, or
+    // mis-linked to the wrong subject). Re-provisions by the CURRENT grading email
+    // (create-or-link), re-links external_idp_subject if it changed, sets the
+    // admin password and activates. NEVER carries the password — only the
+    // external subject id, the email, and whether the subject was re-linked.
+    public static final String USER_LOGIN_RESET                  = "USER_LOGIN_RESET";
+
     // IdP provisioning (decision doc 08, Option A — admin-set-password).
     // Emitted by InviteUserUseCase when grading.idp.zitadel.enabled=true.
     // NEVER carry the password or the IdP token in the reason/payload — only the

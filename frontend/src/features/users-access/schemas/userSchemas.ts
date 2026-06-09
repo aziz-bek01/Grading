@@ -125,6 +125,20 @@ export const InviteUserSchema = z.object({
 export type InviteUserInput = z.infer<typeof InviteUserSchema>;
 
 /**
+ * Reset-login / re-send-invitation form (POST /users/:id/reset-login).
+ *
+ * Single required field: the new login password the admin issues. Reuses the
+ * shared {@link passwordField} so the complexity rule (and its inline error key
+ * `validation_password_complexity`) is identical to the invite / edit flows —
+ * no duplication. The backend re-validates and re-provisions the IdP account.
+ */
+export const ResetLoginSchema = z.object({
+  password: passwordField,
+});
+
+export type ResetLoginInput = z.infer<typeof ResetLoginSchema>;
+
+/**
  * PATCH /users/:id body. The backend status field accepts ONLY `ACTIVE` or
  * `DISABLED` (any other value → 400 `USER_PATCH_BAD_STATUS`); INVITED and
  * LOCKED are system-managed and cannot be set via this endpoint. We mirror that

@@ -35,8 +35,12 @@ export function TopBar() {
           <UserMenu />
         </div>
       </div>
-      {/* Tenant fingerprint bar */}
-      <div className="h-1.5 w-full" style={{ backgroundColor: fingerprintColor }} aria-hidden />
+      {/*
+        Tenant fingerprint bar — ALWAYS present at 4px (h-1) so the header
+        height is a constant 56+4=60px (single source of truth, see AppShell
+        sticky math). Coloured when a tenant is active, transparent otherwise.
+      */}
+      <div className="h-1 w-full" style={{ backgroundColor: fingerprintColor }} aria-hidden />
     </header>
   );
 }

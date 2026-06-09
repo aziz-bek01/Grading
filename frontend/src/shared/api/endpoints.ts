@@ -88,6 +88,13 @@ export const endpoints = {
   users: {
     list: '/users',
     detail: (id: string) => `/users/${id}`,
+    /**
+     * POST /users/{id}/reset-login — re-provisions the user's IdP (login)
+     * account by their grading email (creates a fresh ACTIVE account if
+     * missing / mis-linked) and sets an admin-chosen password. Recovery path
+     * for users whose login was never activated. Body: { password }.
+     */
+    resetLogin: (id: string) => `/users/${id}/reset-login`,
     memberships: (id: string) => `/users/${id}/memberships`,
     membership: (id: string, tenantId: string) =>
       `/users/${id}/memberships/${tenantId}`,

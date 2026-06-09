@@ -158,10 +158,17 @@ export function Sidebar({ className }: SidebarProps = {}) {
     },
   ];
 
+  const toggle = (
+    <SidebarToggle
+      collapsed={collapsed}
+      onToggle={() => setSidebarCollapsed(!collapsed)}
+    />
+  );
+
   return (
     <aside
       className={cn(
-        'hidden md:flex md:flex-col shrink-0 border-r border-border bg-surface min-h-[calc(100vh-56px-6px)]',
+        'hidden md:flex md:flex-col shrink-0 border-r border-border bg-surface',
         'transition-[width] duration-150',
         collapsed ? 'w-16' : 'w-60',
         className,
@@ -170,30 +177,17 @@ export function Sidebar({ className }: SidebarProps = {}) {
       data-collapsed={collapsed || undefined}
       data-testid="app-sidebar"
     >
-      <div
-        className={cn(
-          'flex items-center px-2 py-2 border-b border-border',
-          collapsed ? 'justify-center' : 'justify-end',
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => setSidebarCollapsed(!collapsed)}
-          title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
-          aria-label={t('sidebar.toggle_aria')}
-          aria-expanded={!collapsed}
-          data-testid="sidebar-toggle"
-          className="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-secondary hover:bg-divider hover:text-text-primary"
-        >
-          {collapsed ? (
-            <PanelLeft size={18} aria-hidden />
-          ) : (
-            <PanelLeftClose size={18} aria-hidden />
-          )}
-        </button>
-      </div>
       <nav className="flex-1 overflow-y-auto py-3 px-2 text-sm">
-        <SidebarGroup label={t('nav.dashboard')} collapsed={collapsed}>
+        {collapsed ? (
+          <div className="flex justify-center pb-2 mb-1 border-b border-divider">
+            {toggle}
+          </div>
+        ) : null}
+        <SidebarGroup
+          label={t('nav.dashboard')}
+          collapsed={collapsed}
+          action={collapsed ? undefined : toggle}
+        >
           {portfolioItems.filter((i) => has(i.permission)).map((item) => (
             <SidebarLink key={item.to} item={item} collapsed={collapsed} />
           ))}
@@ -228,10 +222,13 @@ export function Sidebar({ className }: SidebarProps = {}) {
 function SidebarGroup({
   label,
   collapsed,
+  action,
   children,
 }: {
   label: string;
   collapsed?: boolean;
+  /** Optional control rendered right-aligned in the (expanded) label row. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -240,10 +237,40 @@ function SidebarGroup({
         // Collapsed: hide the text label, keep a thin divider for grouping.
         <div className="mx-2 mb-1 border-t border-divider" aria-hidden />
       ) : (
-        <div className="px-3 mb-1 text-xs uppercase tracking-wide text-text-muted">{label}</div>
+        <div className="px-3 mb-1 flex items-center justify-between">
+          <span className="text-xs uppercase tracking-wide text-text-muted">{label}</span>
+          {action}
+        </div>
       )}
       <ul className="space-y-0.5">{children}</ul>
     </div>
+  );
+}
+
+function SidebarToggle({
+  collapsed,
+  onToggle,
+}: {
+  collapsed?: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+      aria-label={t('sidebar.toggle_aria')}
+      aria-expanded={!collapsed}
+      data-testid="sidebar-toggle"
+      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-text-muted hover:bg-divider hover:text-text-primary focus-visible:ring-2 focus-visible:ring-primary-500"
+    >
+      {collapsed ? (
+        <PanelLeft size={16} aria-hidden />
+      ) : (
+        <PanelLeftClose size={16} aria-hidden />
+      )}
+    </button>
   );
 }
 
@@ -259,7 +286,9 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed?: boolean }
             'flex items-center gap-2 px-3 py-2.5 rounded-md text-sm',
             collapsed && 'justify-center px-0',
             isActive
-              ? 'bg-primary-50 text-primary-700 border-l-2 border-primary-500'
+              ? collapsed
+                ? 'bg-primary-50 text-primary-700'
+                : 'bg-primary-50 text-primary-700 border-l-2 border-primary-500'
               : 'text-text-primary hover:bg-divider',
           )
         }

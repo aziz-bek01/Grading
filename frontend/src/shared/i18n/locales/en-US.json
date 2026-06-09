@@ -1389,6 +1389,23 @@
       "validation_idp_email_rejected": "The identity provider (IdP) rejected this email. Enter a different address.",
       "validation_status_invalid": "Invalid status: only Active or Disabled can be set."
     },
+    "resetLogin": {
+      "button": "Reset login",
+      "title": "Reset login / Re-send invitation",
+      "subtitle": "Give the user a new login password — their account will be activated.",
+      "submit": "Reset login",
+      "password": "New login password",
+      "passwordHint": "This is the user's new login password — share it with them. The account will be created/restored.",
+      "passwordGenerate": "Generate strong password",
+      "passwordShow": "Show password",
+      "passwordHide": "Hide password",
+      "success": "Login for {{name}} has been reset — the account is active.",
+      "validation_password_complexity": "At least 8 characters with an uppercase letter, a lowercase letter, a number and a symbol.",
+      "validation_no_idp_account": "This user has no login (IdP) account — it will be created on reset.",
+      "validation_idp_not_initialized": "This user's login account isn't activated yet — the reset will activate it. If this keeps failing, try again.",
+      "validation_idp_password_rejected": "The identity provider rejected this password. Try a different one that meets the security policy.",
+      "errorTryAgain": "Could not reach the identity provider. Please try again later."
+    },
     "disable": {
       "button": "Disable user",
       "title": "Disable user?",

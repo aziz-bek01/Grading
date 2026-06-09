@@ -61,7 +61,7 @@ export function TenantSelector() {
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
           className={cn(
-            'inline-flex items-center gap-2 h-10 px-3 rounded-md text-sm',
+            'inline-flex items-center gap-2 h-9 px-3 rounded-md text-sm',
             'border border-border-strong bg-surface text-text-primary hover:bg-divider',
           )}
         >

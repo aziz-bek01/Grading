@@ -10,6 +10,7 @@ import {
   addRole,
   inviteUser,
   removeRole,
+  resetLogin,
   revokeMembership,
   updateSalaryPermission,
   updateUser,
@@ -19,6 +20,7 @@ import type {
   AddMembershipPayload,
   AddRolePayload,
   InviteUserPayload,
+  ResetLoginPayload,
   UpdateSalaryPermissionPayload,
   UpdateUserPayload,
 } from '../types/userTypes';
@@ -40,6 +42,19 @@ export function useUpdateUser(id: string) {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (payload: UpdateUserPayload) => updateUser(id, payload),
+    onSuccess: invalidate,
+  });
+}
+
+/**
+ * Reset login / re-send invitation. Mirrors {@link useUpdateUser}: on success
+ * the whole `users` key tree is invalidated so the details view re-fetches and
+ * the status badge flips to ACTIVE.
+ */
+export function useResetLogin(userId: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (payload: ResetLoginPayload) => resetLogin(userId, payload),
     onSuccess: invalidate,
   });
 }

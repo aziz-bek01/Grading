@@ -140,6 +140,18 @@ export interface UpdateUserPayload {
   status?: UserStatus;
 }
 
+/**
+ * POST /users/:id/reset-login body. The backend re-provisions the user's IdP
+ * (login) account by their grading email — creating a fresh ACTIVE account if
+ * missing / mis-linked — and sets this admin-chosen password. Same complexity
+ * policy as the invite flow (≥ 8 chars; upper, lower, number, symbol); a weak
+ * value → 400 `USER_INVITE_WEAK_PASSWORD`. On success the standard UserDetails
+ * is returned and the user's status becomes ACTIVE.
+ */
+export interface ResetLoginPayload {
+  password: string;
+}
+
 export interface AddMembershipPayload {
   tenant_id: string;
   role_codes: RoleCode[];

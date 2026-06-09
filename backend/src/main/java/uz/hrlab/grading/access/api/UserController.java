@@ -22,6 +22,7 @@ import uz.hrlab.grading.access.application.GetUserDetailsQuery;
 import uz.hrlab.grading.access.application.InviteUserUseCase;
 import uz.hrlab.grading.access.application.ListUsersQuery;
 import uz.hrlab.grading.access.application.PatchUserUseCase;
+import uz.hrlab.grading.access.application.ResetLoginUseCase;
 import uz.hrlab.grading.access.application.RevokeMembershipUseCase;
 import uz.hrlab.grading.access.application.ToggleSalaryPermissionUseCase;
 import uz.hrlab.grading.common.api.PageResponse;
@@ -56,6 +57,7 @@ public class UserController {
     private final GetUserDetailsQuery getUserDetails;
     private final InviteUserUseCase inviteUser;
     private final PatchUserUseCase patchUser;
+    private final ResetLoginUseCase resetLogin;
     private final AddMembershipUseCase addMembership;
     private final RevokeMembershipUseCase revokeMembership;
     private final AssignRoleUseCase assignRole;
@@ -66,6 +68,7 @@ public class UserController {
                           GetUserDetailsQuery getUserDetails,
                           InviteUserUseCase inviteUser,
                           PatchUserUseCase patchUser,
+                          ResetLoginUseCase resetLogin,
                           AddMembershipUseCase addMembership,
                           RevokeMembershipUseCase revokeMembership,
                           AssignRoleUseCase assignRole,
@@ -75,6 +78,7 @@ public class UserController {
         this.getUserDetails = getUserDetails;
         this.inviteUser = inviteUser;
         this.patchUser = patchUser;
+        this.resetLogin = resetLogin;
         this.addMembership = addMembership;
         this.revokeMembership = revokeMembership;
         this.assignRole = assignRole;
@@ -120,6 +124,19 @@ public class UserController {
                                      @Valid @RequestBody PatchUserRequest req) {
         return patchUser.patch(id, req.fullName(), req.locale(), req.status(),
                 req.email(), req.password());
+    }
+
+    // 4b) POST /api/v1/users/{id}/reset-login
+    // (Re)issue a working login for a user whose IdP account is missing,
+    // not-yet-initialised (USER_STATE_INITIAL), or mis-linked. Same guard as
+    // PATCH; re-provisions by the user's CURRENT grading email (create-or-link),
+    // re-links the subject if it changed (never deletes the old account), sets the
+    // admin password and activates. Audits USER_LOGIN_RESET (never the password).
+    @PostMapping("/{id}/reset-login")
+    @PreAuthorize("hasAnyAuthority('USER_UPDATE','USER_ACCESS_MANAGE')")
+    public UserDetailsResponse resetLogin(@PathVariable UUID id,
+                                          @Valid @RequestBody ResetLoginRequest req) {
+        return resetLogin.resetLogin(id, req.password());
     }
 
     // 5) POST /api/v1/users/{id}/memberships

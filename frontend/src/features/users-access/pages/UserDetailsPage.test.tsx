@@ -95,6 +95,50 @@ describe('<UserDetailsPage /> user-level actions', () => {
     expect(screen.queryByTestId('add-membership-button')).not.toBeInTheDocument();
   });
 
+  it('shows the Reset-login action for an editor and hides it without edit permission', async () => {
+    signIn('super-admin');
+    render(withRoutes('u-acme-dilshod')); // fixture status = INVITED
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Dilshod Rashidov' }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('reset-login-button')).toBeInTheDocument();
+  });
+
+  it('hides Reset-login when the user lacks USER_UPDATE and USER_ACCESS_MANAGE', async () => {
+    signIn('super-admin');
+    dropPermissions(PERMISSIONS.USER_UPDATE, PERMISSIONS.USER_ACCESS_MANAGE);
+    render(withRoutes('u-acme-dilshod'));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Dilshod Rashidov' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('reset-login-button')).not.toBeInTheDocument();
+  });
+
+  it('reset-login flow posts the password and shows the success banner', async () => {
+    signIn('super-admin');
+    const user = userEvent.setup();
+    render(withRoutes('u-acme-dilshod')); // INVITED
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Dilshod Rashidov' }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('reset-login-button'));
+    // Scope to the drawer so we don't match the page's own (identically
+    // labelled) Reset-login trigger button.
+    const dialog = await screen.findByRole('dialog');
+    await user.type(screen.getByTestId('reset-login-password-input'), 'Str0ng!Passw0rd');
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: /Сбросить вход|Reset login|Loginni tiklash|Логинни тиклаш/i,
+      }),
+    );
+
+    // Success banner appears after the POST resolves (status flips to ACTIVE).
+    await waitFor(() => {
+      expect(screen.getByTestId('reset-login-success')).toBeInTheDocument();
+    });
+  });
+
   it('disable flow confirms then flips the user status to DISABLED', async () => {
     signIn('super-admin');
     const user = userEvent.setup();

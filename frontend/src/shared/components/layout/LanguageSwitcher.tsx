@@ -34,7 +34,7 @@ export function LanguageSwitcher() {
         aria-expanded={open}
         aria-label={t('language.title')}
         className={cn(
-          'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-sm font-medium',
+          'inline-flex items-center gap-1.5 h-9 px-2.5 rounded-md text-sm font-medium',
           'border border-border-strong bg-surface text-text-primary hover:bg-divider',
         )}
       >

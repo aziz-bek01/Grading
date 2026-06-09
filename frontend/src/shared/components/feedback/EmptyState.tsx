@@ -16,7 +16,11 @@ export function EmptyState({ title, body, action, icon, className }: EmptyStateP
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center text-center py-16 px-6',
+        'flex flex-col items-center justify-center text-center px-6',
+        // Default vertical padding applies only when the caller does not
+        // override it (clsx has no tailwind-merge here, so a literal `py-16`
+        // would race a caller's `py-10` in the generated CSS).
+        className ? undefined : 'py-16',
         className,
       )}
     >

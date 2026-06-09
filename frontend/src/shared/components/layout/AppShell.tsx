@@ -20,7 +20,7 @@ export function AppShell() {
         scroll context and break top-0 sticky positioning above it.
       */}
       <div className="flex flex-1">
-        <Sidebar className="sticky top-16 h-[calc(100vh-4rem)] shrink-0" />
+        <Sidebar className="sticky top-[60px] h-[calc(100vh-60px)] shrink-0" />
         <main id="main-content" className="flex-1 min-w-0">
           <div className="max-w-screen-2xl mx-auto p-6">
             {/*

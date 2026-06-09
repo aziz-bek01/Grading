@@ -460,6 +460,66 @@ function handleSalaryPermission(id: string, tenantId: string, config: AxiosReque
   return ok(u);
 }
 
+/**
+ * POST /users/{id}/reset-login — re-provisions the user's IdP (login) account
+ * by their grading email and sets an admin-chosen password. Mirrors the backend
+ * recovery path: on success the user becomes ACTIVE and the standard
+ * UserDetails is returned (same shape as PATCH).
+ *
+ * Error sentinels (so dev/tests stay honest against the real contract):
+ *   - weak password                → 400 USER_INVITE_WEAK_PASSWORD
+ *   - password contains "IdpNotInit" → 400 USER_IDP_NOT_INITIALIZED
+ *   - password contains "IdpReject"  → 400 USER_IDP_PASSWORD_REJECTED
+ *   - password contains "NoIdp"      → 400 USER_NO_IDP_ACCOUNT
+ *   - password contains "IdpDown"    → 502 IDP_PROVISIONING_FAILED (transient)
+ */
+function handleResetLogin(id: string, config: AxiosRequestConfig): MatchResult {
+  const u = userDb.users.find((x) => x.id === id);
+  if (!u) return notFound();
+  const raw = readBody<{ password?: string } & Record<string, unknown>>(config);
+  const body = stripTenantFromBody(raw, `/users/${id}/reset-login`, 'POST');
+  const password = typeof body.password === 'string' ? body.password : '';
+  const strong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(password);
+  if (!strong) {
+    return badRequest(
+      'password does not meet complexity requirements',
+      'USER_INVITE_WEAK_PASSWORD',
+    );
+  }
+  // Sentinels reach the IdP step only because they are complexity-valid above.
+  if (password.includes('IdpDown')) {
+    return {
+      status: 502,
+      body: { code: 'IDP_PROVISIONING_FAILED', message: 'identity provider unavailable' },
+    };
+  }
+  if (password.includes('IdpNotInit')) {
+    return badRequest('idp account not initialized', 'USER_IDP_NOT_INITIALIZED');
+  }
+  if (password.includes('IdpReject')) {
+    return badRequest('identity provider rejected the password', 'USER_IDP_PASSWORD_REJECTED');
+  }
+  if (password.includes('NoIdp')) {
+    return badRequest('user has no idp account', 'USER_NO_IDP_ACCOUNT');
+  }
+  // Success: the login account is (re)provisioned and the user becomes ACTIVE.
+  // The mock never stores or logs the password.
+  u.status = 'ACTIVE';
+  u.updated_at = new Date().toISOString();
+  const auditList = userDb.audit[id] ?? (userDb.audit[id] = []);
+  auditList.unshift({
+    id: uuid(),
+    action: 'USER_LOGIN_RESET',
+    entity_type: 'USER',
+    entity_id: id,
+    actor_id: 'u-mock-actor',
+    actor_name: 'Dev Actor',
+    tenant_id: null,
+    occurred_at: u.updated_at,
+  });
+  return ok(u);
+}
+
 function handleAudit(id: string, query: URLSearchParams): MatchResult {
   const list = userDb.audit[id] ?? [];
   const from = query.get('from');
@@ -508,6 +568,11 @@ export function handleUsers(config: AxiosRequestConfig): MatchResult | null {
   const membershipsMatch = /^\/users\/([^/]+)\/memberships$/.exec(path);
   if (membershipsMatch && method === 'POST') {
     return handleAddMembership(membershipsMatch[1], config);
+  }
+
+  const resetLoginMatch = /^\/users\/([^/]+)\/reset-login$/.exec(path);
+  if (resetLoginMatch && method === 'POST') {
+    return handleResetLogin(resetLoginMatch[1], config);
   }
 
   const detailMatch = /^\/users\/([^/]+)$/.exec(path);

@@ -1389,6 +1389,23 @@
       "validation_idp_email_rejected": "Autentifikatsiya provayderi (IdP) bu email'ni rad etdi. Boshqa manzil kiriting.",
       "validation_status_invalid": "Notog‘ri status: faqat «Faol» yoki «O'chirilgan» belgilash mumkin."
     },
+    "resetLogin": {
+      "button": "Loginni tiklash",
+      "title": "Loginni tiklash / Taklifni qayta yuborish",
+      "subtitle": "Foydalanuvchiga yangi login paroli bering — akkaunti faollashtiriladi.",
+      "submit": "Loginni tiklash",
+      "password": "Yangi login paroli",
+      "passwordHint": "Bu foydalanuvchining yangi login paroli — uni xodimga bering. Akkaunt yaratiladi/tiklanadi.",
+      "passwordGenerate": "Kuchli parol yaratish",
+      "passwordShow": "Parolni ko'rsatish",
+      "passwordHide": "Parolni yashirish",
+      "success": "{{name}} uchun login tiklandi — akkaunt faol.",
+      "validation_password_complexity": "Kamida 8 belgi: katta va kichik harf, raqam va maxsus belgi.",
+      "validation_no_idp_account": "Bu foydalanuvchida login (IdP) akkaunti yo'q — tiklashda yaratiladi.",
+      "validation_idp_not_initialized": "Bu foydalanuvchining login akkaunti hali faollashtirilmagan — tiklash uni faollashtiradi. Agar xato takrorlansa, qayta urinib ko'ring.",
+      "validation_idp_password_rejected": "Autentifikatsiya provayderi (IdP) bu parolni rad etdi. Xavfsizlik siyosatiga mos boshqa parol kiriting.",
+      "errorTryAgain": "Autentifikatsiya provayderiga ulanib bo'lmadi. Iltimos, keyinroq qayta urinib ko'ring."
+    },
     "disable": {
       "button": "Foydalanuvchini o'chirish",
       "title": "Foydalanuvchini o'chirish?",

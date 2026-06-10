@@ -29,6 +29,12 @@ databaseChangeLog:
   - include:
       file: control-plane/007-create-user-department-scopes.yaml
       relativeToChangelogFile: true
+  # E3 — custom (tenant-defined) roles. ALTERs public.roles (from 002) and FKs
+  # public.tenants (from 001); must run AFTER 001/002 and BEFORE the role seed
+  # (seeds/002) so the 11 seeded rows inherit is_system=true / tenant_id=NULL.
+  - include:
+      file: control-plane/008-roles-custom-tenant.yaml
+      relativeToChangelogFile: true
   - include:
       file: seeds/001-default-permissions.yaml
       relativeToChangelogFile: true

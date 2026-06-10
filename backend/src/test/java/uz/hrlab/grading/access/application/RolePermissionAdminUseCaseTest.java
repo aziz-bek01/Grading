@@ -76,7 +76,11 @@ class RolePermissionAdminUseCaseTest {
         permissionRepo = mock(PermissionRepository.class);
         rolePermissionRepo = mock(RolePermissionRepository.class);
         audit = mock(AuditService.class);
-        useCase = new RolePermissionAdminUseCase(roleRepo, permissionRepo, rolePermissionRepo, audit);
+        // Real shared guard over the mocked catalog — exercises the restricted +
+        // caller-held no-escalation rules through the same code path E3 reuses.
+        RolePermissionGuard guard = new RolePermissionGuard(permissionRepo);
+        useCase = new RolePermissionAdminUseCase(roleRepo, permissionRepo, rolePermissionRepo,
+                guard, audit);
 
         when(roleRepo.findById(roleId)).thenReturn(Optional.of(role));
         when(permissionRepo.findByCode("PROJECT_READ")).thenReturn(Optional.of(projectRead));

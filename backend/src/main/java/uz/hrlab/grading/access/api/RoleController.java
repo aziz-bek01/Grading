@@ -1,14 +1,19 @@
 package uz.hrlab.grading.access.api;
 
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import uz.hrlab.grading.access.application.CustomRoleUseCase;
 import uz.hrlab.grading.access.application.ListRolesQuery;
 import uz.hrlab.grading.access.application.RolePermissionAdminUseCase;
 
@@ -46,11 +51,14 @@ public class RoleController {
 
     private final ListRolesQuery listRolesQuery;
     private final RolePermissionAdminUseCase rolePermissionAdmin;
+    private final CustomRoleUseCase customRoleUseCase;
 
     public RoleController(ListRolesQuery listRolesQuery,
-                          RolePermissionAdminUseCase rolePermissionAdmin) {
+                          RolePermissionAdminUseCase rolePermissionAdmin,
+                          CustomRoleUseCase customRoleUseCase) {
         this.listRolesQuery = listRolesQuery;
         this.rolePermissionAdmin = rolePermissionAdmin;
+        this.customRoleUseCase = customRoleUseCase;
     }
 
     @GetMapping
@@ -83,5 +91,46 @@ public class RoleController {
     public RolePermissionsResponse replacePermissions(@PathVariable UUID roleId,
                                                       @Valid @RequestBody RolePermissionsRequest request) {
         return rolePermissionAdmin.replaceRolePermissions(roleId, request.permissionCodes());
+    }
+
+    // ----------------------------------------------------------- E3 custom roles
+
+    /**
+     * Create a tenant CUSTOM role (slice E3). The owning tenant comes from
+     * {@code TenantContext} (never the body). Guards: reserved-system-code (409
+     * {@code ROLE_CODE_RESERVED}), in-tenant duplicate (409 {@code ROLE_CODE_EXISTS}),
+     * restricted/caller-held permission guard (422). Returns the created role in the
+     * E1 {@link RoleResponse} shape.
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAuthority('USER_ACCESS_MANAGE')")
+    public RoleResponse create(@Valid @RequestBody CreateRoleRequest request) {
+        return customRoleUseCase.create(request.code(), request.nameI18n(),
+                request.name(), request.permissionCodes());
+    }
+
+    /**
+     * Edit a tenant CUSTOM role (slice E3): rename and/or replace-set its
+     * permissions. System roles are not editable here (403); a cross-tenant role
+     * is 404. Permission changes go through the shared restricted/caller-held guard.
+     */
+    @PutMapping("/{roleId}")
+    @PreAuthorize("hasAuthority('USER_ACCESS_MANAGE')")
+    public RoleResponse update(@PathVariable UUID roleId,
+                               @Valid @RequestBody UpdateRoleRequest request) {
+        return customRoleUseCase.edit(roleId, request.nameI18n(),
+                request.name(), request.permissionCodes());
+    }
+
+    /**
+     * Delete a tenant CUSTOM role (slice E3). System role → 403; cross-tenant →
+     * 404; still-assigned role → 409 {@code ROLE_IN_USE}.
+     */
+    @DeleteMapping("/{roleId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('USER_ACCESS_MANAGE')")
+    public void delete(@PathVariable UUID roleId) {
+        customRoleUseCase.delete(roleId);
     }
 }

@@ -764,6 +764,50 @@ const ROLE_CATALOG: RoleCatalogRow[] = [
   },
 ];
 
+// ---------------------------------------------------------------
+// Custom roles (slice E3) — in-memory tenant custom-role store
+// ---------------------------------------------------------------
+
+/**
+ * A tenant CUSTOM role created via POST /roles. Keyed by id (E3 mutations) but
+ * also addressable by code (the E2 permission matrix). `assignmentCount` lets
+ * tests drive the ROLE_IN_USE delete guard.
+ */
+interface CustomRoleRecord {
+  id: string;
+  code: string;
+  name_i18n: Record<string, string>;
+  granted: Set<string>;
+  assignmentCount: number;
+}
+
+/** In-memory custom-role store, seeded with one example custom role. */
+const customRoleDb: CustomRoleRecord[] = [
+  {
+    id: 'role-custom-grading-lead',
+    code: 'GRADING_LEAD',
+    name_i18n: {
+      'ru-RU': 'Руководитель грейдинга',
+      'uz-Cyrl-UZ': 'Грейдинг раҳбари',
+      'uz-Latn-UZ': 'Greyding rahbari',
+      'en-US': 'Grading Lead',
+    },
+    granted: new Set(['PROJECT_READ', 'METHODOLOGY_READ', 'EVALUATION_READ', 'GRADE_READ']),
+    assignmentCount: 0,
+  },
+];
+
+function customRoleByCode(code: string): CustomRoleRecord | undefined {
+  return customRoleDb.find((r) => r.code === code);
+}
+
+function customRoleById(id: string): CustomRoleRecord | undefined {
+  return customRoleDb.find((r) => r.id === id);
+}
+
+/** UPPER_SNAKE_CASE, leading letter, 3–64 chars (mirrors the FE schema). */
+const ROLE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,63}$/;
+
 /**
  * GET /roles[?assignableOnly=true] — DATA-DRIVEN role catalog.
  *
@@ -774,6 +818,10 @@ const ROLE_CATALOG: RoleCatalogRow[] = [
  *     back disabled — HRLAB_SUPER_ADMIN specifically with `HRLAB_ONLY`, the
  *     other HRLAB_* platform roles with `PLATFORM_SCOPE`.
  *
+ * Custom (E3) roles are appended: TENANT-scope, `is_custom=true`, carrying their
+ * `id` and `assignment_count` so the admin list can edit/delete them and warn
+ * before deleting one that is in use.
+ *
  * `assignableOnly` is honoured loosely (the mock returns the full catalog either
  * way) so the picker can still render disabled rows with reasons — exactly the
  * behavior the dialogs exercise. The real backend may trim rows more strictly.
@@ -781,7 +829,7 @@ const ROLE_CATALOG: RoleCatalogRow[] = [
 function handleRoles(): MatchResult {
   const callerRoles = useAuthStore.getState().user?.roles ?? [];
   const isSuperAdmin = callerRoles.includes('HRLAB_SUPER_ADMIN');
-  const body = ROLE_CATALOG.map((r) => {
+  const systemRows = ROLE_CATALOG.map((r) => {
     let assignable = true;
     let reason: 'HRLAB_ONLY' | 'PLATFORM_SCOPE' | null = null;
     if (!isSuperAdmin && r.scope === 'PLATFORM') {
@@ -789,6 +837,7 @@ function handleRoles(): MatchResult {
       reason = r.code === 'HRLAB_SUPER_ADMIN' ? 'HRLAB_ONLY' : 'PLATFORM_SCOPE';
     }
     return {
+      id: null,
       code: r.code,
       name_i18n: r.name_i18n,
       scope: r.scope,
@@ -796,9 +845,159 @@ function handleRoles(): MatchResult {
       is_custom: false,
       assignable_by_caller: assignable,
       reason_if_not: reason,
+      assignment_count: null,
     };
   });
-  return ok(body);
+  const customRows = customRoleDb.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name_i18n: r.name_i18n,
+    scope: 'TENANT' as const,
+    is_system: false,
+    is_custom: true,
+    assignable_by_caller: true,
+    reason_if_not: null,
+    assignment_count: r.assignmentCount,
+  }));
+  return ok([...systemRows, ...customRows]);
+}
+
+/**
+ * POST /roles — create a TENANT custom role (slice E3). Enforces the same guards
+ * as the backend so dev/tests are honest:
+ *   - code format → 400 VALIDATION_ERROR
+ *   - code equals a SYSTEM role code → 409 ROLE_CODE_RESERVED
+ *   - code already used by a custom role → 409 ROLE_CODE_EXISTS
+ *   - a restricted permission in the set → 422 PERMISSION_RESTRICTED
+ *   - a permission the caller does not hold → 422 PERMISSION_NOT_HELD_BY_CALLER
+ */
+function handleCreateRole(config: AxiosRequestConfig): MatchResult {
+  const raw = readBody<{ code?: unknown; name_i18n?: unknown; permission_codes?: unknown }>(config);
+  const body = stripTenantFromBody(raw as Record<string, unknown>, '/roles', 'POST') as {
+    code?: unknown;
+    name_i18n?: unknown;
+    permission_codes?: unknown;
+  };
+  const code = typeof body.code === 'string' ? body.code.trim() : '';
+  if (!ROLE_CODE_PATTERN.test(code)) {
+    return badRequest('code must be UPPER_SNAKE_CASE (3–64 chars)', 'VALIDATION_ERROR');
+  }
+  // Reserved: collides with a seeded SYSTEM role code.
+  if (ROLE_CATALOG.some((r) => r.code === code)) {
+    return { status: 409, body: { code: 'ROLE_CODE_RESERVED', message: 'Code reserved by a system role' } };
+  }
+  // Duplicate custom code within the tenant.
+  if (customRoleByCode(code)) {
+    return { status: 409, body: { code: 'ROLE_CODE_EXISTS', message: 'Code already used in this tenant' } };
+  }
+  const name_i18n =
+    body.name_i18n && typeof body.name_i18n === 'object'
+      ? (body.name_i18n as Record<string, string>)
+      : {};
+  if (!name_i18n['ru-RU'] || name_i18n['ru-RU'].trim().length === 0) {
+    return badRequest('name_i18n.ru-RU is required', 'VALIDATION_ERROR');
+  }
+  const codes = Array.isArray(body.permission_codes) ? body.permission_codes.map(String) : [];
+  const permErr = validateGrantableCodes(codes);
+  if (permErr) return permErr;
+
+  const rec: CustomRoleRecord = {
+    id: uuid(),
+    code,
+    name_i18n,
+    granted: new Set(codes),
+    assignmentCount: 0,
+  };
+  customRoleDb.push(rec);
+  return ok(
+    {
+      id: rec.id,
+      code: rec.code,
+      name_i18n: rec.name_i18n,
+      scope: 'TENANT',
+      is_system: false,
+      is_custom: true,
+      assignable_by_caller: true,
+      reason_if_not: null,
+      assignment_count: 0,
+    },
+    201,
+  );
+}
+
+/**
+ * PUT /roles/{roleId} — edit a CUSTOM role's name and/or permissions (slice E3).
+ *   - unknown / cross-tenant id → 404
+ *   - id of a SYSTEM role → 403 (system roles are not editable here)
+ *   - restricted / not-held permission → 422 (as for create)
+ */
+function handleUpdateRole(roleId: string, config: AxiosRequestConfig): MatchResult {
+  // A system role id would not be in the custom store → treat as 404 unless it
+  // matches a system code (then 403, mirroring the backend's system-role guard).
+  const rec = customRoleById(roleId);
+  if (!rec) {
+    if (ROLE_CATALOG.some((r) => r.code === roleId)) {
+      return { status: 403, body: { code: 'FORBIDDEN', message: 'System role is not editable' } };
+    }
+    return { status: 404, body: { code: 'NOT_FOUND', message: 'Role not found' } };
+  }
+  const raw = readBody<{ name_i18n?: unknown; permission_codes?: unknown }>(config);
+  const body = stripTenantFromBody(raw as Record<string, unknown>, `/roles/${roleId}`, 'PUT') as {
+    name_i18n?: unknown;
+    permission_codes?: unknown;
+  };
+  if (body.name_i18n && typeof body.name_i18n === 'object') {
+    const name = body.name_i18n as Record<string, string>;
+    if (name['ru-RU'] !== undefined && name['ru-RU'].trim().length === 0) {
+      return badRequest('name_i18n.ru-RU cannot be blank', 'VALIDATION_ERROR');
+    }
+    rec.name_i18n = { ...rec.name_i18n, ...name };
+  }
+  if (Array.isArray(body.permission_codes)) {
+    const codes = body.permission_codes.map(String);
+    const permErr = validateGrantableCodes(codes);
+    if (permErr) return permErr;
+    // REPLACE-set, preserving any restricted grants (matrix never sends those).
+    const restrictedCodes = new Set(PERMISSION_CATALOG.filter((p) => p.restricted).map((p) => p.code));
+    const preservedRestricted = [...rec.granted].filter((c) => restrictedCodes.has(c));
+    rec.granted = new Set([...codes, ...preservedRestricted]);
+  }
+  return ok({
+    id: rec.id,
+    code: rec.code,
+    name_i18n: rec.name_i18n,
+    scope: 'TENANT',
+    is_system: false,
+    is_custom: true,
+    assignable_by_caller: true,
+    reason_if_not: null,
+    assignment_count: rec.assignmentCount,
+  });
+}
+
+/**
+ * DELETE /roles/{roleId} — delete a CUSTOM role (slice E3). 204 on success.
+ *   - unknown / cross-tenant id → 404
+ *   - system role id → 403
+ *   - role assigned to users (assignmentCount > 0) → 409 ROLE_IN_USE
+ */
+function handleDeleteRole(roleId: string): MatchResult {
+  const rec = customRoleById(roleId);
+  if (!rec) {
+    if (ROLE_CATALOG.some((r) => r.code === roleId)) {
+      return { status: 403, body: { code: 'FORBIDDEN', message: 'System role cannot be deleted' } };
+    }
+    return { status: 404, body: { code: 'NOT_FOUND', message: 'Role not found' } };
+  }
+  if (rec.assignmentCount > 0) {
+    return {
+      status: 409,
+      body: { code: 'ROLE_IN_USE', message: 'Role is assigned to users; revoke first' },
+    };
+  }
+  const idx = customRoleDb.findIndex((r) => r.id === roleId);
+  if (idx >= 0) customRoleDb.splice(idx, 1);
+  return { status: 204, body: null };
 }
 
 // ---------------------------------------------------------------
@@ -849,6 +1048,43 @@ const PERMISSION_CATALOG: PermissionCatalogEntry[] = [
 const ALL_CATALOG_CODES = new Set(PERMISSION_CATALOG.map((p) => p.code));
 
 /**
+ * Shared guard for a desired non-restricted permission set (used by the E2 PUT
+ * permissions handler AND the E3 create/update handlers). Returns an error
+ * MatchResult to short-circuit, or null when the set is grantable:
+ *   - unknown code → 400 UNKNOWN_PERMISSION_CODE
+ *   - restricted code present → 422 PERMISSION_RESTRICTED
+ *   - caller does not hold a code (non-super) → 422 PERMISSION_NOT_HELD_BY_CALLER
+ */
+function validateGrantableCodes(codes: string[]): MatchResult | null {
+  const unknown = codes.filter((c) => !ALL_CATALOG_CODES.has(c));
+  if (unknown.length > 0) {
+    return badRequest(`unknown permission code(s): ${unknown.join(', ')}`, 'UNKNOWN_PERMISSION_CODE');
+  }
+  const restrictedCodes = new Set(PERMISSION_CATALOG.filter((p) => p.restricted).map((p) => p.code));
+  if (codes.some((c) => restrictedCodes.has(c))) {
+    return {
+      status: 422,
+      body: { code: 'PERMISSION_RESTRICTED', message: 'A restricted permission cannot be granted' },
+    };
+  }
+  const callerPerms = new Set<string>(useAuthStore.getState().user?.permissions ?? []);
+  const callerIsSuper = (useAuthStore.getState().user?.roles ?? []).includes('HRLAB_SUPER_ADMIN');
+  if (!callerIsSuper) {
+    const notHeld = codes.filter((c) => !callerPerms.has(c));
+    if (notHeld.length > 0) {
+      return {
+        status: 422,
+        body: {
+          code: 'PERMISSION_NOT_HELD_BY_CALLER',
+          message: `Caller does not hold: ${notHeld.join(', ')}`,
+        },
+      };
+    }
+  }
+  return null;
+}
+
+/**
  * In-memory per-role granted set, seeded with representative defaults. Note:
  * restricted codes may still be granted on a role (e.g. an HRLab platform role
  * holding AUDIT_READ_CROSS_TENANT) — they are simply not togglable via the
@@ -877,21 +1113,31 @@ const roleGrantedDb: Record<string, Set<string>> = {
   EXTERNAL_AUDITOR: new Set(['PROJECT_READ', 'AUDIT_READ', 'AUDIT_READ_CROSS_TENANT']),
 };
 
-/** Default seed for any role not explicitly listed (minimal read access). */
+/** Default seed for any role not explicitly listed (minimal read access). For a
+ *  CUSTOM role the live grant set lives in the custom-role store. */
 function seededGrants(roleCode: string): Set<string> {
+  const custom = customRoleByCode(roleCode);
+  if (custom) return custom.granted;
   if (!roleGrantedDb[roleCode]) {
     roleGrantedDb[roleCode] = new Set(['PROJECT_READ']);
   }
   return roleGrantedDb[roleCode];
 }
 
-/** Is the named role a system role per the catalog? */
+/** Does a role with this code exist (system OR custom)? */
+function roleExists(roleCode: string): boolean {
+  return ROLE_CATALOG.some((r) => r.code === roleCode) || Boolean(customRoleByCode(roleCode));
+}
+
+/** Is the named role a system role per the catalog? (custom roles → false) */
 function isSystemRole(roleCode: string): boolean {
   return ROLE_CATALOG.find((r) => r.code === roleCode)?.is_system ?? false;
 }
 
 function roleScope(roleCode: string): 'PLATFORM' | 'TENANT' {
-  return ROLE_CATALOG.find((r) => r.code === roleCode)?.scope ?? 'TENANT';
+  const sys = ROLE_CATALOG.find((r) => r.code === roleCode);
+  if (sys) return sys.scope;
+  return 'TENANT'; // custom roles are always tenant-scoped
 }
 
 /**
@@ -918,7 +1164,7 @@ function buildPermissionItems(roleCode: string) {
 }
 
 function handleGetRolePermissions(roleCode: string): MatchResult {
-  if (!ROLE_CATALOG.some((r) => r.code === roleCode)) {
+  if (!roleExists(roleCode)) {
     return { status: 404, body: { code: 'NOT_FOUND', message: 'Role not found' } };
   }
   return ok({
@@ -931,7 +1177,7 @@ function handleGetRolePermissions(roleCode: string): MatchResult {
 }
 
 function handlePutRolePermissions(roleCode: string, config: AxiosRequestConfig): MatchResult {
-  if (!ROLE_CATALOG.some((r) => r.code === roleCode)) {
+  if (!roleExists(roleCode)) {
     return { status: 404, body: { code: 'NOT_FOUND', message: 'Role not found' } };
   }
   // System role + non-super caller → 403 (mirror backend).
@@ -946,43 +1192,18 @@ function handlePutRolePermissions(roleCode: string, config: AxiosRequestConfig):
   if (codes === null) {
     return badRequest('permission_codes must be an array', 'VALIDATION_ERROR');
   }
-  // Unknown code → validation error.
-  const unknown = codes.filter((c) => !ALL_CATALOG_CODES.has(c));
-  if (unknown.length > 0) {
-    return badRequest(`unknown permission code(s): ${unknown.join(', ')}`, 'UNKNOWN_PERMISSION_CODE');
-  }
-  // A restricted code in the replace-set → 422 PERMISSION_RESTRICTED.
-  const restrictedCodes = new Set(
-    PERMISSION_CATALOG.filter((p) => p.restricted).map((p) => p.code),
-  );
-  if (codes.some((c) => restrictedCodes.has(c))) {
-    return {
-      status: 422,
-      body: { code: 'PERMISSION_RESTRICTED', message: 'A restricted permission cannot be granted' },
-    };
-  }
-  // Caller cannot grant a permission they do not themselves hold → 422.
-  // Sentinel: USER_ROLE_ASSIGN stands in for a "caller-not-held" permission so
-  // tests can drive this branch when the mock caller lacks it.
-  const callerPerms = new Set<string>(useAuthStore.getState().user?.permissions ?? []);
-  const callerIsSuper = (useAuthStore.getState().user?.roles ?? []).includes('HRLAB_SUPER_ADMIN');
-  if (!callerIsSuper) {
-    const notHeld = codes.filter((c) => !callerPerms.has(c));
-    if (notHeld.length > 0) {
-      return {
-        status: 422,
-        body: {
-          code: 'PERMISSION_NOT_HELD_BY_CALLER',
-          message: `Caller does not hold: ${notHeld.join(', ')}`,
-        },
-      };
-    }
-  }
+  // Shared guard: unknown / restricted / not-held codes (mirrors the backend).
+  const permErr = validateGrantableCodes(codes);
+  if (permErr) return permErr;
   // REPLACE-set: rebuild the non-restricted grants from the payload, PRESERVING
   // any restricted grants the role already had (matrix never sends those).
+  const restrictedCodes = new Set(PERMISSION_CATALOG.filter((p) => p.restricted).map((p) => p.code));
   const existing = seededGrants(roleCode);
   const preservedRestricted = [...existing].filter((c) => restrictedCodes.has(c));
-  roleGrantedDb[roleCode] = new Set([...codes, ...preservedRestricted]);
+  const nextGranted = new Set([...codes, ...preservedRestricted]);
+  const custom = customRoleByCode(roleCode);
+  if (custom) custom.granted = nextGranted;
+  else roleGrantedDb[roleCode] = nextGranted;
   return ok({
     role_code: roleCode,
     scope: roleScope(roleCode),
@@ -1002,12 +1223,22 @@ export function handleUsers(config: AxiosRequestConfig): MatchResult | null {
   const { path, query } = parseUrl(url, config.params as Record<string, unknown> | undefined);
 
   if (path === '/roles' && method === 'GET') return handleRoles();
+  if (path === '/roles' && method === 'POST') return handleCreateRole(config);
 
+  // The /permissions sub-resource (E2) must be matched BEFORE the bare
+  // /roles/{id} (E3) so a code/id is never mistaken for the other surface.
   const rolePermsMatch = /^\/roles\/([^/]+)\/permissions$/.exec(path);
   if (rolePermsMatch) {
     const code = decodeURIComponent(rolePermsMatch[1]);
     if (method === 'GET') return handleGetRolePermissions(code);
     if (method === 'PUT') return handlePutRolePermissions(code, config);
+  }
+
+  const roleIdMatch = /^\/roles\/([^/]+)$/.exec(path);
+  if (roleIdMatch) {
+    const id = decodeURIComponent(roleIdMatch[1]);
+    if (method === 'PUT') return handleUpdateRole(id, config);
+    if (method === 'DELETE') return handleDeleteRole(id);
   }
 
   if (path === '/users' && method === 'GET') return handleList(query, config);

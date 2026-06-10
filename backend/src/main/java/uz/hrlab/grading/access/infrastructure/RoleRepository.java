@@ -6,21 +6,56 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Repository for {@code public.roles} (control-plane — whitelisted in
+ * {@code ArchitectureTest} as not tenant-RLS-scoped business data; isolation of
+ * custom roles is enforced by the APP-LAYER predicate
+ * {@code is_system = true OR tenant_id = :tenantId}, never by RLS).
+ *
+ * <p>No single-arg {@code findById} BOLA hazard is exposed for tenant data:
+ * custom-role lookups go through {@link #findByIdAndTenantId} so a tenant admin
+ * can only resolve a custom role it owns (cross-tenant target → empty → 404).
+ */
 public interface RoleRepository extends JpaRepository<RoleJpaEntity, UUID> {
+
     Optional<RoleJpaEntity> findByCode(String code);
 
     /**
-     * Ordered role catalog for {@code GET /api/v1/roles} (slice E1).
+     * True when ANY role (system OR any tenant's custom) already uses {@code code}.
      *
-     * <p>Today every seeded role is a system role (no {@code is_system} /
-     * {@code tenant_id} columns yet — those arrive in slice E3). The query
-     * therefore returns ALL roles so the catalog is forward-compatible: once
-     * tenant-scoped custom roles exist this finder is replaced by a
-     * {@code WHERE is_system = true OR tenant_id = :tenantId} variant without
-     * touching the use case's response mapping.
-     *
-     * <p>Ordered by {@code scope} (PLATFORM before TENANT) then {@code code}
-     * for a stable, deterministic listing.
+     * <p>Used by the custom-role create path to reject a code that collides with a
+     * SYSTEM code namespace at the application layer (the two partial unique
+     * indexes from slice E3 only guarantee uniqueness WITHIN each namespace, so a
+     * cross-namespace collision must be caught here). {@code RoleCodes} is the
+     * canonical system-code set; this exists-check is the defensive belt against
+     * any non-canonical system row.
      */
-    List<RoleJpaEntity> findAllByOrderByScopeAscCodeAsc();
+    boolean existsByCode(String code);
+
+    /**
+     * Resolve a CUSTOM role inside one tenant's namespace by {@code (tenant_id, code)}.
+     * Returns empty for a system role (its {@code tenant_id} is NULL) or another
+     * tenant's custom role — the create path uses this to reject an in-tenant
+     * duplicate code without revealing cross-tenant rows.
+     */
+    Optional<RoleJpaEntity> findByTenantIdAndCode(UUID tenantId, String code);
+
+    /**
+     * Tenant-scoped lookup by id for a CUSTOM role. A tenant admin may only edit
+     * or delete a custom role it owns; a cross-tenant id (or a system role, whose
+     * {@code tenant_id} is NULL) yields empty → mapped to 404 (no existence reveal,
+     * defeats cross-tenant probing).
+     */
+    Optional<RoleJpaEntity> findByIdAndTenantId(UUID id, UUID tenantId);
+
+    /**
+     * Catalog finder for {@code GET /api/v1/roles} (slice E1, now E3-aware):
+     * the system catalog PLUS the active tenant's own custom roles. Other tenants'
+     * custom roles are invisible (the {@code tenant_id = :tenantId} branch never
+     * matches a foreign row). Ordered by {@code scope} (PLATFORM before TENANT)
+     * then {@code code} for a stable listing.
+     *
+     * <p>Replaces the old tenant-agnostic {@code findAllByOrderByScopeAscCodeAsc}.
+     */
+    List<RoleJpaEntity> findByIsSystemTrueOrTenantIdOrderByScopeAscCodeAsc(UUID tenantId);
 }

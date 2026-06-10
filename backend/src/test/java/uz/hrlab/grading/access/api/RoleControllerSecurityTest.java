@@ -12,6 +12,7 @@ import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
+import uz.hrlab.grading.access.application.CustomRoleUseCase;
 import uz.hrlab.grading.access.application.ListRolesQuery;
 import uz.hrlab.grading.access.application.RolePermissionAdminUseCase;
 import uz.hrlab.grading.audit.application.AuditService;
@@ -27,7 +28,9 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -63,6 +66,7 @@ class RoleControllerSecurityTest {
 
     @MockBean ListRolesQuery listRolesQuery;
     @MockBean RolePermissionAdminUseCase rolePermissionAdmin;
+    @MockBean CustomRoleUseCase customRoleUseCase;
     @MockBean AuditService auditService;
 
     // ------------------------------------------------------------------ 1)
@@ -191,5 +195,66 @@ class RoleControllerSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role_code").value("CLIENT_HR_DIRECTOR"))
                 .andExpect(jsonPath("$.items[0].code").value("PROJECT_READ"));
+    }
+
+    // ============================================================ E3 custom roles
+
+    // POST /roles — gate is USER_ACCESS_MANAGE.
+    @Test
+    void createRoleRequiresUserAccessManage_403WithoutIt() throws Exception {
+        mvc.perform(post("/api/v1/roles")
+                        .with(csrf())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("USER_LIST")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"code\":\"REVIEWER\",\"permission_codes\":[\"PROJECT_READ\"]}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void createRoleWithUserAccessManageReturns201() throws Exception {
+        given(customRoleUseCase.create(any(), any(), any(), any())).willReturn(
+                new RoleResponse("REVIEWER",
+                        Map.of("ru-RU", "Reviewer", "en-US", "Reviewer",
+                                "uz-Cyrl-UZ", "Reviewer", "uz-Latn-UZ", "Reviewer"),
+                        "TENANT", false, true, true, null));
+
+        mvc.perform(post("/api/v1/roles")
+                        .with(csrf())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("USER_ACCESS_MANAGE")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"code\":\"REVIEWER\",\"permission_codes\":[\"PROJECT_READ\"]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value("REVIEWER"))
+                .andExpect(jsonPath("$.is_custom").value(true))
+                .andExpect(jsonPath("$.is_system").value(false))
+                .andExpect(jsonPath("$.scope").value("TENANT"));
+    }
+
+    // PUT /roles/{id} — gate is USER_ACCESS_MANAGE.
+    @Test
+    void updateRoleRequiresUserAccessManage_403WithoutIt() throws Exception {
+        mvc.perform(put("/api/v1/roles/" + ROLE_ID)
+                        .with(csrf())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("USER_LIST")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"name\":\"Renamed\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    // DELETE /roles/{id} — gate is USER_ACCESS_MANAGE.
+    @Test
+    void deleteRoleRequiresUserAccessManage_403WithoutIt() throws Exception {
+        mvc.perform(delete("/api/v1/roles/" + ROLE_ID)
+                        .with(csrf())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("USER_LIST"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deleteRoleWithUserAccessManageReturns204() throws Exception {
+        mvc.perform(delete("/api/v1/roles/" + ROLE_ID)
+                        .with(csrf())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("USER_ACCESS_MANAGE"))))
+                .andExpect(status().isNoContent());
     }
 }

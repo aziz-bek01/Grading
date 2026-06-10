@@ -16,7 +16,6 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
-import uz.hrlab.grading.common.exception.UnprocessableEntityException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -70,15 +69,18 @@ public class RolePermissionAdminUseCase {
     private final RoleRepository roleRepo;
     private final PermissionRepository permissionRepo;
     private final RolePermissionRepository rolePermissionRepo;
+    private final RolePermissionGuard guard;
     private final AuditService audit;
 
     public RolePermissionAdminUseCase(RoleRepository roleRepo,
                                       PermissionRepository permissionRepo,
                                       RolePermissionRepository rolePermissionRepo,
+                                      RolePermissionGuard guard,
                                       AuditService audit) {
         this.roleRepo = roleRepo;
         this.permissionRepo = permissionRepo;
         this.rolePermissionRepo = rolePermissionRepo;
+        this.guard = guard;
         this.audit = audit;
     }
 
@@ -138,45 +140,11 @@ public class RolePermissionAdminUseCase {
                     "Only HRLab Super Admin may edit a system role's permissions");
         }
 
-        // Normalize desired set (dedupe, reject nulls/blanks/unknowns up front).
-        Set<String> desired = new LinkedHashSet<>();
-        for (String code : permissionCodes) {
-            if (code == null || code.isBlank()) {
-                throw new UnprocessableEntityException("PERMISSION_UNKNOWN",
-                        "permission_codes must not contain null/blank entries");
-            }
-            desired.add(code);
-        }
-
-        // (c) restricted — no requested code may be in the restricted set.
-        for (String code : desired) {
-            if (RestrictedPermissions.isRestricted(code)) {
-                throw new UnprocessableEntityException("PERMISSION_RESTRICTED",
-                        "Permission '" + code + "' may not be granted to any role");
-            }
-        }
-
-        // (d) caller-not-held — no privilege escalation: you cannot grant a
-        // permission you do not yourself hold.
-        for (String code : desired) {
-            if (!ctx.hasPermission(code)) {
-                throw new UnprocessableEntityException("PERMISSION_NOT_HELD_BY_CALLER",
-                        "You cannot grant a permission you do not hold");
-            }
-        }
-
-        // Resolve every desired code to a catalog permission row (unknown → 422).
-        // Done AFTER the held check so an unknown code surfaces as a clear error
-        // only once it has otherwise passed; held check on an unknown code always
-        // fails first anyway (ctx cannot hold a non-existent code), so in practice
-        // this resolves the codes we are about to insert.
-        Set<PermissionJpaEntity> desiredPermissions = new LinkedHashSet<>();
-        for (String code : desired) {
-            PermissionJpaEntity p = permissionRepo.findByCode(code)
-                    .orElseThrow(() -> new UnprocessableEntityException("PERMISSION_UNKNOWN",
-                            "Unknown permission code"));
-            desiredPermissions.add(p);
-        }
+        // (c)+(d) restricted + caller-not-held + resolve — delegated to the shared
+        // RolePermissionGuard so the no-escalation rules are NOT duplicated between
+        // this use case and CustomRoleUseCase (slice E3). Throws 422
+        // PERMISSION_RESTRICTED / PERMISSION_NOT_HELD_BY_CALLER / PERMISSION_UNKNOWN.
+        Set<PermissionJpaEntity> desiredPermissions = guard.validateAndResolve(ctx, permissionCodes);
         Set<UUID> desiredPermissionIds = desiredPermissions.stream()
                 .map(PermissionJpaEntity::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -217,20 +185,23 @@ public class RolePermissionAdminUseCase {
     }
 
     /**
-     * Every seeded role is a system role today. The {@code roles} table has no
-     * {@code is_system} column yet (arrives in slice E3 with tenant-scoped custom
-     * roles); this method is the single placeholder so the rule lives in one
-     * place and flips to a column read without touching callers.
+     * Reads the real {@code is_system} column (slice E3 added it). The 11 seeded
+     * roles are {@code is_system = true}; tenant-defined custom roles are
+     * {@code is_system = false}. The single source of truth for the system/custom
+     * distinction lives on the entity now.
      */
     private static boolean isSystemRole(RoleJpaEntity role) {
-        return true;
+        return role.isSystem();
     }
 
     /**
-     * A caller may edit a (system) role only if they hold
-     * {@code USER_ROLE_ASSIGN_HRLAB} — i.e. HRLAB_SUPER_ADMIN. Reused for both
-     * the {@code editable_by_caller} response flag and the write gate so the two
-     * never diverge.
+     * A caller may edit a SYSTEM role's permissions only if they hold
+     * {@code USER_ROLE_ASSIGN_HRLAB} — i.e. HRLAB_SUPER_ADMIN. A custom role is
+     * editable here too (non-system → {@code true}); in practice tenant admins
+     * edit custom-role permissions through {@code CustomRoleUseCase} (slice E3),
+     * which reuses the same {@link RolePermissionGuard}. Reused for both the
+     * {@code editable_by_caller} response flag and the write gate so the two never
+     * diverge.
      */
     private static boolean canEdit(TenantContext ctx, RoleJpaEntity role) {
         if (isSystemRole(role)) {

@@ -55,6 +55,14 @@ public final class AuditAction {
     public static final String ROLE_PERMISSION_GRANTED            = "ROLE_PERMISSION_GRANTED";
     public static final String ROLE_PERMISSION_REVOKED            = "ROLE_PERMISSION_REVOKED";
 
+    // Custom (tenant-defined) role lifecycle (E3 — create/edit/delete a TENANT
+    // CUSTOM role via /api/v1/roles). ROLE_CREATED/UPDATED/DELETED bracket the
+    // operation; the per-permission delta on create/edit still emits the E2
+    // ROLE_PERMISSION_GRANTED/_REVOKED rows so SIEM reconstructs the full grant set.
+    public static final String ROLE_CREATED                       = "ROLE_CREATED";
+    public static final String ROLE_UPDATED                       = "ROLE_UPDATED";
+    public static final String ROLE_DELETED                       = "ROLE_DELETED";
+
     // ABAC scope assignment (E4-S1 — admin grants/revokes per-row department
     // scope + project assignments). One row per individual change so SIEM can
     // reconstruct the exact delta of a replace-set operation.

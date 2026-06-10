@@ -35,8 +35,15 @@ import { PERMISSIONS } from '@/shared/types/permissions';
 import { usePermission } from '@/features/auth/usePermission';
 import { ApiError } from '@/shared/api/apiError';
 import { routes } from '@/shared/config/routes';
-import type { RolePermissions } from '@/features/users-access/api/rolesApi';
-import { useRolePermissions, useSetRolePermissions } from '../hooks/useRolePermissions';
+import { SUPPORTED_LOCALES } from '@/shared/i18n';
+import type { LocalizedString } from '@/shared/types/common';
+import type { AssignableRole, RolePermissions } from '@/features/users-access/api/rolesApi';
+import {
+  useRoleCatalog,
+  useRolePermissions,
+  useSetRolePermissions,
+  useUpdateRole,
+} from '../hooks/useRolePermissions';
 import { PermissionMatrix } from '../components/PermissionMatrix';
 import { RoleKindBadge, RoleScopeBadge } from '../components/RoleScopeBadge';
 import { mapRolePermissionError } from '../lib/rolePermissionError';
@@ -48,6 +55,9 @@ export function RoleDetailPage() {
   const { can } = usePermission();
 
   const { data, isLoading, error, refetch } = useRolePermissions(roleCode);
+  // Catalog row gives us the role id (E3 PUT key) + custom flag + localized name.
+  const { data: catalog } = useRoleCatalog();
+  const role = catalog?.find((r) => r.code === roleCode) ?? null;
   // Success banner lives at the PAGE level (which never re-mounts) so it
   // survives the post-save refetch that re-mounts the keyed editor below.
   const [saved, setSaved] = useState(false);
@@ -102,6 +112,13 @@ export function RoleDetailPage() {
         </div>
       ) : null}
 
+      {/* Custom roles: localized NAME is editable here (system roles: read-only).
+          The name save routes through the E3 PUT /roles/{id}; permissions still
+          save through the E2 PUT /roles/{code}/permissions below. */}
+      {role?.isCustom && role.id ? (
+        <RoleNameEditor key={`name-${role.id}`} role={role} roleCode={roleCode} />
+      ) : null}
+
       {isLoading ? (
         <LoadingState />
       ) : error ? (
@@ -119,6 +136,114 @@ export function RoleDetailPage() {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Localized-name editor for a CUSTOM role (slice E3). Seeds from the catalog
+ * row's `nameI18n`; saves only the name via PUT /roles/{id} (the permission
+ * matrix below owns permissions). ru-RU is required (the primary label).
+ */
+function RoleNameEditor({ role, roleCode }: { role: AssignableRole; roleCode: string }) {
+  const { t } = useTranslation();
+  const update = useUpdateRole(roleCode);
+  const [names, setNames] = useState<Record<string, string>>(() => {
+    const seed: Record<string, string> = {};
+    for (const loc of SUPPORTED_LOCALES) seed[loc] = role.nameI18n[loc] ?? '';
+    return seed;
+  });
+  const [saved, setSaved] = useState(false);
+
+  const primaryMissing = (names['ru-RU'] ?? '').trim().length === 0;
+  const dirty = SUPPORTED_LOCALES.some((loc) => (names[loc] ?? '') !== (role.nameI18n[loc] ?? ''));
+
+  const set = (loc: string, value: string) => {
+    setSaved(false);
+    setNames((prev) => ({ ...prev, [loc]: value }));
+  };
+
+  const save = () => {
+    if (!role.id || primaryMissing) return;
+    const name_i18n: LocalizedString = {};
+    for (const loc of SUPPORTED_LOCALES) {
+      const v = names[loc]?.trim();
+      if (v) name_i18n[loc] = v;
+    }
+    update.mutate(
+      { roleId: role.id, payload: { name_i18n } },
+      { onSuccess: () => setSaved(true) },
+    );
+  };
+
+  const mapped = update.error ? mapRolePermissionError(update.error) : null;
+
+  return (
+    <Card className="space-y-4" data-testid="role-name-editor">
+      <header>
+        <h2 className="text-base font-semibold text-text-primary">{t('roles.edit.nameTitle')}</h2>
+        <p className="text-sm text-text-secondary mt-1">{t('roles.edit.nameSubtitle')}</p>
+      </header>
+
+      {saved ? (
+        <div
+          role="status"
+          className="rounded-md border border-success-500/30 bg-success-50 px-4 py-2.5 text-sm text-success-700"
+          data-testid="role-name-success"
+        >
+          {t('roles.edit.nameSaved')}
+        </div>
+      ) : null}
+
+      {mapped ? (
+        <div
+          role="alert"
+          className="rounded-md border border-danger-500/30 bg-danger-50 px-4 py-2.5 text-sm text-danger-700"
+          data-testid="role-name-error"
+        >
+          {t(mapped.key)}
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {SUPPORTED_LOCALES.map((loc) => (
+          <div key={loc}>
+            <label
+              htmlFor={`role-edit-name-${loc}`}
+              className="text-xs font-medium text-text-secondary"
+            >
+              {t(`language.${loc}`)}
+              {loc === 'ru-RU' ? <span className="text-danger-700"> *</span> : null}
+            </label>
+            <input
+              id={`role-edit-name-${loc}`}
+              type="text"
+              autoComplete="off"
+              value={names[loc] ?? ''}
+              onChange={(e) => set(loc, e.target.value)}
+              className="mt-1 w-full h-9 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
+              data-testid={`role-edit-name-${loc}`}
+            />
+          </div>
+        ))}
+      </div>
+      {primaryMissing ? (
+        <p className="text-xs text-danger-700" role="alert">
+          {t('roles.create.error.nameRequired')}
+        </p>
+      ) : null}
+
+      <footer className="flex items-center justify-end gap-3 border-t border-divider pt-4">
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={save}
+          disabled={!dirty || primaryMissing || update.isPending}
+          data-testid="role-name-save"
+        >
+          {update.isPending ? t('roles.edit.nameSaving') : t('roles.edit.nameSave')}
+        </Button>
+      </footer>
+    </Card>
   );
 }
 

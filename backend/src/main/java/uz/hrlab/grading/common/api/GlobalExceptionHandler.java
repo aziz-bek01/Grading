@@ -22,6 +22,7 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.BaseDomainException;
+import uz.hrlab.grading.common.exception.ConflictException;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ResourceNotFoundException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
@@ -139,6 +140,18 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ProjectLockedException.class)
     public ResponseEntity<ErrorResponse> handleProjectLocked(ProjectLockedException ex) {
+        return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
+    }
+
+    /**
+     * 409 Conflict — state-clash on the custom-role admin API (slice E3):
+     * {@code ROLE_CODE_RESERVED} (collides with a system role code),
+     * {@code ROLE_CODE_EXISTS} (custom code already used in the tenant), or
+     * {@code ROLE_IN_USE} (role still assigned to users, delete blocked). The
+     * {@code code} is carried through so the frontend renders a specific message.
+     */
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponse> handleConflict(ConflictException ex) {
         return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
     }
 

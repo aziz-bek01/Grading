@@ -1,0 +1,240 @@
+# Control plane: custom (tenant-defined) roles — RBAC slice E3.
+#
+# WHY:
+#   Today public.roles holds 11 SYSTEM roles seeded by seeds/002-default-roles.yaml,
+#   with a GLOBAL unique on `code` (constraint uq_roles_code). E3 lets a tenant
+#   define its OWN roles alongside the fixed system catalog. A custom role is:
+#       is_system = false, tenant_id = <tenant>, scope = 'TENANT',
+#   created by CLIENT_COMPANY_ADMIN (own tenant) or HRLAB_SUPER_ADMIN.
+#
+# WHAT THIS CHANGESET DOES (purely ADDITIVE — no data loss):
+#   1. ADD COLUMN is_system BOOLEAN NOT NULL DEFAULT true   -> existing 11 rows become TRUE.
+#   2. ADD COLUMN tenant_id  UUID NULL  (FK -> public.tenants(id))  -> existing 11 rows stay NULL.
+#   3. REPLACE the global unique on `code`:
+#        - DROP CONSTRAINT uq_roles_code (it forbade a tenant reusing a code).
+#        - PARTIAL UNIQUE uq_roles_system_code  ON (code)            WHERE tenant_id IS NULL.
+#        - PARTIAL UNIQUE uq_roles_tenant_code  ON (tenant_id, code) WHERE tenant_id IS NOT NULL.
+#      => system codes stay globally unique; each tenant has its own code namespace;
+#         tenant A and tenant B may both define a custom role "REVIEWER" without colliding.
+#   4. CHECK chk_roles_system_tenant: enforce the is_system / tenant_id / scope invariant.
+#   5. INDEX idx_roles_tenant_id (partial) for the catalog query
+#         WHERE is_system = true OR tenant_id = :tenant.
+#
+# WHERE IT LIVES:
+#   Control plane, public schema — `roles` is an access-mapping table, not tenant
+#   business data. Custom roles are still ACCESS metadata; they belong here next to
+#   permissions / role_permissions / user_roles, not in a tenant schema. tenant_id is
+#   an OWNERSHIP discriminator + isolation predicate, NOT a move to the data plane.
+#
+# RLS — DELIBERATELY NOT ENABLED (mirrors sibling control-plane RBAC tables):
+#   public.roles is read DURING TenantContext construction
+#   (JwtTenantContextResolver / DevUserAuthorityResolver) — on the authentication
+#   path, BEFORE the request transaction opens and BEFORE the RLS GUC `app.tenant_id`
+#   is SET LOCAL by RlsTenantSessionAspect. If FORCE RLS were enabled here, the
+#   blank/unset GUC would make every role lookup return ZERO ROWS (the async-worker
+#   RLS bug class fixed by tenant-schema/031). So `roles` stays RLS-FREE exactly like
+#   user_roles / user_tenant_memberships / user_project_assignments /
+#   user_department_scopes. 030-enable-rls.yaml documents this:
+#   "control-plane tables ... are NOT subject to tenant RLS — they are
+#   application-wide and gated by app-layer RBAC/ABAC." `roles` is NOT in 030's
+#   ENABLE/FORCE list, and this changeset does NOT add it. Isolation of custom roles
+#   is enforced by the EXPLICIT app-layer predicate
+#       WHERE is_system = true OR tenant_id = :tenant
+#   (tenant sourced from TenantContext, never from request input), never by RLS.
+#
+# SYSTEM-vs-CUSTOM CODE COLLISION (app-layer guard — documented here, not a DB CHECK):
+#   The two partial unique indexes guarantee uniqueness WITHIN each namespace, but a
+#   tenant could still try to create a custom role whose code equals a SYSTEM code
+#   (e.g. tenant_id=X, code='VIEWER') — the indexes would permit it because they live
+#   in different partial predicates. A cross-partition exclusion would require a
+#   trigger / DO block, which the project forbids ($$ splitting). DECISION: the
+#   collision is rejected in the BACKEND (next task) — the create-custom-role use case
+#   looks up RoleCodes (the canonical SYSTEM code set) and rejects any custom code that
+#   equals a system code (case-insensitive), returning a 409/validation error. This is
+#   the same app-gated posture used elsewhere in the control plane. NOTE FOR BACKEND.
+#
+# ROLES / GRANTS (none needed here):
+#   control-plane/005-db-role-grants.yaml runs earlier; ALTER DEFAULT PRIVILEGES and
+#   the ON ALL TABLES grants already give grading_runtime SELECT/INSERT/UPDATE/DELETE
+#   on roles. ALTER TABLE / new indexes here are DDL run by grading_migrator. No new
+#   grant or REVOKE is required — `roles` is not an audit table.
+#
+# role_permissions (the join) NEEDS NO CHANGE:
+#   role_permissions.role_id -> public.roles(id) (fk_role_permissions_role). A custom
+#   role is just another roles row, so it reuses role_permissions unchanged to receive
+#   permission grants. The FK has NO ON DELETE clause (defaults to NO ACTION/RESTRICT),
+#   so PostgreSQL will already BLOCK deleting a role that still has role_permissions
+#   rows — which dovetails with E3's "block delete-in-use" rule. The backend will
+#   additionally pre-check (custom role assigned to any user_roles, or holding grants)
+#   and return a clean 409 before hitting the FK. We deliberately do NOT add
+#   ON DELETE CASCADE: silent cascade-removal of permission grants on role delete is
+#   undesirable for an access-control table. NOTE FOR BACKEND.
+#
+# NO $$ DOLLAR-BLOCK:
+#   Plain DDL only. Every SQL block uses splitStatements: true and contains NO
+#   PL/pgSQL DO $$ ... $$ block (project memory: raw $$ breaks Liquibase ';' splitting).
+#
+# IDEMPOTENCY / SAFETY:
+#   Additive ALTER + index/constraint creation, tracked once by Liquibase. Runs in the
+#   control-plane context BEFORE tenant-schema. Non-destructive: no column drop, no row
+#   change beyond the column defaults backfilling the 11 system rows. Each changeset
+#   carries an explicit <rollback>.
+databaseChangeLog:
+
+  # --------------------------------------------------------------------------
+  # 008.1 — Add is_system + tenant_id columns.
+  # is_system DEFAULT true backfills the 11 existing system rows to TRUE.
+  # tenant_id is NULL for all existing rows (they are system roles).
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 008-roles-add-custom-columns
+      author: database-architect
+      context: control-plane
+      labels: mvp1,rbac,e3,custom-roles
+      comment: |
+        Add is_system (NOT NULL DEFAULT true) and tenant_id (NULL, FK -> tenants)
+        to public.roles. Existing 11 seeded rows become is_system=true,
+        tenant_id=NULL via the column defaults — no data migration needed.
+      changes:
+        - addColumn:
+            tableName: roles
+            schemaName: public
+            columns:
+              - column:
+                  name: is_system
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: true
+                    foreignKeyName: fk_roles_tenant
+                    referencedTableSchemaName: public
+                    referencedTableName: tenants
+                    referencedColumnNames: id
+      rollback:
+        - dropColumn:
+            tableName: roles
+            schemaName: public
+            columnName: tenant_id
+        - dropColumn:
+            tableName: roles
+            schemaName: public
+            columnName: is_system
+
+  # --------------------------------------------------------------------------
+  # 008.2 — Uniqueness redesign.
+  # Drop the global unique on `code`; replace with two PARTIAL unique indexes:
+  #   - system roles: unique by code globally        (WHERE tenant_id IS NULL)
+  #   - custom roles: unique by (tenant_id, code)     (WHERE tenant_id IS NOT NULL)
+  # uq_roles_code was created as a column-level unique CONSTRAINT (inline
+  # `unique: true` -> constraint), so we DROP CONSTRAINT (not DROP INDEX).
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 008-roles-uniqueness-redesign
+      author: database-architect
+      context: control-plane
+      labels: mvp1,rbac,e3,custom-roles
+      comment: |
+        Replace the global uq_roles_code unique with two partial unique
+        indexes so system roles (tenant_id IS NULL) stay globally unique by
+        code while custom roles (tenant_id IS NOT NULL) are unique per
+        (tenant_id, code). Cross-namespace (custom == system code) collision
+        is guarded in the backend (RoleCodes lookup) — see file header.
+      changes:
+        - dropUniqueConstraint:
+            tableName: roles
+            schemaName: public
+            constraintName: uq_roles_code
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- System roles: code globally unique among system rows.
+              CREATE UNIQUE INDEX uq_roles_system_code
+                ON public.roles (code)
+                WHERE tenant_id IS NULL;
+
+              -- Custom roles: code unique within each tenant's namespace.
+              CREATE UNIQUE INDEX uq_roles_tenant_code
+                ON public.roles (tenant_id, code)
+                WHERE tenant_id IS NOT NULL;
+      rollback:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS public.uq_roles_tenant_code;
+              DROP INDEX IF EXISTS public.uq_roles_system_code;
+        - addUniqueConstraint:
+            tableName: roles
+            schemaName: public
+            constraintName: uq_roles_code
+            columnNames: code
+
+  # --------------------------------------------------------------------------
+  # 008.3 — Integrity CHECK for the is_system / tenant_id / scope invariant.
+  #   is_system = false  =>  tenant_id IS NOT NULL AND scope = 'TENANT'
+  #   is_system = true   =>  tenant_id IS NULL
+  # Holds for the 11 system rows (is_system=true, tenant_id=NULL) backfilled
+  # by 008.1, so the constraint validates without a data fix.
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 008-roles-system-tenant-check
+      author: database-architect
+      context: control-plane
+      labels: mvp1,rbac,e3,custom-roles
+      comment: |
+        CHECK chk_roles_system_tenant: custom roles must be tenant-owned and
+        TENANT-scoped; system roles must have no tenant. Satisfied by the
+        existing 11 system rows.
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE public.roles
+                ADD CONSTRAINT chk_roles_system_tenant
+                CHECK (
+                  (is_system = true  AND tenant_id IS NULL)
+                  OR
+                  (is_system = false AND tenant_id IS NOT NULL AND scope = 'TENANT')
+                );
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              ALTER TABLE public.roles
+                DROP CONSTRAINT chk_roles_system_tenant;
+
+  # --------------------------------------------------------------------------
+  # 008.4 — Index for the catalog query
+  #   SELECT ... FROM public.roles WHERE is_system = true OR tenant_id = :tenant
+  # The custom-role branch (tenant_id = :tenant) is served by a partial index
+  # on tenant_id where tenant_id IS NOT NULL (system rows, NULL, are excluded
+  # from the index — they are matched by the is_system = true branch).
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 008-roles-tenant-index
+      author: database-architect
+      context: control-plane
+      labels: mvp1,rbac,e3,custom-roles
+      comment: |
+        Partial index on tenant_id for the tenant-scoped catalog branch
+        (WHERE tenant_id = :tenant). System rows are excluded (tenant_id NULL).
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              CREATE INDEX idx_roles_tenant_id
+                ON public.roles (tenant_id)
+                WHERE tenant_id IS NOT NULL;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              DROP INDEX IF EXISTS public.idx_roles_tenant_id;

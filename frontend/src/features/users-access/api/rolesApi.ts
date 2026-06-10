@@ -32,6 +32,13 @@ export type RoleScope = 'PLATFORM' | 'TENANT';
  * appear here automatically (the picker is no longer hardcoded).
  */
 export interface RoleCatalogDto {
+  /**
+   * Stable role id. Custom-role mutations (slice E3 — PUT/DELETE /roles/{roleId})
+   * are keyed by id, whereas the E2 permission matrix is keyed by `code`. Both
+   * uniquely identify the row; the UI carries the id so the E3 mutations can
+   * address a row without re-deriving it. System rows may omit it.
+   */
+  id?: string | null;
   code: string;
   name_i18n: LocalizedString;
   scope: RoleScope;
@@ -40,6 +47,12 @@ export interface RoleCatalogDto {
   assignable_by_caller: boolean;
   /** Non-null only when `assignable_by_caller` is false. */
   reason_if_not: RoleAssignBlockReason | null;
+  /**
+   * How many users currently have this role assigned, when the backend supplies
+   * it. Used to warn before delete (a role in use cannot be deleted — 409
+   * ROLE_IN_USE). Absent → unknown (the confirm dialog omits the count).
+   */
+  assignment_count?: number | null;
 }
 
 /**
@@ -47,14 +60,20 @@ export interface RoleCatalogDto {
  * against the active locale (fallback chain ru-RU → uz-* → en-US → code).
  */
 export interface AssignableRole {
+  /** Stable role id (used by E3 custom-role PUT/DELETE). Null for system rows. */
+  id: string | null;
   code: string;
   /** Localized display label. Never empty — falls back to the code. */
   name: string;
+  /** Raw localized map — the custom-role edit form seeds its per-locale inputs. */
+  nameI18n: LocalizedString;
   scope: RoleScope;
   isSystem: boolean;
   isCustom: boolean;
   assignableByCaller: boolean;
   reasonIfNot: RoleAssignBlockReason | null;
+  /** Assignment count when the backend supplies it (drives delete warning). */
+  assignmentCount: number | null;
 }
 
 export const roleKeys = {
@@ -164,6 +183,25 @@ export async function fetchRolePermissions(roleCode: string): Promise<RolePermis
 }
 
 /**
+ * Stable system role used to obtain the FULL permission catalog (with
+ * `restricted` flags) when building the CREATE form for a brand-new custom role
+ * (slice E3). VIEWER is always present and tenant-scoped, so its matrix carries
+ * the complete grid; the create form simply renders it with everything
+ * unchecked. This REUSES the E2 permissions endpoint — no new backend surface.
+ */
+const PERMISSION_CATALOG_TEMPLATE_ROLE = 'VIEWER';
+
+/**
+ * Fetch the full permission catalog as an EMPTY template (every `granted=false`)
+ * for the custom-role create form. Restricted rows keep their `restricted` flag
+ * so the matrix locks them exactly as in the per-role editor.
+ */
+export async function fetchPermissionCatalogTemplate(): Promise<RolePermissionItem[]> {
+  const matrix = await fetchRolePermissions(PERMISSION_CATALOG_TEMPLATE_ROLE);
+  return matrix.items.map((i) => ({ ...i, granted: false }));
+}
+
+/**
  * Replace the granted permission set of a role.
  *
  * Sends the FULL desired set of granted, NON-restricted codes (replace-set
@@ -192,13 +230,16 @@ export async function setRolePermissions(
 export function toAssignableRole(dto: RoleCatalogDto, locale: string): AssignableRole {
   const localized = pickLocalized(dto.name_i18n, locale);
   return {
+    id: dto.id ?? null,
     code: dto.code,
     name: localized.length > 0 ? localized : dto.code,
+    nameI18n: dto.name_i18n ?? {},
     scope: dto.scope,
     isSystem: Boolean(dto.is_system),
     isCustom: Boolean(dto.is_custom),
     assignableByCaller: Boolean(dto.assignable_by_caller),
     reasonIfNot: dto.reason_if_not ?? null,
+    assignmentCount: typeof dto.assignment_count === 'number' ? dto.assignment_count : null,
   };
 }
 
@@ -217,4 +258,70 @@ export async function fetchAssignableRoles(
   });
   const rows = Array.isArray(res.data) ? res.data : [];
   return rows.map((r) => toAssignableRole(r, locale));
+}
+
+// ---------------------------------------------------------------------------
+// Custom-role lifecycle (slice E3) — create / edit / delete tenant roles
+// ---------------------------------------------------------------------------
+
+/**
+ * Body of `POST /roles` (snake_case wire shape). The backend creates a TENANT
+ * custom role (`is_custom=true`, `scope=TENANT`). `tenant_id` is NEVER sent —
+ * the backend derives tenant scope from the JWT, consistent with the rest of
+ * the module. `permission_codes` is the initial granted set (restricted codes
+ * must be excluded by the caller — the matrix already does this; the backend
+ * re-enforces with 422 PERMISSION_RESTRICTED / PERMISSION_NOT_HELD_BY_CALLER).
+ */
+export interface CreateRolePayload {
+  code: string;
+  name_i18n: LocalizedString;
+  permission_codes: string[];
+}
+
+/**
+ * Body of `PUT /roles/{roleId}` (snake_case). Edits a CUSTOM role: the
+ * localized name and/or the full granted permission set (replace-set). System
+ * roles cannot be edited here (the backend returns 403); cross-tenant ids 404.
+ */
+export interface UpdateRolePayload {
+  name_i18n?: LocalizedString;
+  permission_codes?: string[];
+}
+
+/**
+ * Create a tenant custom role. Returns the created catalog row (localized). The
+ * backend errors are surfaced verbatim via {@link ApiError} for the caller to
+ * map (see `mapRolePermissionError`): 409 ROLE_CODE_RESERVED / ROLE_CODE_EXISTS,
+ * 422 PERMISSION_RESTRICTED / PERMISSION_NOT_HELD_BY_CALLER.
+ */
+export async function createRole(
+  payload: CreateRolePayload,
+  locale: string,
+): Promise<AssignableRole> {
+  const res = await httpClient.post<RoleCatalogDto>('/roles', payload);
+  return toAssignableRole(res.data, locale);
+}
+
+/**
+ * Edit a custom role (name and/or permissions). Addressed by `roleId` (not
+ * code), matching the backend contract. Returns the updated catalog row.
+ */
+export async function updateRole(
+  roleId: string,
+  payload: UpdateRolePayload,
+  locale: string,
+): Promise<AssignableRole> {
+  const res = await httpClient.put<RoleCatalogDto>(
+    `/roles/${encodeURIComponent(roleId)}`,
+    payload,
+  );
+  return toAssignableRole(res.data, locale);
+}
+
+/**
+ * Delete a custom role. 204 on success. Errors: 409 ROLE_IN_USE (assigned to
+ * users — revoke first), 403 (system role), 404 (cross-tenant / unknown id).
+ */
+export async function deleteRole(roleId: string): Promise<void> {
+  await httpClient.delete(`/roles/${encodeURIComponent(roleId)}`);
 }

@@ -24,10 +24,13 @@ import java.util.Map;
  * denial.
  *
  * <p>Tenant scope is derived from {@link TenantContext} only (never the request).
- * Today the catalog is tenant-agnostic (all roles are seeded system roles); the
- * active tenant is still resolved so that, once slice E3 adds tenant-scoped
- * custom roles, the repository finder can filter by it without changing this
- * handler's mapping.
+ * Since slice E3 the catalog returns the SYSTEM roles PLUS the active tenant's
+ * own custom roles ({@code is_system = true OR tenant_id = ctx.tenantId()});
+ * other tenants' custom roles are invisible. {@code is_system}/{@code is_custom}
+ * are read from the entity ({@code is_custom = !is_system}). Custom roles are
+ * TENANT-scoped, so {@link UserManagementPolicy#canAssignRole} treats them as
+ * assignable by the owning tenant admin (only HRLAB_/PLATFORM-scope roles are
+ * gated), and they flow through {@link AssignRoleUseCase} like any other role.
  */
 @Service
 public class ListRolesQuery {
@@ -44,7 +47,7 @@ public class ListRolesQuery {
     public List<RoleResponse> list(boolean assignableOnly) {
         TenantContext ctx = TenantContextHolder.requireActive();
 
-        return roleRepo.findAllByOrderByScopeAscCodeAsc().stream()
+        return roleRepo.findByIsSystemTrueOrTenantIdOrderByScopeAscCodeAsc(ctx.tenantId()).stream()
                 .map(role -> toResponse(ctx, role))
                 .filter(r -> !assignableOnly || r.assignableByCaller())
                 .toList();
@@ -57,17 +60,17 @@ public class ListRolesQuery {
                 role.getCode(),
                 nameI18n(role.getName()),
                 role.getScope() == null ? null : role.getScope().name(),
-                /* isSystem */ true,
-                /* isCustom */ false,
+                role.isSystem(),
+                !role.isSystem(),
                 assignable,
                 reason == null ? null : reason.name());
     }
 
     /**
-     * Builds the {@code name_i18n} map. The {@code roles} table currently has a
-     * single {@code name} column (translations land in slice E3), so the same
-     * display name is emitted for every supported locale — the response shape is
-     * already the final i18n contract, only the values are not yet localized.
+     * Builds the {@code name_i18n} map. The {@code roles} table carries a single
+     * {@code name} column (per-locale translation rows are a later slice), so the
+     * same display name is emitted for every supported locale — the response shape
+     * is already the final i18n contract, only the values are not yet localized.
      */
     private static Map<String, String> nameI18n(String name) {
         String value = name == null ? "" : name;

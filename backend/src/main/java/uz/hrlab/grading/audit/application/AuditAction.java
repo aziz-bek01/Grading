@@ -48,6 +48,13 @@ public final class AuditAction {
     public static final String USER_SALARY_PERMISSION_REVOKED     = "USER_SALARY_PERMISSION_REVOKED";
     public static final String CROSS_TENANT_USER_ACCESS_ATTEMPT   = "CROSS_TENANT_USER_ACCESS_ATTEMPT";
 
+    // Role → permission admin (E2 — admin grant/revoke of a role's permission
+    // set via PUT /api/v1/roles/{roleId}/permissions). One row per individual
+    // permission change so SIEM can reconstruct the exact delta of a replace-set
+    // operation (mirrors the USER_*_SCOPE_* / _ASSIGNMENT_* pattern below).
+    public static final String ROLE_PERMISSION_GRANTED            = "ROLE_PERMISSION_GRANTED";
+    public static final String ROLE_PERMISSION_REVOKED            = "ROLE_PERMISSION_REVOKED";
+
     // ABAC scope assignment (E4-S1 — admin grants/revokes per-row department
     // scope + project assignments). One row per individual change so SIEM can
     // reconstruct the exact delta of a replace-set operation.

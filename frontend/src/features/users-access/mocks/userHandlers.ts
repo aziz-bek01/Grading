@@ -802,6 +802,197 @@ function handleRoles(): MatchResult {
 }
 
 // ---------------------------------------------------------------
+// Role PERMISSION MATRIX (slice E2) — GET/PUT /roles/{code}/permissions
+// ---------------------------------------------------------------
+//
+// Representative permission catalog grouped by `resource` (module). This is a
+// subset of the real backend catalog, picked to exercise the matrix UX:
+// multiple modules, several actions each, and a couple of RESTRICTED rows that
+// the matrix must lock. No tenant_id is involved (auth-context from the JWT).
+
+interface PermissionCatalogEntry {
+  code: string;
+  resource: string;
+  action: string;
+  /** Locked: cannot be granted/revoked via the endpoint (matrix disables it). */
+  restricted: boolean;
+}
+
+const PERMISSION_CATALOG: PermissionCatalogEntry[] = [
+  { code: 'PROJECT_READ', resource: 'PROJECT', action: 'READ', restricted: false },
+  { code: 'PROJECT_CREATE', resource: 'PROJECT', action: 'CREATE', restricted: false },
+  { code: 'PROJECT_EDIT', resource: 'PROJECT', action: 'EDIT', restricted: false },
+  { code: 'POSITION_READ', resource: 'POSITION', action: 'READ', restricted: false },
+  { code: 'POSITION_CREATE', resource: 'POSITION', action: 'CREATE', restricted: false },
+  { code: 'POSITION_EDIT', resource: 'POSITION', action: 'EDIT', restricted: false },
+  { code: 'METHODOLOGY_READ', resource: 'METHODOLOGY', action: 'READ', restricted: false },
+  { code: 'METHODOLOGY_EDIT', resource: 'METHODOLOGY', action: 'EDIT', restricted: false },
+  { code: 'METHODOLOGY_APPROVE', resource: 'METHODOLOGY', action: 'APPROVE', restricted: false },
+  { code: 'EVALUATION_READ', resource: 'EVALUATION', action: 'READ', restricted: false },
+  { code: 'EVALUATION_EDIT', resource: 'EVALUATION', action: 'EDIT', restricted: false },
+  { code: 'EVALUATION_APPROVE', resource: 'EVALUATION', action: 'APPROVE', restricted: false },
+  { code: 'GRADE_READ', resource: 'GRADE', action: 'READ', restricted: false },
+  { code: 'GRADE_EDIT', resource: 'GRADE', action: 'EDIT', restricted: false },
+  // Salary permissions are RESTRICTED here: salary visibility is granted
+  // per-membership, never on a role — the matrix must lock these.
+  { code: 'SALARY_VIEW', resource: 'SALARY', action: 'VIEW', restricted: true },
+  { code: 'SALARY_EXPORT', resource: 'SALARY', action: 'EXPORT', restricted: true },
+  { code: 'AUDIT_READ', resource: 'AUDIT', action: 'READ', restricted: false },
+  // Cross-tenant audit is RESTRICTED — only super-admin platform roles hold it
+  // and it is not grantable via this surface.
+  { code: 'AUDIT_READ_CROSS_TENANT', resource: 'AUDIT', action: 'READ_CROSS_TENANT', restricted: true },
+  { code: 'USER_LIST', resource: 'USER', action: 'LIST', restricted: false },
+  { code: 'USER_INVITE', resource: 'USER', action: 'INVITE', restricted: false },
+  { code: 'USER_ROLE_ASSIGN', resource: 'USER', action: 'ROLE_ASSIGN', restricted: false },
+];
+
+const ALL_CATALOG_CODES = new Set(PERMISSION_CATALOG.map((p) => p.code));
+
+/**
+ * In-memory per-role granted set, seeded with representative defaults. Note:
+ * restricted codes may still be granted on a role (e.g. an HRLab platform role
+ * holding AUDIT_READ_CROSS_TENANT) — they are simply not togglable via the
+ * matrix. PUT preserves restricted grants and only replaces non-restricted ones.
+ */
+const roleGrantedDb: Record<string, Set<string>> = {
+  CLIENT_HR_DIRECTOR: new Set([
+    'PROJECT_READ',
+    'POSITION_READ',
+    'POSITION_CREATE',
+    'POSITION_EDIT',
+    'METHODOLOGY_READ',
+    'EVALUATION_READ',
+    'GRADE_READ',
+    'AUDIT_READ',
+    'USER_LIST',
+  ]),
+  CLIENT_HR_SPECIALIST: new Set([
+    'PROJECT_READ',
+    'POSITION_READ',
+    'METHODOLOGY_READ',
+    'EVALUATION_READ',
+    'GRADE_READ',
+  ]),
+  VIEWER: new Set(['PROJECT_READ', 'POSITION_READ', 'METHODOLOGY_READ', 'EVALUATION_READ', 'GRADE_READ']),
+  EXTERNAL_AUDITOR: new Set(['PROJECT_READ', 'AUDIT_READ', 'AUDIT_READ_CROSS_TENANT']),
+};
+
+/** Default seed for any role not explicitly listed (minimal read access). */
+function seededGrants(roleCode: string): Set<string> {
+  if (!roleGrantedDb[roleCode]) {
+    roleGrantedDb[roleCode] = new Set(['PROJECT_READ']);
+  }
+  return roleGrantedDb[roleCode];
+}
+
+/** Is the named role a system role per the catalog? */
+function isSystemRole(roleCode: string): boolean {
+  return ROLE_CATALOG.find((r) => r.code === roleCode)?.is_system ?? false;
+}
+
+function roleScope(roleCode: string): 'PLATFORM' | 'TENANT' {
+  return ROLE_CATALOG.find((r) => r.code === roleCode)?.scope ?? 'TENANT';
+}
+
+/**
+ * Whether the mock caller may edit a given role's matrix. Mirrors the backend:
+ * system roles are editable only by HRLAB_SUPER_ADMIN; custom roles by anyone
+ * with USER_ACCESS_MANAGE (assumed for callers reaching this surface).
+ */
+function callerCanEditRole(roleCode: string): boolean {
+  const callerRoles = useAuthStore.getState().user?.roles ?? [];
+  const isSuperAdmin = callerRoles.includes('HRLAB_SUPER_ADMIN');
+  if (isSystemRole(roleCode)) return isSuperAdmin;
+  return true;
+}
+
+function buildPermissionItems(roleCode: string) {
+  const granted = seededGrants(roleCode);
+  return PERMISSION_CATALOG.map((p) => ({
+    code: p.code,
+    resource: p.resource,
+    action: p.action,
+    granted: granted.has(p.code),
+    restricted: p.restricted,
+  }));
+}
+
+function handleGetRolePermissions(roleCode: string): MatchResult {
+  if (!ROLE_CATALOG.some((r) => r.code === roleCode)) {
+    return { status: 404, body: { code: 'NOT_FOUND', message: 'Role not found' } };
+  }
+  return ok({
+    role_code: roleCode,
+    scope: roleScope(roleCode),
+    is_system: isSystemRole(roleCode),
+    editable_by_caller: callerCanEditRole(roleCode),
+    items: buildPermissionItems(roleCode),
+  });
+}
+
+function handlePutRolePermissions(roleCode: string, config: AxiosRequestConfig): MatchResult {
+  if (!ROLE_CATALOG.some((r) => r.code === roleCode)) {
+    return { status: 404, body: { code: 'NOT_FOUND', message: 'Role not found' } };
+  }
+  // System role + non-super caller → 403 (mirror backend).
+  if (!callerCanEditRole(roleCode)) {
+    return {
+      status: 403,
+      body: { code: 'FORBIDDEN', message: 'System role can be edited only by super admin' },
+    };
+  }
+  const raw = readBody<{ permission_codes?: unknown }>(config);
+  const codes = Array.isArray(raw.permission_codes) ? raw.permission_codes.map(String) : null;
+  if (codes === null) {
+    return badRequest('permission_codes must be an array', 'VALIDATION_ERROR');
+  }
+  // Unknown code → validation error.
+  const unknown = codes.filter((c) => !ALL_CATALOG_CODES.has(c));
+  if (unknown.length > 0) {
+    return badRequest(`unknown permission code(s): ${unknown.join(', ')}`, 'UNKNOWN_PERMISSION_CODE');
+  }
+  // A restricted code in the replace-set → 422 PERMISSION_RESTRICTED.
+  const restrictedCodes = new Set(
+    PERMISSION_CATALOG.filter((p) => p.restricted).map((p) => p.code),
+  );
+  if (codes.some((c) => restrictedCodes.has(c))) {
+    return {
+      status: 422,
+      body: { code: 'PERMISSION_RESTRICTED', message: 'A restricted permission cannot be granted' },
+    };
+  }
+  // Caller cannot grant a permission they do not themselves hold → 422.
+  // Sentinel: USER_ROLE_ASSIGN stands in for a "caller-not-held" permission so
+  // tests can drive this branch when the mock caller lacks it.
+  const callerPerms = new Set<string>(useAuthStore.getState().user?.permissions ?? []);
+  const callerIsSuper = (useAuthStore.getState().user?.roles ?? []).includes('HRLAB_SUPER_ADMIN');
+  if (!callerIsSuper) {
+    const notHeld = codes.filter((c) => !callerPerms.has(c));
+    if (notHeld.length > 0) {
+      return {
+        status: 422,
+        body: {
+          code: 'PERMISSION_NOT_HELD_BY_CALLER',
+          message: `Caller does not hold: ${notHeld.join(', ')}`,
+        },
+      };
+    }
+  }
+  // REPLACE-set: rebuild the non-restricted grants from the payload, PRESERVING
+  // any restricted grants the role already had (matrix never sends those).
+  const existing = seededGrants(roleCode);
+  const preservedRestricted = [...existing].filter((c) => restrictedCodes.has(c));
+  roleGrantedDb[roleCode] = new Set([...codes, ...preservedRestricted]);
+  return ok({
+    role_code: roleCode,
+    scope: roleScope(roleCode),
+    is_system: isSystemRole(roleCode),
+    editable_by_caller: true,
+    items: buildPermissionItems(roleCode),
+  });
+}
+
+// ---------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------
 
@@ -811,6 +1002,13 @@ export function handleUsers(config: AxiosRequestConfig): MatchResult | null {
   const { path, query } = parseUrl(url, config.params as Record<string, unknown> | undefined);
 
   if (path === '/roles' && method === 'GET') return handleRoles();
+
+  const rolePermsMatch = /^\/roles\/([^/]+)\/permissions$/.exec(path);
+  if (rolePermsMatch) {
+    const code = decodeURIComponent(rolePermsMatch[1]);
+    if (method === 'GET') return handleGetRolePermissions(code);
+    if (method === 'PUT') return handlePutRolePermissions(code, config);
+  }
 
   if (path === '/users' && method === 'GET') return handleList(query, config);
   if (path === '/users' && method === 'POST') return handleInvite(config);

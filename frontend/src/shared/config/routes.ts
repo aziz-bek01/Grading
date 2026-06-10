@@ -18,6 +18,9 @@ export const routes = {
   /** Legacy slug — kept for redirect; new code MUST use `usersAccess`. */
   usersAccessLegacy: '/app/users-access',
   userDetails: (userId: string) => `/app/users/${userId}`,
+  /** Roles admin (slice E2) — list + per-role permission matrix. */
+  roles: '/app/roles',
+  roleDetails: (roleCode: string) => `/app/roles/${encodeURIComponent(roleCode)}`,
   project: (projectId: string) => `/app/projects/${projectId}/workspace`,
   projectWorkspace: (projectId: string) => `/app/projects/${projectId}/workspace`,
   projectOrganization: (projectId: string) => `/app/projects/${projectId}/organization`,

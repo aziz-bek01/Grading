@@ -25,6 +25,7 @@ import uz.hrlab.grading.common.exception.BaseDomainException;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ResourceNotFoundException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.common.exception.UnprocessableEntityException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
 import uz.hrlab.grading.approval.domain.ApprovalTransitionRejectedException;
@@ -123,6 +124,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ErrorResponse> handleValidation(ValidationException ex) {
         return build(HttpStatus.BAD_REQUEST, ex.getCode(), ex.getMessage());
+    }
+
+    /**
+     * 422 Unprocessable Entity — request parsed fine but a business rule rejects
+     * it (slice E2: {@code PERMISSION_RESTRICTED} / {@code PERMISSION_NOT_HELD_BY_CALLER}
+     * on the role→permission admin API). The {@code code} is carried through so
+     * the frontend can render a rule-specific message.
+     */
+    @ExceptionHandler(UnprocessableEntityException.class)
+    public ResponseEntity<ErrorResponse> handleUnprocessable(UnprocessableEntityException ex) {
+        return build(HttpStatus.UNPROCESSABLE_ENTITY, ex.getCode(), ex.getMessage());
     }
 
     @ExceptionHandler(ProjectLockedException.class)

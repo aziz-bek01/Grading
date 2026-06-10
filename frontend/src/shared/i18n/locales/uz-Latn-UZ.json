@@ -66,7 +66,8 @@
     "governance": "Boshqaruv",
     "approvals": "Tasdiqlar",
     "imports": "Importlar",
-    "exports": "Eksportlar"
+    "exports": "Eksportlar",
+    "roles": "Rollar"
   },
   "status": {
     "draft": "Qoralama",
@@ -1639,6 +1640,84 @@
         "4": "Byudjet stsenariy modellashtirish va bozor normalizatsiyasi.",
         "5": "MFOT (oldin/keyin) va stsenariyning kompaniya byudjetiga ta'siri."
       }
+    }
+  },
+  "roles": {
+    "list": {
+      "title": "Rollar",
+      "subtitle": "Rollar va ularning ruxsatlarini boshqarish.",
+      "emptyTitle": "Rollar topilmadi",
+      "emptyBody": "Rollar roʻyxati boʻsh.",
+      "col": {
+        "name": "Rol",
+        "code": "Kod",
+        "scope": "Soha",
+        "kind": "Turi"
+      }
+    },
+    "detail": {
+      "subtitle": "Ushbu rol ega boʻlishi kerak boʻlgan ruxsatlarni belgilang. Saqlash butun toʻplamni almashtiradi.",
+      "back": "Rollar roʻyxatiga",
+      "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
+      "cancel": "Bekor qilish",
+      "saveSuccess": "Rol ruxsatlari saqlandi.",
+      "readOnlyBanner": "Bu rolni tahrirlab boʻlmaydi. Tizim rollarini faqat super administrator oʻzgartiradi."
+    },
+    "scope": {
+      "platform": "Platforma",
+      "tenant": "Kompaniya"
+    },
+    "kind": {
+      "system": "Tizim",
+      "custom": "Maxsus"
+    },
+    "matrix": {
+      "ariaLabel": "Ruxsatlar matritsasi",
+      "empty": "Ruxsatlar sozlanmagan.",
+      "selectAll": "Barchasini tanlash",
+      "selectAllInModule": "Modul ruxsatlarini tanlash",
+      "restricted": "Qulflangan",
+      "restrictedHint": "Bu ruxsatni ushbu forma orqali berib boʻlmaydi."
+    },
+    "error": {
+      "permissionRestricted": "Bu ruxsatni rolga berib bo'lmaydi",
+      "permissionNotHeld": "O'zingizda yo'q ruxsatni bera olmaysiz",
+      "systemRoleForbidden": "Tizim rolini faqat super admin tahrirlaydi",
+      "saveFailed": "Ruxsatlarni saqlab boʻlmadi. Qayta urinib koʻring."
+    },
+    "resource": {
+      "PROJECT": "Loyihalar",
+      "POSITION": "Lavozimlar",
+      "METHODOLOGY": "Metodologiya",
+      "EVALUATION": "Baholash",
+      "GRADE": "Greydlar",
+      "SALARY": "Maoshlar",
+      "AUDIT": "Audit",
+      "USER": "Foydalanuvchilar"
+    },
+    "permission": {
+      "PROJECT_READ": "Loyihalarni koʻrish",
+      "PROJECT_CREATE": "Loyiha yaratish",
+      "PROJECT_EDIT": "Loyihani tahrirlash",
+      "POSITION_READ": "Lavozimlarni koʻrish",
+      "POSITION_CREATE": "Lavozim yaratish",
+      "POSITION_EDIT": "Lavozimni tahrirlash",
+      "METHODOLOGY_READ": "Metodologiyani koʻrish",
+      "METHODOLOGY_EDIT": "Metodologiyani tahrirlash",
+      "METHODOLOGY_APPROVE": "Metodologiyani tasdiqlash",
+      "EVALUATION_READ": "Baholashni koʻrish",
+      "EVALUATION_EDIT": "Baholashni tahrirlash",
+      "EVALUATION_APPROVE": "Baholashni tasdiqlash",
+      "GRADE_READ": "Greydlarni koʻrish",
+      "GRADE_EDIT": "Greydlarni tahrirlash",
+      "SALARY_VIEW": "Maoshlarni koʻrish",
+      "SALARY_EXPORT": "Maoshlarni eksport qilish",
+      "AUDIT_READ": "Audit jurnalini koʻrish",
+      "AUDIT_READ_CROSS_TENANT": "Barcha kompaniyalar boʻyicha audit",
+      "USER_LIST": "Foydalanuvchilar roʻyxati",
+      "USER_INVITE": "Foydalanuvchi taklif qilish",
+      "USER_ROLE_ASSIGN": "Rollar tayinlash"
     }
   }
 }

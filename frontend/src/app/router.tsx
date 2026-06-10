@@ -42,6 +42,8 @@ import { ExportDetailsPage } from '@/features/export/pages/ExportDetailsPage';
 import { ReportsCenterPage } from '@/features/report/pages/ReportsCenterPage';
 import { UsersListPage } from '@/features/users-access/pages/UsersListPage';
 import { UserDetailsPage } from '@/features/users-access/pages/UserDetailsPage';
+import { RolesListPage } from '@/features/roles-access/pages/RolesListPage';
+import { RoleDetailPage } from '@/features/roles-access/pages/RoleDetailPage';
 import { AuditListPage } from '@/features/audit/pages/AuditListPage';
 
 export function AppRouter() {
@@ -187,6 +189,12 @@ export function AppRouter() {
             <Route path="users/:userId" element={<UserDetailsPage />} />
             {/* Legacy URL — redirect to the canonical /app/users. */}
             <Route path="users-access" element={<Navigate to={routes.usersAccess} replace />} />
+          </Route>
+
+          {/* Roles admin (slice E2) — gated by USER_ACCESS_MANAGE only. */}
+          <Route element={<RequirePermission permissions={PERMISSIONS.USER_ACCESS_MANAGE} />}>
+            <Route path="roles" element={<RolesListPage />} />
+            <Route path="roles/:roleCode" element={<RoleDetailPage />} />
           </Route>
         </Route>
       </Route>

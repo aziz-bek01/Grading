@@ -66,7 +66,8 @@
     "governance": "Governance",
     "approvals": "Approvals",
     "imports": "Imports",
-    "exports": "Exports"
+    "exports": "Exports",
+    "roles": "Roles"
   },
   "status": {
     "draft": "Draft",
@@ -1639,6 +1640,84 @@
         "4": "Budget scenario modelling and market normalisation.",
         "5": "Payroll before/after and scenario impact on company budget."
       }
+    }
+  },
+  "roles": {
+    "list": {
+      "title": "Roles",
+      "subtitle": "Manage roles and their access permissions.",
+      "emptyTitle": "No roles found",
+      "emptyBody": "The roles list is empty.",
+      "col": {
+        "name": "Role",
+        "code": "Code",
+        "scope": "Scope",
+        "kind": "Type"
+      }
+    },
+    "detail": {
+      "subtitle": "Check the permissions this role should hold. Saving replaces the whole set.",
+      "back": "Back to roles",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "saveSuccess": "Role permissions saved.",
+      "readOnlyBanner": "This role cannot be edited. System roles are changed only by a super admin."
+    },
+    "scope": {
+      "platform": "Platform",
+      "tenant": "Company"
+    },
+    "kind": {
+      "system": "System",
+      "custom": "Custom"
+    },
+    "matrix": {
+      "ariaLabel": "Permission matrix",
+      "empty": "No permissions configured.",
+      "selectAll": "Select all",
+      "selectAllInModule": "Select all module permissions",
+      "restricted": "Locked",
+      "restrictedHint": "This permission cannot be granted through this form."
+    },
+    "error": {
+      "permissionRestricted": "This permission cannot be granted to the role.",
+      "permissionNotHeld": "You cannot grant a permission you do not hold.",
+      "systemRoleForbidden": "A system role can be edited only by a super admin.",
+      "saveFailed": "Could not save permissions. Please try again."
+    },
+    "resource": {
+      "PROJECT": "Projects",
+      "POSITION": "Positions",
+      "METHODOLOGY": "Methodology",
+      "EVALUATION": "Evaluation",
+      "GRADE": "Grades",
+      "SALARY": "Salary",
+      "AUDIT": "Audit",
+      "USER": "Users"
+    },
+    "permission": {
+      "PROJECT_READ": "View projects",
+      "PROJECT_CREATE": "Create projects",
+      "PROJECT_EDIT": "Edit projects",
+      "POSITION_READ": "View positions",
+      "POSITION_CREATE": "Create positions",
+      "POSITION_EDIT": "Edit positions",
+      "METHODOLOGY_READ": "View methodology",
+      "METHODOLOGY_EDIT": "Edit methodology",
+      "METHODOLOGY_APPROVE": "Approve methodology",
+      "EVALUATION_READ": "View evaluation",
+      "EVALUATION_EDIT": "Edit evaluation",
+      "EVALUATION_APPROVE": "Approve evaluation",
+      "GRADE_READ": "View grades",
+      "GRADE_EDIT": "Edit grades",
+      "SALARY_VIEW": "View salaries",
+      "SALARY_EXPORT": "Export salaries",
+      "AUDIT_READ": "View audit log",
+      "AUDIT_READ_CROSS_TENANT": "Cross-tenant audit",
+      "USER_LIST": "List users",
+      "USER_INVITE": "Invite users",
+      "USER_ROLE_ASSIGN": "Assign roles"
     }
   }
 }

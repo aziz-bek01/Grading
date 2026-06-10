@@ -61,7 +61,128 @@ export const roleKeys = {
   all: ['roles'] as const,
   /** Assignable-roles list. `locale` is in the key so labels refresh on switch. */
   assignable: (locale: string) => ['roles', 'assignable', locale] as const,
+  /**
+   * Full role catalog for the Roles admin list (slice E2). Separate from
+   * {@link roleKeys.assignable} because the admin list is NOT trimmed to
+   * `assignableOnly` — it shows every role the caller may administer.
+   */
+  catalog: (locale: string) => ['roles', 'catalog', locale] as const,
+  /** Per-role permission matrix (slice E2). Keyed by role CODE only. */
+  permissions: (roleCode: string) => ['roles', roleCode, 'permissions'] as const,
 };
+
+/**
+ * Fetch the FULL role catalog for the Roles admin area (slice E2). Unlike
+ * {@link fetchAssignableRoles}, this does NOT pass `assignableOnly`, so every
+ * role the caller may administer is returned (system + custom). The returned
+ * rows are localized exactly like the picker rows.
+ */
+export async function fetchRoleCatalog(locale: string): Promise<AssignableRole[]> {
+  const res = await httpClient.get<RoleCatalogDto[]>('/roles');
+  const rows = Array.isArray(res.data) ? res.data : [];
+  return rows.map((r) => toAssignableRole(r, locale));
+}
+
+// ---------------------------------------------------------------------------
+// Role permission matrix (slice E2)
+// ---------------------------------------------------------------------------
+
+/**
+ * One row of the permission catalog as it applies to a role (snake_case wire
+ * shape; mirrors the backend `RolePermissionItem`).
+ *   - `granted`    — currently on this role.
+ *   - `restricted` — cannot be changed by anyone via this endpoint (locked):
+ *     the row renders disabled with a lock hint, and a restricted code is
+ *     NEVER part of the PUT replace-set.
+ */
+export interface RolePermissionItemDto {
+  code: string;
+  resource: string;
+  action: string;
+  granted: boolean;
+  restricted: boolean;
+}
+
+/** Wire shape of `GET /roles/{roleCode}/permissions` (snake_case). */
+export interface RolePermissionsDto {
+  role_code: string;
+  scope: RoleScope;
+  is_system: boolean;
+  /** When false the whole matrix is read-only (system role / caller cannot edit). */
+  editable_by_caller: boolean;
+  items: RolePermissionItemDto[];
+}
+
+/** Domain (camelCase) projection of one permission row. */
+export interface RolePermissionItem {
+  code: string;
+  resource: string;
+  action: string;
+  granted: boolean;
+  restricted: boolean;
+}
+
+/** Domain projection of the matrix payload. */
+export interface RolePermissions {
+  roleCode: string;
+  scope: RoleScope;
+  isSystem: boolean;
+  editableByCaller: boolean;
+  items: RolePermissionItem[];
+}
+
+/** Wire → domain adapter for the permission matrix. */
+export function toRolePermissions(dto: RolePermissionsDto): RolePermissions {
+  return {
+    roleCode: dto.role_code,
+    scope: dto.scope,
+    isSystem: Boolean(dto.is_system),
+    editableByCaller: Boolean(dto.editable_by_caller),
+    items: (Array.isArray(dto.items) ? dto.items : []).map((i) => ({
+      code: i.code,
+      resource: i.resource,
+      action: i.action,
+      granted: Boolean(i.granted),
+      restricted: Boolean(i.restricted),
+    })),
+  };
+}
+
+/**
+ * Fetch the permission matrix for one role.
+ *
+ * `items` is the FULL permission catalog with per-row `granted`/`restricted`
+ * flags — the UI renders the union, grouped by `resource` (module). No
+ * `tenant_id` is sent (auth-context comes from the JWT), consistent with the
+ * rest of the users-access module.
+ */
+export async function fetchRolePermissions(roleCode: string): Promise<RolePermissions> {
+  const res = await httpClient.get<RolePermissionsDto>(
+    `/roles/${encodeURIComponent(roleCode)}/permissions`,
+  );
+  return toRolePermissions(res.data);
+}
+
+/**
+ * Replace the granted permission set of a role.
+ *
+ * Sends the FULL desired set of granted, NON-restricted codes (replace-set
+ * semantics, like the access-scope PUTs). The caller must exclude restricted
+ * codes — the backend re-enforces and returns 422 `PERMISSION_RESTRICTED` if a
+ * restricted code is present, or 422 `PERMISSION_NOT_HELD_BY_CALLER` if the
+ * caller tries to grant a permission they do not themselves hold, or 403 if the
+ * role is a system role the caller may not edit.
+ */
+export async function setRolePermissions(
+  roleCode: string,
+  permissionCodes: string[],
+): Promise<RolePermissions> {
+  const res = await httpClient.put<RolePermissionsDto>(
+    `/roles/${encodeURIComponent(roleCode)}/permissions`,
+    { permission_codes: permissionCodes },
+  );
+  return toRolePermissions(res.data);
+}
 
 /**
  * Wire → domain adapter. Resolves the localized name and normalizes the

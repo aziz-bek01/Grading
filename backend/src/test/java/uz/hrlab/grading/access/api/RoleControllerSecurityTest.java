@@ -13,17 +13,23 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import uz.hrlab.grading.access.application.ListRolesQuery;
+import uz.hrlab.grading.access.application.RolePermissionAdminUseCase;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.GlobalExceptionHandler;
 import uz.hrlab.grading.common.api.WebMvcSecurityTestConfig;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -56,6 +62,7 @@ class RoleControllerSecurityTest {
     @Autowired MockMvc mvc;
 
     @MockBean ListRolesQuery listRolesQuery;
+    @MockBean RolePermissionAdminUseCase rolePermissionAdmin;
     @MockBean AuditService auditService;
 
     // ------------------------------------------------------------------ 1)
@@ -123,5 +130,66 @@ class RoleControllerSecurityTest {
                         .with(jwt().authorities(new SimpleGrantedAuthority("USER_ACCESS_MANAGE"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    // ============================================================ E2 endpoints
+
+    private static final UUID ROLE_ID = UUID.randomUUID();
+
+    // GET /{roleId}/permissions — gate is USER_ACCESS_MANAGE only.
+    @Test
+    void getPermissionsRequiresUserAccessManage_403WithoutIt() throws Exception {
+        mvc.perform(get("/api/v1/roles/" + ROLE_ID + "/permissions")
+                        // USER_LIST is enough for the catalog GET but NOT for the matrix.
+                        .with(jwt().authorities(new SimpleGrantedAuthority("USER_LIST"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getPermissionsWithUserAccessManageReturns200() throws Exception {
+        given(rolePermissionAdmin.getRolePermissions(any())).willReturn(
+                new RolePermissionsResponse("CLIENT_HR_DIRECTOR", "TENANT", true, true,
+                        List.of(new RolePermissionItem("PROJECT_READ", "PROJECT", "READ", true, false),
+                                new RolePermissionItem("SALARY_VIEW", "SALARY", "VIEW", false, true))));
+
+        mvc.perform(get("/api/v1/roles/" + ROLE_ID + "/permissions")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("USER_ACCESS_MANAGE"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role_code").value("CLIENT_HR_DIRECTOR"))
+                .andExpect(jsonPath("$.scope").value("TENANT"))
+                .andExpect(jsonPath("$.is_system").value(true))
+                .andExpect(jsonPath("$.editable_by_caller").value(true))
+                .andExpect(jsonPath("$.items[0].code").value("PROJECT_READ"))
+                .andExpect(jsonPath("$.items[0].granted").value(true))
+                .andExpect(jsonPath("$.items[0].restricted").value(false))
+                .andExpect(jsonPath("$.items[1].code").value("SALARY_VIEW"))
+                .andExpect(jsonPath("$.items[1].restricted").value(true));
+    }
+
+    // PUT /{roleId}/permissions — gate is USER_ACCESS_MANAGE only.
+    @Test
+    void putPermissionsRequiresUserAccessManage_403WithoutIt() throws Exception {
+        mvc.perform(put("/api/v1/roles/" + ROLE_ID + "/permissions")
+                        .with(csrf())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("USER_LIST")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"permission_codes\":[\"PROJECT_READ\"]}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void putPermissionsWithUserAccessManageAcceptsSnakeCaseBody() throws Exception {
+        given(rolePermissionAdmin.replaceRolePermissions(any(), any())).willReturn(
+                new RolePermissionsResponse("CLIENT_HR_DIRECTOR", "TENANT", true, true,
+                        List.of(new RolePermissionItem("PROJECT_READ", "PROJECT", "READ", true, false))));
+
+        mvc.perform(put("/api/v1/roles/" + ROLE_ID + "/permissions")
+                        .with(csrf())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("USER_ACCESS_MANAGE")))
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"permission_codes\":[\"PROJECT_READ\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role_code").value("CLIENT_HR_DIRECTOR"))
+                .andExpect(jsonPath("$.items[0].code").value("PROJECT_READ"));
     }
 }

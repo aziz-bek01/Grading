@@ -36,4 +36,18 @@ public interface RolePermissionRepository extends JpaRepository<RolePermissionJp
             where rp.id.roleId in :roleIds
             """)
     List<String> findPermissionCodesByRoleIds(@Param("roleIds") List<UUID> roleIds);
+
+    /**
+     * All {@code role_permissions} rows for one role (slice E2 admin API).
+     *
+     * <p>Used by {@code GET /api/v1/roles/{roleId}/permissions} to compute the
+     * {@code granted} flag against the full permission catalog, and by the
+     * replace-set mutation to diff current vs desired. No tenant predicate —
+     * {@code role_permissions} is a global control-plane table (same rationale as
+     * {@link #findPermissionCodesByRoleIds(List)}).
+     */
+    List<RolePermissionJpaEntity> findAllByIdRoleId(UUID roleId);
+
+    /** True when {@code roleId} already grants {@code permissionId} (idempotency check). */
+    boolean existsByIdRoleIdAndIdPermissionId(UUID roleId, UUID permissionId);
 }

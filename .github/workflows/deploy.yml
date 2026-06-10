@@ -236,8 +236,8 @@ jobs:
             $COMPOSE up -d grading-api grading-frontend
 
             docker logout ghcr.io >/dev/null 2>&1 || true
-            echo '== Pruning dangling images (keep tagged ones for rollback) =='
-            docker image prune -f >/dev/null 2>&1 || true
+            echo '== Pruning unused images (incl. old sha tags) to keep disk bounded =='
+            docker image prune -af --filter "until=24h" >/dev/null 2>&1 || true
             echo "Deployed IMAGE_TAG=${IMAGE_TAG}"
 
       - name: Post-deploy smoke test

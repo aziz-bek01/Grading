@@ -192,7 +192,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
           envs: IMAGE_TAG,GHCR_TOKEN,GHCR_ACTOR
-          command_timeout: 15m
+          command_timeout: 30m
           script: |
             set -euo pipefail
             cd "${{ env.REMOTE_DIR }}"

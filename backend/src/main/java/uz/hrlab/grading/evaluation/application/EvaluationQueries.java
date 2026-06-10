@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.DepartmentScopeFilter;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
@@ -57,6 +58,7 @@ public class EvaluationQueries {
     private final PositionRepository positions;
     private final DepartmentRepository departments;
     private final DepartmentScopeFilter departmentScopeFilter;
+    private final AbacGate abacGate;
 
     public EvaluationQueries(EvaluationRepository evaluations,
                              EvaluationScoreRepository scores,
@@ -64,7 +66,8 @@ public class EvaluationQueries {
                              FactorRepository factors,
                              PositionRepository positions,
                              DepartmentRepository departments,
-                             DepartmentScopeFilter departmentScopeFilter) {
+                             DepartmentScopeFilter departmentScopeFilter,
+                             AbacGate abacGate) {
         this.evaluations = evaluations;
         this.scores = scores;
         this.calibrationEvents = calibrationEvents;
@@ -72,6 +75,7 @@ public class EvaluationQueries {
         this.positions = positions;
         this.departments = departments;
         this.departmentScopeFilter = departmentScopeFilter;
+        this.abacGate = abacGate;
     }
 
     @Transactional(readOnly = true)
@@ -80,8 +84,13 @@ public class EvaluationQueries {
         if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
             throw new PermissionDeniedException();
         }
-        return evaluations.findByIdAndTenantId(id, ctx.tenantId())
+        EvaluationJpaEntity evaluation = evaluations.findByIdAndTenantId(id, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
+        // C-2 — single-id reads must respect department scope (intra-tenant IDOR
+        // fix), mirroring FindPositionQuery.findById. An evaluation inherits its
+        // department from its Position; out-of-subtree scoped callers → 404.
+        enforceReadScope(ctx, evaluation);
+        return evaluation;
     }
 
     @Transactional(readOnly = true)
@@ -130,8 +139,10 @@ public class EvaluationQueries {
             throw new PermissionDeniedException();
         }
         // Tenant guard — ensure evaluation belongs to the active tenant first.
-        evaluations.findByIdAndTenantId(evaluationId, ctx.tenantId())
+        EvaluationJpaEntity evaluation = evaluations.findByIdAndTenantId(evaluationId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
+        // C-2 — department-scope read gate (intra-tenant IDOR fix).
+        enforceReadScope(ctx, evaluation);
         return scores.findAllByTenantIdAndEvaluationId(ctx.tenantId(), evaluationId);
     }
 
@@ -258,9 +269,29 @@ public class EvaluationQueries {
         if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
             throw new PermissionDeniedException();
         }
-        evaluations.findByIdAndTenantId(evaluationId, ctx.tenantId())
+        EvaluationJpaEntity evaluation = evaluations.findByIdAndTenantId(evaluationId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
+        // C-2 — department-scope read gate (intra-tenant IDOR fix).
+        enforceReadScope(ctx, evaluation);
         return calibrationEvents
                 .findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(ctx.tenantId(), evaluationId);
+    }
+
+    /**
+     * C-2 — read-side department scope gate for single-id evaluation reads.
+     * An evaluation has no department of its own; it inherits the department of
+     * its Position. Resolves the position (tenant-scoped) and delegates to the
+     * shared {@link AbacGate#enforceCanReadPosition} — the SAME read path
+     * {@code FindPositionQuery.findById} uses, exercising
+     * {@code ProjectMembershipPolicy} + {@code DepartmentScopePolicy}. A scoped
+     * caller outside the subtree is denied with a 404 (no reveal) and an
+     * {@code ACCESS_DENIED_BY_ABAC} audit row; bypass / in-scope callers pass.
+     */
+    private void enforceReadScope(TenantContext ctx, EvaluationJpaEntity evaluation) {
+        PositionJpaEntity position = positions
+                .findByIdAndTenantId(evaluation.getPositionId(), ctx.tenantId())
+                .orElseThrow(TenantAccessDeniedException::new);
+        abacGate.enforceCanReadPosition(ctx, position.getId(), evaluation.getProjectId(),
+                position.getDepartmentId(), evaluation.getStatus());
     }
 }

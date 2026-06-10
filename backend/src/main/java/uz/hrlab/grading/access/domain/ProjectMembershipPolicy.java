@@ -52,6 +52,15 @@ public class ProjectMembershipPolicy implements ScopePolicy {
                 : PolicyDecision.DENY;
     }
 
+    /**
+     * L-1 NOTE: this bypass set INTENTIONALLY differs from
+     * {@code DepartmentScopePolicy.isTenantWideBypass}. That one ALSO bypasses
+     * {@code HRLAB_CONSULTANT} / {@code HRLAB_ANALYST}, because they see every
+     * department WITHIN the projects they are assigned to. Here, at the PROJECT
+     * boundary, consultant/analyst are project-scoped by design (their per-project
+     * assignment is exactly what this policy enforces) and so must NOT bypass.
+     * Do not align the two sets — they guard different boundaries.
+     */
     private static boolean isTenantWideBypass(TenantContext ctx) {
         return ctx.hasRole(RoleCodes.HRLAB_SUPER_ADMIN)
                 || ctx.hasRole(RoleCodes.HRLAB_PROJECT_MANAGER)

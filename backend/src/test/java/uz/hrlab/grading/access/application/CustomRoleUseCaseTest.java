@@ -74,10 +74,11 @@ class CustomRoleUseCaseTest {
         userRoleRepo = mock(UserRoleRepository.class);
         audit = mock(AuditService.class);
         RolePermissionGuard guard = new RolePermissionGuard(permissionRepo);
+        RoleOwnershipGuard ownershipGuard = new RoleOwnershipGuard();
         UserManagementPolicy policy =
                 new UserManagementPolicy(mock(UserTenantMembershipRepository.class));
         useCase = new CustomRoleUseCase(roleRepo, permissionRepo, rolePermissionRepo,
-                userRoleRepo, guard, policy, audit);
+                userRoleRepo, guard, ownershipGuard, policy, audit);
 
         when(permissionRepo.findByCode("PROJECT_READ")).thenReturn(Optional.of(projectRead));
         when(permissionRepo.findByCode("EVALUATION_READ")).thenReturn(Optional.of(evaluationRead));

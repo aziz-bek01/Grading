@@ -62,6 +62,7 @@ public class CustomRoleUseCase {
     private final RolePermissionRepository rolePermissionRepo;
     private final UserRoleRepository userRoleRepo;
     private final RolePermissionGuard guard;
+    private final RoleOwnershipGuard ownershipGuard;
     private final UserManagementPolicy policy;
     private final AuditService audit;
 
@@ -85,6 +86,7 @@ public class CustomRoleUseCase {
                              RolePermissionRepository rolePermissionRepo,
                              UserRoleRepository userRoleRepo,
                              RolePermissionGuard guard,
+                             RoleOwnershipGuard ownershipGuard,
                              UserManagementPolicy policy,
                              AuditService audit) {
         this.roleRepo = roleRepo;
@@ -92,6 +94,7 @@ public class CustomRoleUseCase {
         this.rolePermissionRepo = rolePermissionRepo;
         this.userRoleRepo = userRoleRepo;
         this.guard = guard;
+        this.ownershipGuard = ownershipGuard;
         this.policy = policy;
         this.audit = audit;
     }
@@ -224,18 +227,24 @@ public class CustomRoleUseCase {
     /**
      * Resolve a CUSTOM role the caller is allowed to mutate. A system role is
      * rejected with 403 (well-known, no probing risk); a missing or cross-tenant
-     * custom role yields 404 via the tenant-scoped finder (no existence reveal).
+     * custom role yields 404 (no existence reveal).
+     *
+     * <p>Tenant-ownership is decided by the SHARED {@link RoleOwnershipGuard} —
+     * the SAME check E2 ({@link RolePermissionAdminUseCase}) uses — so the
+     * ownership rule is defined in exactly one place (no duplication, no drift).
+     * The system-role 403 below is E3-specific (E2 instead lets super-admin edit
+     * system roles) and stays here.
      */
     private RoleJpaEntity requireOwnCustomRole(TenantContext ctx, UUID roleId) {
-        // A system role's tenant_id is NULL, so findByIdAndTenantId never returns
-        // it — but we look it up first (tenant-agnostic) only to give a precise
-        // 403 instead of an opaque 404 when the target is a known system role.
-        RoleJpaEntity any = roleRepo.findById(roleId).orElse(null);
-        if (any != null && any.isSystem()) {
+        // Load tenant-agnostically: a missing id is an opaque 404; a system role
+        // gets a precise 403; a custom role's ownership is decided by the guard.
+        RoleJpaEntity role = roleRepo.findById(roleId)
+                .orElseThrow(TenantAccessDeniedException::new); // → 404, no reveal
+        if (role.isSystem()) {
             throw new PermissionDeniedException("System roles cannot be modified here");
         }
-        return roleRepo.findByIdAndTenantId(roleId, ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new); // → 404, no reveal
+        ownershipGuard.requireCanManage(ctx, role); // cross-tenant custom → 404
+        return role;
     }
 
     /**

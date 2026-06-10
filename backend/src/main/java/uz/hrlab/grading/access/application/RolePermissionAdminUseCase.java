@@ -70,17 +70,20 @@ public class RolePermissionAdminUseCase {
     private final PermissionRepository permissionRepo;
     private final RolePermissionRepository rolePermissionRepo;
     private final RolePermissionGuard guard;
+    private final RoleOwnershipGuard ownershipGuard;
     private final AuditService audit;
 
     public RolePermissionAdminUseCase(RoleRepository roleRepo,
                                       PermissionRepository permissionRepo,
                                       RolePermissionRepository rolePermissionRepo,
                                       RolePermissionGuard guard,
+                                      RoleOwnershipGuard ownershipGuard,
                                       AuditService audit) {
         this.roleRepo = roleRepo;
         this.permissionRepo = permissionRepo;
         this.rolePermissionRepo = rolePermissionRepo;
         this.guard = guard;
+        this.ownershipGuard = ownershipGuard;
         this.audit = audit;
     }
 
@@ -96,6 +99,11 @@ public class RolePermissionAdminUseCase {
     public RolePermissionsResponse getRolePermissions(UUID roleId) {
         TenantContext ctx = TenantContextHolder.requireActive();
         RoleJpaEntity role = requireRole(roleId);
+        // C-1 — tenant-ownership guard (BOLA fix). For a CUSTOM role the caller's
+        // active tenant must own it (super-admin may act cross-tenant); a foreign
+        // custom role → 404 (no existence reveal). System roles pass through here
+        // and remain gated by the super-admin canEdit() check below.
+        ownershipGuard.requireCanManage(ctx, role);
 
         Set<UUID> grantedPermissionIds = rolePermissionRepo.findAllByIdRoleId(roleId).stream()
                 .map(rp -> rp.getId().getPermissionId())
@@ -132,6 +140,12 @@ public class RolePermissionAdminUseCase {
 
         // (a) role must exist.
         RoleJpaEntity role = requireRole(roleId);
+
+        // (a2) C-1 — tenant-ownership guard (BOLA fix). A CUSTOM role must belong
+        // to the caller's active tenant (super-admin may act cross-tenant); a
+        // foreign custom role → 404 (no reveal), no save, no audit. System roles
+        // pass through here and are gated by (b) below.
+        ownershipGuard.requireCanManage(ctx, role);
 
         // (b) system-role edit gate.
         if (isSystemRole(role) && !canEdit(ctx, role)) {

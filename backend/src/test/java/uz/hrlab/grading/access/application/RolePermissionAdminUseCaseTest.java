@@ -79,8 +79,9 @@ class RolePermissionAdminUseCaseTest {
         // Real shared guard over the mocked catalog — exercises the restricted +
         // caller-held no-escalation rules through the same code path E3 reuses.
         RolePermissionGuard guard = new RolePermissionGuard(permissionRepo);
+        RoleOwnershipGuard ownershipGuard = new RoleOwnershipGuard();
         useCase = new RolePermissionAdminUseCase(roleRepo, permissionRepo, rolePermissionRepo,
-                guard, audit);
+                guard, ownershipGuard, audit);
 
         when(roleRepo.findById(roleId)).thenReturn(Optional.of(role));
         when(permissionRepo.findByCode("PROJECT_READ")).thenReturn(Optional.of(projectRead));
@@ -253,5 +254,85 @@ class RolePermissionAdminUseCaseTest {
         RolePermissionsResponse out = useCase.getRolePermissions(roleId);
 
         assertThat(out.editableByCaller()).isFalse();
+    }
+
+    // ===================================================================
+    //  C-1 — tenant-ownership guard on CUSTOM roles (BOLA fix)
+    // ===================================================================
+
+    /** A custom role owned by ANOTHER tenant; caller is a tenant admin (not super-admin). */
+    private RoleJpaEntity foreignCustomRole(UUID id) {
+        return RoleJpaEntity.newCustom(id, otherTenantId, "REVIEWER", "Reviewer", null);
+    }
+
+    private RoleJpaEntity ownCustomRole(UUID id) {
+        return RoleJpaEntity.newCustom(id, tenantId, "REVIEWER", "Reviewer", null);
+    }
+
+    private void setTenantAdminCaller(Set<String> permissions) {
+        // Tenant admin: holds USER_ACCESS_MANAGE but NOT USER_ROLE_ASSIGN_HRLAB.
+        TenantContextHolder.set(new TenantContext(
+                actorId, tenantId, Set.of(), Set.of(), permissions, Set.of(), false, "ru-RU"));
+    }
+
+    private final UUID otherTenantId = UUID.randomUUID();
+    private final UUID customRoleId = UUID.randomUUID();
+
+    @Test
+    void getCrossTenantCustomRoleIsNotFound() {
+        setTenantAdminCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
+        when(roleRepo.findById(customRoleId)).thenReturn(Optional.of(foreignCustomRole(customRoleId)));
+
+        assertThatThrownBy(() -> useCase.getRolePermissions(customRoleId))
+                .isInstanceOf(TenantAccessDeniedException.class); // → 404, no reveal
+
+        // No disclosure: the grant set is never queried.
+        verify(rolePermissionRepo, never()).findAllByIdRoleId(any());
+        verify(audit, never()).record(any());
+    }
+
+    @Test
+    void replaceCrossTenantCustomRoleIsNotFoundNoSaveNoAudit() {
+        setTenantAdminCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
+        when(roleRepo.findById(customRoleId)).thenReturn(Optional.of(foreignCustomRole(customRoleId)));
+
+        assertThatThrownBy(() ->
+                useCase.replaceRolePermissions(customRoleId, List.of("PROJECT_READ")))
+                .isInstanceOf(TenantAccessDeniedException.class); // → 404, no reveal
+
+        verify(rolePermissionRepo, never()).save(any());
+        verify(rolePermissionRepo, never()).delete(any());
+        verify(audit, never()).record(any());
+    }
+
+    @Test
+    void replaceOwnCustomRoleIsEditableByTenantAdmin() {
+        setTenantAdminCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
+        when(roleRepo.findById(customRoleId)).thenReturn(Optional.of(ownCustomRole(customRoleId)));
+        when(rolePermissionRepo.findAllByIdRoleId(customRoleId)).thenReturn(List.of());
+        when(permissionRepo.findAll()).thenReturn(List.of(projectRead, projectEdit, orgRead));
+
+        useCase.replaceRolePermissions(customRoleId, List.of("PROJECT_READ"));
+
+        ArgumentCaptor<RolePermissionJpaEntity> saved =
+                ArgumentCaptor.forClass(RolePermissionJpaEntity.class);
+        verify(rolePermissionRepo, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getValue().getId().getPermissionId()).isEqualTo(projectRead.getId());
+        ArgumentCaptor<AuditEvent> events = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit, atLeastOnce()).record(events.capture());
+        assertThat(events.getAllValues().stream().map(AuditEvent::action).toList())
+                .contains(AuditAction.ROLE_PERMISSION_GRANTED);
+    }
+
+    @Test
+    void superAdminMayEditCrossTenantCustomRole() {
+        // Default caller (setUp) is HRLAB_SUPER_ADMIN — holds USER_ROLE_ASSIGN_HRLAB.
+        when(roleRepo.findById(customRoleId)).thenReturn(Optional.of(foreignCustomRole(customRoleId)));
+        when(rolePermissionRepo.findAllByIdRoleId(customRoleId)).thenReturn(List.of());
+        when(permissionRepo.findAll()).thenReturn(List.of(projectRead, projectEdit, orgRead));
+
+        useCase.replaceRolePermissions(customRoleId, List.of("PROJECT_READ"));
+
+        verify(rolePermissionRepo, atLeastOnce()).save(any());
     }
 }

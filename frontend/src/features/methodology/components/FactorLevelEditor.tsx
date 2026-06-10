@@ -128,7 +128,13 @@ export function FactorLevelEditor({
               size="sm"
               leadingIcon={<Plus size={14} />}
               data-testid="level-add"
-              disabled={!draft.code.trim() || !(draft.label['ru-RU']?.trim())}
+              // Enable when a code + a label in ANY supported locale is present.
+              // Hard-requiring ru-RU trapped users working in a uz/en tab (they
+              // filled the label in their own language, ru-RU stayed empty, the
+              // button stayed disabled → click did nothing → the draft cleared
+              // on close: "appears then disappears"). The backend accepts any
+              // supported-locale key (no ru-RU-required), so this is safe.
+              disabled={!draft.code.trim() || !Object.values(draft.label).some((v) => v?.trim())}
               onClick={() => {
                 onAdd?.({
                   code: draft.code.trim(),

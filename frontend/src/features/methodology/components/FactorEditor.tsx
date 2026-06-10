@@ -70,8 +70,13 @@ function FactorEditorBody({
       readOnly={readOnly}
       onSubmit={() => {
         if (!code.trim()) return setError(t('factor.validation.code_required'));
-        const ru = (name['ru-RU'] ?? '').trim();
-        if (!ru) return setError(t('factor.validation.name_primary_required'));
+        // Accept a name in ANY supported locale (not hard-required ru-RU): a
+        // user working in the uz/en tab must not be blocked. The backend
+        // validates only that the locale KEYS are supported, not that ru-RU is
+        // present.
+        if (!Object.values(name).some((v) => v?.trim())) {
+          return setError(t('factor.validation.name_primary_required'));
+        }
         const w = Number.parseFloat(weight);
         const m = Number.parseFloat(maxPoints);
         if (Number.isNaN(w) || w < 0) return setError(t('factor.validation.weight_invalid'));

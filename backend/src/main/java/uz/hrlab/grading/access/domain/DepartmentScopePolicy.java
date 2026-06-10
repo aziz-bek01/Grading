@@ -10,20 +10,32 @@ import uz.hrlab.grading.tenancy.application.TenantContext;
 import java.util.UUID;
 
 /**
- * F-06 ABAC backlog: Department-scope policy for the
- * {@code DEPARTMENT_MANAGER} role.
+ * F-06 ABAC backlog (extended by E4-S2/S3): Department-scope policy for the
+ * two department-scoped roles — {@code DEPARTMENT_MANAGER} (the "department
+ * director") and {@code EVALUATION_COMMITTEE_MEMBER} (the "evaluation
+ * expert").
  *
  * <p>Logic:
  * <ul>
  *   <li>HRLab roles (Super Admin / PM / Consultant / Analyst) and Client HR
  *       Director / Client Company Admin bypass — full visibility within their
- *       tenant.</li>
- *   <li>For Department Manager: target's {@code departmentId} must belong to
- *       the user's {@code TenantContext.departmentScope} set, else
- *       {@code DENY}.</li>
+ *       tenant ({@link #isTenantWideBypass(TenantContext)}).</li>
+ *   <li>For a department-scoped role: target's {@code departmentId} must belong
+ *       to the user's {@code TenantContext.departmentScope} (subtree-closed)
+ *       set, else {@code DENY}. An EMPTY scope ⇒ DENY (fail-closed: a
+ *       department-scoped user who has been assigned no department can act on
+ *       nothing).</li>
  *   <li>If the request has no {@code departmentId} (entity is not
  *       department-scoped), the policy is {@code NOT_APPLICABLE}.</li>
  * </ul>
+ *
+ * <p>SECURITY (E4-S2/S3): the role classification below is the SINGLE SOURCE OF
+ * TRUTH for "this caller's reads and writes are confined to their assigned
+ * department subtree". The list-query filter ({@code FindPositionQuery} /
+ * {@code EvaluationQueries}) and the evaluation write gate must consult
+ * {@link #isDepartmentScoped(TenantContext)} / {@link #isTenantWideBypass(TenantContext)}
+ * here rather than re-listing role codes — keeping the bypass and the scoped
+ * set defined in exactly one place.
  */
 @Component
 public class DepartmentScopePolicy implements ScopePolicy {
@@ -37,21 +49,37 @@ public class DepartmentScopePolicy implements ScopePolicy {
         if (req.departmentId() == null) {
             return PolicyDecision.NOT_APPLICABLE;
         }
-        if (isBypass(ctx)) {
+        if (isTenantWideBypass(ctx)) {
             return PolicyDecision.PERMIT;
         }
-        if (!ctx.hasRole(RoleCodes.DEPARTMENT_MANAGER)) {
+        if (!isDepartmentScoped(ctx)) {
             return PolicyDecision.NOT_APPLICABLE;
         }
         UUID departmentId = req.departmentId();
+        // Fail-closed: a department-scoped caller with an empty (or null) scope
+        // can act on nothing — every department is outside their assignment.
         if (ctx.departmentScope() == null || !ctx.departmentScope().contains(departmentId)) {
             return PolicyDecision.DENY;
         }
         return PolicyDecision.PERMIT;
     }
 
-    private boolean isBypass(TenantContext ctx) {
-        return isTenantWideBypass(ctx);
+    /**
+     * Single source of truth for "this caller is CONSTRAINED to their assigned
+     * department subtree" — the two roles that E4 confines: the department
+     * director and the evaluation expert. A {@code true} result means the
+     * caller's list reads must be filtered to {@code ctx.departmentScope()} and
+     * their writes gated by the department check.
+     *
+     * <p>A bypass caller is never department-scoped; this method returns
+     * {@code false} for them, so call sites should test bypass first (or rely
+     * on the gate, which permits bypass before reaching the scoped branch).
+     */
+    public static boolean isDepartmentScoped(TenantContext ctx) {
+        return ctx != null
+                && !isTenantWideBypass(ctx)
+                && (ctx.hasRole(RoleCodes.DEPARTMENT_MANAGER)
+                || ctx.hasRole(RoleCodes.EVALUATION_COMMITTEE_MEMBER));
     }
 
     /**

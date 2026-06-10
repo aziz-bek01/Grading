@@ -198,6 +198,17 @@ public final class AuditAction {
      */
     public static final String TENANT_MEMBERSHIP_MISMATCH
             = "TENANT_MEMBERSHIP_MISMATCH";
+    /**
+     * E4-S3: a department-scoped caller (Department Manager / Evaluation
+     * Committee Member) tried to READ or WRITE a row whose department is
+     * outside their assigned subtree — denied by {@code DepartmentScopePolicy}
+     * via the {@link uz.hrlab.grading.access.application.AbacGate}. The request
+     * is rejected with a 404 (no existence reveal). This is the literal value
+     * the gate has emitted since F-06; the constant is added so call sites and
+     * SIEM dashboards reference it symbolically rather than by string literal.
+     */
+    public static final String ACCESS_DENIED_BY_ABAC
+            = "ACCESS_DENIED_BY_ABAC";
 
     // Workflow (MVP 2 Phase 1)
     public static final String WORKFLOW_STAGE_ADVANCED = "WORKFLOW_STAGE_ADVANCED";

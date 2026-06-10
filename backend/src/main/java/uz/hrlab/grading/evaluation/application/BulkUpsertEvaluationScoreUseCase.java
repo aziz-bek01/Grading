@@ -26,6 +26,14 @@ import java.util.UUID;
  * security checks (ABAC, immutability policy, tenant scoping, audit per row)
  * remain authoritative — no shortcut path.
  *
+ * <p>E4-S3 — because every row flows through {@link UpsertEvaluationScoreUseCase},
+ * the department-subtree write gate applies to each evaluation in the batch
+ * automatically. For a department-scoped caller, evaluations whose position is
+ * OUTSIDE their subtree are denied per-row: the inner
+ * {@code TenantAccessDeniedException} is caught and recorded as a
+ * {@code NOT_FOUND_OR_CROSS_TENANT} failure (no existence reveal), while
+ * in-subtree rows still succeed.
+ *
  * <p>Failures are <b>collected, not propagated</b>: one bad evaluation must
  * not roll back successful sibling updates. Per-row exceptions are recorded
  * with a stable {@code errorCode} and a sanitized message; the operation

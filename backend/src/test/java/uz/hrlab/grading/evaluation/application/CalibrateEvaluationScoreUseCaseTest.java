@@ -26,6 +26,8 @@ import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
 import uz.hrlab.grading.methodology.domain.Factor;
+import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
+import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -81,6 +83,7 @@ class CalibrateEvaluationScoreUseCaseTest {
     @Mock EvaluationAuditSnapshot snapshot;
     @Mock JdbcTemplate jdbcTemplate;
     @Mock EvaluationGradeAssignmentService gradeAssignment;
+    @Mock PositionRepository positions;
 
     EvaluationImmutabilityPolicy immutability = new EvaluationImmutabilityPolicy();
 
@@ -92,18 +95,23 @@ class CalibrateEvaluationScoreUseCaseTest {
     UUID evaluationId;
     UUID factorId;
     UUID scoreRowId;
+    UUID positionId;
+    UUID departmentId;
 
     @BeforeEach
     void setUp() {
         useCase = new CalibrateEvaluationScoreUseCase(
                 evaluations, scores, calibrationEvents, loader, recompute,
-                immutability, abacGate, audit, snapshot, jdbcTemplate, gradeAssignment);
+                immutability, abacGate, audit, snapshot, jdbcTemplate, gradeAssignment,
+                positions);
         tenantId = UUID.randomUUID();
         userId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         evaluationId = UUID.randomUUID();
         factorId = UUID.randomUUID();
         scoreRowId = UUID.randomUUID();
+        positionId = UUID.randomUUID();
+        departmentId = UUID.randomUUID();
 
         TenantContextHolder.set(new TenantContext(
                 userId, tenantId, Set.of(projectId),
@@ -122,7 +130,7 @@ class CalibrateEvaluationScoreUseCaseTest {
         when(loader.load(evaluationId, tenantId)).thenReturn(stubContext(evaluation));
         when(scores.findByTenantIdAndEvaluationIdAndFactorId(tenantId, evaluationId, factorId))
                 .thenReturn(Optional.of(row));
-        doNothing().when(abacGate).enforceCanWriteInProject(any(), eq(projectId));
+        doNothing().when(abacGate).enforceCanWriteInDepartment(any(), eq(projectId), eq(departmentId));
 
         EvaluationCalibrationEvent result = useCase.calibrate(new CalibrateEvaluationScoreCommand(
                 evaluationId, factorId, new BigDecimal("70"),
@@ -171,7 +179,7 @@ class CalibrateEvaluationScoreUseCaseTest {
         when(loader.load(evaluationId, tenantId)).thenReturn(stubContext(evaluation));
         when(scores.findByTenantIdAndEvaluationIdAndFactorId(tenantId, evaluationId, factorId))
                 .thenReturn(Optional.of(row));
-        doNothing().when(abacGate).enforceCanWriteInProject(any(), eq(projectId));
+        doNothing().when(abacGate).enforceCanWriteInDepartment(any(), eq(projectId), eq(departmentId));
 
         useCase.calibrate(new CalibrateEvaluationScoreCommand(
                 evaluationId, factorId, new BigDecimal("55"),
@@ -183,7 +191,7 @@ class CalibrateEvaluationScoreUseCaseTest {
     void calibrateOnDraftEvaluationIsRejectedByImmutabilityPolicy() {
         EvaluationJpaEntity evaluation = stubEvaluation(EvaluationStatus.DRAFT);
         when(loader.load(evaluationId, tenantId)).thenReturn(stubContext(evaluation));
-        doNothing().when(abacGate).enforceCanWriteInProject(any(), eq(projectId));
+        doNothing().when(abacGate).enforceCanWriteInDepartment(any(), eq(projectId), eq(departmentId));
 
         assertThatThrownBy(() -> useCase.calibrate(new CalibrateEvaluationScoreCommand(
                 evaluationId, factorId, new BigDecimal("99"),
@@ -198,7 +206,7 @@ class CalibrateEvaluationScoreUseCaseTest {
     void calibrateOnLockedEvaluationIsRejected() {
         EvaluationJpaEntity evaluation = stubEvaluation(EvaluationStatus.LOCKED);
         when(loader.load(evaluationId, tenantId)).thenReturn(stubContext(evaluation));
-        doNothing().when(abacGate).enforceCanWriteInProject(any(), eq(projectId));
+        doNothing().when(abacGate).enforceCanWriteInDepartment(any(), eq(projectId), eq(departmentId));
 
         assertThatThrownBy(() -> useCase.calibrate(new CalibrateEvaluationScoreCommand(
                 evaluationId, factorId, new BigDecimal("99"),
@@ -237,7 +245,7 @@ class CalibrateEvaluationScoreUseCaseTest {
         when(loader.load(evaluationId, tenantId)).thenReturn(stubContext(evaluation));
         when(scores.findByTenantIdAndEvaluationIdAndFactorId(tenantId, evaluationId, factorId))
                 .thenReturn(Optional.empty());
-        doNothing().when(abacGate).enforceCanWriteInProject(any(), eq(projectId));
+        doNothing().when(abacGate).enforceCanWriteInDepartment(any(), eq(projectId), eq(departmentId));
 
         assertThatThrownBy(() -> useCase.calibrate(new CalibrateEvaluationScoreCommand(
                 evaluationId, factorId, new BigDecimal("70"),
@@ -270,7 +278,7 @@ class CalibrateEvaluationScoreUseCaseTest {
         when(loader.load(evaluationId, tenantId)).thenReturn(stubContext(evaluation));
         when(scores.findByTenantIdAndEvaluationIdAndFactorId(tenantId, evaluationId, factorId))
                 .thenReturn(Optional.of(row));
-        doNothing().when(abacGate).enforceCanWriteInProject(any(), eq(projectId));
+        doNothing().when(abacGate).enforceCanWriteInDepartment(any(), eq(projectId), eq(departmentId));
 
         // Call 1: 50 -> 70. original=50 captured.
         useCase.calibrate(new CalibrateEvaluationScoreCommand(
@@ -322,7 +330,16 @@ class CalibrateEvaluationScoreUseCaseTest {
     private EvaluationJpaEntity stubEvaluation(EvaluationStatus status) {
         EvaluationJpaEntity e = new EvaluationJpaEntity(
                 evaluationId, tenantId, projectId,
-                UUID.randomUUID(), UUID.randomUUID(), userId, status);
+                positionId, UUID.randomUUID(), userId, status);
+        // E4-S3: the use case resolves the evaluation's position for the
+        // department write gate. Bypass role (HRLAB_PROJECT_MANAGER) PERMITs,
+        // but the position lookup still runs and must return a row.
+        PositionJpaEntity position = new PositionJpaEntity(
+                positionId, tenantId, projectId, departmentId, "P-001",
+                java.util.Map.of("ru-RU", "Position"), null, null, null, null,
+                uz.hrlab.grading.position.domain.PositionStatus.ACTIVE);
+        when(positions.findByIdAndTenantId(positionId, tenantId))
+                .thenReturn(Optional.of(position));
         return e;
     }
 

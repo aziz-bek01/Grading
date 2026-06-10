@@ -18,6 +18,8 @@ import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.methodology.domain.Factor;
 import uz.hrlab.grading.methodology.domain.FactorLevel;
+import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
+import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -31,6 +33,15 @@ import java.util.UUID;
  * Triggers a recompute of total + status afterwards.
  *
  * <p>Permission: EVALUATION_EDIT. Immutable on APPROVED / LOCKED / ARCHIVED.
+ *
+ * <p>E4-S3 SECURITY — scoring is gated by project membership AND the
+ * department subtree of the evaluation's position. A department-scoped caller
+ * ({@code DEPARTMENT_MANAGER} / {@code EVALUATION_COMMITTEE_MEMBER}) may only
+ * score an evaluation whose position is INSIDE their assigned subtree; a
+ * position outside it is rejected with a 404-equivalent
+ * {@code TenantAccessDeniedException} (no existence reveal) and an
+ * {@code ACCESS_DENIED_BY_ABAC} audit row. Tenant-wide / bypass roles are
+ * unaffected.
  */
 @Service
 public class UpsertEvaluationScoreUseCase {
@@ -43,6 +54,7 @@ public class UpsertEvaluationScoreUseCase {
     private final AbacGate abacGate;
     private final AuditService audit;
     private final EvaluationAuditSnapshot snapshot;
+    private final PositionRepository positions;
 
     public UpsertEvaluationScoreUseCase(EvaluationRepository evaluations,
                                         EvaluationScoreRepository scores,
@@ -51,7 +63,8 @@ public class UpsertEvaluationScoreUseCase {
                                         EvaluationImmutabilityPolicy immutability,
                                         AbacGate abacGate,
                                         AuditService audit,
-                                        EvaluationAuditSnapshot snapshot) {
+                                        EvaluationAuditSnapshot snapshot,
+                                        PositionRepository positions) {
         this.evaluations = evaluations;
         this.scores = scores;
         this.loader = loader;
@@ -60,6 +73,7 @@ public class UpsertEvaluationScoreUseCase {
         this.abacGate = abacGate;
         this.audit = audit;
         this.snapshot = snapshot;
+        this.positions = positions;
     }
 
     @Transactional
@@ -76,7 +90,13 @@ public class UpsertEvaluationScoreUseCase {
         EvaluationContext context = loader.load(cmd.evaluationId(), ctx.tenantId());
         EvaluationJpaEntity evaluation = context.evaluation();
         immutability.enforceCanEdit(evaluation.getStatus());
-        abacGate.enforceCanWriteInProject(ctx, evaluation.getProjectId());
+        // E4-S3 — project membership + department-subtree write gate, resolved
+        // via the evaluation's position. Out-of-subtree scoped callers denied.
+        PositionJpaEntity position = positions
+                .findByIdAndTenantId(evaluation.getPositionId(), ctx.tenantId())
+                .orElseThrow(TenantAccessDeniedException::new);
+        abacGate.enforceCanWriteInDepartment(
+                ctx, evaluation.getProjectId(), position.getDepartmentId());
 
         Factor factor = findFactor(context.factors(), cmd.factorId());
         FactorLevel level = findLevel(context.levelsByFactor().get(factor.id()), cmd.factorLevelId());

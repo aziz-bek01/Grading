@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import uz.hrlab.grading.common.infrastructure.TenantAwareRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
 
+import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,4 +44,34 @@ public interface PositionRepository
                                    @Param("status") PositionStatus status,
                                    @Param("jobFamily") String jobFamily,
                                    Pageable pageable);
+
+    /**
+     * E4-S2 — department-scoped variant of {@link #search}. Same tenant /
+     * project / status / jobFamily predicates, but ALSO confines the result to
+     * positions whose {@code department_id} is in {@code scopeDepartmentIds}.
+     * The predicate {@code p.departmentId IN (:scope)} ALSO drives the JPA
+     * count query, so the total / pagination reflect only visible rows (no
+     * count or existence leak — security-blueprint §11).
+     *
+     * <p>Callers MUST NOT invoke this with an empty {@code scopeDepartmentIds}
+     * collection (JPQL {@code IN ()} is provider-dependent); the query layer
+     * short-circuits an empty department scope to an empty page (fail-closed)
+     * before reaching the DB.
+     */
+    @Query("""
+            SELECT p FROM PositionJpaEntity p
+            WHERE p.tenantId = :tenantId
+              AND p.projectId = :projectId
+              AND p.departmentId IN (:scope)
+              AND (:departmentId IS NULL OR p.departmentId = :departmentId)
+              AND (:status IS NULL OR p.status = :status)
+              AND (:jobFamily IS NULL OR p.jobFamily = :jobFamily)
+            """)
+    Page<PositionJpaEntity> searchInDepartments(@Param("tenantId") UUID tenantId,
+                                                @Param("projectId") UUID projectId,
+                                                @Param("departmentId") UUID departmentId,
+                                                @Param("status") PositionStatus status,
+                                                @Param("jobFamily") String jobFamily,
+                                                @Param("scope") Collection<UUID> scopeDepartmentIds,
+                                                Pageable pageable);
 }

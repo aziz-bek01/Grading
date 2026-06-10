@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uz.hrlab.grading.access.application.DepartmentScopeFilter;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
@@ -29,10 +30,23 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-/** Read-side queries. Permission EVALUATION_READ on every method. */
+/**
+ * Read-side queries. Permission EVALUATION_READ on every method.
+ *
+ * <p>E4-S2 SECURITY NOTE — list reads are department-aware. An evaluation has
+ * no department of its own; it inherits the department of its Position. A
+ * caller in a department-scoped role ({@code DEPARTMENT_MANAGER} / {@code
+ * EVALUATION_COMMITTEE_MEMBER}) only SEES evaluations whose position lives in
+ * their assigned department subtree; other departments are INVISIBLE. A
+ * department-scoped caller with no assignment sees ZERO evaluations
+ * (fail-closed). Tenant-wide / bypass roles are unaffected. Role classification
+ * is owned by {@code DepartmentScopePolicy}; this class delegates to
+ * {@link DepartmentScopeFilter} and never hardcodes role codes.
+ */
 @Service
 public class EvaluationQueries {
 
@@ -42,19 +56,22 @@ public class EvaluationQueries {
     private final FactorRepository factors;
     private final PositionRepository positions;
     private final DepartmentRepository departments;
+    private final DepartmentScopeFilter departmentScopeFilter;
 
     public EvaluationQueries(EvaluationRepository evaluations,
                              EvaluationScoreRepository scores,
                              EvaluationCalibrationEventRepository calibrationEvents,
                              FactorRepository factors,
                              PositionRepository positions,
-                             DepartmentRepository departments) {
+                             DepartmentRepository departments,
+                             DepartmentScopeFilter departmentScopeFilter) {
         this.evaluations = evaluations;
         this.scores = scores;
         this.calibrationEvents = calibrationEvents;
         this.factors = factors;
         this.positions = positions;
         this.departments = departments;
+        this.departmentScopeFilter = departmentScopeFilter;
     }
 
     @Transactional(readOnly = true)
@@ -76,6 +93,20 @@ public class EvaluationQueries {
             throw new PermissionDeniedException();
         }
         UUID tenant = ctx.tenantId();
+
+        // E4-S2 — department-scope filter. Present ⇒ confine evaluations to
+        // positions in the assigned subtree; empty present set ⇒ fail-closed.
+        Optional<Set<UUID>> scope = departmentScopeFilter.allowedDepartmentIds(ctx);
+        if (scope.isPresent()) {
+            if (scope.get().isEmpty()) {
+                return Page.empty(pageable); // scoped but no assignment → no rows
+            }
+            return evaluations.findInDepartments(
+                    tenant, projectId, positionId, evaluatorUserId, status,
+                    scope.get(), pageable);
+        }
+
+        // Unfiltered (bypass / non-scoped) — preserve the existing branch order.
         if (positionId != null) {
             return evaluations.findAllByTenantIdAndPositionId(tenant, positionId, pageable);
         }
@@ -132,8 +163,18 @@ public class EvaluationQueries {
         FactorJpaEntity factor = factors.findByIdAndTenantId(factorId, tenant)
                 .orElseThrow(TenantAccessDeniedException::new);
 
-        Page<EvaluationJpaEntity> page = evaluations.findForFactorGrid(
-                tenant, projectId, status, departmentId, pageable);
+        // E4-S2 — department-scope filter on the K-sheet grid.
+        Optional<Set<UUID>> scope = departmentScopeFilter.allowedDepartmentIds(ctx);
+        Page<EvaluationJpaEntity> page;
+        if (scope.isPresent()) {
+            if (scope.get().isEmpty()) {
+                return Page.<EvaluationByFactorRow>empty(pageable); // scoped but no assignment
+            }
+            page = evaluations.findForFactorGridInDepartments(
+                    tenant, projectId, status, departmentId, scope.get(), pageable);
+        } else {
+            page = evaluations.findForFactorGrid(tenant, projectId, status, departmentId, pageable);
+        }
         if (page.isEmpty()) {
             return page.map(e -> null);
         }

@@ -19,6 +19,8 @@ import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
+import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
+import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -64,6 +66,7 @@ public class CalibrateEvaluationScoreUseCase {
     private final EvaluationAuditSnapshot snapshot;
     private final JdbcTemplate jdbcTemplate;
     private final EvaluationGradeAssignmentService gradeAssignment;
+    private final PositionRepository positions;
 
     public CalibrateEvaluationScoreUseCase(EvaluationRepository evaluations,
                                            EvaluationScoreRepository scores,
@@ -75,7 +78,8 @@ public class CalibrateEvaluationScoreUseCase {
                                            AuditService audit,
                                            EvaluationAuditSnapshot snapshot,
                                            JdbcTemplate jdbcTemplate,
-                                           EvaluationGradeAssignmentService gradeAssignment) {
+                                           EvaluationGradeAssignmentService gradeAssignment,
+                                           PositionRepository positions) {
         this.evaluations = evaluations;
         this.scores = scores;
         this.calibrationEvents = calibrationEvents;
@@ -87,6 +91,7 @@ public class CalibrateEvaluationScoreUseCase {
         this.snapshot = snapshot;
         this.jdbcTemplate = jdbcTemplate;
         this.gradeAssignment = gradeAssignment;
+        this.positions = positions;
     }
 
     @Transactional
@@ -109,7 +114,13 @@ public class CalibrateEvaluationScoreUseCase {
         }
         EvaluationContext context = loader.load(cmd.evaluationId(), ctx.tenantId());
         EvaluationJpaEntity evaluation = context.evaluation();
-        abacGate.enforceCanWriteInProject(ctx, evaluation.getProjectId());
+        // E4-S3 — project membership + department-subtree write gate, resolved
+        // via the evaluation's position. Out-of-subtree scoped callers denied.
+        PositionJpaEntity position = positions
+                .findByIdAndTenantId(evaluation.getPositionId(), ctx.tenantId())
+                .orElseThrow(TenantAccessDeniedException::new);
+        abacGate.enforceCanWriteInDepartment(
+                ctx, evaluation.getProjectId(), position.getDepartmentId());
         immutability.enforceCanCalibrate(evaluation.getStatus());
 
         EvaluationScoreJpaEntity row = scores

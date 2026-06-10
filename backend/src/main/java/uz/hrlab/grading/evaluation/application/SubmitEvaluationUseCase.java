@@ -16,9 +16,12 @@ import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatusTransitionPolicy;
 import uz.hrlab.grading.evaluation.domain.EvaluationTransition;
 import uz.hrlab.grading.evaluation.domain.EvaluationTransitionRejectedException;
+import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
+import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
+import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -30,6 +33,14 @@ import java.util.UUID;
 /**
  * COMPLETE → SUBMITTED. Verifies completeness defensively (no required factor
  * missing) before transitioning.
+ *
+ * <p>E4-S3 SECURITY — submission is gated by project membership AND the
+ * department subtree of the evaluation's position. A department-scoped caller
+ * ({@code DEPARTMENT_MANAGER} / {@code EVALUATION_COMMITTEE_MEMBER}) may only
+ * submit an evaluation whose position is INSIDE their assigned subtree; one
+ * outside it is rejected with a 404-equivalent {@code TenantAccessDeniedException}
+ * (no existence reveal) and an {@code ACCESS_DENIED_BY_ABAC} audit row.
+ * Tenant-wide / bypass roles are unaffected.
  */
 @Service
 public class SubmitEvaluationUseCase {
@@ -42,6 +53,7 @@ public class SubmitEvaluationUseCase {
     private final AuditService audit;
     private final EvaluationAuditSnapshot snapshot;
     private final CreateApprovalRequestUseCase createApprovalRequest;
+    private final PositionRepository positions;
 
     public SubmitEvaluationUseCase(EvaluationRepository evaluations,
                                    EvaluationScoreRepository scores,
@@ -50,7 +62,8 @@ public class SubmitEvaluationUseCase {
                                    AbacGate abacGate,
                                    AuditService audit,
                                    EvaluationAuditSnapshot snapshot,
-                                   CreateApprovalRequestUseCase createApprovalRequest) {
+                                   CreateApprovalRequestUseCase createApprovalRequest,
+                                   PositionRepository positions) {
         this.evaluations = evaluations;
         this.scores = scores;
         this.loader = loader;
@@ -59,6 +72,7 @@ public class SubmitEvaluationUseCase {
         this.audit = audit;
         this.snapshot = snapshot;
         this.createApprovalRequest = createApprovalRequest;
+        this.positions = positions;
     }
 
     @Transactional
@@ -69,7 +83,13 @@ public class SubmitEvaluationUseCase {
         }
         EvaluationContext context = loader.load(evaluationId, ctx.tenantId());
         EvaluationJpaEntity evaluation = context.evaluation();
-        abacGate.enforceCanWriteInProject(ctx, evaluation.getProjectId());
+        // E4-S3 — project membership + department-subtree write gate, resolved
+        // via the evaluation's position. Out-of-subtree scoped callers denied.
+        PositionJpaEntity position = positions
+                .findByIdAndTenantId(evaluation.getPositionId(), ctx.tenantId())
+                .orElseThrow(TenantAccessDeniedException::new);
+        abacGate.enforceCanWriteInDepartment(
+                ctx, evaluation.getProjectId(), position.getDepartmentId());
         transitionPolicy.check(evaluation.getStatus(), EvaluationTransition.SUBMIT);
 
         // Defensive completeness re-check (don't trust client state).

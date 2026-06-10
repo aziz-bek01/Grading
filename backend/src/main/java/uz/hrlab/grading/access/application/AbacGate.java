@@ -3,6 +3,7 @@ package uz.hrlab.grading.access.application;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
@@ -24,7 +25,7 @@ import java.util.UUID;
 @Service
 public class AbacGate {
 
-    private static final String AUDIT_ACTION = "ACCESS_DENIED_BY_ABAC";
+    private static final String AUDIT_ACTION = AuditAction.ACCESS_DENIED_BY_ABAC;
     private static final Logger log = LoggerFactory.getLogger(AbacGate.class);
 
     private final List<ScopePolicy> policies;

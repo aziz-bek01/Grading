@@ -33,7 +33,14 @@ import java.util.UUID;
  *   <li>Position belongs to the tenant.</li>
  *   <li>MethodologyVersion belongs to the tenant and is APPROVED or LOCKED
  *       (cannot evaluate against a DRAFT methodology).</li>
- *   <li>ABAC write-path check on the position's project.</li>
+ *   <li>ABAC write-path check on the position's project AND department
+ *       (E4-S3): a department-scoped caller ({@code DEPARTMENT_MANAGER} /
+ *       {@code EVALUATION_COMMITTEE_MEMBER}) may only create an evaluation for
+ *       a position INSIDE their assigned department subtree. A position outside
+ *       the subtree is rejected with a 404-equivalent
+ *       {@code TenantAccessDeniedException} (no existence reveal) and an
+ *       {@code ACCESS_DENIED_BY_ABAC} audit row. Tenant-wide / bypass roles are
+ *       unaffected.</li>
  *   <li>No active (non-ARCHIVED) evaluation already exists for the same
  *       (position, methodologyVersion) — the partial unique index also
  *       enforces this at the DB level.</li>
@@ -82,7 +89,11 @@ public class CreateEvaluationUseCase {
             throw new ValidationException(
                     "Evaluation can only be created against APPROVED or LOCKED methodology versions");
         }
-        abacGate.enforceCanWriteInProject(ctx, position.getProjectId());
+        // E4-S3 — project membership + department-subtree write gate. Department
+        // is the position's; a department-scoped caller acting on a position
+        // outside their subtree is denied (404, audited ACCESS_DENIED_BY_ABAC).
+        abacGate.enforceCanWriteInDepartment(
+                ctx, position.getProjectId(), position.getDepartmentId());
 
         boolean activeExists = evaluations
                 .existsByTenantIdAndPositionIdAndMethodologyVersionIdAndStatusNot(

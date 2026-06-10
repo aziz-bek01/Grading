@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import uz.hrlab.grading.common.infrastructure.TenantAwareRepository;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -62,5 +63,70 @@ public interface EvaluationRepository
             @Param("projectId") UUID projectId,
             @Param("status") EvaluationStatus status,
             @Param("departmentId") UUID departmentId,
+            Pageable pageable);
+
+    /**
+     * E4-S2 — department-scoped variant of the general {@code list} read.
+     * Evaluations carry no department of their own; they inherit it from their
+     * Position. This finder confines the result to evaluations whose POSITION
+     * lives in a department within {@code scopeDepartmentIds}, via a tenant-
+     * scoped subquery. All other filters ({@code projectId}, {@code positionId},
+     * {@code evaluatorUserId}, {@code status}) are optional (null ⇒ ignored),
+     * mirroring the unfiltered branches in {@code EvaluationQueries.list}.
+     *
+     * <p>The {@code IN (:scope)} predicate ALSO drives the JPA count query, so
+     * total / pagination reflect only visible rows (no count leak). Callers
+     * MUST NOT pass an empty {@code scopeDepartmentIds}; the query layer short-
+     * circuits an empty scope to an empty page (fail-closed) before the DB.
+     */
+    @Query("""
+           SELECT e FROM EvaluationJpaEntity e
+           WHERE e.tenantId = :tenantId
+             AND (:projectId IS NULL OR e.projectId = :projectId)
+             AND (:positionId IS NULL OR e.positionId = :positionId)
+             AND (:evaluatorUserId IS NULL OR e.evaluatorUserId = :evaluatorUserId)
+             AND (:status IS NULL OR e.status = :status)
+             AND e.positionId IN (
+                   SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
+                   WHERE p.tenantId = :tenantId AND p.departmentId IN (:scope)
+             )
+           """)
+    Page<EvaluationJpaEntity> findInDepartments(
+            @Param("tenantId") UUID tenantId,
+            @Param("projectId") UUID projectId,
+            @Param("positionId") UUID positionId,
+            @Param("evaluatorUserId") UUID evaluatorUserId,
+            @Param("status") EvaluationStatus status,
+            @Param("scope") Collection<UUID> scopeDepartmentIds,
+            Pageable pageable);
+
+    /**
+     * E4-S2 — department-scoped variant of {@link #findForFactorGrid}. Adds the
+     * caller's department-subtree confinement on top of the existing project /
+     * status / optional {@code departmentId} filters. The {@code departmentId}
+     * filter and the {@code scope} confinement combine: a scoped caller asking
+     * for a department outside their subtree gets zero rows.
+     *
+     * <p>Same empty-scope contract as {@link #findInDepartments}: callers short-
+     * circuit an empty scope to an empty page before invoking this finder.
+     */
+    @Query("""
+           SELECT e FROM EvaluationJpaEntity e
+           WHERE e.tenantId = :tenantId
+             AND e.projectId = :projectId
+             AND (:status IS NULL OR e.status = :status)
+             AND e.positionId IN (
+                   SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
+                   WHERE p.tenantId = :tenantId
+                     AND p.departmentId IN (:scope)
+                     AND (:departmentId IS NULL OR p.departmentId = :departmentId)
+             )
+           """)
+    Page<EvaluationJpaEntity> findForFactorGridInDepartments(
+            @Param("tenantId") UUID tenantId,
+            @Param("projectId") UUID projectId,
+            @Param("status") EvaluationStatus status,
+            @Param("departmentId") UUID departmentId,
+            @Param("scope") Collection<UUID> scopeDepartmentIds,
             Pageable pageable);
 }

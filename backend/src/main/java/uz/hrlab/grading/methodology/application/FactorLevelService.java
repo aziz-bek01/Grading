@@ -71,8 +71,15 @@ public class FactorLevelService {
             throw new ValidationException("LEVEL_CODE_DUPLICATE",
                     "Level code already exists for this factor");
         }
-        int order = cmd.levelOrder() != null ? cmd.levelOrder()
-                : nextLevelOrder(ctx.tenantId(), factorId);
+        // Server-authoritative ordering. The client-supplied cmd.levelOrder() is
+        // intentionally IGNORED on ADD (advisory only): the frontend sent a
+        // 0-based count of loaded levels, which collided with the 1-indexed
+        // orders of template-created levels and tripped
+        // uq_factor_levels_factor_level_order (23505). Always append last as
+        // max(existing)+1 (starting at 1 for an empty factor) so the new level
+        // is unique against the constraint regardless of any existing
+        // distribution or client value.
+        int order = nextLevelOrder(ctx.tenantId(), factorId);
         UUID id = UUID.randomUUID();
         FactorLevelJpaEntity l = new FactorLevelJpaEntity(
                 id, ctx.tenantId(), factorId, cmd.code(),
@@ -193,9 +200,15 @@ public class FactorLevelService {
                 .build());
     }
 
+    /**
+     * Next collision-free {@code level_order} for a factor: {@code max+1},
+     * starting at 1 for an empty factor (matching the existing 1-indexed
+     * convention used by template-created levels). Using {@code max} rather than
+     * {@code count} guarantees uniqueness even when existing orders have gaps.
+     */
     private int nextLevelOrder(UUID tenantId, UUID factorId) {
-        return levels.findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(tenantId, factorId)
-                .size() + 1;
+        Integer max = levels.findMaxLevelOrderByFactorId(tenantId, factorId);
+        return max == null ? 1 : max + 1;
     }
 
     private TenantContext requireEditPerm() {

@@ -204,10 +204,16 @@ export function useReorderFactors(versionId: string, methodologyId?: string) {
 
 // ---------- Factor level mutations ----------
 
-export function useAddFactorLevel(factorId: string, versionId?: string, methodologyId?: string) {
+export function useAddFactorLevel(versionId?: string, methodologyId?: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: FactorLevelCreatePayload) => addFactorLevel(factorId, payload),
+    // factorId travels with the mutate call (not the hook closure) so a single
+    // hook instance can add a level to ANY factor row — mirrors the
+    // useUpdateFactorLevel pattern. The previous empty-string-closure id
+    // (set from a stale `editorFactor?.id ?? ''`) silently no-op'd level adds
+    // whenever the editor factor wasn't yet synced (bug fix EPIC-A/F2).
+    mutationFn: (vars: { factorId: string; payload: FactorLevelCreatePayload }) =>
+      addFactorLevel(vars.factorId, vars.payload),
     onSuccess: () => invalidateMethodology(qc, undefined, methodologyId, versionId),
   });
 }

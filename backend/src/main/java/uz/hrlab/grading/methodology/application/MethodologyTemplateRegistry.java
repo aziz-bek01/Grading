@@ -43,6 +43,21 @@ public class MethodologyTemplateRegistry {
         return Optional.ofNullable(templates.get(code));
     }
 
+    /**
+     * Read accessor for the built-in template catalog (slice B1 — backs the
+     * read-only {@code GET /api/v1/methodology-templates} picker endpoint).
+     * Returns the registry contents in a stable, human-meaningful order
+     * (CLASSIC_8_FACTOR, EXTENDED_11_CRITERIA, CUSTOM) rather than the unordered
+     * {@code Map.of(...)} iteration order, so the FE picker is deterministic.
+     */
+    public List<MethodologyTemplate> list() {
+        return java.util.stream.Stream
+                .of("CLASSIC_8_FACTOR", "EXTENDED_11_CRITERIA", "CUSTOM")
+                .map(templates::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
     private static MethodologyTemplate classic8() {
         // CLASSIC_8_FACTOR — total 1000 points distributed across 8 factors,
         // each with 5 levels.

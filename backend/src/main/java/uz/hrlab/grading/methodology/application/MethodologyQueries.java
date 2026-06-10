@@ -62,6 +62,24 @@ public class MethodologyQueries {
         return m.toDomain();
     }
 
+    /**
+     * Latest-version-id pointer for the single methodology detail view (slice B4).
+     * The list endpoint already enriches each row with {@code latest_version_id}
+     * (via {@link #versionsByMethodologyIds}); the single-arg detail path
+     * ({@code GET /api/v1/methodologies/{id}}) historically returned null, which
+     * broke the FE create-from-scratch deep-link into the new v1 editor. Returns
+     * the highest version-number row's id, or {@code null} if the methodology has
+     * no versions yet. Tenant-scoped + permission-guarded like every other read.
+     */
+    @Transactional(readOnly = true)
+    public UUID findLatestVersionId(UUID methodologyId) {
+        TenantContext ctx = requireReadPerm();
+        return versions.findFirstByTenantIdAndMethodologyIdOrderByVersionNumberDesc(
+                        ctx.tenantId(), methodologyId)
+                .map(MethodologyVersionJpaEntity::getId)
+                .orElse(null);
+    }
+
     @Transactional(readOnly = true)
     public Page<MethodologyJpaEntity> findByProject(UUID projectId, Pageable pageable) {
         TenantContext ctx = requireReadPerm();

@@ -107,6 +107,23 @@ class MethodologyControllerSecurityTest {
                 .andExpect(status().isOk());
     }
 
+    /**
+     * B4: the single-methodology detail path must carry latest_version_id (the
+     * list path already does) so the FE create-from-scratch flow can deep-link
+     * into the freshly-seeded v1 editor.
+     */
+    @Test
+    void getByIdReturnsLatestVersionId() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        given(queries.findMethodologyById(id)).willReturn(sample(id));
+        given(queries.findLatestVersionId(id)).willReturn(versionId);
+        mvc.perform(get("/api/v1/methodologies/{id}", id)
+                        .with(jwt().authorities(() -> "METHODOLOGY_READ")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.latest_version_id").value(versionId.toString()));
+    }
+
     @Test
     void createRequiresMethodologyCreatePermission() throws Exception {
         mvc.perform(post("/api/v1/methodologies")

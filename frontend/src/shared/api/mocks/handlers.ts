@@ -758,18 +758,30 @@ function handleMethodologyTemplates(method: string, path: string): MatchResult |
       {
         code: 'CLASSIC_8_FACTOR' as const,
         name_i18n: { 'ru-RU': 'Классическая 8-факторная', 'en-US': 'Classic 8-factor' },
+        description_i18n: {
+          'ru-RU': 'Стандартные 8 факторов: знания, опыт, сложность, ответственность и др.',
+          'en-US': 'The standard 8 factors: knowledge, experience, complexity, responsibility, etc.',
+        },
         factor_count: 8,
         default_scoring_mode: 'WEIGHTED_POINTS' as MockScoringMode,
       },
       {
         code: 'EXTENDED_11_CRITERIA' as const,
         name_i18n: { 'ru-RU': 'Расширенная 11-критериальная', 'en-US': 'Extended 11-criteria' },
+        description_i18n: {
+          'ru-RU': '11 критериев для крупных холдингов и расширенных проектов.',
+          'en-US': '11 criteria for large holdings and extended projects.',
+        },
         factor_count: 11,
         default_scoring_mode: 'WEIGHTED_POINTS' as MockScoringMode,
       },
       {
         code: 'CUSTOM' as const,
         name_i18n: { 'ru-RU': 'Пользовательская', 'en-US': 'Custom' },
+        description_i18n: {
+          'ru-RU': 'Пустая методология — настроите факторы и уровни вручную.',
+          'en-US': 'An empty methodology — configure factors and levels manually.',
+        },
         factor_count: 0,
         default_scoring_mode: 'DIRECT_POINTS' as MockScoringMode,
       },

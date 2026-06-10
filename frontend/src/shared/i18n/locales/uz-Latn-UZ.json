@@ -679,11 +679,29 @@
       "create_title": "Yangi faktor",
       "edit_title": "Faktorni tahrirlash"
     },
+    "metadata": {
+      "edit_title": "Metodologiyani tahrirlash",
+      "edit_subtitle": "Nom va tavsifni oʻzgartiring. Metodologiya kodini oʻzgartirib boʻlmaydi.",
+      "name_primary_required": "Ruscha (ru-RU) nomni kiriting.",
+      "code_immutable": "Kod yaratishda belgilanadi va oʻzgartirilmaydi."
+    },
+    "create": {
+      "title": "Yangi metodologiya (boshidan)",
+      "subtitle": "Boʻsh metodologiya yarating va faktorlarni qoʻlda sozlang.",
+      "from_scratch": "Boshidan",
+      "code_required": "Metodologiya kodini kiriting.",
+      "duplicate_code": "Bunday kodli metodologiya allaqachon mavjud.",
+      "failed": "Metodologiyani yaratib boʻlmadi. Qayta urinib koʻring.",
+      "target_total_points": "Maqsadli umumiy ball",
+      "target_total_invalid": "Noldan katta maqsadli umumiy ballni kiriting."
+    },
     "confirm": {
       "approve_title": "Versiyani tasdiqlash va bloklash?",
       "approve_body": "Tasdiqlash baholashlar uchun tuzilmani bloklaydi. Keyingi oʻzgartirishlar uchun yangi versiya kerak.",
       "archive_title": "Versiyani arxivlash?",
       "archive_body": "Versiya tarixga aylanadi. Sababni koʻrsating.",
+      "archive_methodology_title": "Metodologiya arxivlansinmi?",
+      "archive_methodology_body": "Metodologiya faol roʻyxatdan yashiriladi. Bu oʻchirish emas — sababni koʻrsating.",
       "new_version_title": "Yangi versiya yaratilsinmi?",
       "new_version_body": "Barcha faktorlar va darajalar nusxasi bilan yangi qoralama versiya yaratiladi."
     }

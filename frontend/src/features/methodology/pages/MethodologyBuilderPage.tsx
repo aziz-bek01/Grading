@@ -58,19 +58,33 @@ export function MethodologyBuilderPage() {
   // fetchMethodologyVersions now returns a bare array (real-backend contract).
   const versions = versionsQuery.data;
 
-  // Editor state
-  const [editorFactor, setEditorFactor] = useState<Factor | null>(null);
+  const factors = useMemo(() => version?.factors ?? [], [version]);
+
+  // Editor state.
+  //
+  // We track the OPEN factor by ID, not by a captured `Factor` snapshot. The
+  // open factor is then DERIVED from the live `factors` list (refreshed by the
+  // mutation invalidations). The previous snapshot approach (EPIC-A bug) froze
+  // `editorFactor.levels` at open time: a level add/update PATCHed + refetched
+  // the version server-side, but the drawer kept rendering the stale snapshot,
+  // so the saved level was invisible until the drawer was reopened.
+  const [editorFactorId, setEditorFactorId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [newVersionOpen, setNewVersionOpen] = useState(false);
 
+  const editorFactor = useMemo(
+    () => factors.find((f) => f.id === editorFactorId) ?? null,
+    [factors, editorFactorId],
+  );
+
   // Mutations
   const addFactorMut = useAddFactor(versionId, methodologyId);
-  const updateFactorMut = useUpdateFactor(editorFactor?.id ?? '', versionId, methodologyId);
-  const removeFactorMut = useRemoveFactor(editorFactor?.id ?? '', versionId, methodologyId);
+  const updateFactorMut = useUpdateFactor(editorFactorId ?? '', versionId, methodologyId);
+  const removeFactorMut = useRemoveFactor(editorFactorId ?? '', versionId, methodologyId);
   const reorderMut = useReorderFactors(versionId, methodologyId);
-  const addLevelMut = useAddFactorLevel(editorFactor?.id ?? '', versionId, methodologyId);
+  const addLevelMut = useAddFactorLevel(versionId, methodologyId);
   const updateLevelMut = useUpdateFactorLevel(versionId, methodologyId);
   const removeLevelMut = useRemoveFactorLevel(versionId, methodologyId);
 
@@ -78,7 +92,6 @@ export function MethodologyBuilderPage() {
   const archiveMut = useArchiveVersion(versionId, methodologyId, projectId);
   const newVersionMut = useCreateNewVersion(methodologyId, projectId);
 
-  const factors = useMemo(() => version?.factors ?? [], [version]);
   const readOnly = !version || version.status !== 'DRAFT';
 
   if (methodologyQuery.isLoading || versionQuery.isLoading) return <LoadingState />;
@@ -98,13 +111,18 @@ export function MethodologyBuilderPage() {
   };
 
   const handleEditFactor = (f: Factor) => {
-    setEditorFactor(f);
+    setEditorFactorId(f.id);
     setEditorOpen(true);
   };
 
   const handleNewFactor = () => {
-    setEditorFactor(null);
+    setEditorFactorId(null);
     setEditorOpen(true);
+  };
+
+  const handleCloseEditor = () => {
+    setEditorOpen(false);
+    setEditorFactorId(null);
   };
 
   const handleFactorSubmit = async (patch: {
@@ -115,22 +133,30 @@ export function MethodologyBuilderPage() {
     max_points: number;
     required: boolean;
   }) => {
-    if (editorFactor) {
+    if (editorFactorId) {
       await updateFactorMut.mutateAsync(patch);
+      setEditorOpen(false);
+      setEditorFactorId(null);
     } else {
-      await addFactorMut.mutateAsync({
+      // Create the factor, then keep the drawer OPEN and switch it to the new
+      // factor so the level editor section appears in place — the user can add
+      // levels without re-opening (EPIC-A/F1). The returned id binds the derived
+      // `editorFactor` once the version refetch lands.
+      const created = await addFactorMut.mutateAsync({
         ...patch,
         sort_order: factors.length,
       });
+      setEditorFactorId(created.id);
     }
-    setEditorOpen(false);
   };
 
+  // removeFactorMut is bound to editorFactorId; point it at the row being
+  // removed first so the right factor id is deleted.
   const handleRemoveFactor = async (f: Factor) => {
     if (!window.confirm(t('methodology.confirm_remove_factor'))) return;
-    setEditorFactor(f);
+    setEditorFactorId(f.id);
     await removeFactorMut.mutateAsync();
-    setEditorFactor(null);
+    setEditorFactorId(null);
   };
 
   const handleReorder = async (f: Factor, direction: 'up' | 'down') => {
@@ -146,9 +172,12 @@ export function MethodologyBuilderPage() {
   };
 
   // Level CRUD wired through the editor (needs the editor factor's id).
+  // The factor id travels with the mutate VARS (F2) so a single hook instance
+  // targets the right factor even when `editorFactorId` was set in the same
+  // tick (no stale empty-string closure no-op).
   const handleAddLevel = async (next: Omit<FactorLevel, 'id' | 'factor_id'>) => {
-    if (!editorFactor) return;
-    await addLevelMut.mutateAsync(next);
+    if (!editorFactorId) return;
+    await addLevelMut.mutateAsync({ factorId: editorFactorId, payload: next });
   };
 
   const handleUpdateLevel = async (lvl: FactorLevel) => {
@@ -297,7 +326,7 @@ export function MethodologyBuilderPage() {
         factor={editorFactor}
         scoringMode={version.scoring_mode}
         readOnly={readOnly}
-        onClose={() => setEditorOpen(false)}
+        onClose={handleCloseEditor}
         onSubmit={handleFactorSubmit}
         onAddLevel={handleAddLevel}
         onUpdateLevel={handleUpdateLevel}

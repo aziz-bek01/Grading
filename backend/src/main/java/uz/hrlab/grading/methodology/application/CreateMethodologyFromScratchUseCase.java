@@ -7,9 +7,9 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.exception.ConflictException;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
-import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.methodology.domain.MethodologyStatus;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionStatus;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity;
@@ -64,7 +64,11 @@ public class CreateMethodologyFromScratchUseCase {
 
         if (methodologies.existsByTenantIdAndProjectIdAndCode(
                 ctx.tenantId(), cmd.projectId(), cmd.code())) {
-            throw new ValidationException("METHODOLOGY_CODE_DUPLICATE",
+            // B2: a duplicate code is a state CONFLICT, not a malformed request —
+            // map to 409 (was 400) with the stable METHODOLOGY_CODE_DUPLICATE code
+            // so the FE can switch on it and show an inline "code already used"
+            // message under the field.
+            throw new ConflictException("METHODOLOGY_CODE_DUPLICATE",
                     "Methodology code already exists in this scope");
         }
 

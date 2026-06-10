@@ -679,11 +679,29 @@
       "create_title": "New factor",
       "edit_title": "Edit factor"
     },
+    "metadata": {
+      "edit_title": "Edit methodology",
+      "edit_subtitle": "Change the name and description. The methodology code cannot be changed.",
+      "name_primary_required": "Provide a Russian (ru-RU) name.",
+      "code_immutable": "The code is set at creation and cannot be changed."
+    },
+    "create": {
+      "title": "New methodology (from scratch)",
+      "subtitle": "Create an empty methodology and configure factors manually.",
+      "from_scratch": "From scratch",
+      "code_required": "Provide a methodology code.",
+      "duplicate_code": "A methodology with this code already exists.",
+      "failed": "Could not create the methodology. Please try again.",
+      "target_total_points": "Target total points",
+      "target_total_invalid": "Enter a target total greater than zero."
+    },
     "confirm": {
       "approve_title": "Approve & lock version?",
       "approve_body": "Approving locks the structure for evaluations. Future changes need a new version.",
       "archive_title": "Archive this version?",
       "archive_body": "The version becomes history. Provide a reason.",
+      "archive_methodology_title": "Archive this methodology?",
+      "archive_methodology_body": "The methodology will be hidden from the active list. This is not a delete — provide a reason.",
       "new_version_title": "Create new version?",
       "new_version_body": "A new draft version will be created with a copy of all factors and levels."
     }

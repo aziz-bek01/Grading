@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Layers, GanttChartSquare, Sparkles } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
 import { cn } from '@/shared/lib/cn';
+import { useMethodologyTemplates } from '../hooks/useMethodology';
 import type { Locale } from '@/shared/types/common';
-import type { MethodologyType } from '../types';
+import type { MethodologyTemplate, MethodologyType } from '../types';
 
 interface MethodologyTemplatePickerProps {
   open: boolean;
@@ -13,22 +14,26 @@ interface MethodologyTemplatePickerProps {
   onSelect: (type: MethodologyType) => void;
 }
 
-const OPTIONS: { type: MethodologyType; icon: React.ReactNode; titleKey: string; bodyKey: string }[] = [
+const ICONS: Record<MethodologyType, React.ReactNode> = {
+  CLASSIC_8_FACTOR: <Layers size={20} />,
+  EXTENDED_11_CRITERIA: <GanttChartSquare size={20} />,
+  CUSTOM: <Sparkles size={20} />,
+};
+
+/** Static fallback used when the templates endpoint is unavailable (F8). */
+const FALLBACK_OPTIONS: { type: MethodologyType; titleKey: string; bodyKey: string }[] = [
   {
     type: 'CLASSIC_8_FACTOR',
-    icon: <Layers size={20} />,
     titleKey: 'methodology.type.classic_8_factor',
     bodyKey: 'methodology.template_picker.classic_body',
   },
   {
     type: 'EXTENDED_11_CRITERIA',
-    icon: <GanttChartSquare size={20} />,
     titleKey: 'methodology.type.extended_11_criteria',
     bodyKey: 'methodology.template_picker.extended_body',
   },
   {
     type: 'CUSTOM',
-    icon: <Sparkles size={20} />,
     titleKey: 'methodology.type.custom',
     bodyKey: 'methodology.template_picker.custom_body',
   },
@@ -36,7 +41,11 @@ const OPTIONS: { type: MethodologyType; icon: React.ReactNode; titleKey: string;
 
 /**
  * Modal that asks "Which methodology template do you want to start from?"
- * before the create drawer opens — per PRD MVP1-E7-1.
+ * before the create flow runs — per PRD MVP1-E7-1.
+ *
+ * Data-driven from GET /methodology-templates (F8) via useMethodologyTemplates;
+ * falls back to the static option set if the call fails / is loading so the
+ * picker is never empty. CUSTOM is always offered (the from-scratch path).
  */
 export function MethodologyTemplatePicker({ open, ...rest }: MethodologyTemplatePickerProps) {
   // Mount fresh while open so the selection starts cleared each time.
@@ -45,12 +54,15 @@ export function MethodologyTemplatePicker({ open, ...rest }: MethodologyTemplate
 }
 
 function MethodologyTemplatePickerBody({
+  locale,
   onCancel,
   onSelect,
 }: Omit<MethodologyTemplatePickerProps, 'open'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [selected, setSelected] = useState<MethodologyType | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const templatesQuery = useMethodologyTemplates();
+  const activeLocale = (locale ?? (i18n.language as Locale)) as Locale;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -59,6 +71,24 @@ function MethodologyTemplatePickerBody({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onCancel]);
+
+  // Prefer the live catalog; fall back to the static set on error / empty.
+  const remote = templatesQuery.data?.items ?? [];
+  const useRemote = !templatesQuery.isError && remote.length > 0;
+
+  const options: {
+    type: MethodologyType;
+    title: string;
+    body: string;
+    icon: React.ReactNode;
+  }[] = useRemote
+    ? buildRemoteOptions(remote, activeLocale, t)
+    : FALLBACK_OPTIONS.map((opt) => ({
+        type: opt.type,
+        title: t(opt.titleKey),
+        body: t(opt.bodyKey),
+        icon: ICONS[opt.type],
+      }));
 
   return (
     <div
@@ -79,7 +109,7 @@ function MethodologyTemplatePickerBody({
         </p>
 
         <ul className="mt-4 space-y-2" role="radiogroup">
-          {OPTIONS.map((opt) => {
+          {options.map((opt) => {
             const active = selected === opt.type;
             return (
               <li key={opt.type}>
@@ -101,10 +131,10 @@ function MethodologyTemplatePickerBody({
                   </span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-semibold text-text-primary">
-                      {t(opt.titleKey)}
+                      {opt.title}
                     </span>
                     <span className="block text-xs text-text-secondary mt-1">
-                      {t(opt.bodyKey)}
+                      {opt.body}
                     </span>
                   </span>
                 </button>
@@ -128,4 +158,51 @@ function MethodologyTemplatePickerBody({
       </div>
     </div>
   );
+}
+
+/**
+ * Map the live template catalog to picker options. Uses the catalog's localized
+ * name/description when present, falling back to the static i18n strings (so a
+ * sparse backend translation never leaves a blank row). CUSTOM is appended if
+ * the backend doesn't return it (the from-scratch path is always available).
+ */
+function buildRemoteOptions(
+  remote: MethodologyTemplate[],
+  locale: Locale,
+  t: (key: string) => string,
+) {
+  const fallbackBody: Record<MethodologyType, string> = {
+    CLASSIC_8_FACTOR: 'methodology.template_picker.classic_body',
+    EXTENDED_11_CRITERIA: 'methodology.template_picker.extended_body',
+    CUSTOM: 'methodology.template_picker.custom_body',
+  };
+  const fallbackTitle: Record<MethodologyType, string> = {
+    CLASSIC_8_FACTOR: 'methodology.type.classic_8_factor',
+    EXTENDED_11_CRITERIA: 'methodology.type.extended_11_criteria',
+    CUSTOM: 'methodology.type.custom',
+  };
+
+  const mapped = remote.map((tpl) => {
+    const type = tpl.code as MethodologyType;
+    const title = tpl.name_i18n?.[locale] ?? tpl.name_i18n?.['ru-RU'] ?? t(fallbackTitle[type]);
+    const body =
+      tpl.description_i18n?.[locale] ??
+      tpl.description_i18n?.['ru-RU'] ??
+      t(
+        tpl.factor_count > 0
+          ? fallbackBody[type]
+          : 'methodology.template_picker.custom_body',
+      );
+    return { type, title, body, icon: ICONS[type] ?? ICONS.CUSTOM };
+  });
+
+  if (!mapped.some((o) => o.type === 'CUSTOM')) {
+    mapped.push({
+      type: 'CUSTOM',
+      title: t(fallbackTitle.CUSTOM),
+      body: t(fallbackBody.CUSTOM),
+      icon: ICONS.CUSTOM,
+    });
+  }
+  return mapped;
 }

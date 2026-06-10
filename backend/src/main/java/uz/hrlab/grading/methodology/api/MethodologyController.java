@@ -118,7 +118,12 @@ public class MethodologyController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('METHODOLOGY_READ')")
     public MethodologyResponse getById(@PathVariable UUID id) {
-        return MethodologyResponse.from(queries.findMethodologyById(id));
+        // B4: carry latest_version_id on the detail path (the list path already
+        // does) so the FE create-from-scratch flow can deep-link into the new v1
+        // editor. findMethodologyById enforces tenant/ABAC; the latest-version
+        // lookup is tenant-scoped + METHODOLOGY_READ-guarded in the same way.
+        return MethodologyResponse.from(
+                queries.findMethodologyById(id), queries.findLatestVersionId(id));
     }
 
     @PatchMapping("/{id}")

@@ -202,8 +202,13 @@ export interface MethodologyCreatePayload {
   source_template_code?: 'CLASSIC_8_FACTOR' | 'EXTENDED_11_CRITERIA' | null;
 }
 
+/**
+ * PATCH body — backend `UpdateMethodologyMetadataUseCase` accepts ONLY the
+ * localized name + description. `code` is the immutable container code (set at
+ * create-time) and is NOT accepted here (honest contract — F5).
+ */
 export type MethodologyUpdatePayload = Partial<
-  Pick<MethodologyCreatePayload, 'code' | 'name_i18n' | 'description_i18n'>
+  Pick<MethodologyCreatePayload, 'name_i18n' | 'description_i18n'>
 >;
 
 export interface MethodologyReasonPayload {

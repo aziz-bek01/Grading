@@ -44,6 +44,16 @@ public class MethodologyTemplateRegistry {
     }
 
     /**
+     * Whether {@code code} is a reserved built-in template code (Epic E). A
+     * tenant CUSTOM template may NOT take a code that shadows a built-in, so the
+     * global namespace (CLASSIC_8_FACTOR / EXTENDED_11_CRITERIA / CUSTOM) stays
+     * unambiguous in the unified catalog.
+     */
+    public boolean isBuiltinCode(String code) {
+        return code != null && templates.containsKey(code);
+    }
+
+    /**
      * Read accessor for the built-in template catalog (slice B1 — backs the
      * read-only {@code GET /api/v1/methodology-templates} picker endpoint).
      * Returns the registry contents in a stable, human-meaningful order

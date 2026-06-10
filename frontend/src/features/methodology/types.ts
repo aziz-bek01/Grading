@@ -198,8 +198,13 @@ export interface MethodologyCreatePayload {
   /** Optional initial version body — backend may create v1 implicitly. */
   scoring_mode?: ScoringMode;
   target_total_points?: number;
-  /** When set, backend pre-populates v1 factors+levels from the template. */
-  source_template_code?: 'CLASSIC_8_FACTOR' | 'EXTENDED_11_CRITERIA' | null;
+  /**
+   * When set, backend pre-populates v1 factors+levels from a template. Accepts
+   * built-in registry codes (CLASSIC_8_FACTOR / EXTENDED_11_CRITERIA) AND tenant
+   * CUSTOM template codes (Epic E — /from-template instantiates the snapshot).
+   * `null` means "empty from scratch".
+   */
+  source_template_code?: string | null;
 }
 
 /**
@@ -215,12 +220,42 @@ export interface MethodologyReasonPayload {
   reason: string;
 }
 
+/**
+ * Source of a template row (Epic E). Built-ins are shipped by the platform and
+ * are READ-ONLY (no rename/archive); CUSTOM templates are tenant-owned snapshots
+ * created via "Save as template" and may be renamed / archived.
+ */
+export type MethodologyTemplateSource = 'BUILTIN' | 'CUSTOM';
+
+/**
+ * Mirrors backend `MethodologyTemplateResponse` (snake_case): built-ins ∪ tenant
+ * CUSTOM templates. `code` is open-ended now (custom templates carry a
+ * tenant-defined code, not just the three registry codes), so it is a plain
+ * string. `id` is null for built-ins (they have no DB row) and a UUID for CUSTOM.
+ */
 export interface MethodologyTemplate {
-  code: 'CLASSIC_8_FACTOR' | 'EXTENDED_11_CRITERIA' | 'CUSTOM';
+  /** UUID for CUSTOM templates; null for platform built-ins. */
+  id: string | null;
+  code: string;
   name_i18n: LocalizedString;
   description_i18n?: LocalizedString;
   factor_count: number;
   default_scoring_mode: ScoringMode;
+  source: MethodologyTemplateSource;
+  is_builtin: boolean;
+}
+
+/** POST body for `/methodologies/{id}/save-as-template` (snake_case). */
+export interface SaveAsTemplatePayload {
+  code: string;
+  name_i18n: LocalizedString;
+  description_i18n?: LocalizedString;
+}
+
+/** PUT body for `/methodology-templates/{id}` — rename a CUSTOM template. */
+export interface UpdateTemplatePayload {
+  name_i18n: LocalizedString;
+  description_i18n?: LocalizedString;
 }
 
 export interface ReorderPayload {

@@ -685,6 +685,34 @@
       "name_primary_required": "Provide a Russian (ru-RU) name.",
       "code_immutable": "The code is set at creation and cannot be changed."
     },
+    "template_source": {
+      "builtin": "Built-in",
+      "custom": "Custom"
+    },
+    "save_as_template": {
+      "action": "Save as template",
+      "title": "Save as template",
+      "subtitle": "Create a reusable template from the current methodology.",
+      "submit": "Save template",
+      "code_label": "Template code",
+      "code_required": "Provide a template code.",
+      "duplicate_code": "A template with this code already exists.",
+      "failed": "Could not save the template. Please try again.",
+      "hint": "The template becomes available when creating new methodologies for this client.",
+      "success": "Template \"{{code}}\" saved."
+    },
+    "manage_templates": {
+      "rename": "Rename",
+      "archive": "Archive",
+      "rename_title": "Rename template",
+      "rename_subtitle": "Change the template name and description. The code cannot be changed.",
+      "rename_success": "Template updated.",
+      "rename_failed": "Could not update the template. Please try again.",
+      "rename_not_found": "Template not found or no access.",
+      "archive_confirm_title": "Archive template?",
+      "archive_confirm_body": "The template will disappear from the picker. Built-in templates cannot be archived.",
+      "archive_success": "Template archived."
+    },
     "create": {
       "title": "New methodology (from scratch)",
       "subtitle": "Create an empty methodology and configure factors manually.",

@@ -25,6 +25,7 @@ import uz.hrlab.grading.methodology.application.CreateMethodologyFromTemplateUse
 import uz.hrlab.grading.methodology.application.MethodologyActorNameResolver;
 import uz.hrlab.grading.methodology.application.MethodologyAggregate;
 import uz.hrlab.grading.methodology.application.MethodologyQueries;
+import uz.hrlab.grading.methodology.application.SaveAsTemplateUseCase;
 import uz.hrlab.grading.methodology.application.UpdateMethodologyMetadataUseCase;
 import uz.hrlab.grading.methodology.domain.Methodology;
 import uz.hrlab.grading.methodology.domain.MethodologyStatus;
@@ -72,6 +73,7 @@ class MethodologyControllerSecurityTest {
     @MockBean CreateMethodologyFromScratchUseCase createFromScratch;
     @MockBean UpdateMethodologyMetadataUseCase updateMetadata;
     @MockBean ArchiveMethodologyUseCase archiveUseCase;
+    @MockBean SaveAsTemplateUseCase saveAsTemplate;
     @MockBean MethodologyQueries queries;
     @MockBean MethodologyActorNameResolver actorNames;
     @MockBean AuditService auditService;

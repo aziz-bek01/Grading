@@ -153,6 +153,15 @@ public final class AuditAction {
     public static final String FACTOR_LEVEL_REMOVED                  = "FACTOR_LEVEL_REMOVED";
     public static final String FACTOR_LEVEL_REORDERED                = "FACTOR_LEVEL_REORDERED";
 
+    // Methodology templates (Epic E — DB-backed tenant CUSTOM templates). A
+    // template is a frozen deep copy of a version's factors/levels, "saved for
+    // the company" and reusable across the tenant's projects via
+    // POST /methodologies/from-template. Built-ins (MethodologyTemplateRegistry)
+    // are global + read-only and emit NO template lifecycle audit.
+    public static final String METHODOLOGY_TEMPLATE_CREATED          = "METHODOLOGY_TEMPLATE_CREATED";
+    public static final String METHODOLOGY_TEMPLATE_UPDATED          = "METHODOLOGY_TEMPLATE_UPDATED";
+    public static final String METHODOLOGY_TEMPLATE_ARCHIVED         = "METHODOLOGY_TEMPLATE_ARCHIVED";
+
     // Scoring (Phase 5)
     public static final String EVALUATION_CREATED            = "EVALUATION_CREATED";
     public static final String EVALUATION_UPDATED            = "EVALUATION_UPDATED";

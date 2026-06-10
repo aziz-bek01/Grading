@@ -685,6 +685,34 @@
       "name_primary_required": "Ruscha (ru-RU) nomni kiriting.",
       "code_immutable": "Kod yaratishda belgilanadi va oʻzgartirilmaydi."
     },
+    "template_source": {
+      "builtin": "Tizim shabloni",
+      "custom": "Foydalanuvchi shabloni"
+    },
+    "save_as_template": {
+      "action": "Shablon sifatida saqlash",
+      "title": "Shablon sifatida saqlash",
+      "subtitle": "Joriy metodologiya asosida qayta ishlatiladigan shablon yarating.",
+      "submit": "Shablonni saqlash",
+      "code_label": "Shablon kodi",
+      "code_required": "Shablon kodini kiriting.",
+      "duplicate_code": "Bunday kodli shablon allaqachon mavjud.",
+      "failed": "Shablonni saqlab boʻlmadi. Qayta urinib koʻring.",
+      "hint": "Shablon ushbu mijoz uchun yangi metodologiya yaratishda mavjud boʻladi.",
+      "success": "«{{code}}» shabloni saqlandi."
+    },
+    "manage_templates": {
+      "rename": "Qayta nomlash",
+      "archive": "Arxivlash",
+      "rename_title": "Shablonni qayta nomlash",
+      "rename_subtitle": "Shablon nomi va tavsifini oʻzgartiring. Kodni oʻzgartirib boʻlmaydi.",
+      "rename_success": "Shablon yangilandi.",
+      "rename_failed": "Shablonni yangilab boʻlmadi. Qayta urinib koʻring.",
+      "rename_not_found": "Shablon topilmadi yoki ruxsat yoʻq.",
+      "archive_confirm_title": "Shablon arxivlansinmi?",
+      "archive_confirm_body": "Shablon tanlash roʻyxatidan yoʻqoladi. Tizim shablonlarini arxivlab boʻlmaydi.",
+      "archive_success": "Shablon arxivlandi."
+    },
     "create": {
       "title": "Yangi metodologiya (boshidan)",
       "subtitle": "Boʻsh metodologiya yarating va faktorlarni qoʻlda sozlang.",

@@ -104,3 +104,12 @@ databaseChangeLog:
   - include:
       file: 031-rls-nullif.yaml
       relativeToChangelogFile: true
+  # Epic E — tenant-scoped DB-backed CUSTOM methodology templates
+  # (save-methodology-version-as-template). Built-ins stay in the in-memory
+  # MethodologyTemplateRegistry. Self-contained: creates its own table + RLS
+  # policy (NULLIF blank-safe, in lock-step with 030/031). Depends only on
+  # public.tenants (control-plane 001); runs after the methodology tables for
+  # locality.
+  - include:
+      file: 032-create-methodology-templates.yaml
+      relativeToChangelogFile: true

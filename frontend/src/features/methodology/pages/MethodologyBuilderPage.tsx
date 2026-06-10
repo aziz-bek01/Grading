@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Languages, Check, Archive } from 'lucide-react';
+import { Languages, Check, Archive, BookmarkPlus } from 'lucide-react';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
@@ -21,6 +21,7 @@ import { MethodologyTypeBadge } from '../components/MethodologyTypeBadge';
 import { ScoringModeBadge } from '../components/ScoringModeBadge';
 import { LockedMethodologyHeader } from '../components/LockedMethodologyHeader';
 import { MethodologyVersionPanel } from '../components/MethodologyVersionPanel';
+import { SaveAsTemplateDrawer } from '../components/SaveAsTemplateDrawer';
 import {
   useAddFactor,
   useAddFactorLevel,
@@ -33,11 +34,12 @@ import {
   useRemoveFactor,
   useRemoveFactorLevel,
   useReorderFactors,
+  useSaveMethodologyAsTemplate,
   useUpdateFactor,
   useUpdateFactorLevel,
 } from '../hooks/useMethodology';
 import type { Locale } from '@/shared/types/common';
-import type { Factor, FactorLevel } from '../types';
+import type { Factor, FactorLevel, SaveAsTemplatePayload } from '../types';
 
 export function MethodologyBuilderPage() {
   const { t, i18n } = useTranslation();
@@ -73,6 +75,9 @@ export function MethodologyBuilderPage() {
   const [approveOpen, setApproveOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [newVersionOpen, setNewVersionOpen] = useState(false);
+  // Epic E — save this methodology's version as a reusable CUSTOM template.
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [templateSuccess, setTemplateSuccess] = useState<string | null>(null);
 
   const editorFactor = useMemo(
     () => factors.find((f) => f.id === editorFactorId) ?? null,
@@ -91,6 +96,14 @@ export function MethodologyBuilderPage() {
   const approveMut = useApproveVersion(versionId, methodologyId, projectId);
   const archiveMut = useArchiveVersion(versionId, methodologyId, projectId);
   const newVersionMut = useCreateNewVersion(methodologyId, projectId);
+  const saveTemplateMut = useSaveMethodologyAsTemplate(methodologyId);
+
+  // Auto-dismiss the "saved as template" banner like a transient toast.
+  useEffect(() => {
+    if (!templateSuccess) return;
+    const id = window.setTimeout(() => setTemplateSuccess(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [templateSuccess]);
 
   const readOnly = !version || version.status !== 'DRAFT';
 
@@ -108,6 +121,14 @@ export function MethodologyBuilderPage() {
     navigate(
       `/app/projects/${projectId}/methodology/${methodologyId}/versions/${created.id}/edit`,
     );
+  };
+
+  // Epic E — snapshot this methodology into a reusable CUSTOM template. The
+  // drawer surfaces a 409 duplicate-code conflict inline (it re-throws on error).
+  const handleSaveAsTemplate = async (payload: SaveAsTemplatePayload) => {
+    await saveTemplateMut.mutateAsync(payload);
+    setSaveTemplateOpen(false);
+    setTemplateSuccess(t('methodology.save_as_template.success', { code: payload.code }));
   };
 
   const handleEditFactor = (f: Factor) => {
@@ -234,6 +255,18 @@ export function MethodologyBuilderPage() {
             </Button>
           </PermissionGate>
 
+          <PermissionGate permission={PERMISSIONS.METHODOLOGY_CREATE}>
+            <Button
+              variant="secondary"
+              size="sm"
+              leadingIcon={<BookmarkPlus size={14} />}
+              onClick={() => setSaveTemplateOpen(true)}
+              data-testid="action-save-as-template"
+            >
+              {t('methodology.save_as_template.action')}
+            </Button>
+          </PermissionGate>
+
           {!readOnly ? (
             <>
               <PermissionGate permission={PERMISSIONS.METHODOLOGY_APPROVE}>
@@ -262,6 +295,16 @@ export function MethodologyBuilderPage() {
           ) : null}
         </div>
       </header>
+
+      {templateSuccess ? (
+        <div
+          role="status"
+          className="rounded-md border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700"
+          data-testid="builder-template-success"
+        >
+          {templateSuccess}
+        </div>
+      ) : null}
 
       {readOnly ? (
         <LockedMethodologyHeader
@@ -363,6 +406,13 @@ export function MethodologyBuilderPage() {
         confirmLabel={t('methodology.create_new_version')}
         onCancel={() => setNewVersionOpen(false)}
         onConfirm={handleCreateNewVersion}
+      />
+
+      <SaveAsTemplateDrawer
+        open={saveTemplateOpen}
+        methodology={methodology}
+        onClose={() => setSaveTemplateOpen(false)}
+        onSubmit={handleSaveAsTemplate}
       />
 
       <Card title={t('comment.thread_title')} compact>

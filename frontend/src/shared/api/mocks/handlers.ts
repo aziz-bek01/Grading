@@ -752,43 +752,165 @@ function summariseVersion(v: MockMethodologyVersion) {
   };
 }
 
-function handleMethodologyTemplates(method: string, path: string): MatchResult | null {
+/**
+ * Mock template row shape mirroring backend `MethodologyTemplateResponse`
+ * (Epic E): built-ins (id=null) ∪ tenant CUSTOM templates (id=uuid).
+ */
+interface MockTemplate {
+  id: string | null;
+  code: string;
+  name_i18n: Record<string, string>;
+  description_i18n?: Record<string, string>;
+  factor_count: number;
+  default_scoring_mode: MockScoringMode;
+  source: 'BUILTIN' | 'CUSTOM';
+  is_builtin: boolean;
+}
+
+const BUILTIN_TEMPLATES: MockTemplate[] = [
+  {
+    id: null,
+    code: 'CLASSIC_8_FACTOR',
+    name_i18n: { 'ru-RU': 'Классическая 8-факторная', 'en-US': 'Classic 8-factor' },
+    description_i18n: {
+      'ru-RU': 'Стандартные 8 факторов: знания, опыт, сложность, ответственность и др.',
+      'en-US': 'The standard 8 factors: knowledge, experience, complexity, responsibility, etc.',
+    },
+    factor_count: 8,
+    default_scoring_mode: 'WEIGHTED_POINTS',
+    source: 'BUILTIN',
+    is_builtin: true,
+  },
+  {
+    id: null,
+    code: 'EXTENDED_11_CRITERIA',
+    name_i18n: { 'ru-RU': 'Расширенная 11-критериальная', 'en-US': 'Extended 11-criteria' },
+    description_i18n: {
+      'ru-RU': '11 критериев для крупных холдингов и расширенных проектов.',
+      'en-US': '11 criteria for large holdings and extended projects.',
+    },
+    factor_count: 11,
+    default_scoring_mode: 'WEIGHTED_POINTS',
+    source: 'BUILTIN',
+    is_builtin: true,
+  },
+  {
+    id: null,
+    code: 'CUSTOM',
+    name_i18n: { 'ru-RU': 'Пользовательская', 'en-US': 'Custom' },
+    description_i18n: {
+      'ru-RU': 'Пустая методология — настроите факторы и уровни вручную.',
+      'en-US': 'An empty methodology — configure factors and levels manually.',
+    },
+    factor_count: 0,
+    default_scoring_mode: 'DIRECT_POINTS',
+    source: 'BUILTIN',
+    is_builtin: true,
+  },
+];
+
+/**
+ * In-memory tenant CUSTOM-template store (Epic E). Module-level so it survives
+ * across requests within a session (mirrors a tenant-scoped backend table).
+ * Tests that need a clean slate can splice it via {@link resetMockCustomTemplates}.
+ */
+const customTemplates: MockTemplate[] = [];
+
+/** Reset hook for tests — clears the custom-template store. */
+export function resetMockCustomTemplates(): void {
+  customTemplates.length = 0;
+}
+
+function templateCodeTaken(code: string): boolean {
+  const upper = code.toUpperCase();
+  return (
+    BUILTIN_TEMPLATES.some((tpl) => tpl.code.toUpperCase() === upper) ||
+    customTemplates.some((tpl) => tpl.code.toUpperCase() === upper)
+  );
+}
+
+function handleMethodologyTemplates(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MatchResult | null {
   if (path === '/methodology-templates' && method === 'GET') {
-    const items = [
-      {
-        code: 'CLASSIC_8_FACTOR' as const,
-        name_i18n: { 'ru-RU': 'Классическая 8-факторная', 'en-US': 'Classic 8-factor' },
-        description_i18n: {
-          'ru-RU': 'Стандартные 8 факторов: знания, опыт, сложность, ответственность и др.',
-          'en-US': 'The standard 8 factors: knowledge, experience, complexity, responsibility, etc.',
-        },
-        factor_count: 8,
-        default_scoring_mode: 'WEIGHTED_POINTS' as MockScoringMode,
-      },
-      {
-        code: 'EXTENDED_11_CRITERIA' as const,
-        name_i18n: { 'ru-RU': 'Расширенная 11-критериальная', 'en-US': 'Extended 11-criteria' },
-        description_i18n: {
-          'ru-RU': '11 критериев для крупных холдингов и расширенных проектов.',
-          'en-US': '11 criteria for large holdings and extended projects.',
-        },
-        factor_count: 11,
-        default_scoring_mode: 'WEIGHTED_POINTS' as MockScoringMode,
-      },
-      {
-        code: 'CUSTOM' as const,
-        name_i18n: { 'ru-RU': 'Пользовательская', 'en-US': 'Custom' },
-        description_i18n: {
-          'ru-RU': 'Пустая методология — настроите факторы и уровни вручную.',
-          'en-US': 'An empty methodology — configure factors and levels manually.',
-        },
-        factor_count: 0,
-        default_scoring_mode: 'DIRECT_POINTS' as MockScoringMode,
-      },
-    ];
-    return ok({ items });
+    // Built-ins ∪ tenant CUSTOM (active only — archived disappear from the list).
+    return ok({ items: [...BUILTIN_TEMPLATES, ...customTemplates] });
+  }
+
+  // POST /methodology-templates — create a CUSTOM template (alt save-as route).
+  if (path === '/methodology-templates' && method === 'POST') {
+    const raw = readBody<{ code?: string; name_i18n?: Record<string, string>; description_i18n?: Record<string, string> }>(config);
+    const body = stripTenantFromBody(raw as Record<string, unknown>, path, 'POST') as typeof raw;
+    return createCustomTemplate(body);
+  }
+
+  // PUT /methodology-templates/{id} — rename a CUSTOM template. Built-in /
+  // cross-tenant ids → 404 (built-ins have id=null, never matched here).
+  const detail = /^\/methodology-templates\/([^/]+)$/.exec(path);
+  if (detail) {
+    const id = detail[1];
+    const tpl = customTemplates.find((c) => c.id === id);
+    if (method === 'PUT') {
+      if (!tpl) return notFound();
+      const raw = readBody<{ name_i18n?: Record<string, string>; description_i18n?: Record<string, string> }>(config);
+      const body = stripTenantFromBody(raw as Record<string, unknown>, path, 'PUT') as typeof raw;
+      if (!body.name_i18n?.['ru-RU']?.trim()) {
+        return { status: 400, body: { code: 'VALIDATION_FAILED', message: 'name_i18n.ru-RU required' } };
+      }
+      tpl.name_i18n = body.name_i18n;
+      tpl.description_i18n = body.description_i18n;
+      return ok(tpl);
+    }
+    if (method === 'DELETE') {
+      if (!tpl) return notFound();
+      // Archive = remove from the active list (the picker stops showing it).
+      const idx = customTemplates.indexOf(tpl);
+      customTemplates.splice(idx, 1);
+      return { status: 204, body: null };
+    }
   }
   return null;
+}
+
+/**
+ * Shared CUSTOM-template creation used by both `POST /methodology-templates`
+ * and `POST /methodologies/{id}/save-as-template`. Enforces unique code
+ * (409 METHODOLOGY_TEMPLATE_CODE_EXISTS) and ru-RU name (400).
+ */
+function createCustomTemplate(body: {
+  code?: string;
+  name_i18n?: Record<string, string>;
+  description_i18n?: Record<string, string>;
+  factor_count?: number;
+  default_scoring_mode?: MockScoringMode;
+}): MatchResult {
+  const code = (body.code ?? '').trim();
+  if (!code || !body.name_i18n?.['ru-RU']?.trim()) {
+    return { status: 400, body: { code: 'VALIDATION_FAILED', message: 'code + name_i18n.ru-RU required' } };
+  }
+  if (templateCodeTaken(code)) {
+    return {
+      status: 409,
+      body: {
+        code: 'METHODOLOGY_TEMPLATE_CODE_EXISTS',
+        message: `A methodology template with code ${code} already exists`,
+      },
+    };
+  }
+  const tpl: MockTemplate = {
+    id: uuid(),
+    code,
+    name_i18n: body.name_i18n,
+    description_i18n: body.description_i18n,
+    factor_count: body.factor_count ?? 0,
+    default_scoring_mode: body.default_scoring_mode ?? 'WEIGHTED_POINTS',
+    source: 'CUSTOM',
+    is_builtin: false,
+  };
+  customTemplates.unshift(tpl);
+  return ok(tpl, 201);
 }
 
 function handleMethodologies(method: string, path: string, query: URLSearchParams, config: AxiosRequestConfig): MatchResult | null {
@@ -880,6 +1002,28 @@ function handleMethodologies(method: string, path: string, query: URLSearchParam
     m.archived_at = new Date().toISOString();
     m.archive_reason = body.reason;
     return ok(m);
+  }
+
+  // POST /methodologies/{id}/save-as-template (Epic E) — snapshot the
+  // methodology's latest version into a tenant CUSTOM template. Enforces unique
+  // code (409 METHODOLOGY_TEMPLATE_CODE_EXISTS) just like the backend.
+  const saveAsTemplate = /^\/methodologies\/([^/]+)\/save-as-template$/.exec(path);
+  if (saveAsTemplate && method === 'POST') {
+    const m = methodologyById(saveAsTemplate[1]);
+    if (!m) return notFound();
+    const raw = readBody<{ code?: string; name_i18n?: Record<string, string>; description_i18n?: Record<string, string> }>(config);
+    const body = stripTenantFromBody(raw as Record<string, unknown>, path, 'POST') as typeof raw;
+    // Snapshot the latest version's factor count so the picker shows it.
+    const latest = mockDb.methodologyVersions
+      .filter((v) => v.methodology_id === m.id)
+      .sort((a, b) => b.version_number - a.version_number)[0];
+    return createCustomTemplate({
+      code: body.code,
+      name_i18n: body.name_i18n,
+      description_i18n: body.description_i18n,
+      factor_count: latest?.factors.length ?? 0,
+      default_scoring_mode: latest?.scoring_mode ?? 'WEIGHTED_POINTS',
+    });
   }
 
   // Versions list under a methodology
@@ -3321,7 +3465,7 @@ export function tryHandle(config: AxiosRequestConfig): MatchResult | null {
     handlePositions(method, path, query, config) ??
     handleJobProfiles(method, path, query, config) ??
     handleJobAnalysis(method, path, query, config) ??
-    handleMethodologyTemplates(method, path) ??
+    handleMethodologyTemplates(method, path, config) ??
     handleMethodologies(method, path, query, config) ??
     handleMethodologyVersions(method, path, query, config) ??
     handleFactors(method, path, query, config) ??

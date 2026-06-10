@@ -1,0 +1,239 @@
+# Epic E — methodology_templates table (tenant-scoped, DB-backed CUSTOM templates).
+#
+# Background / decision:
+#   Built-in templates (CLASSIC_8_FACTOR, EXTENDED_11_CRITERIA, CUSTOM) remain
+#   read-only + global, served from the in-memory MethodologyTemplateRegistry —
+#   they are NOT stored here. This table holds ONLY tenant-defined CUSTOM
+#   templates produced by the "save methodology version as template" use case.
+#   It is the table the application/MethodologyTemplate.java header reserved as
+#   "public.methodology_templates ... reserved for MVP 2".
+#
+#   The picker endpoint (GET /api/v1/methodology-templates) becomes the UNION
+#   of the registry built-ins + the tenant's ACTIVE rows from this table.
+#   CreateMethodologyFromTemplate resolves a template either from the registry
+#   (by built-in code) or from this table (by id/code) and deep-copies the
+#   skeleton into a new DRAFT methodology_version — identical instantiation path.
+#
+# Scope decision — TENANT-SCOPED (project_id NULL), document:
+#   A template is "saved for the company", reusable across ALL of the tenant's
+#   projects. methodologies/methodology_versions are tenant-scoped containers
+#   that MAY be attached to a project, but a template is frozen content with no
+#   project lifecycle of its own, so binding it to one project would needlessly
+#   prevent reuse in sibling projects. We therefore make this table
+#   tenant-scoped: project_id column is OMITTED. The UNIQUE key is
+#   (tenant_id, code). (If a future epic needs project-private templates, add a
+#   nullable project_id + the same two partial-unique-index pattern used by
+#   methodologies in 010 — additive, non-breaking.)
+#
+# factors_snapshot JSON shape (frozen deep copy — NOT FKs; reproducibility):
+#   The backend SaveAsTemplate use case serializes the source version's factors
+#   + levels into this shape; CreateFromTemplate deserializes it back into
+#   FactorJpaEntity / FactorLevelJpaEntity rows. Both sides MUST agree on:
+#     {
+#       "factors": [
+#         {
+#           "code": "EDUCATION",
+#           "sortOrder": 1,
+#           "weight": 180.0000,
+#           "maxPoints": 180.0000,
+#           "required": true,
+#           "nameI18n":        { "ru-RU": "...", "uz-Cyrl-UZ": "...", ... },
+#           "descriptionI18n": { "ru-RU": "...", ... },        // nullable
+#           "levels": [
+#             {
+#               "code": "L1",
+#               "levelOrder": 1,
+#               "points": 36.0000,
+#               "scaleValue": 1.0000,                          // nullable
+#               "labelI18n":       { "ru-RU": "Уровень 1", ... },
+#               "descriptionI18n": { "ru-RU": "...", ... }     // nullable
+#             }
+#           ]
+#         }
+#       ]
+#     }
+#   Field names mirror the FactorJpaEntity / FactorLevelJpaEntity properties and
+#   the columns in 011-create-factors.yaml (weight, max_points, sort_order,
+#   required, name_i18n, description_i18n / points, scale_value, level_order,
+#   label_i18n, description_i18n) so round-tripping is loss-free. Numeric values
+#   serialize with NUMERIC(12,4) precision (4 dp) to match the source columns.
+#   The template captures NO ids, tenant_id, or audit columns — those are
+#   re-minted at instantiation time.
+#
+# Tenancy mode applicability (mirrors the sibling methodology tables):
+#   mode-shared        — table created in `public`; RLS + FORCE applied below.
+#   schema-per-tenant  — TenantSchemaProvisioner re-applies this same YAML under
+#                        the per-tenant schema; intra-schema DDL, identical.
+#
+# RLS decision — RLS-ENABLED + FORCE, NULLIF-safe policy (matches 030/031):
+#   methodologies / methodology_versions / factors / factor_levels are all
+#   RLS-enabled with FORCE and the blank-safe policy
+#     tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+#   This table is a tenant business table read INSIDE a request that already has
+#   the app.tenant_id GUC bound (the template picker + SaveAsTemplate +
+#   CreateFromTemplate all run after TenantContextFilter / RlsTenantSessionAspect
+#   have set it). It is NOT read during auth/context construction, so RLS is
+#   safe here (unlike the access/roles control-plane tables). We therefore give
+#   it the SAME posture as its methodology siblings — ENABLE + FORCE + the
+#   NULLIF blank-safe policy created inline below (kept in lock-step with 031).
+#
+# No PL/pgSQL / no `$$` blocks: this changeset is pure declarative DDL
+# (createTable + ALTER ... ADD CONSTRAINT + CREATE INDEX) plus a plain RLS
+# policy. No trigger function is required.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-032-create-methodology-templates
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,epic-e,methodology-templates
+      comment: |
+        Tenant-scoped DB-backed CUSTOM methodology templates (save-as-template).
+        Built-ins stay in MethodologyTemplateRegistry (read-only, global).
+        factors_snapshot is a frozen deep copy (JSONB), not FKs, for
+        reproducibility. RLS posture matches the methodology business tables.
+      changes:
+        - createTable:
+            tableName: methodology_templates
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              # Stable per-tenant code (admin-chosen). UNIQUE per tenant.
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description_i18n
+                  type: JSONB
+              # Methodology family the template instantiates (mirrors
+              # methodologies.methodology_type CHECK).
+              - column:
+                  name: methodology_type
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              # Scoring mode frozen into the template (mirrors
+              # methodology_versions.scoring_mode CHECK).
+              - column:
+                  name: scoring_mode
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              # Optional target total (WEIGHTED_SCALE); nullable like the source.
+              - column:
+                  name: target_total_points
+                  type: NUMERIC(12,4)
+              # Frozen deep copy of factors + levels skeleton. See header for
+              # the agreed JSON shape (factors[].levels[]).
+              - column:
+                  name: factors_snapshot
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              # ACTIVE = selectable in picker; ARCHIVED = hidden but retained.
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  defaultValue: ACTIVE
+                  constraints:
+                    nullable: false
+              # standard audit columns (match the methodology tables)
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE methodology_templates
+                ADD CONSTRAINT fk_methodology_templates_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE methodology_templates
+                ADD CONSTRAINT chk_methodology_templates_status
+                CHECK (status IN ('ACTIVE','ARCHIVED'));
+              ALTER TABLE methodology_templates
+                ADD CONSTRAINT chk_methodology_templates_type
+                CHECK (methodology_type IN ('CLASSIC_8_FACTOR','EXTENDED_11_CRITERIA','CUSTOM'));
+              ALTER TABLE methodology_templates
+                ADD CONSTRAINT chk_methodology_templates_scoring_mode
+                CHECK (scoring_mode IN ('DIRECT_POINTS','WEIGHTED_POINTS','WEIGHTED_SCALE'));
+              ALTER TABLE methodology_templates
+                ADD CONSTRAINT chk_methodology_templates_target_non_negative
+                CHECK (target_total_points IS NULL OR target_total_points >= 0);
+
+              -- Code is unique per tenant (tenant-scoped templates).
+              CREATE UNIQUE INDEX uq_methodology_templates_tenant_code
+                ON methodology_templates (tenant_id, code);
+              -- List query: a tenant's selectable templates by status.
+              CREATE INDEX idx_methodology_templates_tenant_status
+                ON methodology_templates (tenant_id, status);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_methodology_templates_tenant_status;
+              DROP INDEX IF EXISTS uq_methodology_templates_tenant_code;
+        - dropTable:
+            tableName: methodology_templates
+
+  - changeSet:
+      id: tenant-032-methodology-templates-rls
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,epic-e,security,defense-in-depth,rls
+      comment: |
+        Enable + FORCE RLS on methodology_templates with the blank-safe GUC
+        policy, in lock-step with 030/031. A missing/empty app.tenant_id yields
+        zero rows (fail-closed), never 22P02. grading_migrator bypasses (owner);
+        grading_runtime is subject to FORCE RLS.
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE public.methodology_templates ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.methodology_templates FORCE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS tenant_isolation_methodology_templates ON public.methodology_templates;
+              CREATE POLICY tenant_isolation_methodology_templates ON public.methodology_templates
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation_methodology_templates ON public.methodology_templates;
+              ALTER TABLE public.methodology_templates NO FORCE ROW LEVEL SECURITY;
+              ALTER TABLE public.methodology_templates DISABLE ROW LEVEL SECURITY;

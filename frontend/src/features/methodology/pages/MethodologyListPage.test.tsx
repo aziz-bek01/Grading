@@ -22,12 +22,15 @@ const sample: Methodology[] = [
   },
 ];
 
+const saveAsTemplateSpy = vi.fn().mockResolvedValue({ id: 'tpl-new', code: 'TPL-X' });
+
 vi.mock('../hooks/useMethodology', async () => {
   const actual = await vi.importActual<typeof import('../hooks/useMethodology')>('../hooks/useMethodology');
   return {
     ...actual,
     useMethodologies: () => ({ data: { items: sample }, isLoading: false, error: null }),
     useCreateMethodologyFromTemplate: () => ({ mutateAsync: vi.fn().mockResolvedValue({ id: 'new', latest_version_id: 'nv-1' }) }),
+    useSaveMethodologyAsTemplate: () => ({ mutateAsync: saveAsTemplateSpy }),
   };
 });
 
@@ -71,5 +74,31 @@ describe('MethodologyListPage', () => {
     await waitFor(() => expect(screen.getByTestId('template-option-CLASSIC_8_FACTOR')).toBeInTheDocument());
     expect(screen.getByTestId('template-option-EXTENDED_11_CRITERIA')).toBeInTheDocument();
     expect(screen.getByTestId('template-option-CUSTOM')).toBeInTheDocument();
+  });
+
+  it('Epic E — "Save as template" row action gated by METHODOLOGY_CREATE (super-admin sees it)', () => {
+    renderPage();
+    expect(screen.getByTestId('methodology-M1-save-template')).toBeInTheDocument();
+  });
+
+  it('Epic E — consultant (METHODOLOGY_EDIT, no CREATE) has no save-as-template action', () => {
+    signOut();
+    signIn('consultant');
+    renderPage();
+    // Edit (METHODOLOGY_EDIT) is visible, but save-as-template (CREATE) is not.
+    expect(screen.getByTestId('methodology-M1-edit')).toBeInTheDocument();
+    expect(screen.queryByTestId('methodology-M1-save-template')).toBeNull();
+  });
+
+  it('Epic E — save-as-template flow posts the code + name payload', async () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId('methodology-M1-save-template'));
+    await waitFor(() => expect(screen.getByTestId('save-template-code')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('save-template-code'), { target: { value: 'tpl-x' } });
+    fireEvent.click(screen.getByText(/Сохранить шаблон|Save template/));
+    await waitFor(() => expect(saveAsTemplateSpy).toHaveBeenCalledTimes(1));
+    expect(saveAsTemplateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'TPL-X', name_i18n: expect.objectContaining({ 'ru-RU': 'CFO Финансы' }) }),
+    );
   });
 });

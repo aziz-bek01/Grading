@@ -23,6 +23,7 @@ import uz.hrlab.grading.methodology.application.CreateMethodologyFromTemplateUse
 import uz.hrlab.grading.methodology.application.MethodologyActorNameResolver;
 import uz.hrlab.grading.methodology.application.MethodologyAggregate;
 import uz.hrlab.grading.methodology.application.MethodologyQueries;
+import uz.hrlab.grading.methodology.application.SaveAsTemplateUseCase;
 import uz.hrlab.grading.methodology.application.UpdateMethodologyMetadataUseCase;
 import uz.hrlab.grading.common.api.PageResponse;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity;
@@ -41,6 +42,7 @@ public class MethodologyController {
     private final CreateMethodologyFromScratchUseCase createFromScratch;
     private final UpdateMethodologyMetadataUseCase updateMetadata;
     private final ArchiveMethodologyUseCase archiveUseCase;
+    private final SaveAsTemplateUseCase saveAsTemplate;
     private final MethodologyQueries queries;
     private final MethodologyActorNameResolver actorNames;
 
@@ -48,12 +50,14 @@ public class MethodologyController {
                                  CreateMethodologyFromScratchUseCase createFromScratch,
                                  UpdateMethodologyMetadataUseCase updateMetadata,
                                  ArchiveMethodologyUseCase archiveUseCase,
+                                 SaveAsTemplateUseCase saveAsTemplate,
                                  MethodologyQueries queries,
                                  MethodologyActorNameResolver actorNames) {
         this.createFromTemplate = createFromTemplate;
         this.createFromScratch = createFromScratch;
         this.updateMetadata = updateMetadata;
         this.archiveUseCase = archiveUseCase;
+        this.saveAsTemplate = saveAsTemplate;
         this.queries = queries;
         this.actorNames = actorNames;
     }
@@ -139,6 +143,23 @@ public class MethodologyController {
     public MethodologyResponse archive(@PathVariable UUID id,
                                        @Valid @RequestBody ReasonRequest req) {
         return MethodologyResponse.from(archiveUseCase.archive(id, req.reason()));
+    }
+
+    /**
+     * Save this methodology's LATEST version as a reusable tenant CUSTOM template
+     * (Epic E). Gated by {@code METHODOLOGY_CREATE} (reuses the create
+     * permission). The new template is selectable from
+     * {@code GET /methodology-templates} and instantiable via
+     * {@code POST /methodologies/from-template} by its code.
+     */
+    @PostMapping("/{id}/save-as-template")
+    @PreAuthorize("hasAuthority('METHODOLOGY_CREATE')")
+    public ResponseEntity<MethodologyTemplateCreatedResponse> saveAsTemplate(
+            @PathVariable UUID id, @Valid @RequestBody SaveMethodologyAsTemplateRequest req) {
+        UUID templateId = saveAsTemplate.saveLatestVersionAsTemplate(
+                id, req.code(), req.nameI18n(), req.descriptionI18n());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new MethodologyTemplateCreatedResponse(templateId));
     }
 
     @GetMapping("/{id}/versions")

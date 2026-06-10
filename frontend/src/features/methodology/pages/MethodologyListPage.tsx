@@ -1,33 +1,44 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, Pencil, Archive, FilePlus2 } from 'lucide-react';
+import { Plus, Pencil, Archive, FilePlus2, BookmarkPlus } from 'lucide-react';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { DataTable } from '@/shared/components/data-table/DataTable';
 import { FilterBar } from '@/shared/components/data-table/FilterBar';
 import { Button } from '@/shared/components/ui/Button';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
+import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { ReasonRequiredDialog } from '@/shared/components/confirm-dialog/ReasonRequiredDialog';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { useAuthStore } from '@/features/auth/authStore';
 import { MethodologyTypeBadge } from '../components/MethodologyTypeBadge';
 import { MethodologyStatusBadge } from '../components/MethodologyStatusBadge';
-import { MethodologyTemplatePicker } from '../components/MethodologyTemplatePicker';
+import {
+  MethodologyTemplatePicker,
+  type TemplateSelection,
+} from '../components/MethodologyTemplatePicker';
 import { MethodologyMetadataDrawer } from '../components/MethodologyMetadataDrawer';
 import { MethodologyCreateDrawer } from '../components/MethodologyCreateDrawer';
+import { SaveAsTemplateDrawer } from '../components/SaveAsTemplateDrawer';
+import { RenameTemplateDrawer } from '../components/RenameTemplateDrawer';
 import {
+  useArchiveCustomTemplate,
   useArchiveMethodology,
   useCreateMethodology,
   useCreateMethodologyFromTemplate,
   useMethodologies,
+  useSaveMethodologyAsTemplate,
+  useUpdateCustomTemplate,
   useUpdateMethodology,
 } from '../hooks/useMethodology';
 import type { Locale, LocalizedString } from '@/shared/types/common';
 import type {
   Methodology,
   MethodologyCreatePayload,
-  MethodologyType,
+  MethodologyTemplate,
   MethodologyUpdatePayload,
+  SaveAsTemplatePayload,
+  UpdateTemplatePayload,
 } from '../types';
 
 function nameInLocale(value: LocalizedString | undefined, locale: Locale) {
@@ -49,11 +60,26 @@ export function MethodologyListPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Methodology | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Methodology | null>(null);
+  // Epic E — save-as-template + manage custom templates.
+  const [saveTemplateTarget, setSaveTemplateTarget] = useState<Methodology | null>(null);
+  const [renameTemplateTarget, setRenameTemplateTarget] = useState<MethodologyTemplate | null>(null);
+  const [archiveTemplateTarget, setArchiveTemplateTarget] = useState<MethodologyTemplate | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const createFromTemplateMut = useCreateMethodologyFromTemplate(projectId);
   const createFromScratchMut = useCreateMethodology(projectId);
   const updateMut = useUpdateMethodology(editTarget?.id ?? '', projectId);
   const archiveMut = useArchiveMethodology(archiveTarget?.id ?? '', projectId);
+  const saveTemplateMut = useSaveMethodologyAsTemplate(saveTemplateTarget?.id ?? '');
+  const renameTemplateMut = useUpdateCustomTemplate(renameTemplateTarget?.id ?? '');
+  const archiveTemplateMut = useArchiveCustomTemplate(archiveTemplateTarget?.id ?? '');
+
+  // Auto-dismiss the success banner so it behaves like a transient toast.
+  useEffect(() => {
+    if (!successMessage) return;
+    const id = window.setTimeout(() => setSuccessMessage(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [successMessage]);
 
   const filtered = useMemo(() => {
     // Archived containers are soft-deleted — keep them out of the active list (F6).
@@ -72,27 +98,47 @@ export function MethodologyListPage() {
     }
   };
 
-  // Template flow (CLASSIC / EXTENDED). CUSTOM routes to the from-scratch drawer.
-  const handleTemplateSelect = async (type: MethodologyType) => {
+  // Template flow. The empty-from-scratch CUSTOM option routes to the
+  // from-scratch drawer; built-in AND tenant CUSTOM templates instantiate a
+  // snapshot via /methodologies/from-template (the backend accepts custom codes).
+  const handleTemplateSelect = async (selection: TemplateSelection) => {
     setPickerOpen(false);
-    if (type === 'CUSTOM') {
+    // The empty-from-scratch path is the built-in CUSTOM option (no snapshot).
+    if (selection.code === 'CUSTOM' && !selection.isCustom) {
       setCreateOpen(true);
       return;
     }
     const code = `M-${Date.now().toString(36).toUpperCase()}`;
+    const defaultName =
+      selection.kind === 'CLASSIC_8_FACTOR'
+        ? t('methodology.template_picker.default_name_classic')
+        : selection.kind === 'EXTENDED_11_CRITERIA'
+          ? t('methodology.template_picker.default_name_extended')
+          : t('methodology.template_picker.default_name_custom');
     const created = await createFromTemplateMut.mutateAsync({
       project_id: projectId,
       code,
-      name_i18n: {
-        'ru-RU':
-          type === 'CLASSIC_8_FACTOR'
-            ? t('methodology.template_picker.default_name_classic')
-            : t('methodology.template_picker.default_name_extended'),
-      },
-      methodology_type: type,
-      source_template_code: type,
+      name_i18n: { 'ru-RU': defaultName },
+      methodology_type: selection.kind,
+      // Send the concrete template code (built-in registry OR tenant CUSTOM).
+      source_template_code: selection.code,
     });
     deepLinkToVersion(created);
+  };
+
+  // Epic E — snapshot a methodology into a reusable CUSTOM template.
+  const handleSaveAsTemplate = async (payload: SaveAsTemplatePayload) => {
+    await saveTemplateMut.mutateAsync(payload);
+    setSaveTemplateTarget(null);
+    setSuccessMessage(
+      t('methodology.save_as_template.success', { code: payload.code }),
+    );
+  };
+
+  const handleRenameTemplate = async (payload: UpdateTemplatePayload) => {
+    await renameTemplateMut.mutateAsync(payload);
+    setRenameTemplateTarget(null);
+    setSuccessMessage(t('methodology.manage_templates.rename_success'));
   };
 
   // From-scratch flow (F7). Errors (duplicate code) bubble back to the drawer.
@@ -115,6 +161,15 @@ export function MethodologyListPage() {
           <h1 className="text-2xl text-text-primary">{t('methodology.list_page_title')}</h1>
           <p className="text-sm text-text-secondary mt-1">{t('methodology.list_page_subtitle')}</p>
         </div>
+        {successMessage ? (
+          <div
+            role="status"
+            className="w-full order-last rounded-md border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700"
+            data-testid="methodology-template-success"
+          >
+            {successMessage}
+          </div>
+        ) : null}
         <PermissionGate permission={PERMISSIONS.METHODOLOGY_CREATE}>
           <div className="flex items-center gap-2">
             <Button
@@ -226,6 +281,18 @@ export function MethodologyListPage() {
             header: '',
             render: (m) => (
               <div className="flex items-center justify-end gap-1">
+                <PermissionGate permission={PERMISSIONS.METHODOLOGY_CREATE}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t('methodology.save_as_template.action')}
+                    title={t('methodology.save_as_template.action')}
+                    data-testid={`methodology-${m.code}-save-template`}
+                    onClick={() => setSaveTemplateTarget(m)}
+                  >
+                    <BookmarkPlus size={14} />
+                  </Button>
+                </PermissionGate>
                 <PermissionGate permission={PERMISSIONS.METHODOLOGY_EDIT}>
                   <Button
                     variant="ghost"
@@ -261,7 +328,7 @@ export function MethodologyListPage() {
                 </Button>
               </div>
             ),
-            width: '18%',
+            width: '22%',
             className: 'text-right',
           },
         ]}
@@ -271,6 +338,14 @@ export function MethodologyListPage() {
         open={pickerOpen}
         onCancel={() => setPickerOpen(false)}
         onSelect={handleTemplateSelect}
+        onRenameTemplate={(tpl) => {
+          setPickerOpen(false);
+          setRenameTemplateTarget(tpl);
+        }}
+        onArchiveTemplate={(tpl) => {
+          setPickerOpen(false);
+          setArchiveTemplateTarget(tpl);
+        }}
       />
 
       <MethodologyCreateDrawer
@@ -296,6 +371,40 @@ export function MethodologyListPage() {
           const target = archiveTarget;
           setArchiveTarget(null);
           if (target) await archiveMut.mutateAsync({ reason });
+        }}
+      />
+
+      {/* Epic E — save methodology as reusable CUSTOM template. */}
+      <SaveAsTemplateDrawer
+        open={!!saveTemplateTarget}
+        methodology={saveTemplateTarget}
+        onClose={() => setSaveTemplateTarget(null)}
+        onSubmit={handleSaveAsTemplate}
+      />
+
+      {/* Epic E — rename a CUSTOM template (built-ins never reach here). */}
+      <RenameTemplateDrawer
+        open={!!renameTemplateTarget}
+        template={renameTemplateTarget}
+        onClose={() => setRenameTemplateTarget(null)}
+        onSubmit={handleRenameTemplate}
+      />
+
+      {/* Epic E — archive a CUSTOM template (removes it from the picker). */}
+      <ConfirmDialog
+        open={!!archiveTemplateTarget}
+        destructive
+        title={t('methodology.manage_templates.archive_confirm_title')}
+        body={t('methodology.manage_templates.archive_confirm_body')}
+        confirmLabel={t('methodology.manage_templates.archive')}
+        onCancel={() => setArchiveTemplateTarget(null)}
+        onConfirm={async () => {
+          const target = archiveTemplateTarget;
+          setArchiveTemplateTarget(null);
+          if (target?.id) {
+            await archiveTemplateMut.mutateAsync();
+            setSuccessMessage(t('methodology.manage_templates.archive_success'));
+          }
         }}
       />
     </div>

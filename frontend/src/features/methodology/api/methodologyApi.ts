@@ -23,6 +23,8 @@ import type {
   MethodologyVersion,
   MethodologyVersionSummary,
   ReorderPayload,
+  SaveAsTemplatePayload,
+  UpdateTemplatePayload,
 } from '../types';
 
 const base = '/methodologies';
@@ -278,9 +280,52 @@ export async function reorderFactorLevels(
   return res.data;
 }
 
-// ---------- Templates ----------
+// ---------- Templates (Epic E: save-as / manage custom) ----------
 
 export async function fetchMethodologyTemplates(): Promise<{ items: MethodologyTemplate[] }> {
   const res = await httpClient.get<{ items: MethodologyTemplate[] }>('/methodology-templates');
   return res.data;
+}
+
+/**
+ * "Save as template" — snapshot a methodology's latest version into a reusable
+ * tenant CUSTOM template. Backend route:
+ * `POST /methodologies/{id}/save-as-template`. Returns 201 with the new template.
+ * 409 `METHODOLOGY_TEMPLATE_CODE_EXISTS` when the code is already taken. Gated
+ * server-side by METHODOLOGY_CREATE.
+ */
+export async function saveMethodologyAsTemplate(
+  methodologyId: string,
+  payload: SaveAsTemplatePayload,
+): Promise<MethodologyTemplate> {
+  const res = await httpClient.post<MethodologyTemplate>(
+    `${base}/${methodologyId}/save-as-template`,
+    payload,
+  );
+  return res.data;
+}
+
+/**
+ * Rename a CUSTOM template (name/description only — code is immutable).
+ * `PUT /methodology-templates/{id}`. Built-in / cross-tenant ids return 404.
+ * Gated server-side by METHODOLOGY_EDIT.
+ */
+export async function updateCustomTemplate(
+  templateId: string,
+  payload: UpdateTemplatePayload,
+): Promise<MethodologyTemplate> {
+  const res = await httpClient.put<MethodologyTemplate>(
+    `/methodology-templates/${templateId}`,
+    payload,
+  );
+  return res.data;
+}
+
+/**
+ * Archive (soft-delete) a CUSTOM template — it disappears from the picker.
+ * `DELETE /methodology-templates/{id}`. Built-in / cross-tenant ids return 404.
+ * Gated server-side by METHODOLOGY_EDIT.
+ */
+export async function archiveCustomTemplate(templateId: string): Promise<void> {
+  await httpClient.delete(`/methodology-templates/${templateId}`);
 }

@@ -28,13 +28,16 @@ import java.util.UUID;
 
 /**
  * Instantiates a {@link MethodologyJpaEntity} + DRAFT
- * {@link MethodologyVersionJpaEntity} + factor/level rows from a built-in
- * template (CLASSIC_8_FACTOR / EXTENDED_11_CRITERIA / CUSTOM).
+ * {@link MethodologyVersionJpaEntity} + factor/level rows from EITHER a built-in
+ * template (CLASSIC_8_FACTOR / EXTENDED_11_CRITERIA / CUSTOM) OR a tenant
+ * DB-backed CUSTOM template — resolved uniformly through the single
+ * {@link TemplateCatalog} port (Epic E). The deep-copy / instantiation logic is
+ * source-agnostic: both resolve to one {@link MethodologyTemplate} shape.
  */
 @Service
 public class CreateMethodologyFromTemplateUseCase {
 
-    private final MethodologyTemplateRegistry templates;
+    private final TemplateCatalog templateCatalog;
     private final MethodologyRepository methodologies;
     private final MethodologyVersionRepository versions;
     private final FactorRepository factors;
@@ -44,7 +47,7 @@ public class CreateMethodologyFromTemplateUseCase {
     private final AuditService audit;
     private final MethodologyAuditSnapshot snapshot;
 
-    public CreateMethodologyFromTemplateUseCase(MethodologyTemplateRegistry templates,
+    public CreateMethodologyFromTemplateUseCase(TemplateCatalog templateCatalog,
                                                 MethodologyRepository methodologies,
                                                 MethodologyVersionRepository versions,
                                                 FactorRepository factors,
@@ -53,7 +56,7 @@ public class CreateMethodologyFromTemplateUseCase {
                                                 AbacGate abacGate,
                                                 AuditService audit,
                                                 MethodologyAuditSnapshot snapshot) {
-        this.templates = templates;
+        this.templateCatalog = templateCatalog;
         this.methodologies = methodologies;
         this.versions = versions;
         this.factors = factors;
@@ -71,7 +74,10 @@ public class CreateMethodologyFromTemplateUseCase {
             throw new PermissionDeniedException();
         }
 
-        MethodologyTemplate template = templates.require(cmd.templateCode());
+        // Resolve from built-in OR tenant custom via the single catalog port.
+        // A cross-tenant/archived custom code throws ResourceNotFoundException (404).
+        MethodologyTemplate template = templateCatalog.findInstantiable(
+                ctx.tenantId(), cmd.templateCode());
 
         if (cmd.projectId() != null) {
             projects.findByIdAndTenantId(cmd.projectId(), ctx.tenantId())
@@ -110,6 +116,7 @@ public class CreateMethodologyFromTemplateUseCase {
                     factorId, ctx.tenantId(), versionId, ft.code(),
                     ft.weight(), ft.maxPoints(), ft.sortOrder(), ft.required());
             f.setNameI18n(ft.nameI18n());
+            f.setDescriptionI18n(ft.descriptionI18n());
             factors.save(f);
 
             for (MethodologyTemplate.LevelTemplate lt : ft.levels()) {
@@ -117,6 +124,7 @@ public class CreateMethodologyFromTemplateUseCase {
                         UUID.randomUUID(), ctx.tenantId(), factorId, lt.code(),
                         lt.levelOrder(), lt.points(), lt.scaleValue());
                 l.setLabelI18n(lt.labelI18n());
+                l.setDescriptionI18n(lt.descriptionI18n());
                 levels.save(l);
             }
         }

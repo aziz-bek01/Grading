@@ -6,6 +6,8 @@ import uz.hrlab.grading.audit.application.AuditJsonRedactor;
 import uz.hrlab.grading.methodology.infrastructure.FactorJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.FactorLevelJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyTemplateJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyTemplateSnapshot;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 
 /**
@@ -68,6 +70,33 @@ public class MethodologyAuditSnapshot {
                 .putRaw("required", f.isRequired())
                 .addI18nPreviews("nameI18n", f.getNameI18n())
                 .addI18nPreviews("descriptionI18n", f.getDescriptionI18n())
+                .build();
+    }
+
+    /**
+     * Epic E — tenant CUSTOM template snapshot. The frozen
+     * {@code factors_snapshot} is NEVER reproduced verbatim (it can be large and
+     * carries multilingual long text); only its factor count is recorded as
+     * metadata. i18n name/description use the shared long-text preview policy.
+     */
+    public JsonNode of(MethodologyTemplateJpaEntity t) {
+        if (t == null) return null;
+        MethodologyTemplateSnapshot snap = t.getFactorsSnapshot();
+        int factorCount = snap == null || snap.factors() == null ? 0 : snap.factors().size();
+        return redactor.builder()
+                .put("id", t.getId())
+                .put("tenantId", t.getTenantId())
+                .put("code", t.getCode())
+                .put("methodologyType", t.getMethodologyType() == null ? null
+                        : t.getMethodologyType().name())
+                .put("scoringMode", t.getScoringMode() == null ? null
+                        : t.getScoringMode().name())
+                .put("targetTotalPoints", t.getTargetTotalPoints() == null ? null
+                        : t.getTargetTotalPoints().toPlainString())
+                .put("status", t.getStatus() == null ? null : t.getStatus().name())
+                .putRaw("factorCount", factorCount)
+                .addI18nPreviews("nameI18n", t.getNameI18n())
+                .addI18nPreviews("descriptionI18n", t.getDescriptionI18n())
                 .build();
     }
 

@@ -8,6 +8,7 @@ import {
   addFactor,
   addFactorLevel,
   approveVersion,
+  archiveCustomTemplate,
   archiveMethodology,
   archiveVersion,
   createMethodology,
@@ -24,6 +25,8 @@ import {
   removeFactorLevel,
   reorderFactorLevels,
   reorderFactors,
+  saveMethodologyAsTemplate,
+  updateCustomTemplate,
   updateFactor,
   updateFactorLevel,
   updateMethodology,
@@ -38,6 +41,8 @@ import type {
   MethodologyReasonPayload,
   MethodologyUpdatePayload,
   ReorderPayload,
+  SaveAsTemplatePayload,
+  UpdateTemplatePayload,
 } from '../types';
 
 // ---------- Queries ----------
@@ -131,6 +136,44 @@ export function useArchiveMethodology(id: string, projectId?: string) {
   return useMutation({
     mutationFn: (payload: MethodologyReasonPayload) => archiveMethodology(id, payload),
     onSuccess: () => invalidateMethodology(qc, projectId, id),
+  });
+}
+
+// ---------- Template mutations (Epic E) ----------
+
+function invalidateTemplates(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: methodologyKeys.templates });
+}
+
+/**
+ * "Save as template" — snapshot a methodology into a CUSTOM template. Invalidates
+ * the templates catalog so the new template shows up in the picker / manager.
+ * 409 errors (duplicate code) propagate to the caller for inline handling.
+ */
+export function useSaveMethodologyAsTemplate(methodologyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SaveAsTemplatePayload) =>
+      saveMethodologyAsTemplate(methodologyId, payload),
+    onSuccess: () => invalidateTemplates(qc),
+  });
+}
+
+/** Rename a CUSTOM template (name/description). Invalidates the catalog. */
+export function useUpdateCustomTemplate(templateId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UpdateTemplatePayload) => updateCustomTemplate(templateId, payload),
+    onSuccess: () => invalidateTemplates(qc),
+  });
+}
+
+/** Archive a CUSTOM template (removes it from the picker). Invalidates the catalog. */
+export function useArchiveCustomTemplate(templateId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => archiveCustomTemplate(templateId),
+    onSuccess: () => invalidateTemplates(qc),
   });
 }
 

@@ -40,10 +40,12 @@ import java.util.UUID;
  * </ul>
  *
  * <p>Slice E2 extends this controller with admin CRUD over a role's PERMISSION
- * set ({@code GET}/{@code PUT .../permissions}), gated by
- * {@code USER_ACCESS_MANAGE}. Business guards (restricted permissions, no
- * privilege escalation, system-role edit gate) live in
- * {@link RolePermissionAdminUseCase}; mutations emit per-change audit events.
+ * set ({@code GET}/{@code PUT /roles/{roleCode}/permissions}), addressed by role
+ * CODE to match the frontend, gated by {@code USER_ACCESS_MANAGE}. Business guards
+ * (restricted permissions, no privilege escalation, system-role edit gate,
+ * by-code C-1 tenant isolation) live in {@link RolePermissionAdminUseCase};
+ * mutations emit per-change audit events. Slice E3 custom-role edit/delete
+ * ({@code PUT}/{@code DELETE /roles/{roleId}}) stay addressed by the role id.
  */
 @RestController
 @RequestMapping("/api/v1/roles")
@@ -69,28 +71,32 @@ public class RoleController {
     }
 
     /**
-     * Read the full permission matrix for one role (slice E2). Returns every
-     * catalog permission with per-permission {@code granted}/{@code restricted}
-     * flags so the frontend renders a complete checkbox grid.
+     * Read the full permission matrix for one role (slice E2). Addressed by role
+     * CODE (matches the frontend, which keys the matrix by code; see
+     * {@code rolesApi.ts}). Returns every catalog permission with per-permission
+     * {@code granted}/{@code restricted} flags so the frontend renders a complete
+     * checkbox grid. The use case resolves the code to a SYSTEM role, else the
+     * caller's-tenant CUSTOM role, else 404 (no cross-tenant reveal).
      */
-    @GetMapping("/{roleId}/permissions")
+    @GetMapping("/{roleCode}/permissions")
     @PreAuthorize("hasAuthority('USER_ACCESS_MANAGE')")
-    public RolePermissionsResponse getPermissions(@PathVariable UUID roleId) {
-        return rolePermissionAdmin.getRolePermissions(roleId);
+    public RolePermissionsResponse getPermissions(@PathVariable String roleCode) {
+        return rolePermissionAdmin.getRolePermissions(roleCode);
     }
 
     /**
-     * Replace-set the role's permissions (slice E2). Body is the COMPLETE desired
-     * set; the use case diffs against current grants, inserts/deletes the delta,
-     * and audits each change. Guards: system-role edit (403), restricted code
-     * (422 {@code PERMISSION_RESTRICTED}), caller-not-held code
-     * (422 {@code PERMISSION_NOT_HELD_BY_CALLER}).
+     * Replace-set the role's permissions (slice E2). Addressed by role CODE (see
+     * the GET above). Body is the COMPLETE desired set; the use case diffs against
+     * current grants, inserts/deletes the delta, and audits each change. Guards:
+     * system-role edit (403), restricted code (422 {@code PERMISSION_RESTRICTED}),
+     * caller-not-held code (422 {@code PERMISSION_NOT_HELD_BY_CALLER}); a
+     * cross-tenant custom code resolves to 404.
      */
-    @PutMapping("/{roleId}/permissions")
+    @PutMapping("/{roleCode}/permissions")
     @PreAuthorize("hasAuthority('USER_ACCESS_MANAGE')")
-    public RolePermissionsResponse replacePermissions(@PathVariable UUID roleId,
+    public RolePermissionsResponse replacePermissions(@PathVariable String roleCode,
                                                       @Valid @RequestBody RolePermissionsRequest request) {
-        return rolePermissionAdmin.replaceRolePermissions(roleId, request.permissionCodes());
+        return rolePermissionAdmin.replaceRolePermissions(roleCode, request.permissionCodes());
     }
 
     // ----------------------------------------------------------- E3 custom roles

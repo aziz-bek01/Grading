@@ -21,6 +21,16 @@ public interface RoleRepository extends JpaRepository<RoleJpaEntity, UUID> {
     Optional<RoleJpaEntity> findByCode(String code);
 
     /**
+     * Resolve a SYSTEM role by {@code code}. System codes are globally unique
+     * (partial unique {@code uq_roles_system_code}) and carry no tenant, so this is
+     * the safe, unambiguous way to resolve a system role by code for the E2
+     * permission-matrix endpoints (a custom code can never collide with a system
+     * code — the create path in {@code CustomRoleUseCase} rejects that — so a
+     * by-code lookup tries this first, then the caller-tenant custom finder).
+     */
+    Optional<RoleJpaEntity> findByCodeAndIsSystemTrue(String code);
+
+    /**
      * True when ANY role (system OR any tenant's custom) already uses {@code code}.
      *
      * <p>Used by the custom-role create path to reject a code that collides with a

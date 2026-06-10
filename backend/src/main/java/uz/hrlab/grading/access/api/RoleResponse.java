@@ -1,6 +1,7 @@
 package uz.hrlab.grading.access.api;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * One entry in the assignable-role catalog served by
@@ -9,6 +10,7 @@ import java.util.Map;
  * <p>Serializes (global SNAKE_CASE Jackson strategy) EXACTLY as:
  * <pre>
  * {
+ *   "id": "8c2b...-uuid",
  *   "code": "CLIENT_HR_DIRECTOR",
  *   "name_i18n": { "ru-RU": "...", "uz-Cyrl-UZ": "...", "uz-Latn-UZ": "...", "en-US": "..." },
  *   "scope": "PLATFORM" | "TENANT",
@@ -32,7 +34,13 @@ import java.util.Map;
  * behaves in {@code CurrentUserResponse}. The frontend reads an absent key as
  * {@code undefined}, semantically equal to {@code null}.
  *
- * @param code               canonical role code (PK in the catalog)
+ * @param id                 role primary key → {@code id}. Custom-role
+ *                           mutations ({@code PUT}/{@code DELETE /roles/{roleId}},
+ *                           slice E3) are addressed by this id, so the frontend
+ *                           carries it from the catalog row. Safe to expose (it
+ *                           is the PK, not tenant-bearing data); the E2 permission
+ *                           matrix is keyed by {@code code} instead.
+ * @param code               canonical role code (catalog identifier)
  * @param nameI18n           role display name per supported locale →
  *                           {@code name_i18n}
  * @param scope              {@code PLATFORM} or {@code TENANT}
@@ -42,6 +50,7 @@ import java.util.Map;
  * @param reasonIfNot        {@code reason_if_not} — {@code null} when assignable
  */
 public record RoleResponse(
+        UUID id,
         String code,
         Map<String, String> nameI18n,
         String scope,

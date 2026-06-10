@@ -21,6 +21,7 @@ import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -28,10 +29,29 @@ import java.util.stream.Collectors;
 /**
  * Admin CRUD over a single role's PERMISSION set (slice E2).
  *
- * <p>Backs {@code GET /api/v1/roles/{roleId}/permissions} (read the matrix) and
- * {@code PUT /api/v1/roles/{roleId}/permissions} (replace-set grant/revoke). The
+ * <p>Backs {@code GET /api/v1/roles/{roleCode}/permissions} (read the matrix) and
+ * {@code PUT /api/v1/roles/{roleCode}/permissions} (replace-set grant/revoke). The
  * RBAC gate ({@code USER_ACCESS_MANAGE}) is at the controller; this use case adds
  * the business guards and the audit trail.
+ *
+ * <h3>Resolution by CODE (matches the frontend contract)</h3>
+ * The permission matrix is addressed by role CODE, not id (the FE keys it by code;
+ * see {@code rolesApi.ts}). A code is resolved to exactly one role, fail-closed:
+ * <ol>
+ *   <li>try a SYSTEM role by code ({@code findByCodeAndIsSystemTrue} — system codes
+ *       are globally unique and tenant-less);</li>
+ *   <li>else try the CALLER'S-TENANT CUSTOM role by code
+ *       ({@code findByTenantIdAndCode(ctx.tenantId(), code)});</li>
+ *   <li>else 404 ({@link TenantAccessDeniedException}, no existence reveal).</li>
+ * </ol>
+ * A custom code can NEVER equal a system code (the create path rejects that), so
+ * the order is unambiguous. <b>C-1 isolation:</b> resolving custom roles ONLY
+ * within {@code ctx.tenantId()} means a foreign tenant's custom code never
+ * resolves — it falls through to 404, so a caller can never read or edit another
+ * tenant's custom role. The {@link RoleOwnershipGuard} is still applied after
+ * resolution as defense-in-depth (it is a no-op for the system path and for an
+ * own-tenant custom role, and remains the cross-tenant guard for the super-admin
+ * path where a system code could front any tenant).
  *
  * <h3>Why this exists / E1 relationship</h3>
  * E1 made the role CATALOG data-driven and computed {@code assignable_by_caller}.
@@ -43,7 +63,7 @@ import java.util.stream.Collectors;
  *
  * <h3>replaceRolePermissions guard order (fail-closed, first failure wins)</h3>
  * <ol>
- *   <li><b>(a) role exists</b> — unknown {@code roleId} → 404 (no existence reveal).</li>
+ *   <li><b>(a) role exists</b> — unknown {@code roleCode} → 404 (no existence reveal).</li>
  *   <li><b>(b) system-role edit gate</b> — every seeded role is a system role
  *       today; only HRLAB_SUPER_ADMIN (a caller holding
  *       {@code USER_ROLE_ASSIGN_HRLAB}) may edit a system role, else 403.</li>
@@ -90,21 +110,24 @@ public class RolePermissionAdminUseCase {
     // ------------------------------------------------------------------- READ
 
     /**
-     * Read the full permission matrix for {@code roleId}. Returns EVERY catalog
+     * Read the full permission matrix for {@code roleCode}. Returns EVERY catalog
      * permission with {@code granted} (on this role) + {@code restricted} flags,
      * plus {@code editable_by_caller} so the FE can render the matrix read-only
      * for callers who may not edit this (system) role.
      */
     @Transactional(readOnly = true)
-    public RolePermissionsResponse getRolePermissions(UUID roleId) {
+    public RolePermissionsResponse getRolePermissions(String roleCode) {
         TenantContext ctx = TenantContextHolder.requireActive();
-        RoleJpaEntity role = requireRole(roleId);
-        // C-1 — tenant-ownership guard (BOLA fix). For a CUSTOM role the caller's
-        // active tenant must own it (super-admin may act cross-tenant); a foreign
-        // custom role → 404 (no existence reveal). System roles pass through here
-        // and remain gated by the super-admin canEdit() check below.
+        RoleJpaEntity role = resolveRoleByCode(ctx, roleCode);
+        // C-1 — tenant-ownership guard (BOLA fix, defense-in-depth). For a CUSTOM
+        // role the caller's active tenant must own it (super-admin may act
+        // cross-tenant); a foreign custom role → 404 (no existence reveal). Note
+        // resolveRoleByCode already restricts custom resolution to ctx.tenantId(),
+        // so a foreign custom code never reaches here; the guard still backstops the
+        // system path (where a system code could front any tenant).
         ownershipGuard.requireCanManage(ctx, role);
 
+        UUID roleId = role.getId();
         Set<UUID> grantedPermissionIds = rolePermissionRepo.findAllByIdRoleId(roleId).stream()
                 .map(rp -> rp.getId().getPermissionId())
                 .collect(Collectors.toUnmodifiableSet());
@@ -130,21 +153,24 @@ public class RolePermissionAdminUseCase {
     // ----------------------------------------------------------------- WRITE
 
     /**
-     * Replace-set the permissions on {@code roleId} with {@code permissionCodes}.
+     * Replace-set the permissions on {@code roleCode} with {@code permissionCodes}.
      * Applies the guard order documented on the class. Returns the refreshed
-     * matrix (same shape as {@link #getRolePermissions(UUID)}).
+     * matrix (same shape as {@link #getRolePermissions(String)}).
      */
     @Transactional
-    public RolePermissionsResponse replaceRolePermissions(UUID roleId, List<String> permissionCodes) {
+    public RolePermissionsResponse replaceRolePermissions(String roleCode, List<String> permissionCodes) {
         TenantContext ctx = TenantContextHolder.requireActive();
 
-        // (a) role must exist.
-        RoleJpaEntity role = requireRole(roleId);
+        // (a) role must exist — resolved by CODE (system, else caller-tenant custom;
+        // a foreign custom code never resolves → 404, preserving C-1 isolation).
+        RoleJpaEntity role = resolveRoleByCode(ctx, roleCode);
+        UUID roleId = role.getId();
 
-        // (a2) C-1 — tenant-ownership guard (BOLA fix). A CUSTOM role must belong
-        // to the caller's active tenant (super-admin may act cross-tenant); a
-        // foreign custom role → 404 (no reveal), no save, no audit. System roles
-        // pass through here and are gated by (b) below.
+        // (a2) C-1 — tenant-ownership guard (BOLA fix, defense-in-depth). A CUSTOM
+        // role must belong to the caller's active tenant (super-admin may act
+        // cross-tenant); a foreign custom role → 404 (no reveal), no save, no audit.
+        // Custom resolution above is already tenant-scoped; the guard backstops the
+        // system path. System roles pass through here and are gated by (b) below.
         ownershipGuard.requireCanManage(ctx, role);
 
         // (b) system-role edit gate.
@@ -187,14 +213,34 @@ public class RolePermissionAdminUseCase {
             }
         }
 
-        return getRolePermissions(roleId);
+        return getRolePermissions(role.getCode());
     }
 
     // --------------------------------------------------------------- HELPERS
 
-    private RoleJpaEntity requireRole(UUID roleId) {
-        return roleRepo.findById(roleId)
-                // Unknown role → 404 via TenantAccessDenied (NOT_FOUND), no reveal.
+    /**
+     * Resolve a role by CODE for the permission-matrix endpoints (matches the FE,
+     * which keys the matrix by code). Fail-closed order: SYSTEM role by code
+     * first (globally unique, tenant-less), else the CALLER'S-TENANT CUSTOM role
+     * by code, else 404 (no existence reveal).
+     *
+     * <p>C-1 isolation: custom resolution is restricted to {@code ctx.tenantId()}
+     * via {@code findByTenantIdAndCode}, so another tenant's custom code never
+     * resolves here — it falls through to the 404, and a caller can never read or
+     * edit a foreign tenant's custom role through a code. A custom code can never
+     * equal a system code (the create path rejects that), so the system-first
+     * order is unambiguous.
+     */
+    private RoleJpaEntity resolveRoleByCode(TenantContext ctx, String roleCode) {
+        String code = roleCode == null ? "" : roleCode.trim();
+        if (code.isEmpty()) {
+            throw new TenantAccessDeniedException(); // → 404, no reveal
+        }
+        return roleRepo.findByCodeAndIsSystemTrue(code)
+                .or(() -> ctx.tenantId() == null
+                        ? Optional.empty()
+                        : roleRepo.findByTenantIdAndCode(ctx.tenantId(), code))
+                // Unknown / cross-tenant code → 404 (NOT_FOUND), no reveal.
                 .orElseThrow(TenantAccessDeniedException::new);
     }
 

@@ -361,6 +361,7 @@ public class CustomRoleUseCase {
         UserManagementPolicy.RoleAssignDenialReason reason =
                 policy.roleAssignDenialReason(ctx, role);
         return new RoleResponse(
+                role.getId(),
                 role.getCode(),
                 nameI18n(role.getName()),
                 role.getScope() == null ? null : role.getScope().name(),

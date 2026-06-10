@@ -31,6 +31,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -42,6 +43,13 @@ import static org.mockito.Mockito.when;
  * Mockito — no Spring, no DB (Windows/Docker-safe). Exercises the guard order:
  * restricted → 422, caller-not-held → 422, system-role non-super-admin → 403,
  * the replace-set delta + one audit row per change, and the idempotent no-op.
+ *
+ * <p>The permission matrix is addressed by role CODE (matching the frontend).
+ * These tests therefore drive the use case with codes and assert by-code
+ * resolution: a SYSTEM role resolves by code, the caller's-tenant CUSTOM role
+ * resolves by code, a CROSS-TENANT custom code and an UNKNOWN code both → 404 —
+ * while every existing guard (system-role gate, restricted, caller-held, audit)
+ * still fires after resolution.
  */
 @Tag("unit")
 class RolePermissionAdminUseCaseTest {
@@ -56,6 +64,11 @@ class RolePermissionAdminUseCaseTest {
     private final UUID roleId = UUID.randomUUID();
     private final UUID tenantId = UUID.randomUUID();
     private final UUID actorId = UUID.randomUUID();
+
+    /** Code of the system role under test (the matrix is addressed by code). */
+    private static final String SYSTEM_ROLE_CODE = "CLIENT_HR_DIRECTOR";
+    /** Code of the custom roles used by the C-1 tests. */
+    private static final String CUSTOM_ROLE_CODE = "REVIEWER";
 
     // Catalog permission rows used across tests.
     private final PermissionJpaEntity projectRead =
@@ -83,7 +96,8 @@ class RolePermissionAdminUseCaseTest {
         useCase = new RolePermissionAdminUseCase(roleRepo, permissionRepo, rolePermissionRepo,
                 guard, ownershipGuard, audit);
 
-        when(roleRepo.findById(roleId)).thenReturn(Optional.of(role));
+        // System role resolves by code (system-first resolution path).
+        when(roleRepo.findByCodeAndIsSystemTrue(SYSTEM_ROLE_CODE)).thenReturn(Optional.of(role));
         when(permissionRepo.findByCode("PROJECT_READ")).thenReturn(Optional.of(projectRead));
         when(permissionRepo.findByCode("PROJECT_EDIT")).thenReturn(Optional.of(projectEdit));
         when(permissionRepo.findByCode("ORG_READ")).thenReturn(Optional.of(orgRead));
@@ -116,9 +130,10 @@ class RolePermissionAdminUseCaseTest {
 
     // ----------------------------------------------------------------- (a) 404
     @Test
-    void unknownRoleIsNotFound() {
-        UUID missing = UUID.randomUUID();
-        when(roleRepo.findById(missing)).thenReturn(Optional.empty());
+    void unknownRoleCodeIsNotFound() {
+        String missing = "DOES_NOT_EXIST";
+        when(roleRepo.findByCodeAndIsSystemTrue(missing)).thenReturn(Optional.empty());
+        when(roleRepo.findByTenantIdAndCode(tenantId, missing)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> useCase.replaceRolePermissions(missing, List.of("PROJECT_READ")))
                 .isInstanceOf(TenantAccessDeniedException.class); // → 404, no reveal
@@ -134,7 +149,7 @@ class RolePermissionAdminUseCaseTest {
         // USER_ROLE_ASSIGN_HRLAB — cannot edit a system role.
         setCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
 
-        assertThatThrownBy(() -> useCase.replaceRolePermissions(roleId, List.of("PROJECT_READ")))
+        assertThatThrownBy(() -> useCase.replaceRolePermissions(SYSTEM_ROLE_CODE, List.of("PROJECT_READ")))
                 .isInstanceOf(PermissionDeniedException.class); // → 403
 
         verify(rolePermissionRepo, never()).save(any());
@@ -146,7 +161,7 @@ class RolePermissionAdminUseCaseTest {
     @Test
     void requestingRestrictedPermissionReturns422() {
         assertThatThrownBy(() ->
-                useCase.replaceRolePermissions(roleId, List.of("PROJECT_READ", "SALARY_VIEW")))
+                useCase.replaceRolePermissions(SYSTEM_ROLE_CODE, List.of("PROJECT_READ", "SALARY_VIEW")))
                 .isInstanceOf(UnprocessableEntityException.class)
                 .extracting("code").isEqualTo("PERMISSION_RESTRICTED");
 
@@ -162,7 +177,7 @@ class RolePermissionAdminUseCaseTest {
                 PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
 
         assertThatThrownBy(() ->
-                useCase.replaceRolePermissions(roleId, List.of("PROJECT_READ", "ORG_READ")))
+                useCase.replaceRolePermissions(SYSTEM_ROLE_CODE, List.of("PROJECT_READ", "ORG_READ")))
                 .isInstanceOf(UnprocessableEntityException.class)
                 .extracting("code").isEqualTo("PERMISSION_NOT_HELD_BY_CALLER");
 
@@ -181,7 +196,7 @@ class RolePermissionAdminUseCaseTest {
 
         // Desired: PROJECT_READ (unchanged) + PROJECT_EDIT (added). ORG_READ dropped.
         RolePermissionsResponse out =
-                useCase.replaceRolePermissions(roleId, List.of("PROJECT_READ", "PROJECT_EDIT"));
+                useCase.replaceRolePermissions(SYSTEM_ROLE_CODE, List.of("PROJECT_READ", "PROJECT_EDIT"));
         assertThat(out.roleCode()).isEqualTo("CLIENT_HR_DIRECTOR");
 
         // One insert (PROJECT_EDIT), one delete (ORG_READ); PROJECT_READ untouched.
@@ -212,7 +227,7 @@ class RolePermissionAdminUseCaseTest {
                 .thenReturn(List.of(grant(projectRead), grant(projectEdit)));
         when(permissionRepo.findAll()).thenReturn(List.of(projectRead, projectEdit, orgRead));
 
-        useCase.replaceRolePermissions(roleId, List.of("PROJECT_READ", "PROJECT_EDIT"));
+        useCase.replaceRolePermissions(SYSTEM_ROLE_CODE, List.of("PROJECT_READ", "PROJECT_EDIT"));
 
         verify(rolePermissionRepo, never()).save(any());
         verify(rolePermissionRepo, never()).delete(any());
@@ -226,7 +241,7 @@ class RolePermissionAdminUseCaseTest {
         when(permissionRepo.findAll())
                 .thenReturn(List.of(projectRead, projectEdit, orgRead, salaryView));
 
-        RolePermissionsResponse out = useCase.getRolePermissions(roleId);
+        RolePermissionsResponse out = useCase.getRolePermissions(SYSTEM_ROLE_CODE);
 
         assertThat(out.roleCode()).isEqualTo("CLIENT_HR_DIRECTOR");
         assertThat(out.scope()).isEqualTo("TENANT");
@@ -251,22 +266,22 @@ class RolePermissionAdminUseCaseTest {
         when(rolePermissionRepo.findAllByIdRoleId(roleId)).thenReturn(List.of());
         when(permissionRepo.findAll()).thenReturn(List.of(projectRead));
 
-        RolePermissionsResponse out = useCase.getRolePermissions(roleId);
+        RolePermissionsResponse out = useCase.getRolePermissions(SYSTEM_ROLE_CODE);
 
         assertThat(out.editableByCaller()).isFalse();
     }
 
     // ===================================================================
-    //  C-1 — tenant-ownership guard on CUSTOM roles (BOLA fix)
+    //  By-code resolution + C-1 tenant isolation (BOLA fix)
     // ===================================================================
 
     /** A custom role owned by ANOTHER tenant; caller is a tenant admin (not super-admin). */
     private RoleJpaEntity foreignCustomRole(UUID id) {
-        return RoleJpaEntity.newCustom(id, otherTenantId, "REVIEWER", "Reviewer", null);
+        return RoleJpaEntity.newCustom(id, otherTenantId, CUSTOM_ROLE_CODE, "Reviewer", null);
     }
 
     private RoleJpaEntity ownCustomRole(UUID id) {
-        return RoleJpaEntity.newCustom(id, tenantId, "REVIEWER", "Reviewer", null);
+        return RoleJpaEntity.newCustom(id, tenantId, CUSTOM_ROLE_CODE, "Reviewer", null);
     }
 
     private void setTenantAdminCaller(Set<String> permissions) {
@@ -278,42 +293,41 @@ class RolePermissionAdminUseCaseTest {
     private final UUID otherTenantId = UUID.randomUUID();
     private final UUID customRoleId = UUID.randomUUID();
 
+    // -- system role resolves by code (already covered by the happy-path tests
+    //    above, which drive SYSTEM_ROLE_CODE; this asserts the resolver path
+    //    explicitly: a system code is resolved system-first, NOT via the
+    //    tenant-custom finder).
     @Test
-    void getCrossTenantCustomRoleIsNotFound() {
-        setTenantAdminCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
-        when(roleRepo.findById(customRoleId)).thenReturn(Optional.of(foreignCustomRole(customRoleId)));
+    void systemRoleResolvesByCodeViaSystemFinder() {
+        when(rolePermissionRepo.findAllByIdRoleId(roleId)).thenReturn(List.of(grant(projectRead)));
+        when(permissionRepo.findAll()).thenReturn(List.of(projectRead));
 
-        assertThatThrownBy(() -> useCase.getRolePermissions(customRoleId))
-                .isInstanceOf(TenantAccessDeniedException.class); // → 404, no reveal
+        RolePermissionsResponse out = useCase.getRolePermissions(SYSTEM_ROLE_CODE);
 
-        // No disclosure: the grant set is never queried.
-        verify(rolePermissionRepo, never()).findAllByIdRoleId(any());
-        verify(audit, never()).record(any());
+        assertThat(out.roleCode()).isEqualTo(SYSTEM_ROLE_CODE);
+        verify(roleRepo).findByCodeAndIsSystemTrue(SYSTEM_ROLE_CODE);
+        // System-first: the tenant-custom finder is never consulted for a system code.
+        verify(roleRepo, never()).findByTenantIdAndCode(any(), any());
     }
 
+    // -- own-tenant custom role resolves by code (within ctx.tenantId()).
     @Test
-    void replaceCrossTenantCustomRoleIsNotFoundNoSaveNoAudit() {
+    void ownTenantCustomRoleResolvesByCodeAndIsEditable() {
         setTenantAdminCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
-        when(roleRepo.findById(customRoleId)).thenReturn(Optional.of(foreignCustomRole(customRoleId)));
-
-        assertThatThrownBy(() ->
-                useCase.replaceRolePermissions(customRoleId, List.of("PROJECT_READ")))
-                .isInstanceOf(TenantAccessDeniedException.class); // → 404, no reveal
-
-        verify(rolePermissionRepo, never()).save(any());
-        verify(rolePermissionRepo, never()).delete(any());
-        verify(audit, never()).record(any());
-    }
-
-    @Test
-    void replaceOwnCustomRoleIsEditableByTenantAdmin() {
-        setTenantAdminCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
-        when(roleRepo.findById(customRoleId)).thenReturn(Optional.of(ownCustomRole(customRoleId)));
+        // Not a system code → falls through to the caller-tenant custom finder.
+        when(roleRepo.findByCodeAndIsSystemTrue(CUSTOM_ROLE_CODE)).thenReturn(Optional.empty());
+        when(roleRepo.findByTenantIdAndCode(tenantId, CUSTOM_ROLE_CODE))
+                .thenReturn(Optional.of(ownCustomRole(customRoleId)));
         when(rolePermissionRepo.findAllByIdRoleId(customRoleId)).thenReturn(List.of());
         when(permissionRepo.findAll()).thenReturn(List.of(projectRead, projectEdit, orgRead));
 
-        useCase.replaceRolePermissions(customRoleId, List.of("PROJECT_READ"));
+        useCase.replaceRolePermissions(CUSTOM_ROLE_CODE, List.of("PROJECT_READ"));
 
+        // Resolved within the caller's tenant ONLY (never another tenant). The
+        // write path resolves twice (once to act, once to read back the matrix),
+        // both within ctx.tenantId() — so atLeastOnce, and never a foreign tenant.
+        verify(roleRepo, atLeastOnce()).findByTenantIdAndCode(tenantId, CUSTOM_ROLE_CODE);
+        verify(roleRepo, never()).findByTenantIdAndCode(eq(otherTenantId), any());
         ArgumentCaptor<RolePermissionJpaEntity> saved =
                 ArgumentCaptor.forClass(RolePermissionJpaEntity.class);
         verify(rolePermissionRepo, atLeastOnce()).save(saved.capture());
@@ -324,15 +338,51 @@ class RolePermissionAdminUseCaseTest {
                 .contains(AuditAction.ROLE_PERMISSION_GRANTED);
     }
 
+    // -- C-1: a cross-tenant custom code never resolves (the tenant-scoped finder
+    //    only sees the caller's tenant) → 404, no save, no audit, no disclosure.
     @Test
-    void superAdminMayEditCrossTenantCustomRole() {
-        // Default caller (setUp) is HRLAB_SUPER_ADMIN — holds USER_ROLE_ASSIGN_HRLAB.
-        when(roleRepo.findById(customRoleId)).thenReturn(Optional.of(foreignCustomRole(customRoleId)));
-        when(rolePermissionRepo.findAllByIdRoleId(customRoleId)).thenReturn(List.of());
-        when(permissionRepo.findAll()).thenReturn(List.of(projectRead, projectEdit, orgRead));
+    void getCrossTenantCustomCodeIsNotFound() {
+        setTenantAdminCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
+        when(roleRepo.findByCodeAndIsSystemTrue(CUSTOM_ROLE_CODE)).thenReturn(Optional.empty());
+        // The code exists in ANOTHER tenant — but the caller-tenant finder returns
+        // empty, so it is invisible to this caller (C-1 isolation).
+        when(roleRepo.findByTenantIdAndCode(tenantId, CUSTOM_ROLE_CODE)).thenReturn(Optional.empty());
 
-        useCase.replaceRolePermissions(customRoleId, List.of("PROJECT_READ"));
+        assertThatThrownBy(() -> useCase.getRolePermissions(CUSTOM_ROLE_CODE))
+                .isInstanceOf(TenantAccessDeniedException.class); // → 404, no reveal
 
-        verify(rolePermissionRepo, atLeastOnce()).save(any());
+        // No disclosure: the grant set is never queried; foreign tenant never consulted.
+        verify(rolePermissionRepo, never()).findAllByIdRoleId(any());
+        verify(roleRepo, never()).findByTenantIdAndCode(eq(otherTenantId), any());
+        verify(audit, never()).record(any());
+    }
+
+    @Test
+    void replaceCrossTenantCustomCodeIsNotFoundNoSaveNoAudit() {
+        setTenantAdminCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
+        when(roleRepo.findByCodeAndIsSystemTrue(CUSTOM_ROLE_CODE)).thenReturn(Optional.empty());
+        when(roleRepo.findByTenantIdAndCode(tenantId, CUSTOM_ROLE_CODE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                useCase.replaceRolePermissions(CUSTOM_ROLE_CODE, List.of("PROJECT_READ")))
+                .isInstanceOf(TenantAccessDeniedException.class); // → 404, no reveal
+
+        verify(rolePermissionRepo, never()).save(any());
+        verify(rolePermissionRepo, never()).delete(any());
+        verify(audit, never()).record(any());
+    }
+
+    // -- An unknown code (neither a system code nor an own-tenant custom code) → 404.
+    @Test
+    void unknownCodeIsNotFound() {
+        setTenantAdminCaller(Set.of(PermissionCodes.USER_ACCESS_MANAGE, "PROJECT_READ"));
+        when(roleRepo.findByCodeAndIsSystemTrue("GHOST")).thenReturn(Optional.empty());
+        when(roleRepo.findByTenantIdAndCode(tenantId, "GHOST")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> useCase.getRolePermissions("GHOST"))
+                .isInstanceOf(TenantAccessDeniedException.class); // → 404, no reveal
+
+        verify(rolePermissionRepo, never()).findAllByIdRoleId(any());
+        verify(audit, never()).record(any());
     }
 }

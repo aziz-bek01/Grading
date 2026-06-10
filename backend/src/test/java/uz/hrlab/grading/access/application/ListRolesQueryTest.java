@@ -56,11 +56,13 @@ class ListRolesQueryTest {
 
     @Test
     void catalogUsesTenantScopedFinderAndDerivesCustomFlagAndAssignability() {
+        UUID systemRoleId = UUID.randomUUID();
+        UUID customRoleId = UUID.randomUUID();
         RoleJpaEntity systemRole =
-                new RoleJpaEntity(UUID.randomUUID(), RoleCodes.CLIENT_HR_DIRECTOR,
+                new RoleJpaEntity(systemRoleId, RoleCodes.CLIENT_HR_DIRECTOR,
                         "Client HR Director", RoleScope.TENANT);
         RoleJpaEntity customRole =
-                RoleJpaEntity.newCustom(UUID.randomUUID(), tenantId, "REVIEWER", "Reviewer", null);
+                RoleJpaEntity.newCustom(customRoleId, tenantId, "REVIEWER", "Reviewer", null);
 
         when(roleRepo.findByIsSystemTrueOrTenantIdOrderByScopeAscCodeAsc(tenantId))
                 .thenReturn(List.of(systemRole, customRole));
@@ -74,12 +76,16 @@ class ListRolesQueryTest {
                 .filter(r -> r.code().equals(RoleCodes.CLIENT_HR_DIRECTOR)).findFirst().orElseThrow();
         assertThat(system.isSystem()).isTrue();
         assertThat(system.isCustom()).isFalse();
+        // `id` is populated from the role PK (custom-role edit/delete address it).
+        assertThat(system.id()).isEqualTo(systemRoleId);
 
         RoleResponse custom = out.stream()
                 .filter(r -> r.code().equals("REVIEWER")).findFirst().orElseThrow();
         assertThat(custom.isSystem()).isFalse();
         assertThat(custom.isCustom()).isTrue();
         assertThat(custom.scope()).isEqualTo("TENANT");
+        // The custom-role id is exposed so the FE can PUT/DELETE /roles/{id}.
+        assertThat(custom.id()).isEqualTo(customRoleId);
         // A TENANT-scope custom role is assignable by the tenant admin.
         assertThat(custom.assignableByCaller()).isTrue();
         assertThat(custom.reasonIfNot()).isNull();

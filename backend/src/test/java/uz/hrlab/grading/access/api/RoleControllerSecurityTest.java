@@ -25,6 +25,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -87,13 +88,17 @@ class RoleControllerSecurityTest {
     // ------------------------------------------------------------------ 3)
     @Test
     void callerWithUserListReadsCatalogInExactContract() throws Exception {
+        UUID hrlabId = UUID.randomUUID();
+        UUID hrDirectorId = UUID.randomUUID();
         given(listRolesQuery.list(anyBoolean())).willReturn(List.of(
                 new RoleResponse(
+                        hrlabId,
                         "HRLAB_SUPER_ADMIN",
                         Map.of("ru-RU", "HRLab Super Admin", "en-US", "HRLab Super Admin",
                                 "uz-Cyrl-UZ", "HRLab Super Admin", "uz-Latn-UZ", "HRLab Super Admin"),
                         "PLATFORM", true, false, false, "HRLAB_ONLY"),
                 new RoleResponse(
+                        hrDirectorId,
                         "CLIENT_HR_DIRECTOR",
                         Map.of("ru-RU", "Client HR Director", "en-US", "Client HR Director",
                                 "uz-Cyrl-UZ", "Client HR Director", "uz-Latn-UZ", "Client HR Director"),
@@ -103,6 +108,9 @@ class RoleControllerSecurityTest {
                         .with(jwt().authorities(new SimpleGrantedAuthority("USER_LIST"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
+                // `id` is exposed on the catalog row (custom-role edit/delete address it).
+                .andExpect(jsonPath("$[0].id").value(hrlabId.toString()))
+                .andExpect(jsonPath("$[1].id").value(hrDirectorId.toString()))
                 .andExpect(jsonPath("$[0].code").value("HRLAB_SUPER_ADMIN"))
                 .andExpect(jsonPath("$[0].name_i18n.['ru-RU']").value("HRLab Super Admin"))
                 .andExpect(jsonPath("$[0].name_i18n.['uz-Cyrl-UZ']").value("HRLab Super Admin"))
@@ -139,11 +147,13 @@ class RoleControllerSecurityTest {
     // ============================================================ E2 endpoints
 
     private static final UUID ROLE_ID = UUID.randomUUID();
+    // The permission matrix is now addressed by role CODE (matching the FE).
+    private static final String ROLE_CODE = "CLIENT_HR_DIRECTOR";
 
-    // GET /{roleId}/permissions — gate is USER_ACCESS_MANAGE only.
+    // GET /{roleCode}/permissions — gate is USER_ACCESS_MANAGE only.
     @Test
     void getPermissionsRequiresUserAccessManage_403WithoutIt() throws Exception {
-        mvc.perform(get("/api/v1/roles/" + ROLE_ID + "/permissions")
+        mvc.perform(get("/api/v1/roles/" + ROLE_CODE + "/permissions")
                         // USER_LIST is enough for the catalog GET but NOT for the matrix.
                         .with(jwt().authorities(new SimpleGrantedAuthority("USER_LIST"))))
                 .andExpect(status().isForbidden());
@@ -151,12 +161,12 @@ class RoleControllerSecurityTest {
 
     @Test
     void getPermissionsWithUserAccessManageReturns200() throws Exception {
-        given(rolePermissionAdmin.getRolePermissions(any())).willReturn(
+        given(rolePermissionAdmin.getRolePermissions(ROLE_CODE)).willReturn(
                 new RolePermissionsResponse("CLIENT_HR_DIRECTOR", "TENANT", true, true,
                         List.of(new RolePermissionItem("PROJECT_READ", "PROJECT", "READ", true, false),
                                 new RolePermissionItem("SALARY_VIEW", "SALARY", "VIEW", false, true))));
 
-        mvc.perform(get("/api/v1/roles/" + ROLE_ID + "/permissions")
+        mvc.perform(get("/api/v1/roles/" + ROLE_CODE + "/permissions")
                         .with(jwt().authorities(new SimpleGrantedAuthority("USER_ACCESS_MANAGE"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role_code").value("CLIENT_HR_DIRECTOR"))
@@ -170,10 +180,10 @@ class RoleControllerSecurityTest {
                 .andExpect(jsonPath("$.items[1].restricted").value(true));
     }
 
-    // PUT /{roleId}/permissions — gate is USER_ACCESS_MANAGE only.
+    // PUT /{roleCode}/permissions — gate is USER_ACCESS_MANAGE only.
     @Test
     void putPermissionsRequiresUserAccessManage_403WithoutIt() throws Exception {
-        mvc.perform(put("/api/v1/roles/" + ROLE_ID + "/permissions")
+        mvc.perform(put("/api/v1/roles/" + ROLE_CODE + "/permissions")
                         .with(csrf())
                         .with(jwt().authorities(new SimpleGrantedAuthority("USER_LIST")))
                         .contentType(APPLICATION_JSON)
@@ -183,11 +193,11 @@ class RoleControllerSecurityTest {
 
     @Test
     void putPermissionsWithUserAccessManageAcceptsSnakeCaseBody() throws Exception {
-        given(rolePermissionAdmin.replaceRolePermissions(any(), any())).willReturn(
+        given(rolePermissionAdmin.replaceRolePermissions(eq(ROLE_CODE), any())).willReturn(
                 new RolePermissionsResponse("CLIENT_HR_DIRECTOR", "TENANT", true, true,
                         List.of(new RolePermissionItem("PROJECT_READ", "PROJECT", "READ", true, false))));
 
-        mvc.perform(put("/api/v1/roles/" + ROLE_ID + "/permissions")
+        mvc.perform(put("/api/v1/roles/" + ROLE_CODE + "/permissions")
                         .with(csrf())
                         .with(jwt().authorities(new SimpleGrantedAuthority("USER_ACCESS_MANAGE")))
                         .contentType(APPLICATION_JSON)
@@ -213,7 +223,7 @@ class RoleControllerSecurityTest {
     @Test
     void createRoleWithUserAccessManageReturns201() throws Exception {
         given(customRoleUseCase.create(any(), any(), any(), any())).willReturn(
-                new RoleResponse("REVIEWER",
+                new RoleResponse(UUID.randomUUID(), "REVIEWER",
                         Map.of("ru-RU", "Reviewer", "en-US", "Reviewer",
                                 "uz-Cyrl-UZ", "Reviewer", "uz-Latn-UZ", "Reviewer"),
                         "TENANT", false, true, true, null));

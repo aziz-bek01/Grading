@@ -57,6 +57,7 @@ public class ListRolesQuery {
         RoleAssignDenialReason reason = policy.roleAssignDenialReason(ctx, role);
         boolean assignable = reason == null;
         return new RoleResponse(
+                role.getId(),
                 role.getCode(),
                 nameI18n(role.getName()),
                 role.getScope() == null ? null : role.getScope().name(),

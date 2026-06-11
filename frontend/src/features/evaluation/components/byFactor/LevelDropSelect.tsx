@@ -114,7 +114,12 @@ export function LevelDropSelect({
   return (
     <div
       ref={rootRef}
-      className={cn('relative min-w-[14rem] max-w-md', className)}
+      // Base host: in-flow relative box with a sensible minimum. The width
+      // ceiling is intentionally left to the caller — the K-sheet row passes
+      // `w-full max-w-none` so the drop fills the dominant ДАРАЖА column. With
+      // `cn` (clsx, no tailwind-merge) we must NOT bake a competing `max-w-*`
+      // into the base, or both classes would emit and order would decide.
+      className={cn('relative min-w-[14rem] w-full', className)}
       data-testid={`level-drop${suffix}`}
     >
       <button
@@ -127,7 +132,7 @@ export function LevelDropSelect({
         data-testid={`level-drop-trigger${suffix}`}
         data-open={open || undefined}
         className={cn(
-          'flex w-full items-start gap-2 rounded-md border bg-surface px-2.5 py-1.5 text-left text-sm',
+          'flex min-h-[44px] w-full items-start gap-2 rounded-md border bg-surface px-2.5 py-1.5 text-left text-sm',
           'transition-colors hover:bg-divider/40',
           selectedLevel ? 'border-border-strong' : 'border-warning-500/50',
           disabled && 'cursor-not-allowed opacity-60 hover:bg-surface',

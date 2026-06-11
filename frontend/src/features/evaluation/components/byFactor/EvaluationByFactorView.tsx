@@ -424,12 +424,26 @@ export function EvaluationByFactorView({
           ) : (
             <div className="overflow-x-auto">
               <table
-                className="w-full text-sm border-collapse"
+                className="w-full table-fixed text-sm border-collapse"
                 data-testid="byfactor-table"
               >
+                {/*
+                  colgroup pins the column widths so `table-fixed` keeps the
+                  DARAJA column dominant (~42%) regardless of cell content. The
+                  retired БЎЛИМ / СЕКТОР / ТЎЛДИРИЛГАН columns are folded into
+                  the merged ЛАВОЗИМ (line 2 sub-text) and the merged ҲОЛАТ
+                  (stacked progress + status) columns respectively.
+                */}
+                <colgroup>
+                  <col className="w-8" />
+                  <col className="w-[27%]" />
+                  <col className="w-[42%]" />
+                  <col className="w-[21%]" />
+                  <col className="w-[7%]" />
+                </colgroup>
                 <thead className="bg-divider text-text-secondary text-xs uppercase tracking-wide">
                   <tr>
-                    <th className="px-2 py-2 w-8 text-left">
+                    <th className="px-2 py-3 w-8 text-left align-top">
                       <input
                         type="checkbox"
                         checked={allSelected}
@@ -439,25 +453,16 @@ export function EvaluationByFactorView({
                         className="h-4 w-4 accent-primary-500"
                       />
                     </th>
-                    <th className="px-3 py-2 text-left font-medium">
-                      {t('evaluation.byFactor.table.column.department')}
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium">
-                      {t('evaluation.byFactor.table.column.unit')}
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium">
+                    <th className="px-3 py-3 text-left font-medium align-top">
                       {t('evaluation.byFactor.table.column.position')}
                     </th>
-                    <th className="px-3 py-2 text-left font-medium">
-                      {t('evaluation.byFactor.table.column.filled')}
+                    <th className="px-3 py-3 text-left font-medium align-top">
+                      {t('evaluation.byFactor.table.column.level')}
                     </th>
-                    <th className="px-3 py-2 text-left font-medium">
-                      {t('evaluation.byFactor.table.column.score')}
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium">
+                    <th className="px-3 py-3 text-left font-medium align-top">
                       {t('evaluation.byFactor.table.column.comment')}
                     </th>
-                    <th className="px-3 py-2 text-left font-medium">
+                    <th className="px-3 py-3 text-right font-medium align-top hidden lg:table-cell">
                       {t('common.status')}
                     </th>
                   </tr>

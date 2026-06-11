@@ -868,6 +868,7 @@
           "position": "Position",
           "filled": "Filled",
           "score": "Score",
+          "level": "Level",
           "comment": "Comment"
         }
       },

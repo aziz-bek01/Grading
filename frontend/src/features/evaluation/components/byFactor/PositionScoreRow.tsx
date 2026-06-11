@@ -171,6 +171,20 @@ function PositionScoreRowBase({
     [onCommentChange, triggerFlash],
   );
 
+  // Stacked progress + status — rendered in the dedicated narrow ҲОЛАТ
+  // column on lg+, and folded inline as a third muted line inside the
+  // ЛАВОЗИМ cell below lg (responsive, single source of markup via this
+  // local fragment so the chip/badge pair is authored once).
+  const progressStatus = (
+    <>
+      <ProgressChip
+        filled={row.filled_factors_count}
+        total={row.total_factors_count}
+      />
+      <EvaluationStatusBadge status={row.status} />
+    </>
+  );
+
   return (
     <tr
       data-testid={`position-row-${row.position_code}`}
@@ -189,7 +203,7 @@ function PositionScoreRowBase({
         saveState === 'idle' && 'border-l-transparent',
       )}
     >
-      <td className="px-2 py-2 w-8" onClick={(e) => e.stopPropagation()}>
+      <td className="px-2 py-3 w-8 align-top" onClick={(e) => e.stopPropagation()}>
         <input
           id={cbId}
           type="checkbox"
@@ -201,23 +215,26 @@ function PositionScoreRowBase({
           className="h-4 w-4 accent-primary-500"
         />
       </td>
-      <td className="px-3 py-2 text-text-secondary">{row.department_name}</td>
-      <td className="px-3 py-2 text-text-muted">{row.unit_name ?? '—'}</td>
-      <td className="px-3 py-2 text-text-primary">
-        <div className="flex flex-col">
-          <span className="font-medium">{row.position_title}</span>
-          <span className="text-xs text-text-muted font-mono">
-            {row.position_code}
+      {/* ЛАВОЗИМ (merged): title + muted code · department · sector line. */}
+      <td className="px-3 py-3 align-top text-text-primary">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-text-primary">
+            {row.position_title}
+          </span>
+          <span className="text-xs text-text-muted">
+            <span className="font-mono">{row.position_code}</span>
+            {' · '}
+            {row.department_name}
+            {row.unit_name ? ` · ${row.unit_name}` : ''}
+          </span>
+          {/* Below lg: fold progress + status into the position cell. */}
+          <span className="lg:hidden mt-1 flex flex-wrap items-center gap-1.5 text-text-muted">
+            {progressStatus}
           </span>
         </div>
       </td>
-      <td className="px-3 py-2">
-        <ProgressChip
-          filled={row.filled_factors_count}
-          total={row.total_factors_count}
-        />
-      </td>
-      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+      {/* ДАРАЖА (dominant): hosts the level drop, fills the column width. */}
+      <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start gap-1.5">
           <LevelDropSelect
             factor={factor}
@@ -226,6 +243,7 @@ function PositionScoreRowBase({
             disabled={disabled}
             canSeePoints={canSeePoints}
             testIdSuffix={row.position_code}
+            className="w-full max-w-none"
             ariaLabel={t('evaluation.byFactor.row.score_aria', {
               factor: factor.code,
             })}
@@ -246,7 +264,8 @@ function PositionScoreRowBase({
           ) : null}
         </div>
       </td>
-      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+      {/* ИЗОҲ: app-standard small font, taller resizable box. */}
+      <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-col gap-0.5">
           <textarea
             id={cmtId}
@@ -261,8 +280,7 @@ function PositionScoreRowBase({
             data-testid={`row-comment-${row.position_code}`}
             placeholder={t('evaluation.matrix.comment_placeholder')}
             className={cn(
-              'w-full min-h-[44px] px-2 py-1 text-sm border border-border-strong rounded-md bg-surface resize-y',
-              'transition-[min-height] focus:min-h-[72px]',
+              'w-full min-h-[56px] max-h-[112px] px-2.5 py-1.5 text-xs border border-border-strong rounded-md bg-surface resize-y overflow-auto',
               disabled && 'opacity-60 cursor-not-allowed bg-divider/30',
             )}
           />
@@ -276,8 +294,9 @@ function PositionScoreRowBase({
           )}
         </div>
       </td>
-      <td className="px-3 py-2">
-        <EvaluationStatusBadge status={row.status} />
+      {/* ҲОЛАТ (merged, narrow): stacked progress + status, right-aligned. */}
+      <td className="px-3 py-3 align-top hidden lg:table-cell">
+        <div className="flex flex-col items-end gap-1">{progressStatus}</div>
       </td>
     </tr>
   );

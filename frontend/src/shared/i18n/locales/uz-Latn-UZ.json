@@ -1017,6 +1017,44 @@
     "summary_title": "Qisqacha maʼlumot",
     "gap_policy_label": "Uzilish siyosati",
     "confirm_remove_grade": "Ushbu greydni oʻchirish kerakmi?",
+    "archive_only_hint": "Tasdiqlangan/bloklangan tuzilmalarni faqat arxivlash mumkin.",
+    "template_source": {
+      "builtin": "Tizim",
+      "custom": "Maxsus"
+    },
+    "metadata": {
+      "edit_title": "Greyd tuzilmasini tahrirlash",
+      "edit_subtitle": "Nom, tavsif va boʻshliq siyosatini oʻzgartiring. Kod oʻzgarmas.",
+      "code_immutable": "Kod yaratishda belgilanadi va oʻzgartirilmaydi.",
+      "name_required": "Kamida bir tilda nomni kiriting.",
+      "save_failed": "Oʻzgarishlarni saqlab boʻlmadi. Qayta urinib koʻring.",
+      "save_success": "Oʻzgarishlar saqlandi.",
+      "not_editable": "Faqat qoralama (DRAFT) tuzilmalarni tahrirlash mumkin."
+    },
+    "save_as_template": {
+      "action": "Shablon sifatida saqlash",
+      "title": "Shablon sifatida saqlash",
+      "subtitle": "Ushbu greyd skeletini kelajakdagi tuzilmalar uchun qayta ishlating.",
+      "code_label": "Shablon kodi",
+      "code_required": "Shablon kodini kiriting.",
+      "duplicate_code": "Bunday kodli shablon allaqachon mavjud.",
+      "hint": "Greydlar va diapazonlar qayta ishlatiladigan ijarachi shabloniga saqlanadi.",
+      "submit": "Shablonni saqlash",
+      "failed": "Shablonni saqlab boʻlmadi. Qayta urinib koʻring.",
+      "success": "«{{code}}» shabloni saqlandi."
+    },
+    "manage_templates": {
+      "rename": "Qayta nomlash",
+      "archive": "Arxivlash",
+      "rename_title": "Shablonni qayta nomlash",
+      "rename_subtitle": "Shablon nomi va tavsifini oʻzgartiring. Kod oʻzgarmas.",
+      "rename_not_found": "Bu shablon endi mavjud emas.",
+      "rename_failed": "Shablonni qayta nomlab boʻlmadi. Qayta urinib koʻring.",
+      "rename_success": "Shablon qayta nomlandi.",
+      "archive_confirm_title": "Shablonni arxivlash kerakmi?",
+      "archive_confirm_body": "Shablon tanlov roʻyxatidan olib tashlanadi. Bu amal qaytarilmaydi.",
+      "archive_success": "Shablon arxivlandi."
+    },
     "status": {
       "draft": "Qoralama",
       "approved": "Tasdiqlangan",
@@ -1059,7 +1097,12 @@
       "archive_title": "Tuzilmani arxivga yuboramizmi?",
       "archive_body": "Tuzilma faol loyihalarda ishlatilmaydi. Sababni koʻrsating.",
       "new_version_title": "Yangi versiya yaratamizmi?",
-      "new_version_body": "Greydlar va diapazonlar nusxalari bilan qoralama versiya yaratiladi."
+      "new_version_body": "Greydlar va diapazonlar nusxalari bilan qoralama versiya yaratiladi.",
+      "remove_grade_title": "Ushbu greydni oʻchirish kerakmi?",
+      "remove_grade_body": "Greyd va uning diapazoni qoralama tuzilmadan oʻchiriladi.",
+      "delete_title": "Greyd tuzilmasini oʻchirish kerakmi?",
+      "delete_body": "Bu qoralama tuzilma va barcha greydlarni butunlay oʻchiradi. Amal qaytarilmaydi.",
+      "delete_success": "Greyd tuzilmasi oʻchirildi."
     },
     "locked_header_title_approved": "Greyd tuzilmasi tasdiqlandi",
     "locked_header_title_locked": "Tuzilma qulflandi",
@@ -1079,6 +1122,8 @@
       "add_grade": "Greyd qoʻshish",
       "action_edit": "Tahrirlash",
       "action_remove": "Oʻchirish",
+      "action_move_up": "Yuqoriga",
+      "action_move_down": "Pastga",
       "validation_ok": "Toza",
       "validation_overlap": "Kesishish",
       "validation_gap": "Uzilish",
@@ -1105,9 +1150,12 @@
       "band_legend": "Ball diapazoni",
       "min_score": "Minimal ball",
       "max_score": "Maksimal ball",
-      "error_name_required": "ru-RU tilida nom majburiy.",
+      "clear_band": "Diapazonni tozalash",
+      "clear_band_hint": "Ushbu greyd diapazonini oʻchirish uchun ikkala maydonni tozalang.",
+      "band_will_clear": "Saqlashda ushbu greyd diapazoni oʻchiriladi.",
+      "error_name_required": "Kamida bir tilda nomni kiriting.",
       "error_min_gt_max": "Minimal ball maksimal balldan kichik yoki teng boʻlishi kerak.",
-      "hint_primary_name": "Saqlash uchun ru-RU tilidagi nomni kiriting."
+      "hint_primary_name": "Saqlash uchun nomni kiriting."
     },
     "pyramid": {
       "title": "Greyd piramidasi",

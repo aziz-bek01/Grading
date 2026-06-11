@@ -5,19 +5,24 @@ import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { Card } from '@/shared/components/ui/Card';
+import { useAuthStore } from '@/features/auth/authStore';
+import { pickLocalized } from '@/shared/lib/localized';
 import { GradePyramid } from '../components/GradePyramid';
 import {
   useGradePyramid,
   useGradeStructure,
 } from '../hooks/useGradeStructure';
 import { routes } from '@/shared/config/routes';
+import type { Locale } from '@/shared/types/common';
 
 export function GradePyramidPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { projectId = '', gradeStructureId = '' } = useParams<{
     projectId: string;
     gradeStructureId: string;
   }>();
+  const currentLocale = (useAuthStore((s) => s.user?.locale) ??
+    (i18n.language as Locale)) as Locale;
   const structure = useGradeStructure(gradeStructureId);
   const pyramid = useGradePyramid(gradeStructureId);
 
@@ -38,7 +43,11 @@ export function GradePyramidPage() {
       <Breadcrumbs
         extra={[
           { label: t('nav.grades'), to: routes.projectGrades(projectId) },
-          { label: structure.data.code },
+          {
+            label:
+              pickLocalized(structure.data.name_i18n, currentLocale) ||
+              structure.data.code,
+          },
           { label: t('gradeStructure.pyramid.title') },
         ]}
       />

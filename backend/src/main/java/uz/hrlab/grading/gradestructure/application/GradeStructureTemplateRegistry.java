@@ -47,6 +47,29 @@ public class GradeStructureTemplateRegistry {
         return Optional.ofNullable(templates.get(code));
     }
 
+    /**
+     * Whether {@code code} is a reserved built-in template code (BE-8). A tenant
+     * CUSTOM template may NOT take a code that shadows a built-in, so the global
+     * namespace (GRADE_14 / GRADE_16 / CUSTOM) stays unambiguous in the unified
+     * catalog. Mirrors {@code MethodologyTemplateRegistry.isBuiltinCode}.
+     */
+    public boolean isBuiltinCode(String code) {
+        return code != null && templates.containsKey(code);
+    }
+
+    /**
+     * Read accessor for the built-in template catalog (BE-8) — backs the
+     * read-only built-in section of {@code GET /api/v1/grade-structure-templates}.
+     * Returns the registry contents in a stable, human-meaningful order
+     * (GRADE_14, GRADE_16, CUSTOM) so the FE picker is deterministic.
+     */
+    public List<GradeStructureTemplate> list() {
+        return java.util.stream.Stream.of("GRADE_14", "GRADE_16", "CUSTOM")
+                .map(templates::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
     private static GradeStructureTemplate grade14() {
         return evenlyDistributed("GRADE_14", GradeStructureType.GRADE_14, 14,
                 "14-грейдная модель", "14-grade structure",

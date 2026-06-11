@@ -1017,6 +1017,44 @@
     "summary_title": "Summary",
     "gap_policy_label": "Gap policy",
     "confirm_remove_grade": "Remove this grade?",
+    "archive_only_hint": "Approved/locked structures can only be archived.",
+    "template_source": {
+      "builtin": "Built-in",
+      "custom": "Custom"
+    },
+    "metadata": {
+      "edit_title": "Edit grade structure",
+      "edit_subtitle": "Update the name, description and gap policy. The code is fixed.",
+      "code_immutable": "The code is set at creation and cannot be changed.",
+      "name_required": "Provide a name in at least one language.",
+      "save_failed": "Failed to save changes. Please try again.",
+      "save_success": "Changes saved.",
+      "not_editable": "Only DRAFT structures can be edited."
+    },
+    "save_as_template": {
+      "action": "Save as template",
+      "title": "Save as template",
+      "subtitle": "Reuse this grade skeleton for future structures.",
+      "code_label": "Template code",
+      "code_required": "Enter a template code.",
+      "duplicate_code": "A template with this code already exists.",
+      "hint": "The grades and bands are snapshotted into a reusable tenant template.",
+      "submit": "Save template",
+      "failed": "Failed to save the template. Please try again.",
+      "success": "Template \"{{code}}\" saved."
+    },
+    "manage_templates": {
+      "rename": "Rename",
+      "archive": "Archive",
+      "rename_title": "Rename template",
+      "rename_subtitle": "Update the template name and description. The code is fixed.",
+      "rename_not_found": "This template no longer exists.",
+      "rename_failed": "Failed to rename the template. Please try again.",
+      "rename_success": "Template renamed.",
+      "archive_confirm_title": "Archive template?",
+      "archive_confirm_body": "The template will be removed from the picker. This cannot be undone.",
+      "archive_success": "Template archived."
+    },
     "status": {
       "draft": "Draft",
       "approved": "Approved",
@@ -1059,7 +1097,12 @@
       "archive_title": "Archive structure?",
       "archive_body": "This structure will no longer be available for active projects. Provide a reason.",
       "new_version_title": "Create new version?",
-      "new_version_body": "A draft version will be created with a copy of grades and bands."
+      "new_version_body": "A draft version will be created with a copy of grades and bands.",
+      "remove_grade_title": "Remove this grade?",
+      "remove_grade_body": "The grade and its band will be removed from the draft structure.",
+      "delete_title": "Delete grade structure?",
+      "delete_body": "This permanently deletes the draft structure and all its grades. This cannot be undone.",
+      "delete_success": "Grade structure deleted."
     },
     "locked_header_title_approved": "Grade structure approved",
     "locked_header_title_locked": "Structure locked",
@@ -1079,6 +1122,8 @@
       "add_grade": "Add grade",
       "action_edit": "Edit",
       "action_remove": "Remove",
+      "action_move_up": "Move up",
+      "action_move_down": "Move down",
       "validation_ok": "OK",
       "validation_overlap": "Overlap",
       "validation_gap": "Gap",
@@ -1105,9 +1150,12 @@
       "band_legend": "Score band",
       "min_score": "Minimum score",
       "max_score": "Maximum score",
-      "error_name_required": "Name in ru-RU is required.",
+      "clear_band": "Clear band",
+      "clear_band_hint": "Clear both fields to remove this grade's band.",
+      "band_will_clear": "Saving will remove this grade's band.",
+      "error_name_required": "Provide a name in at least one language.",
       "error_min_gt_max": "Minimum score must be ≤ maximum score.",
-      "hint_primary_name": "Fill in the ru-RU name to save."
+      "hint_primary_name": "Fill in a name to save."
     },
     "pyramid": {
       "title": "Grade pyramid",

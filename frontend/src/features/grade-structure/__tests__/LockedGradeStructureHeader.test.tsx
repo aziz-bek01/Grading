@@ -9,13 +9,12 @@ function structure(overrides: Partial<GradeStructure> = {}): GradeStructure {
     id: 'gs-x',
     project_id: null,
     code: 'TEST-14',
-    name: { 'ru-RU': 'Тест 14', 'en-US': 'Test 14' },
+    name_i18n: { 'ru-RU': 'Тест 14', 'en-US': 'Test 14' },
     structure_type: 'GRADE_14',
     status: 'APPROVED',
     gap_policy: 'STRICT_NO_GAPS',
     version_number: 1,
     approved_at: '2026-04-22T10:00:00Z',
-    approved_by_name: 'Test Approver',
     created_at: '2026-04-01T10:00:00Z',
     updated_at: '2026-04-22T10:00:00Z',
     grades: [],
@@ -29,25 +28,26 @@ describe('LockedGradeStructureHeader', () => {
     signIn('super-admin');
   });
 
-  it('renders approved-by line on APPROVED', () => {
+  it('renders the approved banner with timestamp on APPROVED (no actor name on wire)', () => {
     render(
       renderWithProviders(<LockedGradeStructureHeader structure={structure()} />),
     );
     const root = screen.getByTestId('locked-grade-structure-header');
     expect(root.getAttribute('data-status')).toBe('APPROVED');
+    // The wire never carries approved_by_name — the banner shows the timestamp
+    // with an "Unknown user" actor fallback (never a raw UUID).
     expect(screen.getByTestId('locked-actor-time').textContent).toMatch(
-      /Test Approver/,
+      /2026-04-22T10:00:00Z/,
     );
   });
 
-  it('renders locked-by + approved-by lines on LOCKED', () => {
+  it('renders locked + secondary approved line on LOCKED', () => {
     render(
       renderWithProviders(
         <LockedGradeStructureHeader
           structure={structure({
             status: 'LOCKED',
             locked_at: '2026-04-25T11:00:00Z',
-            locked_by_name: 'Test Locker',
           })}
         />,
       ),
@@ -55,11 +55,11 @@ describe('LockedGradeStructureHeader', () => {
     const root = screen.getByTestId('locked-grade-structure-header');
     expect(root.getAttribute('data-status')).toBe('LOCKED');
     expect(screen.getByTestId('locked-actor-time').textContent).toMatch(
-      /Test Locker/,
+      /2026-04-25T11:00:00Z/,
     );
-    // Both APPROVED and LOCKED metadata present → secondary "approved-by" line
+    // Both APPROVED and LOCKED timestamps present → secondary "approved" line.
     expect(screen.getByTestId('locked-approved-by').textContent).toMatch(
-      /Test Approver/,
+      /2026-04-22T10:00:00Z/,
     );
   });
 

@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { SUPPORTED_LOCALES } from '@/shared/types/i18n';
 import { cn } from '@/shared/lib/cn';
+import { pickLocalized } from '@/shared/lib/localized';
 import type { Locale } from '@/shared/types/common';
 import { validateBands } from '../lib/bandValidation';
 import type { Grade } from '../types';
@@ -17,6 +18,9 @@ interface GradeTableProps {
   onEdit?: (g: Grade) => void;
   onRemove?: (g: Grade) => void;
   onAdd?: () => void;
+  /** DRAFT-only reorder by sort_order. Disabled while a reorder is in flight. */
+  onMove?: (g: Grade, direction: 'up' | 'down') => void;
+  reordering?: boolean;
 }
 
 /**
@@ -35,10 +39,17 @@ export function GradeTable({
   onEdit,
   onRemove,
   onAdd,
+  onMove,
+  reordering = false,
 }: GradeTableProps) {
   const { t } = useTranslation();
+  // Display order follows persisted `sort_order` (falls back to grade_number) so
+  // the up/down reorder controls map 1:1 to the row positions the user sees.
   const sorted = useMemo(
-    () => [...grades].sort((a, b) => a.grade_number - b.grade_number),
+    () =>
+      [...grades].sort(
+        (a, b) => a.sort_order - b.sort_order || a.grade_number - b.grade_number,
+      ),
     [grades],
   );
 
@@ -111,7 +122,7 @@ export function GradeTable({
             </tr>
           ) : (
             sorted.map((g, idx) => {
-              const name = g.name?.[currentLocale] ?? g.name?.['ru-RU'] ?? '—';
+              const name = pickLocalized(g.name_i18n, currentLocale) || '—';
               const min = g.band?.min_score ?? null;
               const max = g.band?.max_score ?? null;
               const width = min != null && max != null ? max - min : null;
@@ -150,7 +161,8 @@ export function GradeTable({
                         aria-label={t('common.completeness')}
                       >
                         {SUPPORTED_LOCALES.map((loc) => {
-                          const filled = !!g.name?.[loc] && g.name[loc]!.trim().length > 0;
+                          const filled =
+                            !!g.name_i18n?.[loc] && g.name_i18n[loc]!.trim().length > 0;
                           return (
                             <span
                               key={loc}
@@ -197,6 +209,30 @@ export function GradeTable({
                   {!readOnly ? (
                     <td className="px-3 py-3 text-right">
                       <div className="inline-flex items-center gap-1">
+                        {onMove ? (
+                          <PermissionGate permission={PERMISSIONS.GRADE_EDIT}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={t('gradeStructure.table.action_move_up')}
+                              disabled={reordering || idx === 0}
+                              onClick={() => onMove(g, 'up')}
+                              data-testid={`grade-${g.grade_number}-move-up`}
+                            >
+                              <ArrowUp size={14} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={t('gradeStructure.table.action_move_down')}
+                              disabled={reordering || idx === sorted.length - 1}
+                              onClick={() => onMove(g, 'down')}
+                              data-testid={`grade-${g.grade_number}-move-down`}
+                            >
+                              <ArrowDown size={14} />
+                            </Button>
+                          </PermissionGate>
+                        ) : null}
                         <Button
                           variant="ghost"
                           size="sm"

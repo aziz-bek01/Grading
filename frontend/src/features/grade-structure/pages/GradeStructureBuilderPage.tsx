@@ -1,7 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Check, Archive, BarChart3, Lock } from 'lucide-react';
+import {
+  Archive,
+  BarChart3,
+  BookmarkPlus,
+  Check,
+  Lock,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
@@ -12,11 +20,16 @@ import { ReasonRequiredDialog } from '@/shared/components/confirm-dialog/ReasonR
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { useAuthStore } from '@/features/auth/authStore';
+import { pickLocalized } from '@/shared/lib/localized';
+import { useQueryClient } from '@tanstack/react-query';
+import { gradeStructureKeys, removeBand, upsertBand } from '../api/gradeStructureApi';
 import { GradeStructureStatusBadge } from '../components/GradeStructureStatusBadge';
 import { GradeStructureTypeBadge } from '../components/GradeStructureTypeBadge';
 import { GradeTable } from '../components/GradeTable';
 import { GradeBandValidator } from '../components/GradeBandValidator';
-import { GradeRowEditor } from '../components/GradeRowEditor';
+import { GradeRowEditor, type GradeRowEditorSubmit } from '../components/GradeRowEditor';
+import { GradeStructureMetadataDrawer } from '../components/GradeStructureMetadataDrawer';
+import { SaveAsGradeTemplateDrawer } from '../components/SaveAsGradeTemplateDrawer';
 import { LockedGradeStructureHeader } from '../components/LockedGradeStructureHeader';
 import { ScoreToGradeLookup } from '../components/ScoreToGradeLookup';
 import {
@@ -24,15 +37,22 @@ import {
   useApprove,
   useArchive,
   useCreateNewVersion,
+  useDeleteGradeStructure,
   useGradeStructure,
   useLock,
   useRemoveGrade,
+  useReorderGrades,
+  useSaveAsGradeTemplate,
   useUpdateGrade,
-  useUpsertBand,
+  useUpdateMetadata,
 } from '../hooks/useGradeStructure';
 import { routes } from '@/shared/config/routes';
-import type { Locale, LocalizedString } from '@/shared/types/common';
-import type { Grade } from '../types';
+import type { Locale } from '@/shared/types/common';
+import type {
+  Grade,
+  SaveAsGradeTemplatePayload,
+  UpdateMetadataPayload,
+} from '../types';
 
 export function GradeStructureBuilderPage() {
   const { t, i18n } = useTranslation();
@@ -44,6 +64,7 @@ export function GradeStructureBuilderPage() {
   }>();
   const currentLocale = (useAuthStore((s) => s.user?.locale) ??
     (i18n.language as Locale)) as Locale;
+  const qc = useQueryClient();
 
   // versionId in URL is a hint — we always load the structure by id (each
   // version IS a separate grade-structure row in the backend model).
@@ -54,18 +75,25 @@ export function GradeStructureBuilderPage() {
   // Mutations
   const [editorGrade, setEditorGrade] = useState<Grade | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [metadataOpen, setMetadataOpen] = useState(false);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [lockOpen, setLockOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [newVersionOpen, setNewVersionOpen] = useState(false);
+  const [removeGradeTarget, setRemoveGradeTarget] = useState<Grade | null>(null);
 
   const addGradeMut = useAddGrade(effectiveId);
   const updateGradeMut = useUpdateGrade(editorGrade?.id ?? '', effectiveId);
-  const removeGradeMut = useRemoveGrade(editorGrade?.id ?? '', effectiveId);
-  const upsertBandMut = useUpsertBand(editorGrade?.id ?? '', effectiveId);
+  const removeGradeMut = useRemoveGrade(removeGradeTarget?.id ?? '', effectiveId);
+  const reorderMut = useReorderGrades(effectiveId);
+  const updateMetadataMut = useUpdateMetadata(effectiveId);
+  const saveTemplateMut = useSaveAsGradeTemplate(effectiveId);
   const approveMut = useApprove(effectiveId);
   const lockMut = useLock(effectiveId);
   const archiveMut = useArchive(effectiveId);
+  const deleteMut = useDeleteGradeStructure(effectiveId);
   const newVersionMut = useCreateNewVersion(effectiveId);
 
   const grades = useMemo(() => structure?.grades ?? [], [structure]);
@@ -76,6 +104,8 @@ export function GradeStructureBuilderPage() {
     return <ErrorState onRetry={() => structureQuery.refetch()} />;
   if (!structure) return <ErrorState />;
 
+  const structureName = pickLocalized(structure.name_i18n, currentLocale) || structure.code;
+
   const handleEditGrade = (g: Grade) => {
     setEditorGrade(g);
     setEditorOpen(true);
@@ -85,48 +115,73 @@ export function GradeStructureBuilderPage() {
     setEditorOpen(true);
   };
 
-  const handleGradeSubmit = async (input: {
-    grade_number: number;
-    name: LocalizedString;
-    description?: LocalizedString;
-    min_score: number;
-    max_score: number;
-  }) => {
+  const handleGradeSubmit = async (input: GradeRowEditorSubmit) => {
+    // Resolve the grade id BEFORE the band call so a freshly-created grade gets
+    // its band targeted correctly (the band fetchers are called directly with
+    // the resolved id rather than via a hook closure that could be stale).
     let id: string;
+    const hadBand = !!editorGrade?.band;
     if (editorGrade) {
       await updateGradeMut.mutateAsync({
         grade_number: input.grade_number,
-        name: input.name,
-        description: input.description,
+        name_i18n: input.name_i18n,
+        description_i18n: input.description_i18n,
       });
       id = editorGrade.id;
     } else {
       const created = await addGradeMut.mutateAsync({
         grade_number: input.grade_number,
-        name: input.name,
-        description: input.description,
+        name_i18n: input.name_i18n,
+        description_i18n: input.description_i18n,
         sort_order: grades.length,
       });
       id = created.id;
     }
-    // upsert band
     if (id) {
-      // Use a fresh mutation with the right id — we cannot rely on
-      // editorGrade's closure for new grades.
-      await upsertBandMut.mutateAsync({
-        min_score: input.min_score,
-        max_score: input.max_score,
-      });
+      if (input.clear_band) {
+        // Explicit clear → DELETE band (BE-6), never a 0/0 upsert (FE-8). Skip the
+        // call when there was no band to clear (idempotent on the server anyway).
+        if (hadBand) await removeBand(id);
+      } else {
+        await upsertBand(id, {
+          min_score: input.min_score,
+          max_score: input.max_score,
+        });
+      }
+      qc.invalidateQueries({ queryKey: gradeStructureKeys.detail(effectiveId) });
+      qc.invalidateQueries({ queryKey: gradeStructureKeys.pyramid(effectiveId) });
+      qc.invalidateQueries({ queryKey: gradeStructureKeys.all });
     }
     setEditorOpen(false);
     setEditorGrade(null);
   };
 
-  const handleRemoveGrade = async (g: Grade) => {
-    if (!window.confirm(t('gradeStructure.confirm_remove_grade'))) return;
-    setEditorGrade(g);
-    await removeGradeMut.mutateAsync();
-    setEditorGrade(null);
+  const handleRemoveGrade = (g: Grade) => {
+    setRemoveGradeTarget(g);
+  };
+
+  const handleMoveGrade = async (g: Grade, direction: 'up' | 'down') => {
+    // Build the current display order (by sort_order), swap the moved grade with
+    // its neighbour, then send the full id set (BE-5 ordered_ids contract).
+    const ordered = [...grades].sort(
+      (a, b) => a.sort_order - b.sort_order || a.grade_number - b.grade_number,
+    );
+    const idx = ordered.findIndex((x) => x.id === g.id);
+    if (idx < 0) return;
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= ordered.length) return;
+    [ordered[idx], ordered[swapWith]] = [ordered[swapWith], ordered[idx]];
+    await reorderMut.mutateAsync({ ordered_ids: ordered.map((x) => x.id) });
+  };
+
+  const handleUpdateMetadata = async (patch: UpdateMetadataPayload) => {
+    await updateMetadataMut.mutateAsync(patch);
+    setMetadataOpen(false);
+  };
+
+  const handleSaveAsTemplate = async (payload: SaveAsGradeTemplatePayload) => {
+    await saveTemplateMut.mutateAsync(payload);
+    setSaveTemplateOpen(false);
   };
 
   const handleCreateNewVersion = async () => {
@@ -140,7 +195,7 @@ export function GradeStructureBuilderPage() {
       <Breadcrumbs
         extra={[
           { label: t('nav.grades'), to: routes.projectGrades(projectId) },
-          { label: structure.name?.[currentLocale] ?? structure.code },
+          { label: structureName },
           {
             label: t('gradeStructure.version_label', {
               number: structure.version_number,
@@ -155,9 +210,7 @@ export function GradeStructureBuilderPage() {
       >
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl text-text-primary">
-              {structure.name?.[currentLocale] ?? structure.code}
-            </h1>
+            <h1 className="text-2xl text-text-primary">{structureName}</h1>
             <GradeStructureStatusBadge status={structure.status} />
             <GradeStructureTypeBadge type={structure.structure_type} />
           </div>
@@ -183,8 +236,31 @@ export function GradeStructureBuilderPage() {
             </Button>
           </PermissionGate>
 
+          <PermissionGate permission={PERMISSIONS.GRADE_EDIT}>
+            <Button
+              variant="ghost"
+              size="sm"
+              leadingIcon={<BookmarkPlus size={14} />}
+              onClick={() => setSaveTemplateOpen(true)}
+              data-testid="grade-structure-save-as-template"
+            >
+              {t('gradeStructure.save_as_template.action')}
+            </Button>
+          </PermissionGate>
+
           {!readOnly ? (
             <>
+              <PermissionGate permission={PERMISSIONS.GRADE_EDIT}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leadingIcon={<Pencil size={14} />}
+                  onClick={() => setMetadataOpen(true)}
+                  data-testid="grade-structure-action-edit-metadata"
+                >
+                  {t('common.edit')}
+                </Button>
+              </PermissionGate>
               <PermissionGate permission={PERMISSIONS.GRADE_STRUCTURE_APPROVE}>
                 <Button
                   variant="primary"
@@ -200,11 +276,11 @@ export function GradeStructureBuilderPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  leadingIcon={<Archive size={14} />}
-                  onClick={() => setArchiveOpen(true)}
-                  data-testid="grade-structure-action-archive"
+                  leadingIcon={<Trash2 size={14} className="text-danger-700" />}
+                  onClick={() => setDeleteOpen(true)}
+                  data-testid="grade-structure-action-delete"
                 >
-                  {t('common.archive')}
+                  {t('common.delete')}
                 </Button>
               </PermissionGate>
             </>
@@ -218,6 +294,19 @@ export function GradeStructureBuilderPage() {
                 data-testid="grade-structure-action-lock"
               >
                 {t('gradeStructure.actions.lock')}
+              </Button>
+            </PermissionGate>
+          ) : null}
+          {readOnly && structure.status !== 'ARCHIVED' ? (
+            <PermissionGate permission={PERMISSIONS.GRADE_EDIT}>
+              <Button
+                variant="ghost"
+                size="sm"
+                leadingIcon={<Archive size={14} />}
+                onClick={() => setArchiveOpen(true)}
+                data-testid="grade-structure-action-archive"
+              >
+                {t('common.archive')}
               </Button>
             </PermissionGate>
           ) : null}
@@ -241,6 +330,8 @@ export function GradeStructureBuilderPage() {
             onEdit={handleEditGrade}
             onRemove={handleRemoveGrade}
             onAdd={handleNewGrade}
+            onMove={readOnly ? undefined : handleMoveGrade}
+            reordering={reorderMut.isPending}
           />
           <ScoreToGradeLookup gradeStructureId={structure.id} grades={grades} />
         </main>
@@ -289,6 +380,35 @@ export function GradeStructureBuilderPage() {
         onSubmit={handleGradeSubmit}
       />
 
+      <GradeStructureMetadataDrawer
+        open={metadataOpen}
+        structure={structure}
+        editable
+        onClose={() => setMetadataOpen(false)}
+        onSubmit={handleUpdateMetadata}
+      />
+
+      <SaveAsGradeTemplateDrawer
+        open={saveTemplateOpen}
+        structure={structure}
+        onClose={() => setSaveTemplateOpen(false)}
+        onSubmit={handleSaveAsTemplate}
+      />
+
+      <ConfirmDialog
+        open={!!removeGradeTarget}
+        destructive
+        title={t('gradeStructure.confirm.remove_grade_title')}
+        body={t('gradeStructure.confirm.remove_grade_body')}
+        confirmLabel={t('gradeStructure.table.action_remove')}
+        onCancel={() => setRemoveGradeTarget(null)}
+        onConfirm={async () => {
+          const target = removeGradeTarget;
+          setRemoveGradeTarget(null);
+          if (target) await removeGradeMut.mutateAsync();
+        }}
+      />
+
       <ConfirmDialog
         open={approveOpen}
         title={t('gradeStructure.confirm.approve_title')}
@@ -321,6 +441,20 @@ export function GradeStructureBuilderPage() {
         onConfirm={async (reason) => {
           setArchiveOpen(false);
           await archiveMut.mutateAsync({ reason });
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        destructive
+        title={t('gradeStructure.confirm.delete_title')}
+        body={t('gradeStructure.confirm.delete_body')}
+        confirmLabel={t('common.delete')}
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={async () => {
+          setDeleteOpen(false);
+          await deleteMut.mutateAsync();
+          navigate(routes.projectGrades(projectId));
         }}
       />
 

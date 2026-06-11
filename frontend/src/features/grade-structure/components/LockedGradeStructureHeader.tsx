@@ -12,8 +12,13 @@ interface LockedGradeStructureHeaderProps {
 
 /**
  * Read-only banner shown above APPROVED / LOCKED grade structures. Mirrors
- * LockedMethodologyHeader: "Approved by X on Y" + (when LOCKED) "Locked by
- * Z on W" + a "Create new version" CTA gated on GRADE_EDIT.
+ * LockedMethodologyHeader: "Approved on Y" + (when LOCKED) "Locked on W" + a
+ * "Create new version" CTA gated on GRADE_EDIT.
+ *
+ * NOTE: the wire never carries `approved_by_name` / `locked_by_name`
+ * (BE-1) — only opaque UUIDs. We therefore show a name-less fallback
+ * (timestamp + "system" actor key) rather than rendering a raw UUID, and the
+ * archive reason (audit-only) is not shown here.
  */
 export function LockedGradeStructureHeader({
   structure,
@@ -22,10 +27,8 @@ export function LockedGradeStructureHeader({
   const { t } = useTranslation();
   const isLocked = structure.status === 'LOCKED';
 
-  const actor = isLocked
-    ? structure.locked_by_name ?? structure.locked_by ?? t('common.unknown_actor')
-    : structure.approved_by_name ?? structure.approved_by ?? t('common.unknown_actor');
-  const timestamp = isLocked ? structure.locked_at : structure.approved_at;
+  const actor = t('common.unknown_actor');
+  const timestamp = (isLocked ? structure.locked_at : structure.approved_at) ?? '—';
   const titleKey = isLocked
     ? 'gradeStructure.locked_header_title_locked'
     : 'gradeStructure.locked_header_title_approved';
@@ -46,19 +49,16 @@ export function LockedGradeStructureHeader({
           {t(titleKey)}
         </h3>
         <p className="text-xs text-text-secondary mt-1" data-testid="locked-actor-time">
-          {t(bodyKey, { actor, timestamp: timestamp ?? '—' })}
+          {t(bodyKey, { actor, timestamp })}
         </p>
-        {isLocked && structure.approved_by_name && structure.approved_at && (
-          <p
-            className="text-xs text-text-secondary mt-1"
-            data-testid="locked-approved-by"
-          >
+        {isLocked && structure.approved_at ? (
+          <p className="text-xs text-text-secondary mt-1" data-testid="locked-approved-by">
             {t('gradeStructure.locked_header_body_approved', {
-              actor: structure.approved_by_name,
+              actor,
               timestamp: structure.approved_at,
             })}
           </p>
-        )}
+        ) : null}
       </div>
       <PermissionGate permission={PERMISSIONS.GRADE_EDIT}>
         <Button

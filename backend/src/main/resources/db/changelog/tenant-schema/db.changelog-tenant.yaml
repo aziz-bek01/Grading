@@ -113,3 +113,12 @@ databaseChangeLog:
   - include:
       file: 032-create-methodology-templates.yaml
       relativeToChangelogFile: true
+  # BE-7 — tenant-scoped DB-backed CUSTOM grade templates (save-grade-structure-
+  # as-template). EXACT mirror of 032 for the grade module. Built-ins stay in the
+  # in-memory GradeStructureTemplateRegistry. Self-contained: creates its own
+  # table + RLS policy (NULLIF blank-safe, in lock-step with 030/031/032). Depends
+  # only on public.tenants (control-plane 001); runs after the grade structure
+  # tables for locality. Re-applied by TenantSchemaProvisioner for schema-per-tenant.
+  - include:
+      file: 033-create-grade-templates.yaml
+      relativeToChangelogFile: true

@@ -193,6 +193,10 @@ class GradeBandLookupServiceTest {
             return false;
         }
         @Override public void delete(GradeJpaEntity e) { }
+        @Override public void deleteAll(Iterable<? extends GradeJpaEntity> entities) { }
+        @Override public List<Object[]> countByStructureIds(UUID t, java.util.Collection<UUID> ids) {
+            return List.of();
+        }
         @Override public org.springframework.data.domain.Page<GradeJpaEntity>
                 findAllByTenantId(UUID t, org.springframework.data.domain.Pageable p) {
             return org.springframework.data.domain.Page.empty();

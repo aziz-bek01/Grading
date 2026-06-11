@@ -439,7 +439,7 @@ describe('no tenant_id leak in outbound API requests', () => {
       template_code: 'GRADE_14',
       project_id: 'p-1',
       code: 'TEST-14',
-      name: { 'ru-RU': 'Тест' },
+      name_i18n: { 'ru-RU': 'Тест' },
     });
     expect(recorded.length).toBe(1);
     assertNoTenantLeak(recorded[0]);
@@ -453,7 +453,7 @@ describe('no tenant_id leak in outbound API requests', () => {
     await createFromScratch({
       project_id: 'p-1',
       code: 'CUSTOM-1',
-      name: { 'ru-RU': 'Custom' },
+      name_i18n: { 'ru-RU': 'Custom' },
       structure_type: 'CUSTOM',
       gap_policy: 'STRICT_NO_GAPS',
     });
@@ -466,7 +466,7 @@ describe('no tenant_id leak in outbound API requests', () => {
     const { updateMetadata } = await import(
       '@/features/grade-structure/api/gradeStructureApi'
     );
-    await updateMetadata('gs-1', { code: 'NEW-CODE' });
+    await updateMetadata('gs-1', { name_i18n: { 'ru-RU': 'Новое имя' } });
     expect(recorded.length).toBe(1);
     assertNoTenantLeak(recorded[0]);
   });
@@ -520,7 +520,7 @@ describe('no tenant_id leak in outbound API requests', () => {
     );
     await addGrade('gs-1', {
       grade_number: 1,
-      name: { 'ru-RU': 'Грейд 1' },
+      name_i18n: { 'ru-RU': 'Грейд 1' },
     });
     expect(recorded.length).toBe(1);
     assertNoTenantLeak(recorded[0]);
@@ -572,6 +572,39 @@ describe('no tenant_id leak in outbound API requests', () => {
       '@/features/grade-structure/api/gradeStructureApi'
     );
     await previewGradeLookup('gs-1', { score: 75 });
+    expect(recorded.length).toBe(1);
+    assertNoTenantLeak(recorded[0]);
+  });
+
+  it('gradeStructureApi.saveGradeStructureAsTemplate() sends no tenant id', async () => {
+    recorded.length = 0;
+    const { saveGradeStructureAsTemplate } = await import(
+      '@/features/grade-structure/api/gradeStructureApi'
+    );
+    await saveGradeStructureAsTemplate('gs-1', {
+      code: 'TPL-X',
+      name_i18n: { 'ru-RU': 'Шаблон' },
+    });
+    expect(recorded.length).toBe(1);
+    assertNoTenantLeak(recorded[0]);
+  });
+
+  it('gradeStructureApi.updateGradeTemplate() sends no tenant id', async () => {
+    recorded.length = 0;
+    const { updateGradeTemplate } = await import(
+      '@/features/grade-structure/api/gradeStructureApi'
+    );
+    await updateGradeTemplate('tpl-1', { name_i18n: { 'ru-RU': 'Шаблон 2' } });
+    expect(recorded.length).toBe(1);
+    assertNoTenantLeak(recorded[0]);
+  });
+
+  it('gradeStructureApi.archiveGradeTemplate() sends no tenant id', async () => {
+    recorded.length = 0;
+    const { archiveGradeTemplate } = await import(
+      '@/features/grade-structure/api/gradeStructureApi'
+    );
+    await archiveGradeTemplate('tpl-1');
     expect(recorded.length).toBe(1);
     assertNoTenantLeak(recorded[0]);
   });

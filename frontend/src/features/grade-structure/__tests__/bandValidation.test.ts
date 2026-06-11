@@ -11,7 +11,7 @@ function grade(n: number, b?: { min: number; max: number } | null): Grade {
     id: `g-${n}`,
     grade_structure_id: 's',
     grade_number: n,
-    name: { 'ru-RU': `Грейд ${n}` },
+    name_i18n: { 'ru-RU': `Грейд ${n}` },
     sort_order: n - 1,
     band: b ? band(b.min, b.max) : null,
   };

@@ -2196,7 +2196,8 @@ function buildPyramid(s: MockGradeStructure) {
       min_score: g.band?.min_score ?? null,
       max_score: g.band?.max_score ?? null,
     }));
-  return { grade_structure_id: s.id, rows };
+  // BE-2 returns only `{ rows }`.
+  return { rows };
 }
 
 function build14Template(): MockGrade[] {
@@ -2264,6 +2265,214 @@ function build16Template(): MockGrade[] {
   });
 }
 
+/**
+ * Serialize a mock structure to the LEAN single-item wire shape
+ * (`GradeStructureResponse.from`): NO grades, NO grade_count/created_at/updated_at
+ * enrichment (those are list-only), NO actor-name/archive_reason fields.
+ */
+function serializeStructure(s: MockGradeStructure): Record<string, unknown> {
+  return {
+    id: s.id,
+    project_id: s.project_id ?? null,
+    code: s.code,
+    name_i18n: s.name_i18n ?? {},
+    description_i18n: s.description_i18n ?? null,
+    structure_type: s.structure_type,
+    status: s.status,
+    version_number: s.version_number,
+    previous_version_id: s.previous_version_id ?? s.parent_structure_id ?? null,
+    gap_policy: s.gap_policy,
+    approved_at: s.approved_at ?? null,
+    approved_by: s.approved_by ?? null,
+    locked_at: s.locked_at ?? null,
+    locked_by: s.locked_by ?? null,
+    archived_at: s.archived_at ?? null,
+    archived_by: null,
+    grade_count: null,
+    created_at: null,
+    updated_at: null,
+  };
+}
+
+/**
+ * Serialize a structure to the LIST wire shape — adds `grade_count` +
+ * created_at/updated_at (BE-1 fromList enrichment).
+ */
+function serializeStructureListItem(s: MockGradeStructure): Record<string, unknown> {
+  return {
+    ...serializeStructure(s),
+    grade_count: s.grades.length,
+    created_at: s.created_at,
+    updated_at: s.updated_at,
+  };
+}
+
+/**
+ * Serialize a structure to the DETAIL ENVELOPE wire shape
+ * (`GradeStructureDetailResponse`): `{ structure, grades:[...], bands:[...] }`
+ * where bands is a SEPARATE array joined by grade_id. The grade wire shape carries
+ * `name_i18n` / `description_i18n` and NO nested band.
+ */
+function serializeStructureDetail(s: MockGradeStructure): Record<string, unknown> {
+  const grades = s.grades.map((g) => ({
+    id: g.id,
+    grade_structure_id: s.id,
+    grade_number: g.grade_number,
+    sort_order: g.sort_order,
+    name_i18n: g.name_i18n ?? {},
+    description_i18n: g.description_i18n ?? null,
+  }));
+  const bands = s.grades
+    .filter((g) => g.band)
+    .map((g) => ({
+      id: g.band!.id,
+      grade_id: g.id,
+      min_score: g.band!.min_score,
+      max_score: g.band!.max_score,
+    }));
+  return { structure: serializeStructure(s), grades, bands };
+}
+
+function serializeGrade(s: MockGradeStructure, g: MockGrade): Record<string, unknown> {
+  return {
+    id: g.id,
+    grade_structure_id: s.id,
+    grade_number: g.grade_number,
+    sort_order: g.sort_order,
+    name_i18n: g.name_i18n ?? {},
+    description_i18n: g.description_i18n ?? null,
+  };
+}
+
+function gradeStructureTransitionRejected(): MatchResult {
+  return {
+    status: 400,
+    body: {
+      code: 'GRADE_STRUCTURE_TRANSITION_REJECTED',
+      message: 'Only DRAFT grade structures can be modified.',
+    },
+  };
+}
+
+// --- BE-9: tenant CUSTOM grade-template store (mirror of methodology) ---
+
+interface MockGradeTemplate {
+  id: string | null;
+  code: string;
+  source: 'BUILTIN' | 'CUSTOM';
+  is_builtin: boolean;
+  name_i18n: Record<string, string>;
+  description_i18n?: Record<string, string>;
+  structure_type: MockGradeStructure['structure_type'];
+  grade_count: number;
+}
+
+const BUILTIN_GRADE_TEMPLATES: MockGradeTemplate[] = [
+  {
+    id: null,
+    code: 'GRADE_14',
+    source: 'BUILTIN',
+    is_builtin: true,
+    name_i18n: { 'ru-RU': '14-грейдовая структура', 'en-US': '14-grade structure' },
+    description_i18n: {
+      'ru-RU': 'Готовая 14-грейдовая шкала с равномерными бэндами.',
+      'en-US': 'Ready 14-grade scale with even bands.',
+    },
+    structure_type: 'GRADE_14',
+    grade_count: 14,
+  },
+  {
+    id: null,
+    code: 'GRADE_16',
+    source: 'BUILTIN',
+    is_builtin: true,
+    name_i18n: { 'ru-RU': '16-грейдовая структура', 'en-US': '16-grade structure' },
+    description_i18n: {
+      'ru-RU': 'Готовая 16-грейдовая шкала для крупных организаций.',
+      'en-US': 'Ready 16-grade scale for larger organisations.',
+    },
+    structure_type: 'GRADE_16',
+    grade_count: 16,
+  },
+  {
+    id: null,
+    code: 'CUSTOM',
+    source: 'BUILTIN',
+    is_builtin: true,
+    name_i18n: { 'ru-RU': 'Пользовательская структура', 'en-US': 'Custom structure' },
+    description_i18n: {
+      'ru-RU': 'Пустая структура — настройте грейды и бэнды вручную.',
+      'en-US': 'Empty structure — define your own grades and bands.',
+    },
+    structure_type: 'CUSTOM',
+    grade_count: 0,
+  },
+];
+
+const customGradeTemplates: MockGradeTemplate[] = [];
+
+/** Reset hook for tests — clears the custom grade-template store. */
+export function resetMockCustomGradeTemplates(): void {
+  customGradeTemplates.length = 0;
+}
+
+function gradeTemplateCodeTaken(code: string): boolean {
+  const upper = code.toUpperCase();
+  return (
+    BUILTIN_GRADE_TEMPLATES.some((t) => t.code.toUpperCase() === upper) ||
+    customGradeTemplates.some((t) => t.code.toUpperCase() === upper)
+  );
+}
+
+function findGradeTemplateByCode(code: string): MockGradeTemplate | undefined {
+  const upper = code.toUpperCase();
+  return (
+    BUILTIN_GRADE_TEMPLATES.find((t) => t.code.toUpperCase() === upper) ||
+    customGradeTemplates.find((t) => t.code.toUpperCase() === upper)
+  );
+}
+
+function handleGradeStructureTemplates(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MatchResult | null {
+  if (path === '/grade-structure-templates' && method === 'GET') {
+    // Built-ins ∪ tenant CUSTOM (active only — archived disappear from the list).
+    return ok({ items: [...BUILTIN_GRADE_TEMPLATES, ...customGradeTemplates] });
+  }
+
+  // PUT (rename) / DELETE (archive) — custom-only; built-ins (id=null) never match.
+  const detail = /^\/grade-structure-templates\/([^/]+)$/.exec(path);
+  if (detail) {
+    const id = detail[1];
+    const tpl = customGradeTemplates.find((c) => c.id === id);
+    if (method === 'PUT') {
+      if (!tpl) return notFound();
+      const raw = readBody<{
+        name_i18n?: Record<string, string>;
+        description_i18n?: Record<string, string>;
+      }>(config);
+      const body = stripTenantFromBody(raw as Record<string, unknown>, path, 'PUT') as typeof raw;
+      if (!body.name_i18n || !Object.values(body.name_i18n).some((v) => v?.trim())) {
+        return {
+          status: 400,
+          body: { code: 'VALIDATION_FAILED', message: 'name_i18n required' },
+        };
+      }
+      tpl.name_i18n = body.name_i18n;
+      tpl.description_i18n = body.description_i18n;
+      return ok({ template_id: tpl.id });
+    }
+    if (method === 'DELETE') {
+      if (!tpl) return notFound();
+      customGradeTemplates.splice(customGradeTemplates.indexOf(tpl), 1);
+      return { status: 204, body: null };
+    }
+  }
+  return null;
+}
+
 function handleGradeStructures(
   method: string,
   path: string,
@@ -2277,7 +2486,14 @@ function handleGradeStructures(
     let list = mockDb.gradeStructures;
     if (projectId) list = list.filter((s) => s.project_id === projectId);
     if (status) list = list.filter((s) => s.status === status);
-    return ok({ items: list });
+    // BE-1 PageResponse with grade_count + created_at/updated_at enrichment.
+    return ok({
+      items: list.map(serializeStructureListItem),
+      page: 0,
+      size: list.length,
+      total_elements: list.length,
+      total_pages: 1,
+    });
   }
   if (path === '/grade-structures' && method === 'POST') {
     const raw = readBody<Record<string, unknown>>(config);
@@ -2292,13 +2508,15 @@ function handleGradeStructures(
       status: 'DRAFT',
       gap_policy: (body.gap_policy as MockGradeStructure['gap_policy']) ?? 'STRICT_NO_GAPS',
       version_number: 1,
+      previous_version_id: null,
       parent_structure_id: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       grades: [],
     };
     mockDb.gradeStructures.unshift(next);
-    return ok(next, 201);
+    // Create returns the detail ENVELOPE (BE: GradeStructureDetailResponse).
+    return ok(serializeStructureDetail(next), 201);
   }
   if (path === '/grade-structures/from-template' && method === 'POST') {
     const raw = readBody<Record<string, unknown>>(config);
@@ -2307,16 +2525,27 @@ function handleGradeStructures(
       project_id?: string | null;
       code?: string;
       name_i18n?: Record<string, string>;
+      description_i18n?: Record<string, string>;
+      gap_policy?: MockGradeStructure['gap_policy'];
     };
+    const templateCode = body.template_code ?? 'CUSTOM';
+    // Unknown / archived / cross-tenant code → 404 (BE contract).
+    if (!findGradeTemplateByCode(templateCode)) return notFound();
     const id = uuid();
     let grades: MockGrade[] = [];
-    let structureType: MockGradeStructure['structure_type'] = 'CUSTOM';
-    if (body.template_code === 'GRADE_14') {
+    let structureType: MockGradeStructure['structure_type'];
+    if (templateCode === 'GRADE_14') {
       grades = build14Template();
       structureType = 'GRADE_14';
-    } else if (body.template_code === 'GRADE_16') {
+    } else if (templateCode === 'GRADE_16') {
       grades = build16Template();
       structureType = 'GRADE_16';
+    } else {
+      // Tenant CUSTOM template — deep-copy its (mock) skeleton. The mock store
+      // keeps only metadata, so a CUSTOM custom-template instantiates empty
+      // grades (the FE flow then seeds grades by hand). Built-in CUSTOM is empty.
+      const tpl = findGradeTemplateByCode(templateCode);
+      structureType = tpl?.structure_type ?? 'CUSTOM';
     }
     grades.forEach((g) => {
       g.grade_structure_id = id;
@@ -2327,10 +2556,12 @@ function handleGradeStructures(
       project_id: body.project_id ?? null,
       code: body.code ?? 'NEW',
       name_i18n: body.name_i18n ?? {},
+      description_i18n: body.description_i18n,
       structure_type: structureType,
       status: 'DRAFT',
-      gap_policy: 'STRICT_NO_GAPS',
+      gap_policy: body.gap_policy ?? 'STRICT_NO_GAPS',
       version_number: 1,
+      previous_version_id: null,
       parent_structure_id: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -2345,21 +2576,75 @@ function handleGradeStructures(
         2, 4, 6, 8, 10, 12, 14, 13, 11, 9, 7, 5, 3, 2, 1, 1,
       ];
     }
-    return ok(next, 201);
+    // from-template returns the detail ENVELOPE (BE: GradeStructureDetailResponse).
+    return ok(serializeStructureDetail(next), 201);
+  }
+
+  // BE-9: save-as-template — snapshot the structure into a tenant CUSTOM template.
+  const saveTplMatch = /^\/grade-structures\/([^/]+)\/save-as-template$/.exec(path);
+  if (saveTplMatch && method === 'POST') {
+    const s = structureById(saveTplMatch[1]);
+    if (!s) return notFound();
+    const raw = readBody<Record<string, unknown>>(config);
+    const body = stripTenantFromBody(raw, path, 'POST') as {
+      code?: string;
+      name_i18n?: Record<string, string>;
+      description_i18n?: Record<string, string>;
+    };
+    const code = (body.code ?? '').trim();
+    if (!code || !body.name_i18n || !Object.values(body.name_i18n).some((v) => v?.trim())) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'code + name_i18n required' },
+      };
+    }
+    if (gradeTemplateCodeTaken(code)) {
+      return {
+        status: 409,
+        body: {
+          code: 'GRADE_TEMPLATE_CODE_EXISTS',
+          message: `A grade template with code ${code} already exists`,
+        },
+      };
+    }
+    const tpl: MockGradeTemplate = {
+      id: uuid(),
+      code,
+      source: 'CUSTOM',
+      is_builtin: false,
+      name_i18n: body.name_i18n,
+      description_i18n: body.description_i18n,
+      structure_type: s.structure_type,
+      grade_count: s.grades.length,
+    };
+    customGradeTemplates.unshift(tpl);
+    return ok({ template_id: tpl.id }, 201);
   }
 
   const idDetail = /^\/grade-structures\/([^/]+)$/.exec(path);
   if (idDetail) {
     const s = structureById(idDetail[1]);
     if (!s) return notFound();
-    if (method === 'GET') return ok(s);
+    // GET detail → the wire ENVELOPE `{ structure, grades, bands }` (BE detail).
+    if (method === 'GET') return ok(serializeStructureDetail(s));
     if (method === 'PATCH') {
-      const conflict = ensureDraft(s);
-      if (conflict) return conflict;
+      if (s.status !== 'DRAFT') return gradeStructureTransitionRejected();
       const raw = readBody<Record<string, unknown>>(config);
       const body = stripTenantFromBody(raw, path, 'PATCH') as Partial<MockGradeStructure>;
-      Object.assign(s, body, { updated_at: new Date().toISOString() });
-      return ok(s);
+      // Only metadata fields are mutable here (name/description/gap_policy).
+      if (body.name_i18n !== undefined) s.name_i18n = body.name_i18n;
+      if (body.description_i18n !== undefined) s.description_i18n = body.description_i18n;
+      if (body.gap_policy !== undefined) s.gap_policy = body.gap_policy;
+      s.updated_at = new Date().toISOString();
+      // PATCH returns the lean single-item shape (BE: GradeStructureResponse).
+      return ok(serializeStructure(s));
+    }
+    // BE-4: hard delete a DRAFT structure (non-DRAFT keeps ARCHIVE).
+    if (method === 'DELETE') {
+      if (s.status !== 'DRAFT') return gradeStructureTransitionRejected();
+      mockDb.gradeStructures = mockDb.gradeStructures.filter((x) => x.id !== s.id);
+      delete mockDb.gradePyramidCounts[s.id];
+      return { status: 204, body: null };
     }
   }
 
@@ -2370,10 +2655,9 @@ function handleGradeStructures(
     if (s.status !== 'DRAFT') return gradeStructureLockedConflict(s.status);
     s.status = 'APPROVED';
     s.approved_at = new Date().toISOString();
-    s.approved_by = 'mock-approver-1';
-    s.approved_by_name = 'Mock Approver';
+    s.approved_by = '7e9c1234-5678-90ab-cdef-1234567890ab';
     s.updated_at = s.approved_at;
-    return ok(s);
+    return ok(serializeStructure(s));
   }
   const lockMatch = /^\/grade-structures\/([^/]+)\/lock$/.exec(path);
   if (lockMatch && method === 'POST') {
@@ -2382,10 +2666,9 @@ function handleGradeStructures(
     if (s.status !== 'APPROVED') return gradeStructureLockedConflict(s.status);
     s.status = 'LOCKED';
     s.locked_at = new Date().toISOString();
-    s.locked_by = 'mock-locker-1';
-    s.locked_by_name = 'Mock Locker';
+    s.locked_by = '7e9c1234-5678-90ab-cdef-1234567890ab';
     s.updated_at = s.locked_at;
-    return ok(s);
+    return ok(serializeStructure(s));
   }
   const archMatch = /^\/grade-structures\/([^/]+)\/archive$/.exec(path);
   if (archMatch && method === 'POST') {
@@ -2403,9 +2686,9 @@ function handleGradeStructures(
     }
     s.status = 'ARCHIVED';
     s.archived_at = new Date().toISOString();
-    s.archive_reason = body.reason;
+    // archive_reason is audit-only — NOT echoed on the wire (BE contract).
     s.updated_at = s.archived_at;
-    return ok(s);
+    return ok(serializeStructure(s));
   }
 
   const newVerMatch = /^\/grade-structures\/([^/]+)\/create-new-version$/.exec(path);
@@ -2435,21 +2718,56 @@ function handleGradeStructures(
       id: newId,
       status: 'DRAFT',
       version_number: src.version_number + 1,
+      previous_version_id: src.id,
       parent_structure_id: src.id,
       approved_at: null,
       approved_by: null,
-      approved_by_name: null,
       locked_at: null,
       locked_by: null,
-      locked_by_name: null,
       archived_at: null,
-      archive_reason: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       grades: cloneGrades,
     };
     mockDb.gradeStructures.unshift(next);
-    return ok(next, 201);
+    // create-new-version returns the lean single-item shape (BE: GradeStructureResponse).
+    return ok(serializeStructure(next), 201);
+  }
+
+  // BE-5: reorder grades — body { ordered_ids:[...] }, DRAFT-only, returns { items }.
+  const reorderMatch = /^\/grade-structures\/([^/]+)\/grades\/reorder$/.exec(path);
+  if (reorderMatch && method === 'POST') {
+    const s = structureById(reorderMatch[1]);
+    if (!s) return notFound();
+    if (s.status !== 'DRAFT') return gradeStructureTransitionRejected();
+    const raw = readBody<{ ordered_ids?: string[] }>(config);
+    const body = stripTenantFromBody(raw as Record<string, unknown>, path, 'POST') as {
+      ordered_ids?: string[];
+    };
+    const orderedIds = body.ordered_ids ?? [];
+    const currentIds = new Set(s.grades.map((g) => g.id));
+    // ordered_ids must equal the structure's grade id set exactly (BE contract).
+    if (
+      orderedIds.length !== currentIds.size ||
+      !orderedIds.every((id) => currentIds.has(id))
+    ) {
+      return {
+        status: 400,
+        body: {
+          code: 'GRADE_REORDER_SET_MISMATCH',
+          message: 'ordered_ids must equal the structure grade id set exactly.',
+        },
+      };
+    }
+    orderedIds.forEach((id, idx) => {
+      const g = s.grades.find((x) => x.id === id);
+      if (g) g.sort_order = idx;
+    });
+    s.updated_at = new Date().toISOString();
+    const items = orderedIds
+      .map((id) => s.grades.find((g) => g.id === id)!)
+      .map((g) => serializeGrade(s, g));
+    return ok({ items });
   }
 
   // Grades sub-collection
@@ -2473,10 +2791,10 @@ function handleGradeStructures(
     };
     s.grades.push(next);
     s.updated_at = new Date().toISOString();
-    return ok(next, 201);
+    return ok(serializeGrade(s, next), 201);
   }
 
-  // Pyramid
+  // Pyramid (BE-2 returns only `{ rows }`).
   const pyrMatch = /^\/grade-structures\/([^/]+)\/pyramid$/.exec(path);
   if (pyrMatch && method === 'GET') {
     const s = structureById(pyrMatch[1]);
@@ -2484,7 +2802,7 @@ function handleGradeStructures(
     return ok(buildPyramid(s));
   }
 
-  // Preview grade lookup
+  // Preview grade lookup (BE-3 carries BOTH `matched` + `out_of_range`).
   const lookupMatch = /^\/grade-structures\/([^/]+)\/preview-grade-lookup$/.exec(path);
   if (lookupMatch && method === 'POST') {
     const s = structureById(lookupMatch[1]);
@@ -2496,15 +2814,14 @@ function handleGradeStructures(
     return ok(
       result
         ? {
+            matched: true,
+            out_of_range: false,
+            grade_band_id: result.grade_band_id,
             grade_id: result.grade_id,
             grade_number: result.grade_number,
-            grade_band_id: result.grade_band_id,
-            out_of_range: false,
           }
         : {
-            grade_id: null,
-            grade_number: null,
-            grade_band_id: null,
+            matched: false,
             out_of_range: true,
           },
     );
@@ -2535,21 +2852,43 @@ function handleGradesAndBands(
     }
     if (!target || !owner) return notFound();
     if (method === 'PATCH') {
-      const conflict = ensureDraft(owner);
-      if (conflict) return conflict;
+      if (owner.status !== 'DRAFT') return gradeStructureTransitionRejected();
       const raw = readBody<Record<string, unknown>>(config);
       const body = stripTenantFromBody(raw, path, 'PATCH') as Partial<MockGrade>;
-      Object.assign(target, body);
+      if (body.grade_number !== undefined) target.grade_number = Number(body.grade_number);
+      if (body.sort_order !== undefined) target.sort_order = Number(body.sort_order);
+      if (body.name_i18n !== undefined) target.name_i18n = body.name_i18n;
+      if (body.description_i18n !== undefined) target.description_i18n = body.description_i18n;
       owner.updated_at = new Date().toISOString();
-      return ok(target);
+      return ok(serializeGrade(owner, target));
     }
     if (method === 'DELETE') {
-      const conflict = ensureDraft(owner);
-      if (conflict) return conflict;
+      if (owner.status !== 'DRAFT') return gradeStructureTransitionRejected();
       owner.grades = owner.grades.filter((g) => g.id !== gradeId);
       owner.updated_at = new Date().toISOString();
       return { status: 204, body: null };
     }
+  }
+
+  // BE-6: DELETE /grades/:id/band — explicit band clear (idempotent), DRAFT-only.
+  const bandDelete = /^\/grades\/([^/]+)\/band$/.exec(path);
+  if (bandDelete && method === 'DELETE') {
+    const gradeId = bandDelete[1];
+    let target: MockGrade | undefined;
+    let owner: MockGradeStructure | undefined;
+    for (const s of mockDb.gradeStructures) {
+      const g = gradeBelongs(s, gradeId);
+      if (g) {
+        target = g;
+        owner = s;
+        break;
+      }
+    }
+    if (!target || !owner) return notFound();
+    if (owner.status !== 'DRAFT') return gradeStructureTransitionRejected();
+    target.band = null;
+    owner.updated_at = new Date().toISOString();
+    return { status: 204, body: null }; // idempotent 204 whether or not a band existed
   }
 
   // POST /grades/:id/band  (upsert)
@@ -3622,6 +3961,7 @@ export function tryHandle(config: AxiosRequestConfig): MatchResult | null {
     handleFactors(method, path, query, config) ??
     handleFactorLevels(method, path, query, config) ??
     handleEvaluations(method, path, query, config) ??
+    handleGradeStructureTemplates(method, path, config) ??
     handleGradeStructures(method, path, query, config) ??
     handleGradesAndBands(method, path, query, config) ??
     handleApprovals(method, path, query, config) ??

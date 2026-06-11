@@ -21,7 +21,10 @@ import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -58,6 +61,28 @@ public class GradeStructureQueries {
                     ctx.tenantId(), projectId, pageable);
         }
         return structures.findAllByTenantId(ctx.tenantId(), pageable);
+    }
+
+    /**
+     * Batched grade-count per structure id (BE-1) so the list endpoint enriches
+     * each row with {@code grade_count} in ONE query (no N+1). Tenant-scoped.
+     * Structure ids absent from the result have zero grades → the caller
+     * defaults to 0.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, Integer> gradeCountsByStructureIds(Collection<UUID> structureIds) {
+        TenantContext ctx = TenantContextHolder.requireActive();
+        if (!ctx.hasPermission(PermissionCodes.GRADE_READ)) {
+            throw new PermissionDeniedException();
+        }
+        Map<UUID, Integer> out = new HashMap<>();
+        if (structureIds == null || structureIds.isEmpty()) {
+            return out;
+        }
+        for (Object[] row : grades.countByStructureIds(ctx.tenantId(), structureIds)) {
+            out.put((UUID) row[0], ((Number) row[1]).intValue());
+        }
+        return out;
     }
 
     @Transactional(readOnly = true)

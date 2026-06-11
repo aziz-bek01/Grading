@@ -32,7 +32,7 @@ import java.util.UUID;
 @Service
 public class CreateGradeStructureFromTemplateUseCase {
 
-    private final GradeStructureTemplateRegistry templates;
+    private final GradeTemplateCatalog templateCatalog;
     private final GradeStructureRepository structures;
     private final GradeRepository grades;
     private final GradeBandRepository bands;
@@ -41,7 +41,7 @@ public class CreateGradeStructureFromTemplateUseCase {
     private final AuditService audit;
     private final GradeStructureAuditSnapshot snapshot;
 
-    public CreateGradeStructureFromTemplateUseCase(GradeStructureTemplateRegistry templates,
+    public CreateGradeStructureFromTemplateUseCase(GradeTemplateCatalog templateCatalog,
                                                    GradeStructureRepository structures,
                                                    GradeRepository grades,
                                                    GradeBandRepository bands,
@@ -49,7 +49,7 @@ public class CreateGradeStructureFromTemplateUseCase {
                                                    AbacGate abacGate,
                                                    AuditService audit,
                                                    GradeStructureAuditSnapshot snapshot) {
-        this.templates = templates;
+        this.templateCatalog = templateCatalog;
         this.structures = structures;
         this.grades = grades;
         this.bands = bands;
@@ -65,7 +65,10 @@ public class CreateGradeStructureFromTemplateUseCase {
         if (!ctx.hasPermission(PermissionCodes.GRADE_EDIT)) {
             throw new PermissionDeniedException();
         }
-        GradeStructureTemplate template = templates.require(cmd.templateCode());
+        // BE-9: resolve from the registry built-ins OR a tenant custom template
+        // (by code) via the unified catalog — deep-copy grades_snapshot → rows.
+        GradeStructureTemplate template = templateCatalog.findInstantiable(
+                ctx.tenantId(), cmd.templateCode());
 
         if (cmd.projectId() != null) {
             projects.findByIdAndTenantId(cmd.projectId(), ctx.tenantId())

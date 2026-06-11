@@ -50,4 +50,13 @@ public class GradeController {
                 req.minScore(), req.maxScore()));
         return ResponseEntity.status(HttpStatus.CREATED).body(GradeBandResponse.from(band));
     }
+
+    /** BE-6: explicit band delete — clears a grade's band without deleting the
+     *  grade. DRAFT-only. Idempotent 204 whether or not a band existed. */
+    @DeleteMapping("/{id}/band")
+    @PreAuthorize("hasAuthority('GRADE_EDIT')")
+    public ResponseEntity<Void> deleteBand(@PathVariable UUID id) {
+        gradeService.removeBand(id);
+        return ResponseEntity.noContent().build();
+    }
 }

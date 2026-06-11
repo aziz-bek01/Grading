@@ -6,24 +6,32 @@ import { cn } from '@/shared/lib/cn';
 import type { Locale, LocalizedString } from '@/shared/types/common';
 import type { Grade } from '../types';
 
+/**
+ * Output of the row editor. `clear_band` is true when the consultant explicitly
+ * cleared the band fieldset — the caller then calls removeBand (BE-6) instead of
+ * an upsert, so a deliberate clear never gets stored as a 0/0 band (FE-8).
+ */
+export interface GradeRowEditorSubmit {
+  grade_number: number;
+  name_i18n: LocalizedString;
+  description_i18n?: LocalizedString;
+  min_score: number;
+  max_score: number;
+  clear_band: boolean;
+}
+
 interface GradeRowEditorProps {
   open: boolean;
   grade: Grade | null; // null => create
   readOnly?: boolean;
   onClose: () => void;
-  onSubmit: (input: {
-    grade_number: number;
-    name: LocalizedString;
-    description?: LocalizedString;
-    min_score: number;
-    max_score: number;
-  }) => Promise<void> | void;
+  onSubmit: (input: GradeRowEditorSubmit) => Promise<void> | void;
 }
 
 /**
  * Drawer for editing/creating a single grade. Localised name / description
  * with 4 locale tabs + min/max score (4-decimal precision). When `readOnly`
- * is true (APPROVED/LOCKED/ARCHIVED), inputs become divs.
+ * is true (APPROVED/LOCKED/ARCHIVED), inputs become disabled.
  */
 export function GradeRowEditor({ open, grade, ...rest }: GradeRowEditorProps) {
   // Keyed remount per (open, grade) so the body re-initializes its form state
@@ -43,46 +51,62 @@ function GradeRowEditorBody({
 }: GradeRowEditorProps) {
   const { t } = useTranslation();
   const [gradeNumber, setGradeNumber] = useState<number>(grade?.grade_number ?? 1);
-  const [name, setName] = useState<LocalizedString>(grade?.name ?? {});
-  const [description, setDescription] = useState<LocalizedString>(grade?.description ?? {});
+  const [name, setName] = useState<LocalizedString>(grade?.name_i18n ?? {});
+  const [description, setDescription] = useState<LocalizedString>(
+    grade?.description_i18n ?? {},
+  );
   const [minScore, setMinScore] = useState<string>(
-    grade?.band ? String(grade.band.min_score) : '0',
+    grade?.band ? String(grade.band.min_score) : '',
   );
   const [maxScore, setMaxScore] = useState<string>(
-    grade?.band ? String(grade.band.max_score) : '0',
+    grade?.band ? String(grade.band.max_score) : '',
   );
   const [tab, setTab] = useState<Locale>(PRIMARY_LOCALE);
   const [error, setError] = useState<string | null>(null);
 
+  const minTrimmed = minScore.trim();
+  const maxTrimmed = maxScore.trim();
+  const bothCleared = minTrimmed === '' && maxTrimmed === '';
   const minNum = Number(minScore);
   const maxNum = Number(maxScore);
-  const primaryName = (name[PRIMARY_LOCALE] ?? '').trim();
+  // Accept a name in ANY supported locale (locale-trap fix, mirrors methodology).
+  const anyName = Object.values(name).some((v) => (v ?? '').trim());
 
   const valid = useMemo(() => {
-    if (!primaryName) return false;
+    if (!anyName) return false;
+    if (bothCleared) return true; // explicit band clear is allowed
     if (!Number.isFinite(minNum) || minNum < 0) return false;
     if (!Number.isFinite(maxNum) || maxNum < 0) return false;
     if (minNum > maxNum) return false;
     return true;
-  }, [primaryName, minNum, maxNum]);
+  }, [anyName, bothCleared, minNum, maxNum]);
 
   const handleSubmit = async () => {
-    if (!primaryName) {
+    if (!anyName) {
       setError(t('gradeStructure.row_editor.error_name_required'));
       return;
     }
-    if (minNum > maxNum) {
+    if (!bothCleared && minNum > maxNum) {
       setError(t('gradeStructure.row_editor.error_min_gt_max'));
       return;
     }
     setError(null);
     await onSubmit({
       grade_number: Number(gradeNumber),
-      name,
-      description: Object.values(description).some((v) => (v ?? '').trim()) ? description : undefined,
-      min_score: minNum,
-      max_score: maxNum,
+      name_i18n: name,
+      description_i18n: Object.values(description).some((v) => (v ?? '').trim())
+        ? description
+        : undefined,
+      min_score: bothCleared ? 0 : minNum,
+      max_score: bothCleared ? 0 : maxNum,
+      clear_band: bothCleared,
     });
+  };
+
+  const handleClearBand = () => {
+    setMinScore('');
+    setMaxScore('');
+    setError(null);
   };
 
   return (
@@ -215,7 +239,35 @@ function GradeRowEditorBody({
               />
             </label>
           </div>
-          {minNum > maxNum ? (
+          {!readOnly ? (
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-text-muted">
+                {t('gradeStructure.row_editor.clear_band_hint')}
+              </p>
+              <button
+                type="button"
+                onClick={handleClearBand}
+                disabled={bothCleared}
+                className={cn(
+                  'text-xs px-2 py-1 rounded border',
+                  bothCleared
+                    ? 'border-border text-text-muted cursor-not-allowed'
+                    : 'border-border-strong text-text-secondary hover:bg-divider',
+                )}
+                data-testid="grade-row-editor-clear-band"
+              >
+                {t('gradeStructure.row_editor.clear_band')}
+              </button>
+            </div>
+          ) : null}
+          {bothCleared ? (
+            <p
+              className="text-[11px] text-warning-700 mt-2"
+              data-testid="grade-row-editor-band-cleared"
+            >
+              {t('gradeStructure.row_editor.band_will_clear')}
+            </p>
+          ) : !bothCleared && minNum > maxNum ? (
             <p
               className="text-xs text-danger-700 mt-2"
               data-testid="grade-row-editor-error-min-gt-max"
@@ -230,7 +282,7 @@ function GradeRowEditorBody({
             {error}
           </p>
         ) : null}
-        {!valid && primaryName === '' ? (
+        {!valid && !anyName ? (
           <p className="text-xs text-warning-700">
             {t('gradeStructure.row_editor.hint_primary_name')}
           </p>

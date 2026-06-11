@@ -9,7 +9,7 @@ function grade(n: number, min: number, max: number): Grade {
     id: `g-${n}`,
     grade_structure_id: 's',
     grade_number: n,
-    name: { 'ru-RU': `Грейд ${n}`, 'en-US': `Grade ${n}` },
+    name_i18n: { 'ru-RU': `Грейд ${n}`, 'en-US': `Grade ${n}` },
     sort_order: n - 1,
     band: {
       id: `g-${n}-band`,
@@ -75,6 +75,40 @@ describe('GradeTable', () => {
     fireEvent.click(screen.getByTestId('grade-1-remove'));
     expect(onEdit).toHaveBeenCalledWith(grades[0]);
     expect(onRemove).toHaveBeenCalledWith(grades[0]);
+  });
+
+  it('renders move up/down controls and calls onMove with direction (FE-7)', () => {
+    const grades = [grade(1, 0, 50), grade(2, 50.0001, 100), grade(3, 100.0001, 150)];
+    const onMove = vi.fn();
+    render(
+      renderWithProviders(
+        <GradeTable
+          grades={grades}
+          currentLocale="ru-RU"
+          readOnly={false}
+          onMove={onMove}
+        />,
+      ),
+    );
+    // First row's "up" is disabled, last row's "down" is disabled.
+    expect((screen.getByTestId('grade-1-move-up') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('grade-3-move-down') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByTestId('grade-2-move-up'));
+    expect(onMove).toHaveBeenCalledWith(grades[1], 'up');
+    fireEvent.click(screen.getByTestId('grade-2-move-down'));
+    expect(onMove).toHaveBeenCalledWith(grades[1], 'down');
+  });
+
+  it('hides move controls when onMove is not provided', () => {
+    const grades = [grade(1, 0, 50)];
+    render(
+      renderWithProviders(
+        <GradeTable grades={grades} currentLocale="ru-RU" readOnly={false} />,
+      ),
+    );
+    expect(screen.queryByTestId('grade-1-move-up')).not.toBeInTheDocument();
   });
 
   it('marks an overlapping pair in red and a gap pair in yellow', () => {

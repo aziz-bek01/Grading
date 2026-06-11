@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,19 +23,24 @@ import uz.hrlab.grading.gradestructure.application.CreateGradeStructureFromScrat
 import uz.hrlab.grading.gradestructure.application.CreateGradeStructureFromTemplateCommand;
 import uz.hrlab.grading.gradestructure.application.CreateGradeStructureFromTemplateUseCase;
 import uz.hrlab.grading.gradestructure.application.CreateGradeStructureVersionUseCase;
+import uz.hrlab.grading.gradestructure.application.DeleteGradeStructureUseCase;
 import uz.hrlab.grading.gradestructure.application.GradeBandLookupService;
 import uz.hrlab.grading.gradestructure.application.GradeCommand;
 import uz.hrlab.grading.gradestructure.application.GradePyramidQuery;
 import uz.hrlab.grading.gradestructure.application.GradeService;
 import uz.hrlab.grading.gradestructure.application.GradeStructureQueries;
 import uz.hrlab.grading.gradestructure.application.LockGradeStructureUseCase;
+import uz.hrlab.grading.gradestructure.application.SaveAsGradeTemplateUseCase;
 import uz.hrlab.grading.gradestructure.application.UpdateGradeStructureMetadataUseCase;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureStatus;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureType;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureJpaEntity;
 import uz.hrlab.grading.common.api.PageResponse;
+import uz.hrlab.grading.methodology.api.ReorderRequest;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -57,6 +63,8 @@ public class GradeStructureController {
     private final LockGradeStructureUseCase lockUseCase;
     private final ArchiveGradeStructureUseCase archiveUseCase;
     private final CreateGradeStructureVersionUseCase versionUseCase;
+    private final DeleteGradeStructureUseCase deleteUseCase;
+    private final SaveAsGradeTemplateUseCase saveAsTemplate;
     private final GradeService gradeService;
     private final GradeStructureQueries queries;
     private final GradePyramidQuery pyramid;
@@ -69,6 +77,8 @@ public class GradeStructureController {
                                     LockGradeStructureUseCase lockUseCase,
                                     ArchiveGradeStructureUseCase archiveUseCase,
                                     CreateGradeStructureVersionUseCase versionUseCase,
+                                    DeleteGradeStructureUseCase deleteUseCase,
+                                    SaveAsGradeTemplateUseCase saveAsTemplate,
                                     GradeService gradeService,
                                     GradeStructureQueries queries,
                                     GradePyramidQuery pyramid,
@@ -80,6 +90,8 @@ public class GradeStructureController {
         this.lockUseCase = lockUseCase;
         this.archiveUseCase = archiveUseCase;
         this.versionUseCase = versionUseCase;
+        this.deleteUseCase = deleteUseCase;
+        this.saveAsTemplate = saveAsTemplate;
         this.gradeService = gradeService;
         this.queries = queries;
         this.pyramid = pyramid;
@@ -116,7 +128,13 @@ public class GradeStructureController {
                                                      Pageable pageable) {
         Pageable safe = clamp(pageable);
         Page<GradeStructureJpaEntity> page = queries.findByProject(projectId, status, safe);
-        return PageResponse.of(page, e -> GradeStructureResponse.from(e.toDomain()));
+        // Batch-load the grade count of every structure on the page in one query
+        // (no N+1), then enrich each row with grade_count + audit timestamps.
+        List<UUID> ids = page.getContent().stream()
+                .map(GradeStructureJpaEntity::getId).toList();
+        Map<UUID, Integer> counts = queries.gradeCountsByStructureIds(ids);
+        return PageResponse.of(page, e ->
+                GradeStructureResponse.fromList(e, counts.getOrDefault(e.getId(), 0)));
     }
 
     @GetMapping("/{id}")
@@ -166,6 +184,43 @@ public class GradeStructureController {
         var g = gradeService.addGrade(structureId, new GradeCommand.Create(
                 req.gradeNumber(), req.sortOrder(), req.nameI18n(), req.descriptionI18n()));
         return ResponseEntity.status(HttpStatus.CREATED).body(GradeResponse.from(g));
+    }
+
+    /**
+     * BE-5: atomic DRAFT-only reorder of a structure's grades. Body reuses the
+     * methodology {@code ReorderRequest {orderedIds}} (wire {@code ordered_ids}).
+     * Returns the reordered grades as {@code {items:[...]}} mirroring reorderFactors.
+     */
+    @PostMapping("/{id}/grades/reorder")
+    @PreAuthorize("hasAuthority('GRADE_EDIT')")
+    public Map<String, List<GradeResponse>> reorderGrades(@PathVariable("id") UUID structureId,
+                                                          @Valid @RequestBody ReorderRequest req) {
+        List<GradeResponse> items = gradeService.reorderGrades(structureId, req.orderedIds())
+                .stream().map(GradeResponse::from).toList();
+        return Map.of("items", items);
+    }
+
+    /** BE-4: hard delete a DRAFT-only structure. Non-DRAFT keeps ARCHIVE. */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('GRADE_EDIT')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        deleteUseCase.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * BE-9: save this structure's grades + bands as a reusable tenant CUSTOM
+     * grade template. Gated by {@code GRADE_EDIT}. 201 {template_id}; 409
+     * GRADE_TEMPLATE_CODE_EXISTS on duplicate/reserved code.
+     */
+    @PostMapping("/{id}/save-as-template")
+    @PreAuthorize("hasAuthority('GRADE_EDIT')")
+    public ResponseEntity<GradeStructureTemplateCreatedResponse> saveAsTemplate(
+            @PathVariable UUID id, @Valid @RequestBody SaveGradeStructureAsTemplateRequest req) {
+        UUID templateId = saveAsTemplate.saveAsTemplate(
+                id, req.code(), req.nameI18n(), req.descriptionI18n());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new GradeStructureTemplateCreatedResponse(templateId));
     }
 
     @GetMapping("/{id}/pyramid")

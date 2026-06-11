@@ -189,15 +189,29 @@ public final class AuditAction {
     public static final String GRADE_STRUCTURE_LOCKED           = "GRADE_STRUCTURE_LOCKED";
     public static final String GRADE_STRUCTURE_ARCHIVED         = "GRADE_STRUCTURE_ARCHIVED";
     public static final String GRADE_STRUCTURE_REVISION_CREATED = "GRADE_STRUCTURE_REVISION_CREATED";
+    /** Hard delete of a DRAFT-only grade structure (BE-4). Non-DRAFT keeps ARCHIVE. */
+    public static final String GRADE_STRUCTURE_DELETED          = "GRADE_STRUCTURE_DELETED";
     public static final String GRADE_CREATED                    = "GRADE_CREATED";
     public static final String GRADE_UPDATED                    = "GRADE_UPDATED";
     public static final String GRADE_REMOVED                    = "GRADE_REMOVED";
+    /** DRAFT-only atomic reorder of a structure's grades by sort_order (BE-5). */
+    public static final String GRADE_REORDERED                  = "GRADE_REORDERED";
     public static final String GRADE_BAND_UPSERTED              = "GRADE_BAND_UPSERTED";
     public static final String GRADE_BAND_REMOVED               = "GRADE_BAND_REMOVED";
     /** Auto-assignment on evaluation approval (Phase 6 integration). */
     public static final String GRADE_ASSIGNED                   = "GRADE_ASSIGNED";
     /** Re-assignment when calibration changes the total score → different band. */
     public static final String GRADE_REASSIGNED                 = "GRADE_REASSIGNED";
+
+    // Grade structure templates (BE-7/8/9 — DB-backed tenant CUSTOM templates,
+    // mirrors the methodology Epic E template lifecycle). A template is a frozen
+    // deep copy of a structure's grades + bands, "saved for the company" and
+    // reusable across the tenant's projects via POST /grade-structures/from-template.
+    // Built-ins (GradeStructureTemplateRegistry: GRADE_14/GRADE_16/CUSTOM) are
+    // global + read-only and emit NO template lifecycle audit.
+    public static final String GRADE_TEMPLATE_CREATED           = "GRADE_TEMPLATE_CREATED";
+    public static final String GRADE_TEMPLATE_UPDATED           = "GRADE_TEMPLATE_UPDATED";
+    public static final String GRADE_TEMPLATE_ARCHIVED          = "GRADE_TEMPLATE_ARCHIVED";
 
     // Salary / sensitive
     public static final String SALARY_VIEWED   = "SALARY_VIEWED";

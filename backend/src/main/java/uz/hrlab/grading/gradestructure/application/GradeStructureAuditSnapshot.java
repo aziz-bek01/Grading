@@ -6,6 +6,8 @@ import uz.hrlab.grading.audit.application.AuditJsonRedactor;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeBandJpaEntity;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeJpaEntity;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureJpaEntity;
+import uz.hrlab.grading.gradestructure.infrastructure.GradeTemplateJpaEntity;
+import uz.hrlab.grading.gradestructure.infrastructure.GradeTemplateSnapshot;
 
 /** Audit snapshot helper — mirrors MethodologyAuditSnapshot. */
 @Component
@@ -61,6 +63,30 @@ public class GradeStructureAuditSnapshot {
                 .put("gradeStructureId", b.getGradeStructureId())
                 .put("minScore", b.getMinScore() == null ? null : b.getMinScore().toPlainString())
                 .put("maxScore", b.getMaxScore() == null ? null : b.getMaxScore().toPlainString())
+                .build();
+    }
+
+    /**
+     * BE-8 — tenant CUSTOM grade template snapshot. The frozen
+     * {@code grades_snapshot} is NEVER reproduced verbatim (it can carry
+     * multilingual long text); only its grade count is recorded as metadata.
+     * i18n name/description use the shared long-text preview policy. Mirrors
+     * {@code MethodologyAuditSnapshot.of(MethodologyTemplateJpaEntity)}.
+     */
+    public JsonNode of(GradeTemplateJpaEntity t) {
+        if (t == null) return null;
+        GradeTemplateSnapshot snap = t.getGradesSnapshot();
+        int gradeCount = snap == null || snap.grades() == null ? 0 : snap.grades().size();
+        return redactor.builder()
+                .put("id", t.getId())
+                .put("tenantId", t.getTenantId())
+                .put("code", t.getCode())
+                .put("structureType", t.getStructureType() == null ? null
+                        : t.getStructureType().name())
+                .put("status", t.getStatus() == null ? null : t.getStatus().name())
+                .putRaw("gradeCount", gradeCount)
+                .addI18nPreviews("nameI18n", t.getNameI18n())
+                .addI18nPreviews("descriptionI18n", t.getDescriptionI18n())
                 .build();
     }
 }

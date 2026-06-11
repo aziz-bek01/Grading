@@ -21,6 +21,11 @@ import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -178,6 +183,93 @@ public class GradeService {
                 .afterJson(snapshot.of(existing))
                 .build());
         return existing;
+    }
+
+    /**
+     * Atomic DRAFT-only reorder of a structure's grades (BE-5). Input is the
+     * COMPLETE ordered list of grade ids for the structure; the set must equal
+     * the structure's grade ids exactly (reject {@code GRADE_REORDER_SET_MISMATCH}
+     * otherwise). {@code sort_order} is assigned by index. Mirrors
+     * {@code FactorService.reorder} — two-phase write to dodge unique(sort_order)
+     * collisions where the DB enforces one.
+     */
+    @Transactional
+    public List<Grade> reorderGrades(UUID structureId, List<UUID> orderedIds) {
+        TenantContext ctx = requireEdit();
+        GradeStructureJpaEntity s = loadAndCheck(ctx, structureId);
+        immutability.ensureMutable(s.getStatus());
+
+        List<GradeJpaEntity> existing = grades
+                .findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(ctx.tenantId(), structureId);
+        if (orderedIds == null || orderedIds.size() != existing.size()) {
+            throw new ValidationException("GRADE_REORDER_SET_MISMATCH",
+                    "Reorder payload must include every grade of the structure exactly once");
+        }
+        Set<UUID> existingIds = new HashSet<>();
+        existing.forEach(e -> existingIds.add(e.getId()));
+        if (!existingIds.equals(new HashSet<>(orderedIds))) {
+            throw new ValidationException("GRADE_REORDER_SET_MISMATCH",
+                    "Reorder payload does not match the structure's grade ids");
+        }
+        Map<UUID, GradeJpaEntity> byId = new HashMap<>();
+        existing.forEach(e -> byId.put(e.getId(), e));
+
+        int offset = 10_000;
+        for (int i = 0; i < orderedIds.size(); i++) {
+            GradeJpaEntity g = byId.get(orderedIds.get(i));
+            g.setSortOrder(offset + i);
+            grades.save(g);
+        }
+        var result = new java.util.ArrayList<Grade>(orderedIds.size());
+        for (int i = 0; i < orderedIds.size(); i++) {
+            GradeJpaEntity g = byId.get(orderedIds.get(i));
+            g.setSortOrder(i + 1);
+            grades.save(g);
+            result.add(g.toDomain());
+        }
+
+        audit.record(AuditEvent.builder()
+                .tenantId(ctx.tenantId())
+                .projectId(s.getProjectId())
+                .actorUserId(ctx.userId())
+                .action(AuditAction.GRADE_REORDERED)
+                .entityType("GradeStructure")
+                .entityId(structureId)
+                .reason("count=" + orderedIds.size())
+                .build());
+        return result;
+    }
+
+    /**
+     * Explicit band delete (BE-6) — lets the editor clear a grade's band without
+     * deleting the grade. DRAFT-only. No-op (idempotent) when no band exists, so
+     * the controller can return 204 either way.
+     */
+    @Transactional
+    public void removeBand(UUID gradeId) {
+        TenantContext ctx = requireEdit();
+        GradeJpaEntity g = grades.findByIdAndTenantId(gradeId, ctx.tenantId())
+                .orElseThrow(TenantAccessDeniedException::new);
+        GradeStructureJpaEntity s = loadAndCheck(ctx, g.getGradeStructureId());
+        immutability.ensureMutable(s.getStatus());
+
+        GradeBandJpaEntity band = bands
+                .findByTenantIdAndGradeId(ctx.tenantId(), gradeId).orElse(null);
+        if (band == null) {
+            return; // idempotent no-op
+        }
+        var before = snapshot.of(band);
+        bands.delete(band);
+
+        audit.record(AuditEvent.builder()
+                .tenantId(ctx.tenantId())
+                .projectId(s.getProjectId())
+                .actorUserId(ctx.userId())
+                .action(AuditAction.GRADE_BAND_REMOVED)
+                .entityType("GradeBand")
+                .entityId(band.getId())
+                .beforeJson(before)
+                .build());
     }
 
     private TenantContext requireEdit() {

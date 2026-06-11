@@ -22,4 +22,8 @@ public interface GradeStructureRepository
     /** Used by evaluation approval to find the active grade structure for a project. */
     List<GradeStructureJpaEntity> findAllByTenantIdAndProjectIdAndStatusOrderByVersionNumberDesc(
             UUID tenantId, UUID projectId, GradeStructureStatus status);
+
+    /** Hard delete of a DRAFT-only structure (BE-4). Caller resolves the entity
+     *  via {@code findByIdAndTenantId} first, so this never bypasses the tenant filter. */
+    void delete(GradeStructureJpaEntity entity);
 }

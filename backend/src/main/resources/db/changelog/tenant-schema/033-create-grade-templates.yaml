@@ -1,0 +1,188 @@
+# BE-7 — grade_templates table (tenant-scoped, DB-backed CUSTOM grade templates).
+#
+# EXACT mirror of 032-create-methodology-templates.yaml. Built-in grade
+# templates (GRADE_14, GRADE_16, CUSTOM) remain read-only + global, served from
+# the in-memory GradeStructureTemplateRegistry — they are NOT stored here. This
+# table holds ONLY tenant-defined CUSTOM grade templates produced by the "save
+# grade structure as template" use case.
+#
+#   The picker endpoint (GET /api/v1/grade-structure-templates) becomes the
+#   UNION of the registry built-ins + the tenant's ACTIVE rows from this table.
+#   CreateGradeStructureFromTemplate resolves a template either from the registry
+#   (by built-in code) or from this table (by id/code) and deep-copies the
+#   grades_snapshot into grades + grade_bands rows — identical instantiation path.
+#
+# Scope decision — TENANT-SCOPED (project_id OMITTED): a template is "saved for
+#   the company", reusable across ALL of the tenant's projects. The UNIQUE key is
+#   (tenant_id, code). (If a future epic needs project-private templates, add a
+#   nullable project_id additively, non-breaking.)
+#
+# grades_snapshot JSON shape (frozen deep copy — NOT FKs; reproducibility):
+#   The backend SaveAsGradeTemplate use case serializes the source structure's
+#   grades + bands into this shape; CreateFromTemplate deserializes it back into
+#   GradeJpaEntity / GradeBandJpaEntity rows. Both sides MUST agree on:
+#     {
+#       "grades": [
+#         {
+#           "gradeNumber": 1,
+#           "sortOrder": 1,
+#           "nameI18n":        { "ru-RU": "...", "uz-Cyrl-UZ": "...", ... },
+#           "descriptionI18n": { "ru-RU": "...", ... },        // nullable
+#           "minScore": 0.0000,                                // nullable (no band)
+#           "maxScore": 99.9999                                // nullable (no band)
+#         }
+#       ]
+#     }
+#   Numeric values serialize with NUMERIC(12,4) precision (4 dp) to match the
+#   source grade_bands columns. The template captures NO ids, tenant_id, or audit
+#   columns — those are re-minted at instantiation time.
+#
+# Tenancy mode applicability (mirrors the methodology siblings):
+#   mode-shared        — table created in `public`; RLS + FORCE applied below.
+#   schema-per-tenant  — TenantSchemaProvisioner re-applies this same YAML under
+#                        the per-tenant schema; intra-schema DDL, identical.
+#
+# RLS decision — RLS-ENABLED + FORCE, NULLIF-safe policy (matches 030/031/032):
+#   This table is a tenant business table read INSIDE a request that already has
+#   the app.tenant_id GUC bound. It is NOT read during auth/context construction,
+#   so RLS is safe here. SAME posture as the methodology_templates sibling.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-033-create-grade-templates
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,grade-templates
+      comment: |
+        Tenant-scoped DB-backed CUSTOM grade templates (save-as-template).
+        Built-ins stay in GradeStructureTemplateRegistry (read-only, global).
+        grades_snapshot is a frozen deep copy (JSONB), not FKs, for
+        reproducibility. RLS posture matches the grade structure tables.
+      changes:
+        - createTable:
+            tableName: grade_templates
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              # Stable per-tenant code (admin-chosen). UNIQUE per tenant.
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name_i18n
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description_i18n
+                  type: JSONB
+              # Structure family the template instantiates (mirrors
+              # grade_structures.structure_type CHECK).
+              - column:
+                  name: structure_type
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              # Frozen deep copy of grades + bands skeleton. See header for the
+              # agreed JSON shape (grades[]).
+              - column:
+                  name: grades_snapshot
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              # ACTIVE = selectable in picker; ARCHIVED = hidden but retained.
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  defaultValue: ACTIVE
+                  constraints:
+                    nullable: false
+              # standard audit columns (match the grade structure tables)
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_by
+                  type: UUID
+              - column:
+                  name: updated_by
+                  type: UUID
+        - sql:
+            sql: |
+              ALTER TABLE grade_templates
+                ADD CONSTRAINT fk_grade_templates_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
+                ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE grade_templates
+                ADD CONSTRAINT chk_grade_templates_status
+                CHECK (status IN ('ACTIVE','ARCHIVED'));
+              ALTER TABLE grade_templates
+                ADD CONSTRAINT chk_grade_templates_structure_type
+                CHECK (structure_type IN ('GRADE_14','GRADE_16','CUSTOM'));
+
+              -- Code is unique per tenant (tenant-scoped templates).
+              CREATE UNIQUE INDEX uq_grade_templates_tenant_code
+                ON grade_templates (tenant_id, code);
+              -- List query: a tenant's selectable templates by status.
+              CREATE INDEX idx_grade_templates_tenant_status
+                ON grade_templates (tenant_id, status);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_grade_templates_tenant_status;
+              DROP INDEX IF EXISTS uq_grade_templates_tenant_code;
+        - dropTable:
+            tableName: grade_templates
+
+  - changeSet:
+      id: tenant-033-grade-templates-rls
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,grade-templates,security,defense-in-depth,rls
+      comment: |
+        Enable + FORCE RLS on grade_templates with the blank-safe GUC policy, in
+        lock-step with 030/031/032. A missing/empty app.tenant_id yields zero
+        rows (fail-closed), never 22P02. grading_migrator bypasses (owner);
+        grading_runtime is subject to FORCE RLS.
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE public.grade_templates ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.grade_templates FORCE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS tenant_isolation_grade_templates ON public.grade_templates;
+              CREATE POLICY tenant_isolation_grade_templates ON public.grade_templates
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation_grade_templates ON public.grade_templates;
+              ALTER TABLE public.grade_templates NO FORCE ROW LEVEL SECURITY;
+              ALTER TABLE public.grade_templates DISABLE ROW LEVEL SECURITY;

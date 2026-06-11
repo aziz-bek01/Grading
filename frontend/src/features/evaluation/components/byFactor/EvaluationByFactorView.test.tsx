@@ -21,8 +21,10 @@ function makeFactor(code: string, order: number): Factor {
 
 /**
  * FactorTabs is the public surface of the by-factor view (the page-level
- * smoke is covered by RubricPanel + PositionScoreRow at the unit level
- * and by the MSW handler test below). This test guards the URL/state
+ * smoke is covered by PositionScoreRow + BulkScoreDialog at the unit level).
+ * The old right-side RubricPanel was RETIRED in the K-sheet redesign — the
+ * `rubric panel is retired (AC-1)` block below guards that the rubric DOM no
+ * longer exists in the evaluator view. This test guards the URL/state
  * contract the parent (EvaluationListPage) relies on.
  */
 describe('FactorTabs (by-factor view contract)', () => {
@@ -121,10 +123,24 @@ describe('FactorTabs (by-factor view contract)', () => {
 });
 
 /**
- * Shared sticky-offset contract — the single source of truth that both the
- * FactorTabs strip and the RubricPanel import. These assertions encode the
- * TopBar geometry so a future TopBar resize forces an intentional update
- * here (the previous bug was the tabs using top-14 / 56px while the rubric
+ * AC-1: the right-side rubric reference panel is GONE from the K-sheet.
+ * The redesign retired RubricPanel.tsx entirely (no module to import, no
+ * rubric DOM rendered for evaluators) — each level's description now lives
+ * in-line in the per-row LevelDropSelect. This guard fails the build if the
+ * panel (or its module) is ever reintroduced into the by-factor tree.
+ */
+describe('rubric panel is retired (AC-1)', () => {
+  it('has no RubricPanel module in the by-factor component tree', () => {
+    const modules = import.meta.glob('./*.tsx');
+    expect(Object.keys(modules)).not.toContain('./RubricPanel.tsx');
+  });
+});
+
+/**
+ * Shared sticky-offset contract — the single source of truth the FactorTabs
+ * strip imports for its sticky offset. These assertions encode the TopBar
+ * geometry so a future TopBar resize forces an intentional update here (the
+ * previous bug was the tabs using top-14 / 56px while a now-retired sibling
  * used top-20 / 80px, tucking the tabs ~6px under the 62px header).
  */
 describe('by-factor sticky-offset constant', () => {

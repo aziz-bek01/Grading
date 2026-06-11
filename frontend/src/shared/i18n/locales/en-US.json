@@ -877,6 +877,9 @@
         "score_aria": "Score for factor {{factor}}",
         "comment_aria": "Per-factor comment"
       },
+      "level": {
+        "level_not_selected": "Level not selected"
+      },
       "progress": {
         "label": "{{filled}} of {{total}} filled",
         "tooltip_filled": "Filled: {{codes}}.",

@@ -877,6 +877,9 @@
         "score_aria": "Балл по фактору {{factor}}",
         "comment_aria": "Комментарий по фактору"
       },
+      "level": {
+        "level_not_selected": "Уровень не выбран"
+      },
       "progress": {
         "label": "Заполнено {{filled}} из {{total}}",
         "tooltip_filled": "Заполнены: {{codes}}.",

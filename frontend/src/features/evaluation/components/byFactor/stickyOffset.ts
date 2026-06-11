@@ -6,10 +6,11 @@
  * must clear that height. We round up to `top-20` (80px) so there is a small
  * breathing gap and the stuck element never tucks under the header.
  *
- * Both the FactorTabs strip and the RubricPanel import this single constant
- * so their sticky offsets can never silently diverge again (the previous bug
- * was FactorTabs using `top-14` / 56px while the rubric used `top-20` / 80px,
- * which let the tabs slide ~6px under the TopBar when stuck).
+ * The FactorTabs strip imports this single constant for its sticky offset so
+ * it can never silently diverge from the rest of the K-sheet chrome (the
+ * original bug was FactorTabs using `top-14` / 56px while a now-retired
+ * sibling used `top-20` / 80px, which let the tabs slide ~6px under the
+ * TopBar when stuck).
  *
  * The TopBar owns `z-20`; sticky content inside the page must stay *below*
  * the header so it never paints over the global controls. Hence `z-10`.

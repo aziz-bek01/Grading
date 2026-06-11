@@ -7,10 +7,9 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Card } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui/Button';
-import { Drawer } from '@/shared/components/layout/Drawer';
 import { PaginationBar } from '@/shared/components/data-table/PaginationBar';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { EmptyState } from '@/shared/components/feedback/EmptyState';
@@ -36,7 +35,6 @@ import type {
   EvaluationsByFactorFilters,
 } from '../../types';
 import { FactorTabs, type FactorCompletionMap } from './FactorTabs';
-import { RubricPanel } from './RubricPanel';
 import { BY_FACTOR_STICKY_TOP, BY_FACTOR_STICKY_Z } from './stickyOffset';
 import { PositionScoreRow } from './PositionScoreRow';
 import { BulkScoreDialog } from './BulkScoreDialog';
@@ -65,17 +63,17 @@ const PAGE_SIZE = 25;
 /**
  * Bulk-evaluation-by-factor view (Excel K-sheet UX).
  *
- * Layout (responsive, desktop-first):
+ * Layout (responsive, desktop-first) — FULL-WIDTH table since the PO
+ * redesign retired the right-side rubric panel; each row reads its level
+ * description in-line via LevelDropSelect:
  *   ┌───────────────── factor tabs ─────────────────┐
  *   │ filters bar                                    │
- *   │ ┌─────────────── 65% table ──────────────────┐ │
- *   │ │   row1  row2  ...                          │ │
- *   │ └───────────────────────────────────────────┘ │
- *   │ ┌─────────────── 35% rubric ────────────────┐ │
- *   │ │   sticky right                            │ │
- *   │ └───────────────────────────────────────────┘ │
- *   │ bottom toolbar: selected N / bulk actions     │
- *   │ pagination                                     │
+ *   │ ┌──────────── full-width table ─────────────┐  │
+ *   │ │   row1  [level-drop]  comment  status      │  │
+ *   │ │   row2  ...                                │  │
+ *   │ └───────────────────────────────────────────┘  │
+ *   │ bottom toolbar: selected N / bulk actions      │
+ *   │ pagination                                      │
  *   └────────────────────────────────────────────────┘
  *
  * Methodology source: the view picks the first ACTIVE methodology for
@@ -92,6 +90,18 @@ export function EvaluationByFactorView({
   const qc = useQueryClient();
   const { can } = usePermission();
   const canEdit = can(PERMISSIONS.EVALUATION_EDIT);
+  /**
+   * Points-visibility exception (PO-ratified): plain expert evaluators must
+   * judge positions by level DESCRIPTIONS only — surfacing the raw point
+   * value anchors the score (anchoring bias). Project admins / HR directors
+   * are exempt: they already hold `CALIBRATION_EDIT` (the manual-calibration
+   * permission used by the calibration/approve flow — see CalibrationDialog
+   * and EvaluationActionsBar), a role plain experts do NOT have. We reuse
+   * that EXISTING permission rather than inventing a new code, derive the
+   * boolean ONCE here, and thread it down to every place a level renders
+   * (row control, open list, bulk dialog).
+   */
+  const canSeePoints = can(PERMISSIONS.CALIBRATION_EDIT);
   const setSidebarCollapsed = useAuthStore((s) => s.setSidebarCollapsed);
 
   // Auto-collapse the sidebar to icon-only mode while the by-factor grid is
@@ -114,9 +124,6 @@ export function EvaluationByFactorView({
   // Dialog open flags
   const [bulkScoreOpen, setBulkScoreOpen] = useState(false);
   const [bulkSubmitOpen, setBulkSubmitOpen] = useState(false);
-  // Narrow-screen (<lg) rubric slide-over. On lg+ the rubric docks beside
-  // the table so this drawer is unused there.
-  const [rubricDrawerOpen, setRubricDrawerOpen] = useState(false);
 
   // ----- Resolve active methodology + version -----
   const methodologiesQuery = useMethodologies(projectId);
@@ -280,7 +287,9 @@ export function EvaluationByFactorView({
     });
   };
 
-  // The active row (for rubric sync). Falls back to the first row.
+  // The active (row-clicked) row — drives the subtle row highlight only.
+  // The rubric panel that previously consumed it has been retired; the
+  // highlight is a low-cost focus cue retained from the original UX.
   const activeRow = useMemo(
     () => rows.find((r) => r.evaluation_id === activeRowId) ?? rows[0] ?? null,
     [rows, activeRowId],
@@ -394,23 +403,15 @@ export function EvaluationByFactorView({
       </Card>
 
       {/*
-        Main split: flexible table area on the LEFT + fixed-width rubric on
-        the RIGHT (360px or 48px when collapsed). flex (not grid) so the
-        table reclaims the rubric's space instantly when it collapses;
-        items-start keeps the sticky rubric anchored to the page-scroll top.
-        Rubric on the RIGHT — mirrors the source Excel "К-sheet" layout
-        where the score-level reference panel sits to the right of the grid,
-        so evaluators keep the "what does 1 / 4 mean" guide in view while
-        scrolling positions.
-
-        Breakpoint: side-by-side from `lg` (1024px) — NOT `xl` (1280px).
-        A typical laptop with the sidebar + content is frequently <1280px,
-        which used to force the rubric to stack BELOW the 200-row table
-        (useless while scrolling). At <lg the docked rubric is hidden and a
-        sticky "Rubric" toggle opens a slide-over hosting the SAME panel.
+        Full-width K-sheet table. The old right-side rubric reference panel
+        (and its narrow-screen slide-over Drawer) were RETIRED per the PO
+        redesign: evaluators now read each level's description in-line via
+        the per-row LevelDropSelect, so a separate rubric column would only
+        duplicate that text and re-introduce the point-anchoring it removes.
+        The table reclaims the full content width on every breakpoint.
       */}
-      <div className="flex flex-col lg:flex-row gap-4 items-start">
-        <Card compact className="overflow-hidden flex-1 min-w-0 w-full">
+      <div className="w-full">
+        <Card compact className="overflow-hidden w-full">
           {rowsQuery.isError ? (
             <ErrorState onRetry={() => rowsQuery.refetch()} />
           ) : rowsQuery.isLoading ? (
@@ -470,6 +471,7 @@ export function EvaluationByFactorView({
                       selected={activeRow?.evaluation_id === row.evaluation_id}
                       bulkSelected={bulkSet.has(row.evaluation_id)}
                       canEdit={canEdit}
+                      canSeePoints={canSeePoints}
                       onScoreChange={(lvlId) => handleScoreChange(row, lvlId)}
                       onCommentChange={(c) => handleCommentChange(row, c)}
                       onRowSelect={() => setActiveRowId(row.evaluation_id)}
@@ -481,68 +483,7 @@ export function EvaluationByFactorView({
             </div>
           )}
         </Card>
-
-        {/*
-          Docked rubric on the RIGHT — owns its own sticky + collapse state.
-          Hidden below `lg`; on narrow screens the slide-over drawer below
-          hosts the SAME <RubricPanel> instead (no markup duplication).
-        */}
-        <div className="hidden lg:block self-start">
-          <RubricPanel
-            factor={activeFactor}
-            selectedLevelId={activeRow?.current_score_factor_level_id ?? null}
-            onSelectLevel={
-              canEdit && activeRow
-                ? (lvlId) => {
-                    void handleScoreChange(activeRow, lvlId);
-                  }
-                : undefined
-            }
-          />
-        </div>
       </div>
-
-      {/*
-        Narrow-screen (<lg) affordance: a FIXED floating "Rubric" button,
-        anchored bottom-right so it stays reachable for the entire scroll of
-        the 200-row table (a sticky-in-flow button would scroll away once the
-        table block leaves the viewport). It opens a right-side slide-over
-        that renders the SAME RubricPanel (embedded mode) — the evaluator
-        reaches the score legend without losing scroll position. Hidden on
-        lg+ where the rubric docks beside the table.
-      */}
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={() => setRubricDrawerOpen(true)}
-        data-testid="rubric-drawer-toggle"
-        leadingIcon={<BookOpen size={16} aria-hidden />}
-        className="lg:hidden fixed bottom-4 right-4 z-30 shadow-lg"
-      >
-        {t('evaluation.byFactor.rubric.show_label')}
-      </Button>
-
-      <Drawer
-        open={rubricDrawerOpen}
-        onClose={() => setRubricDrawerOpen(false)}
-        title={t('evaluation.byFactor.rubric.title')}
-        widthClassName="max-w-md"
-        data-testid="rubric-drawer"
-      >
-        {/* Reuses the exact RubricPanel — only the host (Drawer) is new. */}
-        <RubricPanel
-          embedded
-          factor={activeFactor}
-          selectedLevelId={activeRow?.current_score_factor_level_id ?? null}
-          onSelectLevel={
-            canEdit && activeRow
-              ? (lvlId) => {
-                  void handleScoreChange(activeRow, lvlId);
-                }
-              : undefined
-          }
-        />
-      </Drawer>
 
       {/* Bottom toolbar */}
       <Card compact>
@@ -599,6 +540,7 @@ export function EvaluationByFactorView({
         open={bulkScoreOpen}
         factor={activeFactor}
         selectedCount={bulkSet.size}
+        canSeePoints={canSeePoints}
         onClose={() => setBulkScoreOpen(false)}
         onConfirm={async (factorLevelId, reason) => {
           const result = await bulkScoreMutation.mutateAsync({

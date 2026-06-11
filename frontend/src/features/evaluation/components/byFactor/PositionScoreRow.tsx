@@ -17,6 +17,7 @@ import type {
 } from '../../types';
 import { EvaluationStatusBadge } from '../EvaluationStatusBadge';
 import { ProgressChip } from './ProgressChip';
+import { LevelDropSelect } from './LevelDropSelect';
 
 interface PositionScoreRowProps {
   row: EvaluationByFactorRow;
@@ -27,6 +28,12 @@ interface PositionScoreRowProps {
   bulkSelected: boolean;
   /** Whether the user has CALIBRATION_EDIT permission (locked-row reason). */
   canEdit: boolean;
+  /**
+   * Project-admin / HR-director only: surface a small muted point value next
+   * to each level in the drop. Derived ONCE upstream from CALIBRATION_EDIT;
+   * plain evaluators receive `false` (anchoring-bias guard).
+   */
+  canSeePoints: boolean;
   /**
    * Score-set callback. The parent invokes the upsert mutation and
    * handles optimistic rollback via TanStack Query.
@@ -65,6 +72,7 @@ function PositionScoreRowBase({
   selected,
   bulkSelected,
   canEdit,
+  canSeePoints,
   onScoreChange,
   onCommentChange,
   onRowSelect,
@@ -126,12 +134,12 @@ function PositionScoreRowBase({
     flashTimer.current = setTimeout(() => setSaveState('idle'), 600);
   }, []);
 
-  const handleSelectChange = useCallback(
-    async (e: ChangeEvent<HTMLSelectElement>) => {
-      const lvlId = e.target.value || null;
-      // Optimistic UI: flip immediately, then await the server.
+  const handleLevelPick = useCallback(
+    async (lvlId: string) => {
+      // Optimistic UI: flip immediately, then await the server. The payload
+      // (the level id) is identical to what the old <select> sent — the API
+      // contract (current_score_factor_level_id) is unchanged.
       setLocalLevelId(lvlId);
-      if (!lvlId) return; // No-op for "—" placeholder.
       try {
         setSaveState('saving');
         await onScoreChange(lvlId);
@@ -161,10 +169,6 @@ function PositionScoreRowBase({
       }, 300);
     },
     [onCommentChange, triggerFlash],
-  );
-
-  const sortedLevels = [...factor.levels].sort(
-    (a, b) => a.level_order - b.level_order,
   );
 
   return (
@@ -214,32 +218,23 @@ function PositionScoreRowBase({
         />
       </td>
       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-1.5">
-          <select
-            value={localLevelId ?? ''}
-            onChange={handleSelectChange}
+        <div className="flex items-start gap-1.5">
+          <LevelDropSelect
+            factor={factor}
+            selectedLevelId={localLevelId}
+            onSelect={handleLevelPick}
             disabled={disabled}
-            aria-label={t('evaluation.byFactor.row.score_aria', {
+            canSeePoints={canSeePoints}
+            testIdSuffix={row.position_code}
+            ariaLabel={t('evaluation.byFactor.row.score_aria', {
               factor: factor.code,
             })}
-            data-testid={`row-score-${row.position_code}`}
-            className={cn(
-              'h-8 px-2 text-sm border border-border-strong rounded-md bg-surface tabular-nums',
-              disabled && 'opacity-60 cursor-not-allowed bg-divider/30',
-            )}
-          >
-            <option value="">—</option>
-            {sortedLevels.map((lvl, idx) => (
-              <option key={lvl.id} value={lvl.id}>
-                {idx + 1}
-              </option>
-            ))}
-          </select>
+          />
           {locked ? (
             <span
               title={t('evaluation.byFactor.locked.tooltip')}
               data-testid={`row-lock-${row.position_code}`}
-              className="inline-flex"
+              className="inline-flex pt-2"
               aria-label={t('evaluation.byFactor.locked.tooltip')}
             >
               <Lock
@@ -300,6 +295,7 @@ export const PositionScoreRow = memo(PositionScoreRowBase, (prev, next) => {
     prev.factor === next.factor &&
     prev.selected === next.selected &&
     prev.bulkSelected === next.bulkSelected &&
-    prev.canEdit === next.canEdit
+    prev.canEdit === next.canEdit &&
+    prev.canSeePoints === next.canSeePoints
   );
 });

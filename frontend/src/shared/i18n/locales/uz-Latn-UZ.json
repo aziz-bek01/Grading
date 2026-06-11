@@ -877,6 +877,9 @@
         "score_aria": "{{factor}} faktori bo'yicha ball",
         "comment_aria": "Faktor bo'yicha izoh"
       },
+      "level": {
+        "level_not_selected": "Daraja tanlanmagan"
+      },
       "progress": {
         "label": "{{total}} tadan {{filled}} ta to'ldirilgan",
         "tooltip_filled": "To'ldirildi: {{codes}}.",

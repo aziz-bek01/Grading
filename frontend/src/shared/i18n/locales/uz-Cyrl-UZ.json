@@ -877,6 +877,9 @@
         "score_aria": "{{factor}} фактори бўйича балл",
         "comment_aria": "Фактор бўйича изоҳ"
       },
+      "level": {
+        "level_not_selected": "Даража танланмаган"
+      },
       "progress": {
         "label": "{{total}} тадан {{filled}} та тўлдирилган",
         "tooltip_filled": "Тўлдирилди: {{codes}}.",

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
@@ -6,12 +6,19 @@ import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
 import type { Factor } from '@/features/methodology/types';
 import type { BulkOperationResult } from '../../types';
+import { LevelDropSelect } from './LevelDropSelect';
 
 interface BulkScoreDialogProps {
   open: boolean;
   factor: Factor;
   /** How many evaluation rows the user picked. */
   selectedCount: number;
+  /**
+   * Project-admin / HR-director only: show muted point values next to the
+   * levels in the drop. Derived ONCE upstream from CALIBRATION_EDIT; plain
+   * evaluators receive `false` (anchoring-bias guard).
+   */
+  canSeePoints: boolean;
   /**
    * Submit handler. Returns the backend result so the dialog can show
    * partial failures inline before closing.
@@ -42,6 +49,7 @@ export function BulkScoreDialog({ open, ...rest }: BulkScoreDialogProps) {
 function BulkScoreDialogBody({
   factor,
   selectedCount,
+  canSeePoints,
   onConfirm,
   onClose,
 }: Omit<BulkScoreDialogProps, 'open'>) {
@@ -51,11 +59,6 @@ function BulkScoreDialogBody({
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BulkOperationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const sortedLevels = useMemo(
-    () => [...factor.levels].sort((a, b) => a.level_order - b.level_order),
-    [factor.levels],
-  );
 
   const reasonValid = reason.trim().length >= REASON_MIN_LEN;
   const canSubmit = Boolean(levelId) && reasonValid && !submitting;
@@ -102,29 +105,24 @@ function BulkScoreDialogBody({
         </header>
 
         <div>
-          <label
-            htmlFor="bulk-score-level"
+          <span
+            id="bulk-score-level-label"
             className="block text-sm font-medium mb-1"
           >
             {t('evaluation.byFactor.bulk.set_all.level_label')}
-          </label>
-          <select
-            id="bulk-score-level"
-            value={levelId}
-            onChange={(e) => setLevelId(e.target.value)}
-            data-testid="bulk-score-level"
-            className="w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface"
+          </span>
+          {/* Same LevelDropSelect as the K-sheet row — level-by-description,
+              points hidden from evaluators (only shown when canSeePoints). */}
+          <LevelDropSelect
+            factor={factor}
+            selectedLevelId={levelId || null}
+            onSelect={(id) => setLevelId(id)}
+            canSeePoints={canSeePoints}
             disabled={submitting}
-          >
-            <option value="">—</option>
-            {sortedLevels.map((lvl, idx) => (
-              <option key={lvl.id} value={lvl.id}>
-                {idx + 1} ·{' '}
-                {pickLocalized(lvl.label_i18n, i18n.language) || lvl.code} ·{' '}
-                {lvl.points} pts
-              </option>
-            ))}
-          </select>
+            testIdSuffix="bulk"
+            className="max-w-none"
+            ariaLabel={t('evaluation.byFactor.bulk.set_all.level_label')}
+          />
         </div>
 
         <div>

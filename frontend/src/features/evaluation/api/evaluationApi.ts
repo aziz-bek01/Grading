@@ -14,6 +14,8 @@
 import { httpClient } from '@/shared/api/httpClient';
 import type { PageEnvelope } from '@/shared/types/common';
 import type {
+  BulkCreateEvaluationPayload,
+  BulkCreateEvaluationResult,
   BulkOperationResult,
   BulkScorePayload,
   BulkSubmitPayload,
@@ -58,6 +60,49 @@ export async function createEvaluation(
 ): Promise<Evaluation> {
   const res = await httpClient.post<Evaluation>(base, payload);
   return res.data;
+}
+
+/**
+ * Bulk-create one DRAFT evaluation per row (Item 1, BE-1).
+ *
+ * Backend contract:
+ *   POST /api/v1/evaluations/bulk-create
+ *   Body: { items: [{ position_id, methodology_version_id, evaluator_user_id? }] }
+ *   (Contract-A snake_case — sending camelCase would null the @NotNull fields → 400.)
+ *
+ * Always returns HTTP 200, even on partial failure. The response carries
+ * `created` (count) + `failed[]` keyed on `position_id` (NOT an evaluation id,
+ * since no evaluation was created for a failed row). NO tenant_id on the wire —
+ * the backend derives the active tenant from the JWT (security blueprint API-13).
+ */
+export async function bulkCreateEvaluations(
+  payload: BulkCreateEvaluationPayload,
+): Promise<BulkCreateEvaluationResult> {
+  const res = await httpClient.post<BulkCreateEvaluationResult>(
+    `${base}/bulk-create`,
+    payload,
+  );
+  return res.data;
+}
+
+/**
+ * Hard-delete a DRAFT-only evaluation (Item 1, BE-2).
+ *
+ * Backend contract:
+ *   DELETE /api/v1/evaluations/{id}
+ *   Body: { reason }  (ReasonRequest — @NotBlank, min 5, max 4000)
+ *   Returns 204 No Content.
+ *
+ * DRAFT-only: a non-DRAFT evaluation is rejected with 400
+ * EVALUATION_NOT_DELETABLE (use the archive path instead). Cross-tenant /
+ * out-of-scope id → 404 (no existence reveal). The body travels on a DELETE
+ * via the axios `data` config option.
+ */
+export async function deleteEvaluation(
+  id: string,
+  payload: ReasonPayload,
+): Promise<void> {
+  await httpClient.delete(`${base}/${id}`, { data: payload });
 }
 
 export async function fetchEvaluations(

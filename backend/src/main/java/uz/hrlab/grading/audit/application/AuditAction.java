@@ -174,6 +174,8 @@ public final class AuditAction {
     public static final String EVALUATION_APPROVED           = "EVALUATION_APPROVED";
     public static final String EVALUATION_LOCKED             = "EVALUATION_LOCKED";
     public static final String EVALUATION_ARCHIVED           = "EVALUATION_ARCHIVED";
+    /** Hard delete of a DRAFT-only evaluation (Item 1, BE-2). Non-DRAFT keeps ARCHIVE. */
+    public static final String EVALUATION_DELETED            = "EVALUATION_DELETED";
     public static final String EVALUATION_SCORE_CALIBRATED   = "EVALUATION_SCORE_CALIBRATED";
     /** Bulk PATCH score across multiple evaluations for a single factor (Excel K-sheet UX). */
     public static final String EVALUATION_BULK_SCORE_SET     = "EVALUATION_BULK_SCORE_SET";

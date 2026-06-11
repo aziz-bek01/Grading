@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, X } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
 import type { Factor, FactorLevel } from '@/features/methodology/types';
@@ -13,7 +13,7 @@ interface LevelDropSelectProps {
   /**
    * Fired when the user picks a level. Receives the level id — the SAME
    * payload the previous score <select> emitted (the parent forwards it to
-   * the unchanged upsert mutation). The drop closes itself before calling.
+   * the unchanged upsert mutation). The modal closes itself before calling.
    */
   onSelect: (factorLevelId: string) => void;
   /** Disabled (locked status / no edit permission). Renders read-only. */
@@ -24,11 +24,115 @@ interface LevelDropSelectProps {
    * evaluators NEVER receive `true` (anchoring-bias guard).
    */
   canSeePoints?: boolean;
+  /**
+   * Optional position context shown as the modal title (e.g. the position
+   * title from PositionScoreRow) so an evaluator knows WHICH position they are
+   * scoring while the level list is open full-screen-centered.
+   */
+  contextTitle?: string;
   /** Stable suffix for test ids so row + bulk instances stay distinct. */
   testIdSuffix?: string;
   className?: string;
   /** aria-label for the collapsed trigger button. */
   ariaLabel?: string;
+}
+
+/**
+ * One shared level-list `<ul>` — the SINGLE source of the level-list markup
+ * ("кодлар 2 мартадан ёзилмасин"). Rendered inside the centered modal here AND
+ * indirectly via {@link LevelDropSelect} by both PositionScoreRow (table row)
+ * and BulkScoreDialog (bulk dialog). NO other component reproduces this list.
+ */
+function LevelOptionList({
+  levels,
+  selectedLevelId,
+  canSeePoints,
+  testIdSuffix,
+  ariaLabel,
+  onPick,
+}: {
+  levels: FactorLevel[];
+  selectedLevelId: string | null;
+  canSeePoints: boolean;
+  testIdSuffix: string;
+  ariaLabel?: string;
+  onPick: (id: string) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const suffix = testIdSuffix ? `-${testIdSuffix}` : '';
+
+  // Description with the documented fallback chain: description_i18n in the
+  // active locale → label_i18n when description is empty.
+  const levelDescription = (lvl: FactorLevel): string => {
+    const desc = lvl.description_i18n
+      ? pickLocalized(lvl.description_i18n, i18n.language)
+      : '';
+    if (desc) return desc;
+    return pickLocalized(lvl.label_i18n, i18n.language);
+  };
+
+  return (
+    <ul
+      role="listbox"
+      aria-label={ariaLabel}
+      data-testid={`level-drop-list${suffix}`}
+      className="divide-y divide-border"
+    >
+      {levels.map((lvl) => {
+        const selected = lvl.id === selectedLevelId;
+        return (
+          <li key={lvl.id}>
+            <button
+              type="button"
+              role="option"
+              aria-selected={selected}
+              onClick={() => onPick(lvl.id)}
+              data-testid={`level-drop-option-${lvl.code}${suffix}`}
+              data-selected={selected || undefined}
+              className={cn(
+                // Large click target + full (non-clamped) description — the
+                // modal is never clipped by the table overflow container.
+                'flex w-full items-start gap-2.5 px-4 py-3 text-left text-sm transition-colors',
+                selected
+                  ? 'bg-success-50/70 hover:bg-success-50'
+                  : 'hover:bg-divider/40',
+              )}
+            >
+              <span
+                className={cn(
+                  'mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-mono text-[11px] uppercase',
+                  selected
+                    ? 'bg-success-100 text-success-700'
+                    : 'bg-primary-50 text-primary-700',
+                )}
+              >
+                {lvl.code}
+              </span>
+              <span className="min-w-0 flex-1 leading-snug text-text-primary">
+                {levelDescription(lvl) ||
+                  t('evaluation.byFactor.rubric.no_translation')}
+              </span>
+              {canSeePoints ? (
+                <span
+                  className="mt-0.5 shrink-0 tabular-nums text-[11px] text-text-muted"
+                  data-testid={`level-drop-option-points-${lvl.code}${suffix}`}
+                >
+                  {lvl.points}
+                </span>
+              ) : null}
+              {selected ? (
+                <Check
+                  size={16}
+                  aria-hidden
+                  className="mt-0.5 shrink-0 text-success-600"
+                />
+              ) : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 /**
@@ -40,16 +144,17 @@ interface LevelDropSelectProps {
  * (UX brief: "points hidden from experts"). Project admins / HR directors
  * (`canSeePoints`) additionally see a small muted point value.
  *
- * Layout (in-flow, NOT a modal — expands inside the host cell/container):
- *   Collapsed: [level code badge] + description + chevron.
- *              When nothing is chosen: warning "—" badge + "not selected".
- *   Expanded:  one row per level = code badge + (multi-line) description,
- *              selected one tinted teal/success + check icon. Picking a
- *              level closes the drop and fires `onSelect`.
+ * Layout (FE-10): the COLLAPSED control (selected value display / chevron)
+ * stays IN the table cell. Clicking it opens the level LIST inside a CENTERED
+ * MODAL overlay (the same `fixed inset-0 z-50` dialog primitive used by
+ * BulkScoreDialog / ConfirmDialog) so the list is never clipped by the table's
+ * `overflow-x-auto` container — the previous absolute in-cell dropdown clipped
+ * for bottom rows. Picking a level closes the modal and fires `onSelect`.
  *
- * ONE component, reused by BOTH the table row (PositionScoreRow) and the
- * bulk dialog (BulkScoreDialog) so the level-list markup lives in exactly
- * one place ("кодлар 2 мартадан ёзилмасин").
+ * ONE list component ({@link LevelOptionList}), reused by BOTH the table row
+ * (PositionScoreRow, via this collapsed control) and the bulk dialog
+ * (BulkScoreDialog, which embeds this component) so the level-list markup lives
+ * in exactly one place ("кодлар 2 мартадан ёзилмасин").
  */
 export function LevelDropSelect({
   factor,
@@ -57,13 +162,13 @@ export function LevelDropSelect({
   onSelect,
   disabled = false,
   canSeePoints = false,
+  contextTitle,
   testIdSuffix,
   className,
   ariaLabel,
 }: LevelDropSelectProps) {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
 
   const suffix = testIdSuffix ? `-${testIdSuffix}` : '';
 
@@ -77,23 +182,14 @@ export function LevelDropSelect({
     [sortedLevels, selectedLevelId],
   );
 
-  // Outside-click + Escape close the in-flow drop. Only bound while open.
+  // Escape closes the centered modal. Only bound while open.
   useEffect(() => {
     if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      document.removeEventListener('keydown', onKey);
-    };
+    return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
   // Description with the documented fallback chain: description_i18n in the
@@ -111,21 +207,21 @@ export function LevelDropSelect({
     onSelect(id);
   };
 
+  const factorName = pickLocalized(factor.name_i18n, i18n.language) || factor.code;
+  const modalTitle = contextTitle ?? factorName;
+
   return (
     <div
-      ref={rootRef}
       // Base host: in-flow relative box with a sensible minimum. The width
       // ceiling is intentionally left to the caller — the K-sheet row passes
-      // `w-full max-w-none` so the drop fills the dominant ДАРАЖА column. With
-      // `cn` (clsx, no tailwind-merge) we must NOT bake a competing `max-w-*`
-      // into the base, or both classes would emit and order would decide.
+      // `w-full max-w-none` so the drop fills the dominant ДАРАЖА column.
       className={cn('relative min-w-[14rem] w-full', className)}
       data-testid={`level-drop${suffix}`}
     >
       <button
         type="button"
         disabled={disabled}
-        aria-haspopup="listbox"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={ariaLabel}
         onClick={() => setOpen((v) => !v)}
@@ -178,67 +274,49 @@ export function LevelDropSelect({
 
       {open && !disabled ? (
         <div
-          role="listbox"
+          role="dialog"
+          aria-modal="true"
           aria-label={ariaLabel}
-          data-testid={`level-drop-list${suffix}`}
-          className={cn(
-            'absolute z-30 mt-1 w-full overflow-hidden rounded-md border border-border bg-surface shadow-lg',
-            'max-h-72 overflow-y-auto',
-          )}
+          data-testid={`level-drop-modal${suffix}`}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setOpen(false);
+          }}
         >
-          <ul className="divide-y divide-border">
-            {sortedLevels.map((lvl) => {
-              const selected = lvl.id === selectedLevelId;
-              return (
-                <li key={lvl.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    onClick={() => handlePick(lvl.id)}
-                    data-testid={`level-drop-option-${lvl.code}${suffix}`}
-                    data-selected={selected || undefined}
-                    className={cn(
-                      'flex w-full items-start gap-2 px-2.5 py-2 text-left text-sm transition-colors',
-                      selected
-                        ? 'bg-success-50/70 hover:bg-success-50'
-                        : 'hover:bg-divider/40',
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-mono text-[11px] uppercase',
-                        selected
-                          ? 'bg-success-100 text-success-700'
-                          : 'bg-primary-50 text-primary-700',
-                      )}
-                    >
-                      {lvl.code}
-                    </span>
-                    <span className="min-w-0 flex-1 leading-snug text-text-primary">
-                      {levelDescription(lvl) ||
-                        t('evaluation.byFactor.rubric.no_translation')}
-                    </span>
-                    {canSeePoints ? (
-                      <span
-                        className="mt-0.5 shrink-0 tabular-nums text-[11px] text-text-muted"
-                        data-testid={`level-drop-option-points-${lvl.code}${suffix}`}
-                      >
-                        {lvl.points}
-                      </span>
-                    ) : null}
-                    {selected ? (
-                      <Check
-                        size={15}
-                        aria-hidden
-                        className="mt-0.5 shrink-0 text-success-600"
-                      />
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
+            <header className="flex items-start justify-between gap-3 px-4 py-3 border-b border-border shrink-0">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-text-muted">
+                  {factorName}
+                </p>
+                <h2
+                  className="text-base text-text-primary truncate"
+                  data-testid={`level-drop-modal-title${suffix}`}
+                >
+                  {modalTitle}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label={t('common.close')}
+                data-testid={`level-drop-modal-close${suffix}`}
+                className="shrink-0 rounded-md p-1 text-text-muted hover:bg-divider/40 hover:text-text-primary"
+              >
+                <X size={18} aria-hidden />
+              </button>
+            </header>
+            <div className="overflow-y-auto">
+              <LevelOptionList
+                levels={sortedLevels}
+                selectedLevelId={selectedLevelId}
+                canSeePoints={canSeePoints}
+                testIdSuffix={testIdSuffix ?? ''}
+                ariaLabel={ariaLabel}
+                onPick={handlePick}
+              />
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

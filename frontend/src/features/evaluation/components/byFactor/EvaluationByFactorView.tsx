@@ -35,7 +35,11 @@ import type {
   EvaluationsByFactorFilters,
 } from '../../types';
 import { FactorTabs, type FactorCompletionMap } from './FactorTabs';
-import { BY_FACTOR_STICKY_TOP, BY_FACTOR_STICKY_Z } from './stickyOffset';
+import {
+  BY_FACTOR_FILTER_STICKY_TOP,
+  BY_FACTOR_STICKY_TOP,
+  BY_FACTOR_STICKY_Z,
+} from './stickyOffset';
 import { PositionScoreRow } from './PositionScoreRow';
 import { BulkScoreDialog } from './BulkScoreDialog';
 import { BulkSubmitDialog } from './BulkSubmitDialog';
@@ -316,26 +320,61 @@ export function EvaluationByFactorView({
     );
   }
 
-  return (
-    <div className="space-y-4" data-testid="evaluation-by-factor">
-      <FactorTabs
-        // Sticky offset + z-index come from the SHARED constant so the tabs
-        // and the rubric never diverge again. top-20 (80px) clears the 62px
-        // TopBar (was top-14/56px → tabs tucked ~6px under the header). z-10
-        // keeps the tabs above table content but below the TopBar (z-20).
-        className={cn(
-          'sticky bg-background pt-2',
-          BY_FACTOR_STICKY_TOP,
-          BY_FACTOR_STICKY_Z,
-        )}
-        factors={factors}
-        activeFactorId={activeFactor.id}
-        completion={completionMap}
-        onSelect={onFactorChange}
-      />
+  const methodologyName =
+    pickLocalized(activeMethodology.name_i18n, i18n.language) ||
+    activeMethodology.code;
+  const scoringMode = versionQuery.data.scoring_mode;
 
-      {/* Filter bar */}
-      <Card compact>
+  return (
+    // FE-9: flex-col page so the table region can grow (flex-1 / min-h-0) and
+    // the page-level scroll carries ~200 rows without virtualization. Tighter
+    // vertical rhythm (space-y-2) reclaims wasted top/bottom chrome.
+    <div
+      className="flex flex-col min-h-0 space-y-2"
+      data-testid="evaluation-by-factor"
+    >
+      {/* FE-7: active-methodology header strip — name + v{n} + scoring-mode
+          badge, from data ALREADY loaded (activeMethodology + versionQuery).
+          No new query. Part of the sticky region, directly above the tabs. */}
+      <div
+        className={cn('sticky bg-background pt-1', BY_FACTOR_STICKY_TOP, BY_FACTOR_STICKY_Z)}
+        data-testid="byfactor-methodology-header"
+      >
+        <div className="flex flex-wrap items-center gap-2 pb-1.5">
+          <span className="text-xs uppercase tracking-wide text-text-muted">
+            {t('evaluation.byFactor.active_methodology')}
+          </span>
+          <span className="text-sm font-medium text-text-primary">
+            {methodologyName}
+          </span>
+          {activeMethodology.active_version_number != null ? (
+            <span className="text-sm text-text-secondary tabular-nums">
+              v{activeMethodology.active_version_number}
+            </span>
+          ) : null}
+          <span
+            className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700"
+            data-testid="byfactor-scoring-mode-badge"
+          >
+            {t(`evaluation.byFactor.scoring_mode.${scoringMode}`)}
+          </span>
+        </div>
+        <FactorTabs
+          // Sticky offset + z-index come from the SHARED constant so the tabs
+          // and the header never diverge. top-20 (80px) clears the 62px TopBar.
+          factors={factors}
+          activeFactorId={activeFactor.id}
+          completion={completionMap}
+          onSelect={onFactorChange}
+        />
+      </div>
+
+      {/* Filter bar — sticky just BELOW the tabs (FE-9) using the SHARED
+          offset/z-index constants so it stacks correctly and never diverges. */}
+      <Card
+        compact
+        className={cn('sticky bg-background', BY_FACTOR_FILTER_STICKY_TOP, BY_FACTOR_STICKY_Z)}
+      >
         <div className="flex flex-wrap items-center gap-2">
           <select
             aria-label={t('evaluation.byFactor.filter.department')}
@@ -410,8 +449,12 @@ export function EvaluationByFactorView({
         duplicate that text and re-introduce the point-anchoring it removes.
         The table reclaims the full content width on every breakpoint.
       */}
-      <div className="w-full">
-        <Card compact className="overflow-hidden w-full">
+      {/* FE-9: the table region GROWS (flex-1 / min-h-0) and scrolls
+          internally; the thead sticks to the top of THIS scroll context. The
+          level picker is now a centered modal (LevelDropSelect), so the
+          overflow container no longer clips the picker for bottom rows. */}
+      <div className="w-full flex-1 min-h-0 flex flex-col">
+        <Card compact className="overflow-hidden w-full flex-1 min-h-0 flex flex-col">
           {rowsQuery.isError ? (
             <ErrorState onRetry={() => rowsQuery.refetch()} />
           ) : rowsQuery.isLoading ? (
@@ -422,7 +465,7 @@ export function EvaluationByFactorView({
               body={t('evaluation.byFactor.empty_body')}
             />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto flex-1 min-h-0">
               <table
                 className="w-full table-fixed text-sm border-collapse"
                 data-testid="byfactor-table"
@@ -441,7 +484,7 @@ export function EvaluationByFactorView({
                   <col className="w-[21%]" />
                   <col className="w-[7%]" />
                 </colgroup>
-                <thead className="bg-divider text-text-secondary text-xs uppercase tracking-wide">
+                <thead className="bg-divider text-text-secondary text-xs uppercase tracking-wide sticky top-0 z-[1]">
                   <tr>
                     <th className="px-2 py-3 w-8 text-left align-top">
                       <input

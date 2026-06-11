@@ -19,12 +19,15 @@ import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.GlobalExceptionHandler;
 import uz.hrlab.grading.common.api.WebMvcSecurityTestConfig;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.application.ApproveEvaluationUseCase;
 import uz.hrlab.grading.evaluation.application.ArchiveEvaluationUseCase;
+import uz.hrlab.grading.evaluation.application.BulkCreateEvaluationsUseCase;
 import uz.hrlab.grading.evaluation.application.BulkSubmitEvaluationsUseCase;
 import uz.hrlab.grading.evaluation.application.BulkUpsertEvaluationScoreUseCase;
 import uz.hrlab.grading.evaluation.application.CalibrateEvaluationScoreUseCase;
 import uz.hrlab.grading.evaluation.application.CreateEvaluationUseCase;
+import uz.hrlab.grading.evaluation.application.DeleteEvaluationUseCase;
 import uz.hrlab.grading.evaluation.application.EvaluationQueries;
 import uz.hrlab.grading.evaluation.application.LockEvaluationUseCase;
 import uz.hrlab.grading.evaluation.application.PreviewEvaluationScoreUseCase;
@@ -40,9 +43,12 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Tag("security")
@@ -61,6 +67,8 @@ class EvaluationControllerSecurityTest {
     @Autowired ObjectMapper json;
 
     @MockBean CreateEvaluationUseCase createUseCase;
+    @MockBean BulkCreateEvaluationsUseCase bulkCreateUseCase;
+    @MockBean DeleteEvaluationUseCase deleteUseCase;
     @MockBean UpsertEvaluationScoreUseCase upsertScoreUseCase;
     @MockBean SubmitEvaluationUseCase submitUseCase;
     @MockBean ApproveEvaluationUseCase approveUseCase;
@@ -259,6 +267,144 @@ class EvaluationControllerSecurityTest {
                                 {"methodology_version_id": "00000000-0000-0000-0000-000000000010"}
                                 """))
                 .andExpect(status().isForbidden());
+    }
+
+    // ---------- bulk-create (BE-1) ----------
+
+    @Test
+    void bulkCreateRequiresEvaluationEdit() throws Exception {
+        mvc.perform(post("/api/v1/evaluations/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bulkCreateBody()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void bulkCreateRejectsEmptyItems() throws Exception {
+        mvc.perform(post("/api/v1/evaluations/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items": []}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void bulkCreateReturns200WithSnakeCaseBody() throws Exception {
+        UUID positionId = UUID.fromString("00000000-0000-0000-0000-000000000010");
+        // created=1 + one failure keyed on position_id (not evaluation_id).
+        given(bulkCreateUseCase.execute(any())).willReturn(
+                new BulkCreateEvaluationsResponse(
+                        1,
+                        List.of(new BulkCreateEvaluationsResponse.Failure(
+                                positionId, "ALREADY_EXISTS", "duplicate"))));
+        mvc.perform(post("/api/v1/evaluations/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bulkCreateBody()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.created").value(1))
+                // pin the JSON shape: failure rows key on position_id + error_code (snake_case).
+                .andExpect(jsonPath("$.failed[0].position_id").value(positionId.toString()))
+                .andExpect(jsonPath("$.failed[0].error_code").value("ALREADY_EXISTS"))
+                .andExpect(jsonPath("$.failed[0].message").value("duplicate"));
+    }
+
+    @Test
+    void bulkCreateAcceptsSnakeCaseItemFields() throws Exception {
+        given(bulkCreateUseCase.execute(any())).willReturn(
+                new BulkCreateEvaluationsResponse(1, List.of()));
+        mvc.perform(post("/api/v1/evaluations/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "items": [
+                                    {
+                                      "position_id": "00000000-0000-0000-0000-000000000010",
+                                      "methodology_version_id": "00000000-0000-0000-0000-000000000020",
+                                      "evaluator_user_id": "00000000-0000-0000-0000-000000000030"
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.created").value(1));
+    }
+
+    // ---------- delete (BE-2) ----------
+
+    @Test
+    void deleteRequiresEvaluationEdit() throws Exception {
+        mvc.perform(delete("/api/v1/evaluations/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reasonBody()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deleteWithEditReturns204() throws Exception {
+        mvc.perform(delete("/api/v1/evaluations/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reasonBody()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteRejectsShortReason() throws Exception {
+        mvc.perform(delete("/api/v1/evaluations/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"reason": "no"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deleteNonDraftReturns400WithNotDeletableCode() throws Exception {
+        doThrow(new ValidationException("EVALUATION_NOT_DELETABLE",
+                "Only DRAFT evaluations can be deleted; archive instead"))
+                .when(deleteUseCase).delete(any(), any());
+        mvc.perform(delete("/api/v1/evaluations/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reasonBody()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("EVALUATION_NOT_DELETABLE"));
+    }
+
+    @Test
+    void deleteCrossTenantIdReturns404() throws Exception {
+        doThrow(new TenantAccessDeniedException()).when(deleteUseCase).delete(any(), any());
+        mvc.perform(delete("/api/v1/evaluations/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reasonBody()))
+                .andExpect(status().isNotFound());
+    }
+
+    private String bulkCreateBody() {
+        return """
+                {
+                  "items": [
+                    {
+                      "position_id": "00000000-0000-0000-0000-000000000010",
+                      "methodology_version_id": "00000000-0000-0000-0000-000000000020"
+                    }
+                  ]
+                }
+                """;
+    }
+
+    private String reasonBody() {
+        return """
+                {"reason": "DRAFT clean-up before re-creation"}
+                """;
     }
 
     private String createBody() {

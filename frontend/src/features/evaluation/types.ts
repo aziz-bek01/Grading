@@ -155,9 +155,12 @@ export interface EvaluationByFactorRow {
   /**
    * Saved raw-value display for the active factor (e.g. "4" for level 4).
    * `null` is rendered as "—". Note: this is NOT the weighted factor score —
-   * the official total comes from backend (architecture §15).
+   * the official total comes from backend (architecture §15). Field name
+   * matches the BE record EvaluationByFactorRow.currentRawFactorScore
+   * (global SNAKE_CASE). Currently unread by the UI (points hidden from
+   * evaluators) — kept for admin surfaces.
    */
-  current_score_raw_value: number | null;
+  current_raw_factor_score: number | null;
   /** Saved per-factor comment (truncated server-side to 1000 chars). */
   current_comment: string | null;
 }
@@ -170,6 +173,50 @@ export interface BulkScoreFailure {
 export interface BulkOperationResult {
   updated: number;
   failed: BulkScoreFailure[];
+}
+
+// ---------- Bulk-create (Item 1, FE-4) ----------
+
+/**
+ * Bulk-create request body (BE-1 contract). Travels as JSON, so it obeys
+ * Contract-A (global SNAKE_CASE Jackson): `items[].position_id`,
+ * `items[].methodology_version_id`, `items[].evaluator_user_id`. `items` is
+ * @NotEmpty and capped at 200 server-side. `evaluator_user_id` is optional
+ * (defaults to the caller, same as the single-create path).
+ */
+export interface BulkCreateEvaluationItem {
+  position_id: string;
+  methodology_version_id: string;
+  evaluator_user_id?: string | null;
+}
+
+export interface BulkCreateEvaluationPayload {
+  items: BulkCreateEvaluationItem[];
+}
+
+/**
+ * One per-row failure of a bulk-create call. Keys on `position_id` (NOT an
+ * evaluation id) because no evaluation was created for a failed row — a
+ * deliberately DIFFERENT shape from {@link BulkOperationResult.failed} (which
+ * keys on `evaluation_id`). `error_code` is a stable enum:
+ * ALREADY_EXISTS | ACCESS_DENIED | VALIDATION | DOMAIN_REJECTED | INTERNAL_ERROR.
+ */
+export interface BulkCreateFailure {
+  position_id: string;
+  error_code: string;
+  message: string;
+}
+
+/**
+ * Bulk-create response (BE-1 contract). Always HTTP 200, even on partial
+ * failure. `created` is the count of evaluations actually created; `failed`
+ * carries one row per skipped input. The interpretation of the count field is
+ * "created" (vs "updated" in the bulk-score/bulk-submit flows) — aligned to
+ * the BE `BulkCreateEvaluationsResponse.created` field name.
+ */
+export interface BulkCreateEvaluationResult {
+  created: number;
+  failed: BulkCreateFailure[];
 }
 
 export interface EvaluationsByFactorFilters {

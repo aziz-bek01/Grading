@@ -41,4 +41,20 @@ describe('<DataTable />', () => {
     await user.click(screen.getByText('Row 2'));
     expect(onClick).toHaveBeenCalledWith(rows[2]);
   });
+
+  it('FE-5: shows the current-page RANGE (from–to / total), not a start index', async () => {
+    const user = userEvent.setup();
+    const many = Array.from({ length: 25 }, (_, i) => ({ id: `r${i}`, name: `Row ${i}` }));
+    render(renderWithProviders(<DataTable rows={many} columns={columns} rowKey={(r) => r.id} pageSize={10} />));
+    // Page 1: range 1–10 of 25 (NOT a bare "1 of 25" start index).
+    let text = document.body.textContent ?? '';
+    expect(text).toContain('1');
+    expect(text).toContain('10');
+    expect(text).toContain('25');
+    // Page 2: range 11–20 of 25.
+    await user.click(screen.getByRole('button', { name: /Далее|Next|Oldinga|Олдинга/i }));
+    text = document.body.textContent ?? '';
+    expect(text).toContain('11');
+    expect(text).toContain('20');
+  });
 });

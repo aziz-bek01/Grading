@@ -29,6 +29,7 @@ class Phase5AuditActionsTest {
             "EVALUATION_APPROVED",
             "EVALUATION_LOCKED",
             "EVALUATION_ARCHIVED",
+            "EVALUATION_DELETED",
             "EVALUATION_SCORE_CALIBRATED"
     );
 

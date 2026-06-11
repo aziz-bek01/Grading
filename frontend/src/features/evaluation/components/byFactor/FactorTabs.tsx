@@ -60,7 +60,11 @@ export function FactorTabs({
       {sorted.map((f) => {
         const active = activeFactorId === f.id;
         const state = completion?.[f.id];
-        const name = pickLocalized(f.name_i18n, i18n.language);
+        // Localized factor name is primary; fall back to the raw code only when
+        // no translation exists (FE-8). The code is kept as a muted mono suffix
+        // for reference (it never disappears — needed for cross-referencing the
+        // K-sheet against the methodology).
+        const name = pickLocalized(f.name_i18n, i18n.language) || f.code;
         return (
           <button
             key={f.id}
@@ -77,9 +81,15 @@ export function FactorTabs({
                 ? 'border-primary-500 text-primary-700 font-medium'
                 : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border-strong',
             )}
-            title={name}
+            title={`${name} (${f.code})`}
           >
-            <span className="font-mono text-xs uppercase">{f.code}</span>
+            <span data-testid={`factor-tab-name-${f.code}`}>{name}</span>
+            <span
+              className="font-mono text-[10px] uppercase text-text-muted"
+              data-testid={`factor-tab-code-${f.code}`}
+            >
+              {f.code}
+            </span>
             {state === 'full' ? (
               <Check
                 size={12}

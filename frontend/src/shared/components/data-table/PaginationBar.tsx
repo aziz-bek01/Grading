@@ -12,10 +12,14 @@ interface PaginationBarProps {
 /** Server-driven pagination bar — used when the API returns PageEnvelope. */
 export function PaginationBar({ page, totalPages, total, pageSize, onPageChange }: PaginationBarProps) {
   const { t } = useTranslation();
-  const shown = total === 0 ? 0 : page * pageSize + 1;
+  // FE-5: show the current-page RANGE (from–to), not a start index. The old
+  // `page*pageSize+1` value was a START index rendered as if it were a COUNT,
+  // producing the "1 / 2 vs Саҳифа 1 / 1" contradiction the owner saw.
+  const from = total === 0 ? 0 : page * pageSize + 1;
+  const to = Math.min(total, (page + 1) * pageSize);
   return (
     <div className="flex items-center justify-between text-xs text-text-secondary">
-      <span>{t('dataTable.showing_x_of_y', { shown, total })}</span>
+      <span>{t('dataTable.showing_range', { from, to, total })}</span>
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => onPageChange(Math.max(0, page - 1))} disabled={page === 0}>
           {t('dataTable.previous')}

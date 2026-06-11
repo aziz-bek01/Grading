@@ -19,3 +19,12 @@ export const BY_FACTOR_STICKY_TOP = 'top-20';
 
 /** z-index for in-page sticky chrome (factor tabs) — below the TopBar (z-20). */
 export const BY_FACTOR_STICKY_Z = 'z-10';
+
+/**
+ * Sticky offset for the filter bar, which sits BELOW the methodology-header +
+ * factor-tabs strip (FE-9). The strip starts at {@link BY_FACTOR_STICKY_TOP}
+ * (80px) and is ~56px tall (methodology line ~30px + tab row ~37px, rounded
+ * for breathing room), so the filter bar sticks at ~136px = `top-[8.5rem]`.
+ * Centralised here (single source) so a strip-height change is updated once.
+ */
+export const BY_FACTOR_FILTER_STICKY_TOP = 'top-[8.5rem]';

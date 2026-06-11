@@ -68,7 +68,7 @@ function makeRow(overrides: Partial<EvaluationByFactorRow> = {}): EvaluationByFa
     filled_factors_count: 0,
     total_factors_count: 8,
     current_score_factor_level_id: null,
-    current_score_raw_value: null,
+    current_raw_factor_score: null,
     current_comment: null,
     ...overrides,
   };

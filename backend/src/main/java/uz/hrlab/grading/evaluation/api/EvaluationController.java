@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,12 +17,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uz.hrlab.grading.evaluation.application.ApproveEvaluationUseCase;
 import uz.hrlab.grading.evaluation.application.ArchiveEvaluationUseCase;
+import uz.hrlab.grading.evaluation.application.BulkCreateEvaluationsUseCase;
 import uz.hrlab.grading.evaluation.application.BulkSubmitEvaluationsUseCase;
 import uz.hrlab.grading.evaluation.application.BulkUpsertEvaluationScoreUseCase;
 import uz.hrlab.grading.evaluation.application.CalibrateEvaluationScoreCommand;
 import uz.hrlab.grading.evaluation.application.CalibrateEvaluationScoreUseCase;
 import uz.hrlab.grading.evaluation.application.CreateEvaluationCommand;
 import uz.hrlab.grading.evaluation.application.CreateEvaluationUseCase;
+import uz.hrlab.grading.evaluation.application.DeleteEvaluationUseCase;
 import uz.hrlab.grading.evaluation.application.EvaluationQueries;
 import uz.hrlab.grading.evaluation.application.LockEvaluationUseCase;
 import uz.hrlab.grading.evaluation.application.PreviewEvaluationScoreUseCase;
@@ -46,6 +49,8 @@ public class EvaluationController {
     public static final int MAX_PAGE_SIZE = 200;
 
     private final CreateEvaluationUseCase createUseCase;
+    private final BulkCreateEvaluationsUseCase bulkCreateUseCase;
+    private final DeleteEvaluationUseCase deleteUseCase;
     private final UpsertEvaluationScoreUseCase upsertScoreUseCase;
     private final SubmitEvaluationUseCase submitUseCase;
     private final ApproveEvaluationUseCase approveUseCase;
@@ -59,6 +64,8 @@ public class EvaluationController {
     private final EvaluationQueries queries;
 
     public EvaluationController(CreateEvaluationUseCase createUseCase,
+                                BulkCreateEvaluationsUseCase bulkCreateUseCase,
+                                DeleteEvaluationUseCase deleteUseCase,
                                 UpsertEvaluationScoreUseCase upsertScoreUseCase,
                                 SubmitEvaluationUseCase submitUseCase,
                                 ApproveEvaluationUseCase approveUseCase,
@@ -71,6 +78,8 @@ public class EvaluationController {
                                 BulkSubmitEvaluationsUseCase bulkSubmitUseCase,
                                 EvaluationQueries queries) {
         this.createUseCase = createUseCase;
+        this.bulkCreateUseCase = bulkCreateUseCase;
+        this.deleteUseCase = deleteUseCase;
         this.upsertScoreUseCase = upsertScoreUseCase;
         this.submitUseCase = submitUseCase;
         this.approveUseCase = approveUseCase;
@@ -90,6 +99,37 @@ public class EvaluationController {
         var evaluation = createUseCase.create(new CreateEvaluationCommand(
                 req.positionId(), req.methodologyVersionId(), req.evaluatorUserId()));
         return ResponseEntity.status(HttpStatus.CREATED).body(EvaluationResponse.from(evaluation));
+    }
+
+    /**
+     * Bulk-create one DRAFT evaluation per row. Each row flows through the
+     * single-create use case so ABAC write-gate + duplicate guard +
+     * EVALUATION_CREATED audit fire per row UNCHANGED. Per-row failures are
+     * collected (keyed on position_id) — partial success returns 200.
+     */
+    @PostMapping("/bulk-create")
+    @PreAuthorize("hasAuthority('EVALUATION_EDIT')")
+    public BulkCreateEvaluationsResponse bulkCreate(
+            @Valid @RequestBody BulkCreateEvaluationRequest req) {
+        List<CreateEvaluationCommand> commands = req.items().stream()
+                .map(i -> new CreateEvaluationCommand(
+                        i.positionId(), i.methodologyVersionId(), i.evaluatorUserId()))
+                .toList();
+        return bulkCreateUseCase.execute(commands);
+    }
+
+    /**
+     * Hard delete a DRAFT-only evaluation (Item 1, BE-2). Non-DRAFT statuses keep
+     * the ARCHIVE soft-delete path and are rejected with 400
+     * EVALUATION_NOT_DELETABLE. Requires reason ≥ 5 chars; dependent score rows
+     * are removed first; EVALUATION_DELETED is audited. Returns 204 No Content.
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('EVALUATION_EDIT')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id,
+                                       @Valid @RequestBody ReasonRequest req) {
+        deleteUseCase.delete(id, req.reason());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping

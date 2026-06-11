@@ -19,6 +19,14 @@ function makeFactor(code: string, order: number): Factor {
   };
 }
 
+function makeNamedFactor(
+  code: string,
+  order: number,
+  name: Record<string, string>,
+): Factor {
+  return { ...makeFactor(code, order), name_i18n: name };
+}
+
 /**
  * FactorTabs is the public surface of the by-factor view (the page-level
  * smoke is covered by PositionScoreRow + BulkScoreDialog at the unit level).
@@ -98,6 +106,44 @@ describe('FactorTabs (by-factor view contract)', () => {
     expect(
       screen.getByTestId('factor-tab-state-K3').getAttribute('data-state'),
     ).toBe('empty');
+  });
+
+  it('FE-8: renders the localized factor NAME as primary, code as secondary', () => {
+    const factors = [
+      makeNamedFactor('EDUCATION', 0, {
+        'ru-RU': 'Образование',
+        'uz-Cyrl-UZ': 'Образование',
+        'uz-Latn-UZ': 'Образование',
+        'en-US': 'Образование',
+      }),
+    ];
+    render(
+      renderWithProviders(
+        <FactorTabs
+          factors={factors}
+          activeFactorId="f-EDUCATION"
+          onSelect={() => {}}
+        />,
+      ),
+    );
+    // Localized name is rendered, NOT only the raw code.
+    expect(
+      screen.getByTestId('factor-tab-name-EDUCATION'),
+    ).toHaveTextContent('Образование');
+    // The code is kept as a muted secondary reference (not removed).
+    expect(
+      screen.getByTestId('factor-tab-code-EDUCATION'),
+    ).toHaveTextContent('EDUCATION');
+  });
+
+  it('FE-8: falls back to the code when name_i18n is empty', () => {
+    const factors = [makeNamedFactor('K9', 0, {})];
+    render(
+      renderWithProviders(
+        <FactorTabs factors={factors} activeFactorId="f-K9" onSelect={() => {}} />,
+      ),
+    );
+    expect(screen.getByTestId('factor-tab-name-K9')).toHaveTextContent('K9');
   });
 
   it('forwards a parent-supplied sticky className to the tab strip', () => {

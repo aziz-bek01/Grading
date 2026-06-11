@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
 import { cn } from '@/shared/lib/cn';
@@ -10,7 +10,23 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
-  onConfirm: () => void;
+  /**
+   * When true, a required reason textarea is rendered and Confirm stays
+   * disabled until the reason reaches {@link reasonMinLength} characters. The
+   * trimmed reason is passed to {@link onConfirm}. Used by audit-sensitive
+   * destructive actions (e.g. delete a DRAFT evaluation — Item 1, FE-3).
+   */
+  requireReason?: boolean;
+  /** Minimum reason length when {@link requireReason} is set. Default 5. */
+  reasonMinLength?: number;
+  reasonLabel?: string;
+  reasonPlaceholder?: string;
+  /**
+   * Confirm callback. Receives the trimmed reason when {@link requireReason}
+   * is set, otherwise `undefined` (the legacy no-arg contract still works —
+   * existing callers ignore the argument).
+   */
+  onConfirm: (reason?: string) => void;
   onCancel: () => void;
 }
 
@@ -21,23 +37,42 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   destructive,
+  requireReason = false,
+  reasonMinLength = 5,
+  reasonLabel,
+  reasonPlaceholder,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const { t } = useTranslation();
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const [reason, setReason] = useState('');
+
+  // Reset the reason each time the dialog transitions closed → open so a
+  // previous attempt's text never leaks into a new confirmation. Done during
+  // render via a previous-value tracked in STATE (React's "adjust state when a
+  // prop changes" pattern) rather than a setState-in-effect or a ref-in-render.
+  const [seenOpen, setSeenOpen] = useState(open);
+  if (seenOpen !== open) {
+    setSeenOpen(open);
+    if (open && reason !== '') setReason('');
+  }
 
   useEffect(() => {
     if (!open) return;
-    confirmRef.current?.focus();
+    // Don't steal focus into the confirm button when a reason field is the
+    // primary input the user must fill first.
+    if (!requireReason) confirmRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
+  }, [open, onCancel, requireReason]);
 
   if (!open) return null;
+
+  const reasonValid = !requireReason || reason.trim().length >= reasonMinLength;
 
   return (
     <div
@@ -58,6 +93,37 @@ export function ConfirmDialog({
           {title}
         </h2>
         <p className="text-sm text-text-secondary mt-2">{body}</p>
+
+        {requireReason ? (
+          <div className="mt-4">
+            <label
+              htmlFor="confirm-dialog-reason"
+              className="block text-sm font-medium mb-1"
+            >
+              {reasonLabel ?? t('common.reason_label')}{' '}
+              <span className="text-text-muted text-xs">
+                ({t('common.reason_min_chars', { count: reasonMinLength })})
+              </span>
+            </label>
+            <textarea
+              id="confirm-dialog-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              minLength={reasonMinLength}
+              maxLength={4000}
+              data-testid="confirm-dialog-reason"
+              placeholder={reasonPlaceholder ?? ''}
+              className={cn(
+                'w-full p-2 border rounded-md text-sm bg-surface',
+                reason.length > 0 && !reasonValid
+                  ? 'border-warning-500/50'
+                  : 'border-border-strong',
+              )}
+            />
+          </div>
+        ) : null}
+
         <div className="flex justify-end gap-2 mt-6">
           <Button variant="secondary" onClick={onCancel}>
             {cancelLabel ?? t('common.cancel')}
@@ -65,7 +131,8 @@ export function ConfirmDialog({
           <Button
             ref={confirmRef}
             variant={destructive ? 'danger' : 'primary'}
-            onClick={onConfirm}
+            disabled={!reasonValid}
+            onClick={() => onConfirm(requireReason ? reason.trim() : undefined)}
           >
             {confirmLabel ?? t('common.confirm')}
           </Button>

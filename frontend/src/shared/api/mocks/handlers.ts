@@ -1591,7 +1591,7 @@ function handleEvaluations(
           filled_factors_count: filledFactors,
           total_factors_count: totalFactors,
           current_score_factor_level_id: score?.factor_level_id ?? null,
-          current_score_raw_value: rawValue,
+          current_raw_factor_score: rawValue,
           current_comment: score?.comment_text ?? null,
         };
       })
@@ -1651,11 +1651,115 @@ function handleEvaluations(
     return ok(next, 201);
   }
 
+  // POST /evaluations/bulk-create — create one DRAFT eval per row (Item 1).
+  // Mirrors the REAL BulkCreateEvaluationsResponse: always 200, body shape
+  // { created, failed: [{ position_id, error_code, message }] }. Failure rows
+  // key on position_id (NOT evaluation_id) — no eval was created for them.
+  if (path === '/evaluations/bulk-create' && method === 'POST') {
+    const raw = readBody<Record<string, unknown>>(config);
+    const body = stripTenantFromBody(raw, path, 'POST') as {
+      items?: {
+        position_id?: string;
+        positionId?: string;
+        methodology_version_id?: string;
+        methodologyVersionId?: string;
+        evaluator_user_id?: string | null;
+      }[];
+    };
+    const items = body.items ?? [];
+    if (items.length === 0) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'items must contain at least one row' },
+      };
+    }
+    if (items.length > 200) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'items capped at 200 per call' },
+      };
+    }
+    const failed: { position_id: string; error_code: string; message: string }[] = [];
+    let created = 0;
+    for (const item of items) {
+      const positionId = item.position_id ?? item.positionId ?? '';
+      const versionId = item.methodology_version_id ?? item.methodologyVersionId ?? '';
+      const pos = mockDb.positions.find((p) => p.id === positionId);
+      if (!pos || !versionId) {
+        // Cross-tenant / unknown id → ACCESS_DENIED (no existence reveal, per BE).
+        failed.push({
+          position_id: positionId,
+          error_code: 'ACCESS_DENIED',
+          message: 'Position not found or no access',
+        });
+        continue;
+      }
+      // Duplicate guard: a non-archived eval for the same position+version.
+      const dup = mockDb.evaluations.find(
+        (e) =>
+          e.position_id === positionId &&
+          e.methodology_version_id === versionId &&
+          e.status !== 'ARCHIVED',
+      );
+      if (dup) {
+        failed.push({
+          position_id: positionId,
+          error_code: 'ALREADY_EXISTS',
+          message: 'Active evaluation already exists for this position + version',
+        });
+        continue;
+      }
+      const next: MockEvaluation = {
+        id: uuid(),
+        project_id: pos.project_id,
+        position_id: positionId,
+        methodology_version_id: versionId,
+        evaluator_user_id: item.evaluator_user_id ?? null,
+        status: 'DRAFT',
+        raw_total_score: 0,
+        displayed_total_score: 0,
+      };
+      mockDb.evaluations.unshift(next);
+      created += 1;
+    }
+    return ok({ created, failed });
+  }
+
   const detail = /^\/evaluations\/([^/]+)$/.exec(path);
   if (detail && method === 'GET') {
     const e = evaluationById(detail[1]);
     if (!e) return notFound();
     return ok(e);
+  }
+
+  // DELETE /evaluations/:id — hard delete a DRAFT-only evaluation (Item 1).
+  // Mirrors BE-2: 204 on success; non-DRAFT → 400 EVALUATION_NOT_DELETABLE
+  // (archive path applies); reason min 5 chars; dependent score rows removed.
+  if (detail && method === 'DELETE') {
+    const e = evaluationById(detail[1]);
+    if (!e) return notFound();
+    const body = readBody<{ reason?: string }>(config);
+    if (!body.reason || body.reason.trim().length < 5) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'reason min 5 chars' },
+      };
+    }
+    if (e.status !== 'DRAFT') {
+      return {
+        status: 400,
+        body: {
+          code: 'EVALUATION_NOT_DELETABLE',
+          message: 'Only DRAFT evaluations can be deleted; use archive instead',
+        },
+      };
+    }
+    // Remove dependent score rows with the evaluation, then the evaluation.
+    mockDb.evaluationScores = mockDb.evaluationScores.filter(
+      (s) => s.evaluation_id !== e.id,
+    );
+    mockDb.evaluations = mockDb.evaluations.filter((x) => x.id !== e.id);
+    return { status: 204, body: null };
   }
 
   const scoresList = /^\/evaluations\/([^/]+)\/scores$/.exec(path);

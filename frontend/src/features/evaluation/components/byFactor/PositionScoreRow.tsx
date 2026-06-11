@@ -242,6 +242,7 @@ function PositionScoreRowBase({
             onSelect={handleLevelPick}
             disabled={disabled}
             canSeePoints={canSeePoints}
+            contextTitle={row.position_title}
             testIdSuffix={row.position_code}
             className="w-full max-w-none"
             ariaLabel={t('evaluation.byFactor.row.score_aria', {

@@ -18,8 +18,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   approveEvaluation,
   archiveEvaluation,
+  bulkCreateEvaluations,
   calibrateScore,
   createEvaluation,
+  deleteEvaluation,
   evaluationKeys,
   fetchCalibrationHistory,
   fetchEvaluation,
@@ -32,6 +34,7 @@ import {
   upsertScore,
 } from '../api/evaluationApi';
 import type {
+  BulkCreateEvaluationPayload,
   CalibrateScorePayload,
   CreateEvaluationPayload,
   EvaluationListFilters,
@@ -96,6 +99,35 @@ export function useCreateEvaluation() {
   return useMutation({
     mutationFn: (payload: CreateEvaluationPayload) => createEvaluation(payload),
     onSuccess: (e) => invalidate(qc, e.id),
+  });
+}
+
+/**
+ * Bulk-create evaluations (Item 1, FE-4). Invalidates the whole evaluation
+ * cache tree so the by-position list refreshes with the new DRAFT rows. The
+ * response carries partial-fail rows the caller surfaces inline (it does NOT
+ * throw on partial failure — the BE returns 200).
+ */
+export function useBulkCreateEvaluations() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: BulkCreateEvaluationPayload) =>
+      bulkCreateEvaluations(payload),
+    onSuccess: () => invalidate(qc),
+  });
+}
+
+/**
+ * Delete a DRAFT-only evaluation (Item 1, FE-4). Reason ≥ 5 chars is enforced
+ * UI-side (ConfirmDialog) AND server-side. Invalidates the evaluation cache so
+ * the deleted row disappears from the list.
+ */
+export function useDeleteEvaluation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      deleteEvaluation(id, { reason }),
+    onSuccess: () => invalidate(qc),
   });
 }
 

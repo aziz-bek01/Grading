@@ -1,28 +1,32 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   Link,
-  useNavigate,
   useParams,
   useSearchParams,
 } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { LayoutGrid, TableProperties } from 'lucide-react';
+import { LayoutGrid, TableProperties, Trash2 } from 'lucide-react';
 import { Card } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui/Button';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
+import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { usePermission } from '@/features/auth/usePermission';
 import { pickLocalized } from '@/shared/lib/localized';
 import { cn } from '@/shared/lib/cn';
 import { useMethodologies } from '@/features/methodology/hooks/useMethodology';
 import { usePositions } from '@/features/positions/hooks/usePositions';
+import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import {
-  useCreateEvaluation,
+  useBulkCreateEvaluations,
+  useDeleteEvaluation,
   useEvaluations,
 } from '../hooks/useEvaluation';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
+import { AddPositionsDialog } from '../components/AddPositionsDialog';
 import { EvaluationByFactorView } from '../components/byFactor/EvaluationByFactorView';
 import type { Evaluation, EvaluationStatus } from '../types';
 
@@ -49,7 +53,8 @@ const STATUSES: EvaluationStatus[] = [
 export function EvaluationListPage() {
   const { t, i18n } = useTranslation();
   const { projectId = '' } = useParams<{ projectId: string }>();
-  const navigate = useNavigate();
+  const { can } = usePermission();
+  const canEdit = can(PERMISSIONS.EVALUATION_EDIT);
   const [searchParams, setSearchParams] = useSearchParams();
   const mode: ViewMode = isViewMode(searchParams.get('mode'))
     ? (searchParams.get('mode') as ViewMode)
@@ -80,9 +85,8 @@ export function EvaluationListPage() {
 
   const [statusFilter, setStatusFilter] = useState<EvaluationStatus | ''>('');
   const [methodologyFilter, setMethodologyFilter] = useState<string>('');
-  const [creating, setCreating] = useState(false);
-  const [newPositionId, setNewPositionId] = useState('');
-  const [newVersionId, setNewVersionId] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Evaluation | null>(null);
 
   const evalsQuery = useEvaluations({
     projectId,
@@ -90,7 +94,11 @@ export function EvaluationListPage() {
   });
   const positionsQuery = usePositions(projectId ? { projectId } : null);
   const methodologiesQuery = useMethodologies(projectId);
-  const createMutation = useCreateEvaluation();
+  // FE-1: the same department tree the by-factor view consumes — used to map
+  // position.department_id -> localized department name FE-side (no BE change).
+  const treeQuery = useDepartmentTree(projectId);
+  const bulkCreateMutation = useBulkCreateEvaluations();
+  const deleteMutation = useDeleteEvaluation();
 
   const positionMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -99,6 +107,44 @@ export function EvaluationListPage() {
     }
     return m;
   }, [positionsQuery.data, i18n.language]);
+
+  // position_id -> department_id, then department_id -> localized name.
+  const positionDeptIdMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of positionsQuery.data?.items ?? []) {
+      m.set(p.id, p.department_id);
+    }
+    return m;
+  }, [positionsQuery.data]);
+
+  const departmentNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of treeQuery.data ?? []) {
+      m.set(d.id, pickLocalized(d.name_i18n, i18n.language));
+    }
+    return m;
+  }, [treeQuery.data, i18n.language]);
+
+  const departmentNameOfPosition = useCallback(
+    (positionId: string): string => {
+      const deptId = positionDeptIdMap.get(positionId);
+      if (!deptId) return '';
+      return departmentNameMap.get(deptId) ?? '';
+    },
+    [positionDeptIdMap, departmentNameMap],
+  );
+
+  // FE-2 candidate diff: keys of (position_id|methodology_version_id) that
+  // already have a NON-archived evaluation. The Add-positions dialog filters
+  // candidates against this set for the selected version.
+  const existingEvalKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of evalsQuery.data?.items ?? []) {
+      if (e.status === 'ARCHIVED') continue;
+      set.add(`${e.position_id}|${e.methodology_version_id}`);
+    }
+    return set;
+  }, [evalsQuery.data]);
 
   const methodologyMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -143,6 +189,15 @@ export function EvaluationListPage() {
       sortAccessor: (row) => positionMap.get(row.position_id) ?? '',
     },
     {
+      // FE-1: department column, derived FE-side from already-available data
+      // (positions + department tree). No change to EvaluationResponse.
+      key: 'department',
+      header: t('evaluation.column.department'),
+      render: (row) => departmentNameOfPosition(row.position_id) || '—',
+      sortable: true,
+      sortAccessor: (row) => departmentNameOfPosition(row.position_id),
+    },
+    {
       key: 'methodology',
       header: t('evaluation.column.methodology'),
       render: (row) =>
@@ -179,13 +234,29 @@ export function EvaluationListPage() {
       key: 'actions',
       header: t('common.actions'),
       render: (row) => (
-        <Link
-          to={`/app/projects/${projectId}/evaluation/${row.id}`}
-          className="text-primary-600 hover:underline text-sm"
-          data-testid={`open-evaluation-${row.id}`}
-        >
-          {t('common.edit')}
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to={`/app/projects/${projectId}/evaluation/${row.id}`}
+            className="text-primary-600 hover:underline text-sm"
+            data-testid={`open-evaluation-${row.id}`}
+          >
+            {t('common.edit')}
+          </Link>
+          {/* FE-3: row-level delete — ONLY for DRAFT rows + EVALUATION_EDIT.
+              Non-DRAFT rows keep the Archive path on the detail page. */}
+          {canEdit && row.status === 'DRAFT' ? (
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(row)}
+              data-testid={`delete-evaluation-${row.id}`}
+              aria-label={t('evaluation.delete.action')}
+              className="inline-flex items-center gap-1 text-danger-600 hover:underline text-sm"
+            >
+              <Trash2 size={14} aria-hidden />
+              {t('common.delete')}
+            </button>
+          ) : null}
+        </div>
       ),
     },
   ];
@@ -204,10 +275,10 @@ export function EvaluationListPage() {
         </div>
         <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
           <Button
-            onClick={() => setCreating(true)}
-            data-testid="new-evaluation"
+            onClick={() => setAdding(true)}
+            data-testid="add-positions-open"
           >
-            {t('evaluation.new_evaluation')}
+            {t('evaluation.add_positions.cta')}
           </Button>
         </PermissionGate>
       </header>
@@ -252,6 +323,18 @@ export function EvaluationListPage() {
           {t('evaluation.byFactor.mode_toggle.by_factor')}
         </button>
       </div>
+
+      {/* FE-6: one-line helper so the two pagination/metric surfaces are not
+          confused — by-position is per-position drill-down, by-factor is the
+          bulk K-sheet. */}
+      <p
+        className="text-xs text-text-muted -mt-3"
+        data-testid="evaluation-mode-hint"
+      >
+        {mode === 'by-position'
+          ? t('evaluation.mode_hint.by_position')
+          : t('evaluation.mode_hint.by_factor')}
+      </p>
 
       {mode === 'by-factor' ? (
         <EvaluationByFactorView
@@ -311,77 +394,46 @@ export function EvaluationListPage() {
       </Card>
       ) : null}
 
-      {creating ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-        >
-          <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-md p-6 space-y-4">
-            <h2 className="text-lg text-text-primary">
-              {t('evaluation.create.title')}
-            </h2>
-            <label className="block text-sm font-medium">
-              {t('evaluation.create.position')}
-            </label>
-            <select
-              value={newPositionId}
-              onChange={(e) => setNewPositionId(e.target.value)}
-              data-testid="new-position-select"
-              className="w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface"
-            >
-              <option value="">—</option>
-              {(positionsQuery.data?.items ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {pickLocalized(p.title_i18n, i18n.language)}
-                </option>
-              ))}
-            </select>
-            <label className="block text-sm font-medium">
-              {t('evaluation.create.methodology')}
-            </label>
-            <select
-              value={newVersionId}
-              onChange={(e) => setNewVersionId(e.target.value)}
-              data-testid="new-version-select"
-              className="w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface"
-            >
-              <option value="">—</option>
-              {(methodologiesQuery.data?.items ?? [])
-                .filter((m) => m.active_version_id)
-                .map((m) => (
-                  <option key={m.id} value={m.active_version_id!}>
-                    {pickLocalized(m.name_i18n, i18n.language)} v
-                    {m.active_version_number}
-                  </option>
-                ))}
-            </select>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" onClick={() => setCreating(false)}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                disabled={!newPositionId || !newVersionId}
-                onClick={async () => {
-                  const created = await createMutation.mutateAsync({
-                    position_id: newPositionId,
-                    methodology_version_id: newVersionId,
-                  });
-                  setCreating(false);
-                  setNewPositionId('');
-                  setNewVersionId('');
-                  navigate(
-                    `/app/projects/${projectId}/evaluation/${created.id}`,
-                  );
-                }}
-                data-testid="new-evaluation-confirm"
-              >
-                {t('common.create')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* FE-2: multi-select "Add positions" dialog (replaces the single-create
+          dialog). Reuses the BulkScoreDialog modal structure + partial-fail
+          result block. Gated behind EVALUATION_EDIT. */}
+      <AddPositionsDialog
+        open={adding}
+        positions={positionsQuery.data?.items ?? []}
+        methodologies={methodologiesQuery.data?.items ?? []}
+        existingKeys={existingEvalKeys}
+        departmentNameOf={departmentNameOfPosition}
+        onConfirm={async (versionId, positionIds) => {
+          const result = await bulkCreateMutation.mutateAsync({
+            items: positionIds.map((position_id) => ({
+              position_id,
+              methodology_version_id: versionId,
+            })),
+          });
+          return result;
+        }}
+        onClose={() => setAdding(false)}
+      />
+
+      {/* FE-3: delete confirmation for DRAFT rows — reuses ConfirmDialog with
+          the optional required-reason field (>=5 chars, matching BE ReasonRequest). */}
+      <ConfirmDialog
+        open={deleteTarget != null}
+        destructive
+        requireReason
+        reasonMinLength={5}
+        title={t('evaluation.delete.title')}
+        body={t('evaluation.delete.body')}
+        confirmLabel={t('common.delete')}
+        reasonLabel={t('common.reason_label')}
+        reasonPlaceholder={t('evaluation.delete.reason_placeholder')}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={async (reason) => {
+          if (!deleteTarget || !reason) return;
+          await deleteMutation.mutateAsync({ id: deleteTarget.id, reason });
+          setDeleteTarget(null);
+        }}
+      />
 
       {evalsQuery.isLoading ? <LoadingState /> : null}
     </div>

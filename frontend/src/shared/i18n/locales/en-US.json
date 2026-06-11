@@ -176,7 +176,8 @@
     "previous": "Previous",
     "next": "Next",
     "columns": "Columns",
-    "showing_x_of_y": "Showing {{shown}} of {{total}}"
+    "showing_x_of_y": "Showing {{shown}} of {{total}}",
+    "showing_range": "Showing {{from}}–{{to}} of {{total}}"
   },
   "projects": {
     "list_title": "Projects",
@@ -754,9 +755,31 @@
     "audit_placeholder": "Per-evaluation audit timeline ships in MVP 2.",
     "column": {
       "position": "Position",
+      "department": "Department",
       "methodology": "Methodology",
       "total": "Total",
       "updated": "Updated"
+    },
+    "mode_hint": {
+      "by_position": "\"By position\" — per-position drill-down.",
+      "by_factor": "\"By factor\" — bulk K-sheet for the selected factor."
+    },
+    "add_positions": {
+      "cta": "+ Add positions",
+      "title": "Add positions to evaluate",
+      "body": "Pick a methodology version and the positions not yet evaluated against it. A draft evaluation is created for each.",
+      "methodology": "Methodology version",
+      "select_all": "Select all",
+      "empty": "No positions are awaiting evaluation for the selected version.",
+      "selected_count": "Selected: {{count}}",
+      "confirm": "Add",
+      "result_summary": "Created: {{created}}, failed: {{failed}}."
+    },
+    "delete": {
+      "action": "Delete evaluation",
+      "title": "Delete draft evaluation?",
+      "body": "The draft evaluation and its scores will be permanently removed. The action is recorded in the audit log. For non-draft evaluations use archive instead.",
+      "reason_placeholder": "State the reason for deletion (at least 5 characters)."
     },
     "filter": {
       "status": "Status",
@@ -849,6 +872,12 @@
         "aria": "Evaluation view mode",
         "by_position": "By position",
         "by_factor": "By factor"
+      },
+      "active_methodology": "Methodology",
+      "scoring_mode": {
+        "DIRECT_POINTS": "Direct points",
+        "WEIGHTED_POINTS": "Weighted points",
+        "WEIGHTED_SCALE": "Weighted scale"
       },
       "no_methodology_title": "No methodology selected",
       "no_methodology_body": "Create and approve at least one methodology before evaluating by factor.",

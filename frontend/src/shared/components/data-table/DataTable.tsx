@@ -206,8 +206,12 @@ export function DataTable<T>({
 
       <div className="flex items-center justify-between text-xs text-text-secondary">
         <span>
-          {t('dataTable.showing_x_of_y', {
-            shown: sortedRows.length === 0 ? 0 : safePage * pageSize + 1,
+          {/* FE-5: current-page RANGE (from–to / total), not a start index.
+              The old `safePage*pageSize+1` value was a START index shown as a
+              COUNT, contradicting "Саҳифа 1 / 1". */}
+          {t('dataTable.showing_range', {
+            from: sortedRows.length === 0 ? 0 : safePage * pageSize + 1,
+            to: Math.min(sortedRows.length, (safePage + 1) * pageSize),
             total: sortedRows.length,
           })}
         </span>

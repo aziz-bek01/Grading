@@ -38,6 +38,19 @@ public interface EvaluationRepository
             UUID tenantId, UUID positionId, UUID methodologyVersionId, EvaluationStatus excludedStatus);
 
     /**
+     * Tenant-scoped hard delete (Item 1, BE-2). {@link TenantAwareRepository}
+     * intentionally hides the BOLA-prone single-arg {@code deleteById(id)}; this
+     * derived deleter keeps the tenant filter in the predicate so a row from
+     * another tenant can never be removed. Returns the number of rows deleted so
+     * the caller can distinguish a no-op (0) — though the use case always loads +
+     * tenant-checks the row first via {@link EvaluationContextLoader}.
+     *
+     * <p>Caller MUST delete dependent {@code evaluation_scores} rows first to
+     * avoid FK orphans (the use case does so via {@code EvaluationScoreRepository}).
+     */
+    long deleteByIdAndTenantId(UUID id, UUID tenantId);
+
+    /**
      * Backing query for the "Excel K-sheet" UX (groupBy=factor). Returns one
      * evaluation per row scoped to {@code projectId} + optional
      * {@code status} / {@code departmentId} filters. The factor-scoped score

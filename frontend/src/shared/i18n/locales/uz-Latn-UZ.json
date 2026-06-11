@@ -176,7 +176,8 @@
     "previous": "Orqaga",
     "next": "Oldinga",
     "columns": "Ustunlar",
-    "showing_x_of_y": "Koʻrsatildi {{shown}} / {{total}}"
+    "showing_x_of_y": "Koʻrsatildi {{shown}} / {{total}}",
+    "showing_range": "Koʻrsatildi {{from}}–{{to}} / {{total}}"
   },
   "projects": {
     "list_title": "Loyihalar",
@@ -754,9 +755,31 @@
     "audit_placeholder": "Baholash bo'yicha audit xronologiyasi MVP 2da taqdim etiladi.",
     "column": {
       "position": "Lavozim",
+      "department": "Boʻlim",
       "methodology": "Metodologiya",
       "total": "Yakun",
       "updated": "Yangilangan"
+    },
+    "mode_hint": {
+      "by_position": "«Lavozim boʻyicha» — har bir lavozim boʻyicha batafsil koʻrinish.",
+      "by_factor": "«Faktor boʻyicha» — tanlangan faktor boʻyicha ommaviy K-varaq."
+    },
+    "add_positions": {
+      "cta": "+ Lavozim qoʻshish",
+      "title": "Baholashga lavozimlar qoʻshish",
+      "body": "Metodologiya versiyasini va unga hali baholanmagan lavozimlarni tanlang. Har biri uchun baholash qoralamasi yaratiladi.",
+      "methodology": "Metodologiya versiyasi",
+      "select_all": "Barchasini tanlash",
+      "empty": "Tanlangan versiya boʻyicha baholashni kutayotgan lavozim yoʻq.",
+      "selected_count": "Tanlandi: {{count}}",
+      "confirm": "Qoʻshish",
+      "result_summary": "Yaratildi: {{created}}, xatolar: {{failed}}."
+    },
+    "delete": {
+      "action": "Baholashni oʻchirish",
+      "title": "Baholash qoralamasini oʻchirasizmi?",
+      "body": "Baholash qoralamasi va unga bogʻliq ballar butunlay oʻchiriladi. Amal audit jurnalida qayd etiladi. Qoralama boʻlmaganlar uchun arxivlashdan foydalaning.",
+      "reason_placeholder": "Oʻchirish sababini koʻrsating (kamida 5 ta belgi)."
     },
     "filter": {
       "status": "Holat",
@@ -849,6 +872,12 @@
         "aria": "Baholashlar ko'rinish rejimi",
         "by_position": "Lavozim bo'yicha",
         "by_factor": "Faktor bo'yicha"
+      },
+      "active_methodology": "Metodologiya",
+      "scoring_mode": {
+        "DIRECT_POINTS": "Toʻgʻridan-toʻgʻri ballar",
+        "WEIGHTED_POINTS": "Vaznli ballar",
+        "WEIGHTED_SCALE": "Vaznli shkala"
       },
       "no_methodology_title": "Metodologiya tanlanmagan",
       "no_methodology_body": "Faktor bo'yicha baholash uchun kamida bitta metodologiyani yaratib, tasdiqlang.",

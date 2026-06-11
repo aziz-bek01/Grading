@@ -874,6 +874,11 @@
         "by_factor": "Фактор бўйича"
       },
       "active_methodology": "Методология",
+      "selector": {
+        "label": "Методология",
+        "aria": "К-варақ учун методологияни танлаш",
+        "option": "{{name}} v{{version}}"
+      },
       "scoring_mode": {
         "DIRECT_POINTS": "Тўғридан-тўғри баллар",
         "WEIGHTED_POINTS": "Вазнли баллар",

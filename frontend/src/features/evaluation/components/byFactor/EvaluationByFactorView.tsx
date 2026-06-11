@@ -19,9 +19,11 @@ import { PERMISSIONS } from '@/shared/types/permissions';
 import { usePermission } from '@/features/auth/usePermission';
 import { useAuthStore } from '@/features/auth/authStore';
 import { useMethodologies, useMethodologyVersion } from '@/features/methodology/hooks/useMethodology';
+import { ScoringModeBadge } from '@/features/methodology/components/ScoringModeBadge';
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import { pickLocalized } from '@/shared/lib/localized';
 import { cn } from '@/shared/lib/cn';
+import { useEvaluations } from '../../hooks/useEvaluation';
 import { upsertScore } from '../../api/evaluationApi';
 import {
   useBulkScoreSet,
@@ -50,6 +52,18 @@ interface EvaluationByFactorViewProps {
   factorIdFromUrl: string | null;
   /** Callback to push the active factor id back to the URL. */
   onFactorChange: (factorId: string) => void;
+  /**
+   * Active methodology id from URL. When null/invalid the view picks the
+   * default (the methodology with the most evaluations, else the first
+   * active one). Optional so single-methodology callers can omit it.
+   */
+  methodologyIdFromUrl?: string | null;
+  /**
+   * Callback to push the selected methodology id back to the URL so the
+   * parent page (and the Add-positions dialog default version) follow the
+   * same selection. Switching it also clears the factor param.
+   */
+  onMethodologyChange?: (methodologyId: string) => void;
 }
 
 const STATUSES: EvaluationStatus[] = [
@@ -89,6 +103,8 @@ export function EvaluationByFactorView({
   projectId,
   factorIdFromUrl,
   onFactorChange,
+  methodologyIdFromUrl = null,
+  onMethodologyChange,
 }: EvaluationByFactorViewProps) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -129,15 +145,81 @@ export function EvaluationByFactorView({
   const [bulkScoreOpen, setBulkScoreOpen] = useState(false);
   const [bulkSubmitOpen, setBulkSubmitOpen] = useState(false);
 
-  // ----- Resolve active methodology + version -----
+  // ----- Resolve selectable methodologies + the active selection -----
   const methodologiesQuery = useMethodologies(projectId);
-  const activeMethodology = useMemo(
+  // Evaluations are reused (NO new endpoint) only to (a) compute a sensible
+  // default selection — the methodology with the most evaluations — and (b)
+  // decide which methodologies are worth offering in the selector. The
+  // by-factor ROWS themselves still come from the scoped by-factor endpoint
+  // (BE derives the version from factorId), never from this list.
+  const evaluationsQuery = useEvaluations({ projectId });
+
+  /**
+   * Methodologies the user may switch between in the K-sheet: every
+   * methodology that owns an active version. Ordered by the methodology
+   * list itself (stable). A selector is only RENDERED when this has >1
+   * entry — single-methodology projects keep the original chrome.
+   */
+  const selectableMethodologies = useMemo(
     () =>
-      (methodologiesQuery.data?.items ?? []).find(
-        (m) => m.active_version_id,
-      ) ?? null,
+      (methodologiesQuery.data?.items ?? []).filter((m) => m.active_version_id),
     [methodologiesQuery.data],
   );
+
+  /**
+   * version_id -> methodology, bridged via the active/latest version pointers
+   * the enriched list response provides (mirrors EvaluationListPage's
+   * `versionToMeth`). Lets us attribute each evaluation to its methodology so
+   * the default selection can favour the one with the most evaluations.
+   */
+  const versionToMethodologyId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const meth of methodologiesQuery.data?.items ?? []) {
+      if (meth.active_version_id) m.set(meth.active_version_id, meth.id);
+      if (meth.latest_version_id) m.set(meth.latest_version_id, meth.id);
+    }
+    return m;
+  }, [methodologiesQuery.data]);
+
+  /** Default selection = methodology with the MOST non-archived evaluations. */
+  const defaultMethodologyId = useMemo(() => {
+    if (selectableMethodologies.length === 0) return null;
+    const counts = new Map<string, number>();
+    for (const e of evaluationsQuery.data?.items ?? []) {
+      if (e.status === 'ARCHIVED') continue;
+      const methId = versionToMethodologyId.get(e.methodology_version_id);
+      if (!methId) continue;
+      counts.set(methId, (counts.get(methId) ?? 0) + 1);
+    }
+    let best = selectableMethodologies[0];
+    let bestCount = counts.get(best.id) ?? 0;
+    for (const m of selectableMethodologies) {
+      const c = counts.get(m.id) ?? 0;
+      if (c > bestCount) {
+        best = m;
+        bestCount = c;
+      }
+    }
+    return best.id;
+  }, [selectableMethodologies, evaluationsQuery.data, versionToMethodologyId]);
+
+  /**
+   * The methodology actually driving the K-sheet. The URL value wins when it
+   * still maps to a selectable methodology (so a refresh / share keeps the
+   * choice); otherwise we fall back to the data-driven default.
+   */
+  const activeMethodology = useMemo(() => {
+    if (selectableMethodologies.length === 0) return null;
+    const byUrl = methodologyIdFromUrl
+      ? selectableMethodologies.find((m) => m.id === methodologyIdFromUrl)
+      : null;
+    return (
+      byUrl ??
+      selectableMethodologies.find((m) => m.id === defaultMethodologyId) ??
+      selectableMethodologies[0]
+    );
+  }, [selectableMethodologies, methodologyIdFromUrl, defaultMethodologyId]);
+
   const versionQuery = useMethodologyVersion(
     activeMethodology?.active_version_id ?? undefined,
   );
@@ -158,6 +240,21 @@ export function EvaluationByFactorView({
     return byUrl ?? factors[0];
   }, [factors, factorIdFromUrl]);
 
+  // Push the canonical methodology id back to URL on first auto-pick so a
+  // refresh keeps the choice AND the parent's Add-positions dialog defaults
+  // to the same version. Only fires when the URL value does not already
+  // resolve to the active methodology (avoids an update loop).
+  useEffect(() => {
+    if (
+      activeMethodology &&
+      onMethodologyChange &&
+      methodologyIdFromUrl !== activeMethodology.id
+    ) {
+      onMethodologyChange(activeMethodology.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMethodology?.id]);
+
   // Push the canonical factor id back to URL on first auto-pick so a
   // refresh keeps the same tab. Avoid an infinite loop by only firing
   // when the URL value does not already match.
@@ -167,6 +264,19 @@ export function EvaluationByFactorView({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFactor?.id]);
+
+  // Explicit user selection from the header selector. Pushing the new
+  // methodology id to the URL re-derives factors → tabs → activeFactor →
+  // rows request for the SELECTED version (BE scopes rows by the factor's
+  // own version). The factor param is intentionally NOT preserved by the
+  // parent on a methodology switch so a stale (other-version) factor never
+  // leaks into the new view.
+  const handleMethodologyChange = useCallback(
+    (methodologyId: string) => {
+      onMethodologyChange?.(methodologyId);
+    },
+    [onMethodologyChange],
+  );
 
   // ----- Department list for filter -----
   // `fetchDepartmentTree` returns Department[] (already unwrapped — see
@@ -335,7 +445,10 @@ export function EvaluationByFactorView({
     >
       {/* FE-7: active-methodology header strip — name + v{n} + scoring-mode
           badge, from data ALREADY loaded (activeMethodology + versionQuery).
-          No new query. Part of the sticky region, directly above the tabs. */}
+          No new query. Part of the sticky region, directly above the tabs.
+          When the project has >1 methodology with an active version a compact
+          selector replaces the static name so factor tabs + rows + bulk
+          actions all follow the SELECTED version. */}
       <div
         className={cn('sticky bg-background pt-1', BY_FACTOR_STICKY_TOP, BY_FACTOR_STICKY_Z)}
         data-testid="byfactor-methodology-header"
@@ -344,19 +457,39 @@ export function EvaluationByFactorView({
           <span className="text-xs uppercase tracking-wide text-text-muted">
             {t('evaluation.byFactor.active_methodology')}
           </span>
-          <span className="text-sm font-medium text-text-primary">
-            {methodologyName}
-          </span>
-          {activeMethodology.active_version_number != null ? (
-            <span className="text-sm text-text-secondary tabular-nums">
-              v{activeMethodology.active_version_number}
-            </span>
-          ) : null}
-          <span
-            className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700"
-            data-testid="byfactor-scoring-mode-badge"
-          >
-            {t(`evaluation.byFactor.scoring_mode.${scoringMode}`)}
+          {selectableMethodologies.length > 1 ? (
+            <select
+              aria-label={t('evaluation.byFactor.selector.aria')}
+              value={activeMethodology.id}
+              onChange={(e) => handleMethodologyChange(e.target.value)}
+              data-testid="byfactor-methodology-select"
+              className="h-8 px-2 border border-border-strong rounded-md text-sm font-medium bg-surface text-text-primary max-w-[16rem]"
+            >
+              {selectableMethodologies.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {t('evaluation.byFactor.selector.option', {
+                    name: pickLocalized(m.name_i18n, i18n.language) || m.code,
+                    version: m.active_version_number ?? '?',
+                  })}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <span className="text-sm font-medium text-text-primary">
+                {methodologyName}
+              </span>
+              {activeMethodology.active_version_number != null ? (
+                <span className="text-sm text-text-secondary tabular-nums">
+                  v{activeMethodology.active_version_number}
+                </span>
+              ) : null}
+            </>
+          )}
+          {/* Reuse the shared ScoringModeBadge; keep the legacy testid on a
+              wrapper so existing header assertions stay green. */}
+          <span data-testid="byfactor-scoring-mode-badge">
+            <ScoringModeBadge mode={scoringMode} />
           </span>
         </div>
         <FactorTabs

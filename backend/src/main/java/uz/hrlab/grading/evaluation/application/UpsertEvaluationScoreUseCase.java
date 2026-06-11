@@ -150,12 +150,22 @@ public class UpsertEvaluationScoreUseCase {
         return row.toDomain();
     }
 
+    /**
+     * Defense-in-depth guard against the mixed-rows bug: {@code context.factors()}
+     * holds ONLY the factors of the evaluation's own methodology version, so a
+     * factor belonging to a DIFFERENT methodology version (e.g. an 8-factor
+     * methodology's factor pushed at a 12-factor HR-Lab evaluation) is absent and
+     * rejected with an explicit {@code FACTOR_VERSION_MISMATCH} code rather than a
+     * generic 400. This mirrors the K-sheet read-side version scoping and ensures
+     * a foreign-version score can never be persisted even if the read filter is
+     * bypassed.
+     */
     private static Factor findFactor(List<Factor> factors, UUID factorId) {
         return factors.stream()
                 .filter(f -> factorId.equals(f.id()))
                 .findFirst()
-                .orElseThrow(() -> new ValidationException(
-                        "Factor not found in this evaluation's methodology version"));
+                .orElseThrow(() -> new ValidationException("FACTOR_VERSION_MISMATCH",
+                        "Factor does not belong to this evaluation's methodology version"));
     }
 
     private static FactorLevel findLevel(List<FactorLevel> levels, UUID levelId) {

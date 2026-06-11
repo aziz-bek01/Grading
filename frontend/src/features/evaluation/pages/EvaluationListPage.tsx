@@ -61,11 +61,14 @@ export function EvaluationListPage() {
     ? (searchParams.get('mode') as ViewMode)
     : 'by-position';
   const factorParam = searchParams.get('factor');
+  // The methodology the K-sheet is scoped to. Shared via the URL so a refresh
+  // keeps the choice AND the Add-positions dialog defaults to the same version.
+  const methodologyParam = searchParams.get('methodology');
 
   const setMode = useCallback(
     (next: ViewMode) => {
-      // Preserve the factor param when switching to by-factor; drop it
-      // when going back to by-position so URLs stay minimal.
+      // Preserve the factor + methodology params when switching to by-factor;
+      // drop the factor when going back to by-position so URLs stay minimal.
       const params = new URLSearchParams(searchParams);
       params.set('mode', next);
       if (next === 'by-position') params.delete('factor');
@@ -79,6 +82,20 @@ export function EvaluationListPage() {
       const params = new URLSearchParams(searchParams);
       params.set('mode', 'by-factor');
       params.set('factor', factorId);
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const setMethodologyInUrl = useCallback(
+    (methodologyId: string) => {
+      const params = new URLSearchParams(searchParams);
+      params.set('mode', 'by-factor');
+      params.set('methodology', methodologyId);
+      // A methodology switch invalidates the active factor (factors belong to a
+      // single version) — drop it so the view re-picks the first factor of the
+      // newly-selected version instead of carrying a stale id.
+      params.delete('factor');
       setSearchParams(params, { replace: true });
     },
     [searchParams, setSearchParams],
@@ -170,6 +187,17 @@ export function EvaluationListPage() {
     }
     return m;
   }, [methodologiesQuery.data, i18n.language]);
+
+  // The active version of the methodology the K-sheet is currently scoped to
+  // (from the ?methodology= URL param). Used to default the Add-positions
+  // dialog so creating evaluations follows the selected methodology version.
+  const selectedVersionId = useMemo(() => {
+    if (!methodologyParam) return null;
+    const meth = (methodologiesQuery.data?.items ?? []).find(
+      (m) => m.id === methodologyParam,
+    );
+    return meth?.active_version_id ?? null;
+  }, [methodologyParam, methodologiesQuery.data]);
 
   const rows = useMemo(() => {
     let items = evalsQuery.data?.items ?? [];
@@ -344,6 +372,8 @@ export function EvaluationListPage() {
           projectId={projectId}
           factorIdFromUrl={factorParam}
           onFactorChange={setFactorInUrl}
+          methodologyIdFromUrl={methodologyParam}
+          onMethodologyChange={setMethodologyInUrl}
         />
       ) : null}
 
@@ -406,6 +436,7 @@ export function EvaluationListPage() {
         methodologies={methodologiesQuery.data?.items ?? []}
         existingKeys={existingEvalKeys}
         departmentNameOf={departmentNameOfPosition}
+        defaultVersionId={selectedVersionId}
         onConfirm={async (versionId, positionIds) => {
           const result = await bulkCreateMutation.mutateAsync({
             items: positionIds.map((position_id) => ({

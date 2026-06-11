@@ -15,6 +15,14 @@ interface AddPositionsDialogProps {
   /** Methodologies that own an active version (the only valid targets). */
   methodologies: Methodology[];
   /**
+   * Preferred initial methodology-version id. When set and it matches an
+   * active version, the dialog defaults to it so "Add positions" creates
+   * evaluations for the version the K-sheet is currently scoped to (FE keeps
+   * the selected methodology consistent across the page). Falls back to the
+   * first active version when absent / unmatched.
+   */
+  defaultVersionId?: string | null;
+  /**
    * Set of `${position_id}|${methodology_version_id}` keys that ALREADY have a
    * non-archived evaluation. Candidates matching the selected version are
    * filtered out (FE-2 candidate diff).
@@ -57,6 +65,7 @@ function AddPositionsDialogBody({
   methodologies,
   existingKeys,
   departmentNameOf,
+  defaultVersionId = null,
   onConfirm,
   onClose,
 }: Omit<AddPositionsDialogProps, 'open'>) {
@@ -67,9 +76,18 @@ function AddPositionsDialogBody({
     [methodologies],
   );
 
-  const [versionId, setVersionId] = useState(
-    activeMethodologies[0]?.active_version_id ?? '',
-  );
+  // Seed from the page-level selection (the K-sheet's active methodology
+  // version) when it maps to an active version; otherwise fall back to the
+  // first active version. The dialog mounts fresh per open, so this captures
+  // the selection at open time.
+  const [versionId, setVersionId] = useState(() => {
+    const preferred =
+      defaultVersionId &&
+      activeMethodologies.some((m) => m.active_version_id === defaultVersionId)
+        ? defaultVersionId
+        : '';
+    return preferred || activeMethodologies[0]?.active_version_id || '';
+  });
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);

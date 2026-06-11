@@ -874,6 +874,11 @@
         "by_factor": "По фактору"
       },
       "active_methodology": "Методология",
+      "selector": {
+        "label": "Методология",
+        "aria": "Выбор методологии для К-листа",
+        "option": "{{name}} v{{version}}"
+      },
       "scoring_mode": {
         "DIRECT_POINTS": "Прямые баллы",
         "WEIGHTED_POINTS": "Взвешенные баллы",

@@ -874,6 +874,11 @@
         "by_factor": "By factor"
       },
       "active_methodology": "Methodology",
+      "selector": {
+        "label": "Methodology",
+        "aria": "Select methodology for the K-sheet",
+        "option": "{{name}} v{{version}}"
+      },
       "scoring_mode": {
         "DIRECT_POINTS": "Direct points",
         "WEIGHTED_POINTS": "Weighted points",

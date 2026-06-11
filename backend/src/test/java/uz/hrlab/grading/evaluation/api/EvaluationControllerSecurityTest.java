@@ -213,6 +213,42 @@ class EvaluationControllerSecurityTest {
     }
 
     @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void listByFactorRowExposesSnakeCaseWireShape() throws Exception {
+        // Pin the by-factor row wire contract the FE K-sheet relies on. The grid
+        // is version-scoped server-side (EvaluationQueries derives the methodology
+        // version from factorId); here we assert the row JSON shape is snake_case
+        // and carries the per-evaluation filled/total counts.
+        UUID factorId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID evaluationId = UUID.randomUUID();
+        UUID positionId = UUID.randomUUID();
+        UUID departmentId = UUID.randomUUID();
+        UUID levelId = UUID.randomUUID();
+        EvaluationByFactorRow row = new EvaluationByFactorRow(
+                evaluationId, positionId, "P-001", "Кассир", "Операционный отдел",
+                departmentId, EvaluationStatus.DRAFT, 3, 8, levelId,
+                new BigDecimal("12.5000"), "ok");
+        given(queries.listByFactor(any(), any(), any(), any(), any()))
+                .willReturn((Page) new PageImpl<>(List.of(row)));
+
+        mvc.perform(get("/api/v1/evaluations")
+                        .param("groupBy", "factor")
+                        .param("factorId", factorId.toString())
+                        .param("projectId", projectId.toString())
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].evaluation_id").value(evaluationId.toString()))
+                .andExpect(jsonPath("$.items[0].position_id").value(positionId.toString()))
+                .andExpect(jsonPath("$.items[0].position_code").value("P-001"))
+                .andExpect(jsonPath("$.items[0].department_id").value(departmentId.toString()))
+                .andExpect(jsonPath("$.items[0].filled_factors_count").value(3))
+                .andExpect(jsonPath("$.items[0].total_factors_count").value(8))
+                .andExpect(jsonPath("$.items[0].current_score_factor_level_id")
+                        .value(levelId.toString()));
+    }
+
+    @Test
     void bulkScoreRequiresEvaluationEdit() throws Exception {
         UUID factorId = UUID.randomUUID();
         mvc.perform(post("/api/v1/evaluations/factor/{factorId}/bulk-score", factorId)

@@ -52,11 +52,20 @@ public interface EvaluationRepository
 
     /**
      * Backing query for the "Excel K-sheet" UX (groupBy=factor). Returns one
-     * evaluation per row scoped to {@code projectId} + optional
-     * {@code status} / {@code departmentId} filters. The factor-scoped score
-     * itself (level + raw value + comment) is loaded separately by
+     * evaluation per row scoped to {@code projectId} + the SELECTED
+     * {@code methodologyVersionId} + optional {@code status} /
+     * {@code departmentId} filters. The factor-scoped score itself (level + raw
+     * value + comment) is loaded separately by
      * {@code EvaluationScoreRepository.findByTenantIdAndEvaluationIdAndFactorId}
      * to keep this query small and JPA-friendly (no scalar projection).
+     *
+     * <p>METHODOLOGY-VERSION SCOPING (defect fix): the K-sheet is a single
+     * methodology version (the version the requested factor belongs to). Without
+     * the {@code e.methodologyVersionId = :methodologyVersionId} predicate the
+     * grid mixed in evaluations of OTHER methodologies — letting a user score an
+     * HR-Lab (12-factor) evaluation against an 8-factor-methodology factor. The
+     * version is derived server-side from the requested factorId (a factor
+     * belongs to exactly one version), never trusted from the client.
      *
      * <p>Tenant scoping is enforced by the {@code :tenantId} bind parameter
      * (defense in depth — TenantContext provides the value; never trust input).
@@ -65,6 +74,7 @@ public interface EvaluationRepository
            SELECT e FROM EvaluationJpaEntity e
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
+             AND e.methodologyVersionId = :methodologyVersionId
              AND (:status IS NULL OR e.status = :status)
              AND (:departmentId IS NULL OR e.positionId IN (
                    SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
@@ -74,6 +84,7 @@ public interface EvaluationRepository
     Page<EvaluationJpaEntity> findForFactorGrid(
             @Param("tenantId") UUID tenantId,
             @Param("projectId") UUID projectId,
+            @Param("methodologyVersionId") UUID methodologyVersionId,
             @Param("status") EvaluationStatus status,
             @Param("departmentId") UUID departmentId,
             Pageable pageable);
@@ -122,11 +133,16 @@ public interface EvaluationRepository
      *
      * <p>Same empty-scope contract as {@link #findInDepartments}: callers short-
      * circuit an empty scope to an empty page before invoking this finder.
+     *
+     * <p>Also methodology-version-scoped (defect fix) — see
+     * {@link #findForFactorGrid} for the rationale; the version is derived
+     * server-side from the requested factorId.
      */
     @Query("""
            SELECT e FROM EvaluationJpaEntity e
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
+             AND e.methodologyVersionId = :methodologyVersionId
              AND (:status IS NULL OR e.status = :status)
              AND e.positionId IN (
                    SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
@@ -138,6 +154,7 @@ public interface EvaluationRepository
     Page<EvaluationJpaEntity> findForFactorGridInDepartments(
             @Param("tenantId") UUID tenantId,
             @Param("projectId") UUID projectId,
+            @Param("methodologyVersionId") UUID methodologyVersionId,
             @Param("status") EvaluationStatus status,
             @Param("departmentId") UUID departmentId,
             @Param("scope") Collection<UUID> scopeDepartmentIds,

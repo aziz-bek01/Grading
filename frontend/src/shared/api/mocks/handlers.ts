@@ -1547,6 +1547,23 @@ function handleEvaluations(
     let evals = mockDb.evaluations.filter((e) => e.project_id === projectId);
     if (status) evals = evals.filter((e) => e.status === status);
 
+    // Methodology-version scoping (mirrors the BE contract): the requested
+    // factor belongs to exactly one methodology version; rows are STRICTLY
+    // limited to evaluations of that same version. Evaluations of any OTHER
+    // methodology in the project are excluded — fixes the by-factor view
+    // bleeding rows across methodologies. The version is DERIVED from
+    // factorId server-side, so no extra query param is needed on the wire.
+    const factorVersionId = factorId
+      ? mockDb.methodologyVersions.find((v) =>
+          v.factors.some((f) => f.id === factorId),
+        )?.id ?? null
+      : null;
+    if (factorVersionId) {
+      evals = evals.filter(
+        (e) => e.methodology_version_id === factorVersionId,
+      );
+    }
+
     const rows = evals
       .map((ev) => {
         const pos = mockDb.positions.find((p) => p.id === ev.position_id);

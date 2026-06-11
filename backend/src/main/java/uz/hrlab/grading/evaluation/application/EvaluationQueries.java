@@ -174,6 +174,15 @@ public class EvaluationQueries {
         FactorJpaEntity factor = factors.findByIdAndTenantId(factorId, tenant)
                 .orElseThrow(TenantAccessDeniedException::new);
 
+        // METHODOLOGY-VERSION SCOPING (defect fix): the K-sheet is ONE methodology
+        // version. A factor belongs to exactly one version, so we derive the
+        // version from the requested factorId server-side and confine the grid to
+        // evaluations of that SAME version. This excludes evaluations of other
+        // methodologies in the project (e.g. a 12-factor HR-Lab evaluation no
+        // longer appears under an 8-factor methodology's factor tab) and prevents
+        // scoring a foreign-version evaluation against this factor.
+        UUID methodologyVersionId = factor.getMethodologyVersionId();
+
         // E4-S2 — department-scope filter on the K-sheet grid.
         Optional<Set<UUID>> scope = departmentScopeFilter.allowedDepartmentIds(ctx);
         Page<EvaluationJpaEntity> page;
@@ -182,9 +191,11 @@ public class EvaluationQueries {
                 return Page.<EvaluationByFactorRow>empty(pageable); // scoped but no assignment
             }
             page = evaluations.findForFactorGridInDepartments(
-                    tenant, projectId, status, departmentId, scope.get(), pageable);
+                    tenant, projectId, methodologyVersionId, status, departmentId,
+                    scope.get(), pageable);
         } else {
-            page = evaluations.findForFactorGrid(tenant, projectId, status, departmentId, pageable);
+            page = evaluations.findForFactorGrid(
+                    tenant, projectId, methodologyVersionId, status, departmentId, pageable);
         }
         if (page.isEmpty()) {
             return page.map(e -> null);

@@ -874,6 +874,11 @@
         "by_factor": "Faktor bo'yicha"
       },
       "active_methodology": "Metodologiya",
+      "selector": {
+        "label": "Metodologiya",
+        "aria": "K-varaq uchun metodologiyani tanlash",
+        "option": "{{name}} v{{version}}"
+      },
       "scoring_mode": {
         "DIRECT_POINTS": "Toʻgʻridan-toʻgʻri ballar",
         "WEIGHTED_POINTS": "Vaznli ballar",

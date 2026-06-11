@@ -61,6 +61,13 @@ vi.mock('@/features/organization/hooks/useDepartmentTree', () => ({
   useDepartmentTree: () => ({ data: [], isLoading: false }),
 }));
 
+// The view reuses the evaluations list ONLY to compute a default selection /
+// selector options — never for the rows. Mock it empty so this header test
+// stays isolated from MSW evaluation fixtures.
+vi.mock('../../hooks/useEvaluation', () => ({
+  useEvaluations: () => ({ data: { items: [] }, isLoading: false }),
+}));
+
 vi.mock('../../hooks/useEvaluationsByFactor', () => ({
   useEvaluationsByFactor: () => ({
     data: { items: [], page: 0, size: 25, total_elements: 0, total_pages: 1 },

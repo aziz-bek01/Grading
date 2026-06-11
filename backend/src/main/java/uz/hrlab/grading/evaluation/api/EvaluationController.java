@@ -119,8 +119,9 @@ public class EvaluationController {
     }
 
     /**
-     * Hard delete a DRAFT-only evaluation (Item 1, BE-2). Non-DRAFT statuses keep
-     * the ARCHIVE soft-delete path and are rejected with 400
+     * Hard delete a pre-submission evaluation (Item 1, BE-2) — DRAFT, INCOMPLETE
+     * or COMPLETE. Once SUBMITTED (SUBMITTED / APPROVED / LOCKED / ARCHIVED) the
+     * evaluation keeps the ARCHIVE soft-delete path and is rejected with 400
      * EVALUATION_NOT_DELETABLE. Requires reason ≥ 5 chars; dependent score rows
      * are removed first; EVALUATION_DELETED is audited. Returns 204 No Content.
      */

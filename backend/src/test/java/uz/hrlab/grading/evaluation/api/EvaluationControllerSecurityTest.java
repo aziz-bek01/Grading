@@ -366,9 +366,10 @@ class EvaluationControllerSecurityTest {
     }
 
     @Test
-    void deleteNonDraftReturns400WithNotDeletableCode() throws Exception {
+    void deletePostSubmissionReturns400WithNotDeletableCode() throws Exception {
         doThrow(new ValidationException("EVALUATION_NOT_DELETABLE",
-                "Only DRAFT evaluations can be deleted; archive instead"))
+                "Only pre-submission (DRAFT/INCOMPLETE/COMPLETE) evaluations can be"
+                        + " deleted; archive instead"))
                 .when(deleteUseCase).delete(any(), any());
         mvc.perform(delete("/api/v1/evaluations/{id}", UUID.randomUUID())
                         .with(jwt().authorities(() -> "EVALUATION_EDIT"))

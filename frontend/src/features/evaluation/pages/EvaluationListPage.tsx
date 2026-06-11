@@ -28,6 +28,7 @@ import {
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { AddPositionsDialog } from '../components/AddPositionsDialog';
 import { EvaluationByFactorView } from '../components/byFactor/EvaluationByFactorView';
+import { isEvaluationDeletable } from '../types';
 import type { Evaluation, EvaluationStatus } from '../types';
 
 type ViewMode = 'by-position' | 'by-factor';
@@ -242,9 +243,11 @@ export function EvaluationListPage() {
           >
             {t('common.edit')}
           </Link>
-          {/* FE-3: row-level delete — ONLY for DRAFT rows + EVALUATION_EDIT.
-              Non-DRAFT rows keep the Archive path on the detail page. */}
-          {canEdit && row.status === 'DRAFT' ? (
+          {/* FE-3: row-level delete — pre-submission rows (DRAFT / INCOMPLETE /
+              COMPLETE) + EVALUATION_EDIT. Post-submission rows keep the Archive
+              path on the detail page. Visibility derives from the single shared
+              `isEvaluationDeletable` predicate (mirrors the BE guard). */}
+          {canEdit && isEvaluationDeletable(row.status) ? (
             <button
               type="button"
               onClick={() => setDeleteTarget(row)}
@@ -415,8 +418,8 @@ export function EvaluationListPage() {
         onClose={() => setAdding(false)}
       />
 
-      {/* FE-3: delete confirmation for DRAFT rows — reuses ConfirmDialog with
-          the optional required-reason field (>=5 chars, matching BE ReasonRequest). */}
+      {/* FE-3: delete confirmation for pre-submission rows — reuses ConfirmDialog
+          with the optional required-reason field (>=5 chars, matching BE ReasonRequest). */}
       <ConfirmDialog
         open={deleteTarget != null}
         destructive

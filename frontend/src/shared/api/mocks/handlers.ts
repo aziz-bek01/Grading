@@ -1490,6 +1490,20 @@ const EVAL_EDITABLE: ReadonlySet<MockEvaluationStatus> = new Set([
   'COMPLETE',
 ]);
 
+/**
+ * Hard-delete is permitted in every PRE-SUBMISSION status (DRAFT / INCOMPLETE /
+ * COMPLETE). Mirrors backend `EvaluationStatus.isDeletable()` — once SUBMITTED
+ * (SUBMITTED / APPROVED / LOCKED / ARCHIVED) the evaluation keeps its audit
+ * trail and uses the ARCHIVE path; the delete guard returns 400
+ * EVALUATION_NOT_DELETABLE. Kept as its own constant (not aliased to
+ * EVAL_EDITABLE) so the two BE predicates stay independently traceable here.
+ */
+const EVAL_DELETABLE: ReadonlySet<MockEvaluationStatus> = new Set([
+  'DRAFT',
+  'INCOMPLETE',
+  'COMPLETE',
+]);
+
 function handleEvaluations(
   method: string,
   path: string,
@@ -1732,8 +1746,8 @@ function handleEvaluations(
     return ok(e);
   }
 
-  // DELETE /evaluations/:id — hard delete a DRAFT-only evaluation (Item 1).
-  // Mirrors BE-2: 204 on success; non-DRAFT → 400 EVALUATION_NOT_DELETABLE
+  // DELETE /evaluations/:id — hard delete a PRE-SUBMISSION evaluation (Item 1).
+  // Mirrors BE: 204 on success; post-submission → 400 EVALUATION_NOT_DELETABLE
   // (archive path applies); reason min 5 chars; dependent score rows removed.
   if (detail && method === 'DELETE') {
     const e = evaluationById(detail[1]);
@@ -1745,12 +1759,13 @@ function handleEvaluations(
         body: { code: 'VALIDATION_FAILED', message: 'reason min 5 chars' },
       };
     }
-    if (e.status !== 'DRAFT') {
+    if (!EVAL_DELETABLE.has(e.status)) {
       return {
         status: 400,
         body: {
           code: 'EVALUATION_NOT_DELETABLE',
-          message: 'Only DRAFT evaluations can be deleted; use archive instead',
+          message:
+            'Only pre-submission (DRAFT/INCOMPLETE/COMPLETE) evaluations can be deleted; use archive instead',
         },
       };
     }

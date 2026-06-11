@@ -777,8 +777,8 @@
     },
     "delete": {
       "action": "Delete evaluation",
-      "title": "Delete draft evaluation?",
-      "body": "The draft evaluation and its scores will be permanently removed. The action is recorded in the audit log. For non-draft evaluations use archive instead.",
+      "title": "Delete evaluation?",
+      "body": "The evaluation and its scores will be permanently removed. The action is recorded in the audit log. For submitted evaluations use archive instead.",
       "reason_placeholder": "State the reason for deletion (at least 5 characters)."
     },
     "filter": {

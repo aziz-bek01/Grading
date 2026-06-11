@@ -18,6 +18,26 @@ export type EvaluationStatus =
   | 'LOCKED'
   | 'ARCHIVED';
 
+/**
+ * Pre-submission statuses — the statuses in which an evaluation may be hard
+ * deleted (mirrors backend `EvaluationStatus.isDeletable()`). Once SUBMITTED
+ * (SUBMITTED / APPROVED / LOCKED / ARCHIVED) the evaluation keeps the Archive
+ * path; the backend rejects a delete with `EVALUATION_NOT_DELETABLE`.
+ *
+ * Single source of truth: the row-level "Удалить" action visibility derives
+ * from {@link isEvaluationDeletable} — do NOT inline a status list elsewhere.
+ */
+export const DELETABLE_EVALUATION_STATUSES: readonly EvaluationStatus[] = [
+  'DRAFT',
+  'INCOMPLETE',
+  'COMPLETE',
+];
+
+/** True when an evaluation in this status may be hard deleted (pre-submission). */
+export function isEvaluationDeletable(status: EvaluationStatus): boolean {
+  return DELETABLE_EVALUATION_STATUSES.includes(status);
+}
+
 export interface Evaluation {
   id: string;
   project_id: string;

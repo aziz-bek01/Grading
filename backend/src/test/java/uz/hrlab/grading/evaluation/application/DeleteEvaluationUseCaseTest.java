@@ -4,6 +4,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -39,10 +41,12 @@ import static org.mockito.Mockito.when;
  * BE-2 / BE-4(b) — {@link DeleteEvaluationUseCase}. Mirrors the archive use-case
  * test shape with mocks. Asserts:
  * <ul>
- *   <li>DRAFT deletes: dependent score rows removed FIRST, parent removed via
- *       tenant-scoped {@code deleteByIdAndTenantId}, EVALUATION_DELETED audited
- *       with beforeJson + afterJson null;</li>
- *   <li>non-DRAFT → 400 {@code EVALUATION_NOT_DELETABLE} (nothing deleted);</li>
+ *   <li>every PRE-SUBMISSION status (DRAFT / INCOMPLETE / COMPLETE) deletes:
+ *       dependent score rows removed FIRST, parent removed via tenant-scoped
+ *       {@code deleteByIdAndTenantId}, EVALUATION_DELETED audited with beforeJson
+ *       + afterJson null;</li>
+ *   <li>post-submission (SUBMITTED / APPROVED / LOCKED / ARCHIVED) → 400
+ *       {@code EVALUATION_NOT_DELETABLE} (nothing deleted);</li>
  *   <li>missing/short reason → 400 before any load;</li>
  *   <li>missing EVALUATION_EDIT → 403.</li>
  * </ul>
@@ -87,9 +91,16 @@ class DeleteEvaluationUseCaseTest {
         TenantContextHolder.clear();
     }
 
-    @Test
-    void draftDeletesScoresFirstThenRowAndAudits() {
-        stubLoad(EvaluationStatus.DRAFT);
+    /**
+     * Every PRE-SUBMISSION status deletes: dependent score rows are removed FIRST
+     * (INCOMPLETE / COMPLETE may already carry scores — same tenant-scoped path as
+     * DRAFT), then the parent via the tenant-scoped deleter, then EVALUATION_DELETED
+     * is audited with beforeJson present + afterJson null.
+     */
+    @ParameterizedTest
+    @EnumSource(value = EvaluationStatus.class, names = {"DRAFT", "INCOMPLETE", "COMPLETE"})
+    void preSubmissionDeletesScoresFirstThenRowAndAudits(EvaluationStatus status) {
+        stubLoad(status);
         EvaluationScoreJpaEntity s1 = new EvaluationScoreJpaEntity(
                 UUID.randomUUID(), tenantId, evaluationId, UUID.randomUUID(),
                 UUID.randomUUID(), new BigDecimal("10"));
@@ -99,9 +110,9 @@ class DeleteEvaluationUseCaseTest {
         when(scores.findAllByTenantIdAndEvaluationId(tenantId, evaluationId))
                 .thenReturn(List.of(s1, s2));
 
-        useCase.delete(evaluationId, "DRAFT clean-up before re-creation");
+        useCase.delete(evaluationId, "pre-submission clean-up before re-creation");
 
-        // Dependent scores removed first.
+        // Dependent scores removed first (proves INCOMPLETE/COMPLETE scores cascade).
         verify(scores).delete(s1);
         verify(scores).delete(s2);
         // Parent removed via the tenant-scoped deleter (not single-arg deleteById).
@@ -116,12 +127,18 @@ class DeleteEvaluationUseCaseTest {
         assertThat(ev.afterJson()).isNull();
     }
 
-    @Test
-    void nonDraftRejectedWithNotDeletableCodeAndNothingDeleted() {
-        stubLoad(EvaluationStatus.SUBMITTED);
+    /**
+     * Post-submission statuses keep their audit trail — rejected with
+     * EVALUATION_NOT_DELETABLE and nothing is deleted or audited.
+     */
+    @ParameterizedTest
+    @EnumSource(value = EvaluationStatus.class,
+            names = {"SUBMITTED", "APPROVED", "LOCKED", "ARCHIVED"})
+    void postSubmissionRejectedWithNotDeletableCodeAndNothingDeleted(EvaluationStatus status) {
+        stubLoad(status);
 
         assertThatThrownBy(() ->
-                useCase.delete(evaluationId, "trying to delete a submitted eval"))
+                useCase.delete(evaluationId, "trying to delete a non-deletable eval"))
                 .isInstanceOf(ValidationException.class)
                 .satisfies(ex -> assertThat(((ValidationException) ex).getCode())
                         .isEqualTo("EVALUATION_NOT_DELETABLE"));
@@ -129,15 +146,6 @@ class DeleteEvaluationUseCaseTest {
         verify(scores, never()).delete(any());
         verify(evaluations, never()).deleteByIdAndTenantId(any(), any());
         verify(audit, never()).record(any());
-    }
-
-    @Test
-    void approvedAlsoRejected() {
-        stubLoad(EvaluationStatus.APPROVED);
-        assertThatThrownBy(() ->
-                useCase.delete(evaluationId, "trying to delete an approved eval"))
-                .isInstanceOf(ValidationException.class);
-        verify(evaluations, never()).deleteByIdAndTenantId(any(), any());
     }
 
     @Test

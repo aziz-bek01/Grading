@@ -21,5 +21,24 @@ public enum EvaluationStatus {
     SUBMITTED,
     APPROVED,
     LOCKED,
-    ARCHIVED
+    ARCHIVED;
+
+    /**
+     * Pre-submission statuses — every state BEFORE the evaluation is handed to the
+     * approval workflow ({@code SUBMITTED}). These are the statuses in which a hard
+     * delete is permitted (see {@code DeleteEvaluationUseCase}); SUBMITTED /
+     * APPROVED / LOCKED / ARCHIVED keep their audit trail and use the ARCHIVE path.
+     *
+     * <p>Single source of truth: both the delete use case (backend guard) and the
+     * FE "Удалить" action visibility derive from this set — do NOT inline a
+     * status list anywhere else.
+     */
+    public boolean isPreSubmission() {
+        return this == DRAFT || this == INCOMPLETE || this == COMPLETE;
+    }
+
+    /** True when a hard delete is allowed in this status (alias of pre-submission). */
+    public boolean isDeletable() {
+        return isPreSubmission();
+    }
 }

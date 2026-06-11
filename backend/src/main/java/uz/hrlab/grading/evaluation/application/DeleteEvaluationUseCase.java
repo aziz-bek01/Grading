@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Hard delete a {@link EvaluationStatus#DRAFT}-only evaluation (Item 1, BE-2).
+ * Hard delete a pre-submission evaluation (Item 1, BE-2).
  *
  * <p>Mirrors {@link ArchiveEvaluationUseCase}: load via
  * {@link EvaluationContextLoader} (tenant-aware {@code findByIdAndTenantId} —
@@ -29,21 +29,25 @@ import java.util.UUID;
  * existence reveal), enforce the project write-gate via {@link AbacGate}, take a
  * before-snapshot, then mutate. Unlike archive this physically removes the row.
  *
- * <p><b>Hard guard:</b> ONLY {@code DRAFT} may be deleted. INCOMPLETE / COMPLETE
- * / SUBMITTED / APPROVED / LOCKED / ARCHIVED keep the soft-delete (ARCHIVE) path
- * and are rejected here with a {@code ValidationException} carrying the stable
- * code {@code EVALUATION_NOT_DELETABLE} (400). This preserves the audit trail for
- * any evaluation that ever advanced past DRAFT.
+ * <p><b>Hard guard:</b> only PRE-SUBMISSION statuses may be deleted —
+ * {@code DRAFT}, {@code INCOMPLETE}, {@code COMPLETE} (see
+ * {@link EvaluationStatus#isDeletable()}). Once an evaluation has been SUBMITTED
+ * (SUBMITTED / APPROVED / LOCKED / ARCHIVED) it keeps the soft-delete (ARCHIVE)
+ * path and is rejected here with a {@code ValidationException} carrying the
+ * stable code {@code EVALUATION_NOT_DELETABLE} (400). This preserves the audit
+ * trail for any evaluation that ever entered the approval workflow.
  *
  * <p>Dependent {@code evaluation_scores} rows are deleted FIRST so the parent row
- * never orphans a child FK. The audit row records {@code EVALUATION_DELETED} with
- * the before-snapshot and {@code afterJson = null} (the row no longer exists).
+ * never orphans a child FK. INCOMPLETE / COMPLETE evaluations may already carry
+ * score rows; they are removed by the same tenant-scoped path used for DRAFT.
+ * The audit row records {@code EVALUATION_DELETED} with the before-snapshot and
+ * {@code afterJson = null} (the row no longer exists).
  */
 @Service
 public class DeleteEvaluationUseCase {
 
     private static final int MIN_REASON_LENGTH = 5;
-    /** Stable error code surfaced to the FE for a non-DRAFT delete attempt. */
+    /** Stable error code surfaced to the FE for a post-submission delete attempt. */
     static final String NOT_DELETABLE_CODE = "EVALUATION_NOT_DELETABLE";
 
     private final EvaluationRepository evaluations;
@@ -81,10 +85,11 @@ public class DeleteEvaluationUseCase {
         EvaluationJpaEntity evaluation = context.evaluation();
         abacGate.enforceCanWriteInProject(ctx, evaluation.getProjectId());
 
-        if (evaluation.getStatus() != EvaluationStatus.DRAFT) {
-            // Anything past DRAFT keeps its audit trail — use ARCHIVE, not delete.
+        if (!evaluation.getStatus().isDeletable()) {
+            // SUBMITTED onward keeps its audit trail — use ARCHIVE, not delete.
             throw new ValidationException(NOT_DELETABLE_CODE,
-                    "Only DRAFT evaluations can be deleted; archive instead");
+                    "Only pre-submission (DRAFT/INCOMPLETE/COMPLETE) evaluations can be"
+                            + " deleted; archive instead");
         }
 
         var beforeJson = snapshot.of(evaluation);

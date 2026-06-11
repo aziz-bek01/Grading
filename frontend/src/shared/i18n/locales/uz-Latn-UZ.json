@@ -777,8 +777,8 @@
     },
     "delete": {
       "action": "Baholashni oʻchirish",
-      "title": "Baholash qoralamasini oʻchirasizmi?",
-      "body": "Baholash qoralamasi va unga bogʻliq ballar butunlay oʻchiriladi. Amal audit jurnalida qayd etiladi. Qoralama boʻlmaganlar uchun arxivlashdan foydalaning.",
+      "title": "Baholashni oʻchirasizmi?",
+      "body": "Baholash va unga bogʻliq ballar butunlay oʻchiriladi. Amal audit jurnalida qayd etiladi. Yuborilgan baholashlar uchun arxivlashdan foydalaning.",
       "reason_placeholder": "Oʻchirish sababini koʻrsating (kamida 5 ta belgi)."
     },
     "filter": {

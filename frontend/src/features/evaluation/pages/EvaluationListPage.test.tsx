@@ -35,6 +35,41 @@ const positions: Position[] = [
     title_i18n: { 'ru-RU': 'Финансовый менеджер', 'en-US': 'Finance Manager' },
     status: 'ACTIVE',
   },
+  {
+    id: 'pos-4',
+    project_id: 'proj-1',
+    department_id: 'dep-it',
+    code: 'IT-LEAD',
+    title_i18n: { 'ru-RU': 'Тимлид', 'en-US': 'Tech Lead' },
+    status: 'ACTIVE',
+  },
+  // pos-5..pos-7 back the COMPLETE / APPROVED / LOCKED / ARCHIVED delete-visibility
+  // matrix. Each carries a non-archived eval so none becomes an Add-positions
+  // candidate — keeping the FE-2 candidate test (pos-3 is the sole candidate) stable.
+  {
+    id: 'pos-5',
+    project_id: 'proj-1',
+    department_id: 'dep-it',
+    code: 'IT-QA',
+    title_i18n: { 'ru-RU': 'Тестировщик', 'en-US': 'QA Engineer' },
+    status: 'ACTIVE',
+  },
+  {
+    id: 'pos-6',
+    project_id: 'proj-1',
+    department_id: 'dep-fin',
+    code: 'FIN-CTR',
+    title_i18n: { 'ru-RU': 'Контролёр', 'en-US': 'Controller' },
+    status: 'ACTIVE',
+  },
+  {
+    id: 'pos-7',
+    project_id: 'proj-1',
+    department_id: 'dep-fin',
+    code: 'FIN-TR',
+    title_i18n: { 'ru-RU': 'Казначей', 'en-US': 'Treasurer' },
+    status: 'ACTIVE',
+  },
 ];
 
 const departments: Department[] = [
@@ -90,6 +125,53 @@ const evaluations: Evaluation[] = [
     status: 'SUBMITTED',
     displayed_total_score: 42.5,
     submitted_at: '2026-05-01T10:00:00Z',
+  },
+  // INCOMPLETE is now a deletable (pre-submission) status — mirrors the owner's
+  // report that "Неполная" rows must offer "Удалить".
+  {
+    id: 'eval-3',
+    project_id: 'proj-1',
+    position_id: 'pos-4',
+    methodology_version_id: 'v-1',
+    status: 'INCOMPLETE',
+    displayed_total_score: 12,
+  },
+  // COMPLETE — the third pre-submission status — is also deletable.
+  {
+    id: 'eval-4',
+    project_id: 'proj-1',
+    position_id: 'pos-5',
+    methodology_version_id: 'v-1',
+    status: 'COMPLETE',
+    displayed_total_score: 55,
+  },
+  // Post-submission statuses keep the Archive path → delete must be HIDDEN.
+  {
+    id: 'eval-5',
+    project_id: 'proj-1',
+    position_id: 'pos-6',
+    methodology_version_id: 'v-1',
+    status: 'APPROVED',
+    displayed_total_score: 61,
+  },
+  {
+    id: 'eval-6',
+    project_id: 'proj-1',
+    position_id: 'pos-7',
+    methodology_version_id: 'v-1',
+    status: 'LOCKED',
+    displayed_total_score: 70,
+  },
+  // ARCHIVED — shares pos-5 (which already carries the non-archived COMPLETE
+  // eval-4) so it adds an ARCHIVED row to the delete-visibility matrix WITHOUT
+  // turning any position into a fresh Add-positions candidate.
+  {
+    id: 'eval-7',
+    project_id: 'proj-1',
+    position_id: 'pos-5',
+    methodology_version_id: 'v-1',
+    status: 'ARCHIVED',
+    displayed_total_score: 5,
   },
 ];
 
@@ -149,20 +231,34 @@ describe('EvaluationListPage — Item 1 (department / add / delete)', () => {
     );
     // Column header present.
     expect(screen.getByText('Подразделение')).toBeInTheDocument();
-    // pos-1 → dep-fin → "Финансы"; pos-2 → dep-it → "ИТ".
-    expect(screen.getByText('Финансы')).toBeInTheDocument();
-    expect(screen.getByText('ИТ')).toBeInTheDocument();
+    // Several rows resolve to dep-fin ("Финансы") and dep-it ("ИТ") — assert the
+    // localized names render at least once each (exact counts are fixture churn).
+    expect(screen.getAllByText('Финансы').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('ИТ').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('FE-3: delete action is shown ONLY for DRAFT rows (with EVALUATION_EDIT)', async () => {
+  it('FE-3: delete action is shown for EVERY pre-submission row and hidden for post-submission (with EVALUATION_EDIT)', async () => {
     renderPage();
     await waitFor(() =>
       expect(screen.getByText('Финансовый аналитик')).toBeInTheDocument(),
     );
-    // eval-1 is DRAFT → delete visible; eval-2 is SUBMITTED → hidden.
-    expect(screen.getByTestId('delete-evaluation-eval-1')).toBeInTheDocument();
+    // Pre-submission set (mirrors EvaluationStatus.isDeletable on the BE):
+    // eval-1 DRAFT, eval-3 INCOMPLETE, eval-4 COMPLETE → delete VISIBLE.
+    expect(screen.getByTestId('delete-evaluation-eval-1')).toBeInTheDocument(); // DRAFT
+    expect(screen.getByTestId('delete-evaluation-eval-3')).toBeInTheDocument(); // INCOMPLETE
+    expect(screen.getByTestId('delete-evaluation-eval-4')).toBeInTheDocument(); // COMPLETE
+    // Post-submission set keeps the Archive path → delete HIDDEN.
     expect(
-      screen.queryByTestId('delete-evaluation-eval-2'),
+      screen.queryByTestId('delete-evaluation-eval-2'), // SUBMITTED
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('delete-evaluation-eval-5'), // APPROVED
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('delete-evaluation-eval-6'), // LOCKED
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('delete-evaluation-eval-7'), // ARCHIVED
     ).not.toBeInTheDocument();
   });
 
@@ -202,6 +298,29 @@ describe('EvaluationListPage — Item 1 (department / add / delete)', () => {
       expect(deleteSpy).toHaveBeenCalledWith({
         id: 'eval-1',
         reason: 'Duplicate draft',
+      }),
+    );
+  });
+
+  it('FE-3: deleting an INCOMPLETE row fires the SAME deleteEvaluation call', async () => {
+    deleteSpy.mockResolvedValue(undefined);
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId('delete-evaluation-eval-3')).toBeInTheDocument(),
+    );
+    // eval-3 is INCOMPLETE — newly deletable. The confirm + reason flow and the
+    // mutation payload are identical to the DRAFT path (only the visibility
+    // guard widened).
+    fireEvent.click(screen.getByTestId('delete-evaluation-eval-3'));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(screen.getByTestId('confirm-dialog-reason'), {
+      target: { value: 'Incomplete duplicate' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Удалить|Delete/i }));
+    await waitFor(() =>
+      expect(deleteSpy).toHaveBeenCalledWith({
+        id: 'eval-3',
+        reason: 'Incomplete duplicate',
       }),
     );
   });

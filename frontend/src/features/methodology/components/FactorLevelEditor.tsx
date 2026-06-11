@@ -197,6 +197,7 @@ function ExistingLevelRow({
   // occupying this slot (reorder / list change) remounts the row and re-seeds
   // these buffers — while an in-flight refetch of the SAME level never
   // clobbers what the user typed. This replaces the previous re-seed effect.
+  const [code, setCode] = useState<string>(level.code);
   const [points, setPoints] = useState<string>(String(level.points));
   const [scale, setScale] = useState<string>(String(level.scale_value));
   const [label, setLabel] = useState<LocalizedString>(level.label_i18n ?? {});
@@ -206,6 +207,17 @@ function ExistingLevelRow({
 
   const displayLabel = label?.['ru-RU'] ?? label?.['en-US'] ?? '—';
 
+  // Commit a code edit on blur. Uppercase + trim like the new-level form; a no-op
+  // (empty or unchanged) edit is skipped so we don't fire a needless PATCH/audit.
+  // The BE rejects an in-factor duplicate with 400 LEVEL_CODE_DUPLICATE; that
+  // error bubbles through onUpdate's mutation (toast) and the typed value stays
+  // in this buffer (no re-seed for the same level id), so nothing is lost.
+  const commitCode = () => {
+    const next = code.trim().toUpperCase();
+    if (!next || next === level.code) return;
+    onUpdate?.({ ...level, code: next });
+  };
+
   return (
     <li
       data-testid={`level-row-${level.code}`}
@@ -214,7 +226,19 @@ function ExistingLevelRow({
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 text-sm">
           <span className="text-text-secondary tabular-nums">{index + 1}.</span>
-          <span className="font-mono text-xs text-text-secondary">{level.code}</span>
+          {readOnly ? (
+            <span className="font-mono text-xs text-text-secondary">{level.code}</span>
+          ) : (
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onBlur={commitCode}
+              aria-label={t('factor.field.code')}
+              className="w-16 h-7 px-2 border border-border-strong rounded-md text-xs bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
+              data-testid={`level-${level.code}-code`}
+            />
+          )}
           <span className="text-text-primary">{displayLabel}</span>
         </div>
         {!readOnly ? (
@@ -225,6 +249,7 @@ function ExistingLevelRow({
               aria-label={t('factor.action.move_up')}
               onClick={() => onReorder?.(level, 'up')}
               disabled={index === 0}
+              data-testid={`level-${level.code}-move-up`}
             >
               <ArrowUp size={12} />
             </Button>
@@ -234,6 +259,7 @@ function ExistingLevelRow({
               aria-label={t('factor.action.move_down')}
               onClick={() => onReorder?.(level, 'down')}
               disabled={index === total - 1}
+              data-testid={`level-${level.code}-move-down`}
             >
               <ArrowDown size={12} />
             </Button>

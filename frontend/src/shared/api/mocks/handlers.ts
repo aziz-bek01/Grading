@@ -1102,6 +1102,25 @@ function handleMethodologyVersions(method: string, path: string, _query: URLSear
     return ok(next, 201);
   }
 
+  // PATCH /methodology-versions/:id — version scoring metadata (scoring_mode +
+  // target_total_points), DRAFT-only like the real backend's immutability guard.
+  const metadataPatch = /^\/methodology-versions\/([^/]+)$/.exec(path);
+  if (metadataPatch && method === 'PATCH') {
+    const v = versionById(metadataPatch[1]);
+    if (!v) return notFound();
+    if (v.status !== 'DRAFT') return lockedConflict();
+    const raw = readBody<Record<string, unknown>>(config);
+    const body = stripTenantFromBody(raw, path, 'PATCH') as {
+      scoring_mode?: MockMethodologyVersion['scoring_mode'];
+      target_total_points?: number;
+    };
+    if (body.scoring_mode != null) v.scoring_mode = body.scoring_mode;
+    if (body.target_total_points != null) v.target_total_points = body.target_total_points;
+    v.updated_at = new Date().toISOString();
+    const { factors: _factors, ...rest } = v;
+    return ok(rest);
+  }
+
   const detail = /^\/methodology-versions\/([^/]+)$/.exec(path);
   if (detail && method === 'GET') {
     const v = versionById(detail[1]);
@@ -1227,13 +1246,11 @@ function handleMethodologyVersions(method: string, path: string, _query: URLSear
     if (v.status !== 'DRAFT') return lockedConflict();
     // F-401
     const raw = readBody<Record<string, unknown>>(config);
-    const body = stripTenantFromBody(raw, path, 'POST') as {
-      order: { id: string; sort_order: number }[];
-    };
-    for (const o of body.order) {
-      const f = v.factors.find((x) => x.id === o.id);
-      if (f) f.sort_order = o.sort_order;
-    }
+    const body = stripTenantFromBody(raw, path, 'POST') as { ordered_ids: string[] };
+    body.ordered_ids.forEach((id, i) => {
+      const f = v.factors.find((x) => x.id === id);
+      if (f) f.sort_order = i;
+    });
     v.updated_at = new Date().toISOString();
     return ok({ items: v.factors });
   }
@@ -1320,13 +1337,11 @@ function handleFactors(method: string, path: string, _query: URLSearchParams, co
     const factor = owner.factors.find((f) => f.id === factorId)!;
     // F-401
     const raw = readBody<Record<string, unknown>>(config);
-    const body = stripTenantFromBody(raw, path, 'POST') as {
-      order: { id: string; level_order: number }[];
-    };
-    for (const o of body.order) {
-      const l = factor.levels.find((x) => x.id === o.id);
-      if (l) l.level_order = o.level_order;
-    }
+    const body = stripTenantFromBody(raw, path, 'POST') as { ordered_ids: string[] };
+    body.ordered_ids.forEach((id, i) => {
+      const l = factor.levels.find((x) => x.id === id);
+      if (l) l.level_order = i;
+    });
     owner.updated_at = new Date().toISOString();
     return ok({ items: factor.levels });
   }

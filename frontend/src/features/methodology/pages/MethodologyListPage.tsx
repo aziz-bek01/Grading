@@ -17,7 +17,10 @@ import {
   MethodologyTemplatePicker,
   type TemplateSelection,
 } from '../components/MethodologyTemplatePicker';
-import { MethodologyMetadataDrawer } from '../components/MethodologyMetadataDrawer';
+import {
+  MethodologyMetadataDrawer,
+  type MethodologyMetadataPatch,
+} from '../components/MethodologyMetadataDrawer';
 import { MethodologyCreateDrawer } from '../components/MethodologyCreateDrawer';
 import { SaveAsTemplateDrawer } from '../components/SaveAsTemplateDrawer';
 import { RenameTemplateDrawer } from '../components/RenameTemplateDrawer';
@@ -36,7 +39,6 @@ import type {
   Methodology,
   MethodologyCreatePayload,
   MethodologyTemplate,
-  MethodologyUpdatePayload,
   SaveAsTemplatePayload,
   UpdateTemplatePayload,
 } from '../types';
@@ -148,8 +150,11 @@ export function MethodologyListPage() {
     deepLinkToVersion(created);
   };
 
-  const handleUpdateMetadata = async (patch: MethodologyUpdatePayload) => {
-    await updateMut.mutateAsync(patch);
+  // List-page mode: only the container metadata (name/description) is editable —
+  // the drawer is invoked WITHOUT `version`/`editable`, so `patch.version` is
+  // always undefined here.
+  const handleUpdateMetadata = async (patch: MethodologyMetadataPatch) => {
+    await updateMut.mutateAsync(patch.methodology);
     setEditTarget(null);
   };
 

@@ -140,6 +140,7 @@ public final class AuditAction {
     public static final String METHODOLOGY_APPROVED                  = "METHODOLOGY_APPROVED";
     public static final String METHODOLOGY_LOCKED                    = "METHODOLOGY_LOCKED";
     public static final String METHODOLOGY_VERSION_CREATED           = "METHODOLOGY_VERSION_CREATED";
+    public static final String METHODOLOGY_VERSION_UPDATED           = "METHODOLOGY_VERSION_UPDATED";
     public static final String METHODOLOGY_VERSION_APPROVED          = "METHODOLOGY_VERSION_APPROVED";
     public static final String METHODOLOGY_VERSION_LOCKED            = "METHODOLOGY_VERSION_LOCKED";
     public static final String METHODOLOGY_VERSION_ARCHIVED          = "METHODOLOGY_VERSION_ARCHIVED";

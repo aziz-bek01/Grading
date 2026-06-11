@@ -680,10 +680,15 @@
       "edit_title": "Faktorni tahrirlash"
     },
     "metadata": {
+      "edit_action": "Tahrirlash",
       "edit_title": "Metodologiyani tahrirlash",
       "edit_subtitle": "Nom va tavsifni oʻzgartiring. Metodologiya kodini oʻzgartirib boʻlmaydi.",
       "name_primary_required": "Ruscha (ru-RU) nomni kiriting.",
-      "code_immutable": "Kod yaratishda belgilanadi va oʻzgartirilmaydi."
+      "code_immutable": "Kod yaratishda belgilanadi va oʻzgartirilmaydi.",
+      "scoring_mode_change_warning": "Hisoblash rejimini oʻzgartirish omillar va darajalarni saqlab qoladi — almashtirgandan soʻng omil vaznlari va daraja ballarini tekshiring.",
+      "type_locked": "Versiya tasdiqlangandan yoki qulflangandan soʻng turni oʻzgartirib boʻlmaydi.",
+      "version_not_editable": "Bu versiya endi tahrirlanmaydi.",
+      "save_failed": "Oʻzgarishlarni saqlab boʻlmadi. Qayta urinib koʻring."
     },
     "template_source": {
       "builtin": "Tizim shabloni",

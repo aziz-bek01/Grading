@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Languages, Check, Archive, BookmarkPlus } from 'lucide-react';
+import { Languages, Check, Archive, BookmarkPlus, Pencil } from 'lucide-react';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
@@ -23,6 +23,10 @@ import { LockedMethodologyHeader } from '../components/LockedMethodologyHeader';
 import { MethodologyVersionPanel } from '../components/MethodologyVersionPanel';
 import { SaveAsTemplateDrawer } from '../components/SaveAsTemplateDrawer';
 import {
+  MethodologyMetadataDrawer,
+  type MethodologyMetadataPatch,
+} from '../components/MethodologyMetadataDrawer';
+import {
   useAddFactor,
   useAddFactorLevel,
   useApproveVersion,
@@ -33,10 +37,13 @@ import {
   useMethodologyVersions,
   useRemoveFactor,
   useRemoveFactorLevel,
+  useReorderFactorLevels,
   useReorderFactors,
   useSaveMethodologyAsTemplate,
   useUpdateFactor,
   useUpdateFactorLevel,
+  useUpdateMethodology,
+  useUpdateMethodologyVersionMetadata,
 } from '../hooks/useMethodology';
 import type { Locale } from '@/shared/types/common';
 import type { Factor, FactorLevel, SaveAsTemplatePayload } from '../types';
@@ -78,6 +85,8 @@ export function MethodologyBuilderPage() {
   // Epic E — save this methodology's version as a reusable CUSTOM template.
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateSuccess, setTemplateSuccess] = useState<string | null>(null);
+  // Edit methodology/version metadata (name/description/type + scoring/target).
+  const [metadataOpen, setMetadataOpen] = useState(false);
 
   const editorFactor = useMemo(
     () => factors.find((f) => f.id === editorFactorId) ?? null,
@@ -92,11 +101,21 @@ export function MethodologyBuilderPage() {
   const addLevelMut = useAddFactorLevel(versionId, methodologyId);
   const updateLevelMut = useUpdateFactorLevel(versionId, methodologyId);
   const removeLevelMut = useRemoveFactorLevel(versionId, methodologyId);
+  // Level reorder targets the OPEN factor — the factorId is the editor factor
+  // (the only context in which a level row's arrows are visible).
+  const reorderLevelMut = useReorderFactorLevels(editorFactorId ?? '', versionId, methodologyId);
 
   const approveMut = useApproveVersion(versionId, methodologyId, projectId);
   const archiveMut = useArchiveVersion(versionId, methodologyId, projectId);
   const newVersionMut = useCreateNewVersion(methodologyId, projectId);
   const saveTemplateMut = useSaveMethodologyAsTemplate(methodologyId);
+  // Metadata edit — container (name/description/type) + version (scoring/target).
+  const updateMethodologyMut = useUpdateMethodology(methodologyId, projectId);
+  const updateVersionMetadataMut = useUpdateMethodologyVersionMetadata(
+    versionId,
+    methodologyId,
+    projectId,
+  );
 
   // Auto-dismiss the "saved as template" banner like a transient toast.
   useEffect(() => {
@@ -187,9 +206,7 @@ export function MethodologyBuilderPage() {
     if (swapIdx < 0 || swapIdx >= sorted.length) return;
     const next = [...sorted];
     [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
-    await reorderMut.mutateAsync({
-      order: next.map((x, i) => ({ id: x.id, sort_order: i })),
-    });
+    await reorderMut.mutateAsync({ ordered_ids: next.map((x) => x.id) });
   };
 
   // Level CRUD wired through the editor (needs the editor factor's id).
@@ -210,6 +227,35 @@ export function MethodologyBuilderPage() {
   const handleRemoveLevel = async (lvl: FactorLevel) => {
     if (!window.confirm(t('methodology.confirm_remove_level'))) return;
     await removeLevelMut.mutateAsync(lvl.id);
+  };
+
+  // Level reorder (ISSUE 1a) — mirrors handleReorder for factors but on the OPEN
+  // factor's levels. Sort by level_order, swap with the neighbour, then send the
+  // COMPLETE re-indexed order to POST /factors/{id}/levels/reorder. The hook is
+  // bound to editorFactorId so a single instance targets the open factor.
+  const handleReorderLevel = async (lvl: FactorLevel, direction: 'up' | 'down') => {
+    if (!editorFactor) return;
+    const sorted = [...editorFactor.levels].sort((a, b) => a.level_order - b.level_order);
+    const idx = sorted.findIndex((x) => x.id === lvl.id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const next = [...sorted];
+    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    await reorderLevelMut.mutateAsync({ ordered_ids: next.map((x) => x.id) });
+  };
+
+  // Metadata edit (ISSUE 2) — sequence the two distinct PATCH surfaces:
+  //   (a) container: name/description (+ methodology_type) -> PATCH /methodologies/{id}
+  //   (b) version:   scoring_mode (+ target_total_points)  -> PATCH /methodology-versions/{id}
+  // Container first so a METHODOLOGY_TYPE_LOCKED conflict aborts before any
+  // version change. Errors re-throw so the drawer surfaces them inline; the
+  // drawer closes only on success.
+  const handleMetadataSubmit = async (patch: MethodologyMetadataPatch) => {
+    await updateMethodologyMut.mutateAsync(patch.methodology);
+    if (patch.version) {
+      await updateVersionMetadataMut.mutateAsync(patch.version);
+    }
+    setMetadataOpen(false);
   };
 
   return (
@@ -269,6 +315,17 @@ export function MethodologyBuilderPage() {
 
           {!readOnly ? (
             <>
+              <PermissionGate permission={PERMISSIONS.METHODOLOGY_EDIT}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon={<Pencil size={14} />}
+                  onClick={() => setMetadataOpen(true)}
+                  data-testid="action-edit-metadata"
+                >
+                  {t('methodology.metadata.edit_action')}
+                </Button>
+              </PermissionGate>
               <PermissionGate permission={PERMISSIONS.METHODOLOGY_APPROVE}>
                 <Button
                   variant="primary"
@@ -374,6 +431,7 @@ export function MethodologyBuilderPage() {
         onAddLevel={handleAddLevel}
         onUpdateLevel={handleUpdateLevel}
         onRemoveLevel={handleRemoveLevel}
+        onReorderLevel={handleReorderLevel}
       />
 
       <ConfirmDialog
@@ -413,6 +471,18 @@ export function MethodologyBuilderPage() {
         methodology={methodology}
         onClose={() => setSaveTemplateOpen(false)}
         onSubmit={handleSaveAsTemplate}
+      />
+
+      {/* Edit methodology + DRAFT version metadata. `editable` is true only when
+          the version is editable (DRAFT) so APPROVED/LOCKED never expose the
+          type/scoring fields — the backend also enforces DRAFT-only. */}
+      <MethodologyMetadataDrawer
+        open={metadataOpen}
+        methodology={methodology}
+        version={version}
+        editable={!readOnly}
+        onClose={() => setMetadataOpen(false)}
+        onSubmit={handleMetadataSubmit}
       />
 
       <Card title={t('comment.thread_title')} compact>

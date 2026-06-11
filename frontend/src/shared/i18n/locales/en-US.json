@@ -680,10 +680,15 @@
       "edit_title": "Edit factor"
     },
     "metadata": {
+      "edit_action": "Edit",
       "edit_title": "Edit methodology",
       "edit_subtitle": "Change the name and description. The methodology code cannot be changed.",
       "name_primary_required": "Provide a Russian (ru-RU) name.",
-      "code_immutable": "The code is set at creation and cannot be changed."
+      "code_immutable": "The code is set at creation and cannot be changed.",
+      "scoring_mode_change_warning": "Changing the scoring mode keeps your factors and levels — review factor weights and level points after switching.",
+      "type_locked": "The type cannot be changed once a version is approved or locked.",
+      "version_not_editable": "This version is no longer editable.",
+      "save_failed": "Could not save the changes. Please try again."
     },
     "template_source": {
       "builtin": "Built-in",

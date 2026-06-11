@@ -80,6 +80,9 @@ public class MethodologyJpaEntity extends AuditedJpaEntity {
     public void setNameI18n(Map<String, String> v) { this.nameI18n = nullSafe(v); }
     public void setDescriptionI18n(Map<String, String> v) { this.descriptionI18n = nullSafe(v); }
     public void setStatus(MethodologyStatus v) { this.status = v; }
+    // methodology_type is editable only while the methodology has no
+    // APPROVED/LOCKED version (enforced in UpdateMethodologyMetadataUseCase).
+    public void setMethodologyType(MethodologyType v) { this.methodologyType = v; }
 
     private static Map<String, String> nullSafe(Map<String, String> in) {
         return in == null ? new HashMap<>() : new HashMap<>(in);

@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,7 @@ import uz.hrlab.grading.methodology.application.FactorService;
 import uz.hrlab.grading.methodology.application.LockMethodologyVersionUseCase;
 import uz.hrlab.grading.methodology.application.MethodologyActorNameResolver;
 import uz.hrlab.grading.methodology.application.MethodologyQueries;
+import uz.hrlab.grading.methodology.application.UpdateMethodologyVersionMetadataUseCase;
 import uz.hrlab.grading.methodology.domain.MethodologyVersion;
 
 import java.util.List;
@@ -33,6 +35,7 @@ public class MethodologyVersionController {
     private final LockMethodologyVersionUseCase lockUseCase;
     private final ArchiveMethodologyVersionUseCase archiveUseCase;
     private final CreateMethodologyVersionUseCase newVersionUseCase;
+    private final UpdateMethodologyVersionMetadataUseCase updateMetadataUseCase;
     private final FactorService factorService;
     private final MethodologyActorNameResolver actorNames;
 
@@ -41,6 +44,7 @@ public class MethodologyVersionController {
                                         LockMethodologyVersionUseCase lockUseCase,
                                         ArchiveMethodologyVersionUseCase archiveUseCase,
                                         CreateMethodologyVersionUseCase newVersionUseCase,
+                                        UpdateMethodologyVersionMetadataUseCase updateMetadataUseCase,
                                         FactorService factorService,
                                         MethodologyActorNameResolver actorNames) {
         this.queries = queries;
@@ -48,6 +52,7 @@ public class MethodologyVersionController {
         this.lockUseCase = lockUseCase;
         this.archiveUseCase = archiveUseCase;
         this.newVersionUseCase = newVersionUseCase;
+        this.updateMetadataUseCase = updateMetadataUseCase;
         this.factorService = factorService;
         this.actorNames = actorNames;
     }
@@ -62,6 +67,20 @@ public class MethodologyVersionController {
     @PreAuthorize("hasAuthority('METHODOLOGY_READ')")
     public MethodologyVersionResponse getById(@PathVariable UUID id) {
         return toResponse(queries.findVersionById(id));
+    }
+
+    /**
+     * Edit version metadata (scoring_mode + target_total_points) — DRAFT only.
+     * Both body fields are nullable for partial update. APPROVED/LOCKED/ARCHIVED
+     * versions are rejected by the immutability guard inside the use case.
+     */
+    @PatchMapping("/{id}")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    public MethodologyVersionResponse update(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateMethodologyVersionMetadataRequest req) {
+        return toResponse(updateMetadataUseCase.update(id,
+                req.scoringMode(), req.targetTotalPoints()));
     }
 
     @GetMapping("/{id}/factors")

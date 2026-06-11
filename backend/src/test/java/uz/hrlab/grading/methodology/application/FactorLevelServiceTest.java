@@ -259,4 +259,60 @@ class FactorLevelServiceTest {
                 .isInstanceOf(TenantAccessDeniedException.class);
         verify(levels, never()).save(any());
     }
+
+    // --- BE-6: level CODE edit on PATCH /factor-levels/{id} ---------------
+
+    /** Wire an existing level (id={@code levelId}) under the DRAFT factor graph. */
+    private UUID wireExistingLevel(String currentCode) {
+        wireDraftGraph();
+        UUID levelId = UUID.randomUUID();
+        FactorLevelJpaEntity l = new FactorLevelJpaEntity(
+                levelId, tenantId, factorId, currentCode, 1,
+                new BigDecimal("10"), null);
+        l.setLabelI18n(Map.of("ru-RU", "Уровень"));
+        given(levels.findByIdAndTenantId(levelId, tenantId)).willReturn(Optional.of(l));
+        return levelId;
+    }
+
+    @Test
+    void updateLevelCodeToNewUniqueValueSucceeds() {
+        UUID levelId = wireExistingLevel("OLD");
+        given(levels.existsByTenantIdAndFactorIdAndCode(tenantId, factorId, "NEW"))
+                .willReturn(false);
+
+        FactorLevel result = service.update(levelId, cmd("NEW", null));
+
+        assertThat(result.code()).isEqualTo("NEW");
+        ArgumentCaptor<FactorLevelJpaEntity> cap =
+                ArgumentCaptor.forClass(FactorLevelJpaEntity.class);
+        verify(levels).save(cap.capture());
+        assertThat(cap.getValue().getCode()).isEqualTo("NEW");
+
+        ArgumentCaptor<AuditEvent> auditCap = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit, times(1)).record(auditCap.capture());
+        assertThat(auditCap.getValue().action()).isEqualTo(AuditAction.FACTOR_LEVEL_UPDATED);
+    }
+
+    @Test
+    void updateLevelCodeToDuplicateValueRejected() {
+        UUID levelId = wireExistingLevel("OLD");
+        given(levels.existsByTenantIdAndFactorIdAndCode(tenantId, factorId, "DUP"))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> service.update(levelId, cmd("DUP", null)))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Level code already exists");
+        verify(levels, never()).save(any());
+    }
+
+    @Test
+    void updateLevelSameCodeIsNotTreatedAsDuplicate() {
+        // Re-submitting the unchanged code must NOT trip the uniqueness check.
+        UUID levelId = wireExistingLevel("SAME");
+
+        service.update(levelId, cmd("SAME", null));
+
+        verify(levels, never()).existsByTenantIdAndFactorIdAndCode(any(), any(), any());
+        verify(levels, times(1)).save(any());
+    }
 }

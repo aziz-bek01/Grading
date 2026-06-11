@@ -208,13 +208,28 @@ export interface MethodologyCreatePayload {
 }
 
 /**
- * PATCH body — backend `UpdateMethodologyMetadataUseCase` accepts ONLY the
- * localized name + description. `code` is the immutable container code (set at
- * create-time) and is NOT accepted here (honest contract — F5).
+ * PATCH body for `PATCH /methodologies/{id}` — the container metadata.
+ *
+ * `name_i18n` / `description_i18n` are editable regardless of version status.
+ * `methodology_type` is now accepted by the backend too, but only when NO
+ * APPROVED/LOCKED version exists (otherwise 400 `METHODOLOGY_TYPE_LOCKED`).
+ * `code` is the immutable container code (set at create-time) and is NOT
+ * accepted here (honest contract — F5).
  */
 export type MethodologyUpdatePayload = Partial<
-  Pick<MethodologyCreatePayload, 'name_i18n' | 'description_i18n'>
+  Pick<MethodologyCreatePayload, 'name_i18n' | 'description_i18n' | 'methodology_type'>
 >;
+
+/**
+ * PATCH body for `PATCH /methodology-versions/{id}` — version-level scoring
+ * metadata. Both fields optional/nullable (null/omitted = leave unchanged).
+ * DRAFT-only server-side; an effective WEIGHTED_SCALE mode with
+ * `target_total_points <= 0` is rejected with 400 `SCORING_TARGET_REQUIRED`.
+ */
+export interface MethodologyVersionMetadataUpdatePayload {
+  scoring_mode?: ScoringMode;
+  target_total_points?: number | null;
+}
 
 export interface MethodologyReasonPayload {
   reason: string;
@@ -258,10 +273,14 @@ export interface UpdateTemplatePayload {
   description_i18n?: LocalizedString;
 }
 
+/**
+ * Reorder request — the backend `ReorderRequest` binds a single
+ * `@NotEmpty List<UUID> orderedIds` (serialized snake_case as `ordered_ids`).
+ * The full set of ids in their new order is sent; the server re-indexes.
+ */
 export interface ReorderPayload {
-  order: { id: string; sort_order: number }[];
+  ordered_ids: string[];
 }
 
-export interface LevelReorderPayload {
-  order: { id: string; level_order: number }[];
-}
+/** Level reorder shares the exact factor-reorder contract (ids only). */
+export type LevelReorderPayload = ReorderPayload;

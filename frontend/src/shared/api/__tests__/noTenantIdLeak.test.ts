@@ -305,7 +305,7 @@ describe('no tenant_id leak in outbound API requests', () => {
   it('methodologyApi.reorderFactors() sends no tenant id', async () => {
     recorded.length = 0;
     const { reorderFactors } = await import('@/features/methodology/api/methodologyApi');
-    await reorderFactors('v-1', { order: [{ id: 'f-1', sort_order: 0 }] });
+    await reorderFactors('v-1', { ordered_ids: ['f-1'] });
     expect(recorded.length).toBe(1);
     assertNoTenantLeak(recorded[0]);
   });
@@ -916,19 +916,21 @@ describe('MSW mock handler drops tenant_id from body', () => {
     const draft = mockDb.methodologyVersions.find((v) => v.status === 'DRAFT' && v.factors.length > 0);
     expect(draft).toBeDefined();
     const factor = draft!.factors[0];
+    // Backend ReorderRequest contract: ids-only, position = array index.
+    const ids = draft!.factors.map((f) => f.id).reverse();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = tryHandle({
       method: 'POST',
       url: `/methodology-versions/${draft!.id}/factors/reorder`,
       data: JSON.stringify({
         tenant_id: 'tenant-evil',
-        order: [{ id: factor.id, sort_order: 7 }],
+        ordered_ids: ids,
       }),
       headers: { 'X-Mock-Tenant-Id': '11111111-1111-1111-1111-111111111111' },
     } as AxiosRequestConfig);
     expect(result?.status).toBe(200);
     expect(warnSpy).toHaveBeenCalled();
-    expect(factor.sort_order).toBe(7);
+    expect(factor.sort_order).toBe(ids.indexOf(factor.id));
     warnSpy.mockRestore();
   });
 

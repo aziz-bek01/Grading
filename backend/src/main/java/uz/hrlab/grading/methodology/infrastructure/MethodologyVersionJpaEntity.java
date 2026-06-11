@@ -36,8 +36,15 @@ public class MethodologyVersionJpaEntity extends AuditedJpaEntity {
     @Column(name = "status", nullable = false, length = 32)
     private MethodologyVersionStatus status;
 
+    // scoring_mode is editable while the version is DRAFT (DRAFT methodologies
+    // are fully editable per product design). The DRAFT-only guard lives in the
+    // application layer (UpdateMethodologyVersionMetadataUseCase →
+    // MethodologyVersionImmutabilityPolicy.ensureMutable); no DB-level guard
+    // touches this column. APPROVED/LOCKED/ARCHIVED immutability is preserved by
+    // that guard. (Previously updatable=false, which was incidental — not an
+    // invariant — and blocked the builder from changing the mode.)
     @Enumerated(EnumType.STRING)
-    @Column(name = "scoring_mode", nullable = false, length = 32, updatable = false)
+    @Column(name = "scoring_mode", nullable = false, length = 32)
     private ScoringMode scoringMode;
 
     @Column(name = "target_total_points", precision = 12, scale = 4)
@@ -94,6 +101,7 @@ public class MethodologyVersionJpaEntity extends AuditedJpaEntity {
     public UUID getLockedBy() { return lockedBy; }
 
     public void setStatus(MethodologyVersionStatus v) { this.status = v; }
+    public void setScoringMode(ScoringMode v) { this.scoringMode = v; }
     public void setTargetTotalPoints(BigDecimal v) { this.targetTotalPoints = v; }
     public void setApprovedAt(OffsetDateTime v) { this.approvedAt = v; }
     public void setApprovedBy(UUID v) { this.approvedBy = v; }

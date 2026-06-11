@@ -113,13 +113,23 @@ vi.mock('../hooks/useMethodology', async () => {
     }),
     useUpdateFactorLevel: () => ({ mutateAsync: vi.fn() }),
     useRemoveFactorLevel: () => ({ mutateAsync: vi.fn() }),
-    useReorderFactorLevels: () => ({ mutateAsync: vi.fn() }),
+    // Level reorder — spies recorded on the shared captor so the test can assert
+    // the COMPLETE re-indexed order payload was sent to the reorder endpoint.
+    useReorderFactorLevels: () => ({ mutateAsync: reorderLevelSpy }),
     useApproveVersion: () => ({ mutateAsync: vi.fn() }),
     useLockVersion: () => ({ mutateAsync: vi.fn() }),
     useArchiveVersion: () => ({ mutateAsync: vi.fn() }),
     useCreateNewVersion: () => ({ mutateAsync: vi.fn() }),
+    // Metadata edit — record the two distinct PATCH surfaces so the test asserts
+    // both the container (type) and version (scoring_mode) patches were sent.
+    useUpdateMethodology: () => ({ mutateAsync: updateMethodologySpy }),
+    useUpdateMethodologyVersionMetadata: () => ({ mutateAsync: updateVersionMetadataSpy }),
   };
 });
+
+const reorderLevelSpy = vi.fn();
+const updateMethodologySpy = vi.fn();
+const updateVersionMetadataSpy = vi.fn();
 
 function renderPage() {
   return render(
@@ -139,6 +149,9 @@ describe('MethodologyBuilderPage', () => {
   beforeEach(() => {
     signIn('super-admin');
     versionStore.version = undefined;
+    reorderLevelSpy.mockReset();
+    updateMethodologySpy.mockReset();
+    updateVersionMetadataSpy.mockReset();
   });
   afterEach(() => {
     signOut();
@@ -218,5 +231,77 @@ describe('MethodologyBuilderPage', () => {
     // the assertion that fails against the stale-snapshot bug.
     await waitFor(() => expect(screen.getByTestId('level-row-L1')).toBeInTheDocument());
     expect(screen.getByText('Уровень 1')).toBeInTheDocument();
+  });
+
+  it('reorders a level via the down arrow (ISSUE 1a — arrows no longer no-op)', async () => {
+    const user = userEvent.setup();
+    (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
+    versionStore.version = {
+      ...baseVersion,
+      status: 'DRAFT',
+      factors: [
+        {
+          ...baseVersion.factors[0],
+          levels: [
+            { id: 'lvl-a', factor_id: 'f-A', code: 'A', level_order: 0, points: 10, scale_value: 0, label_i18n: { 'ru-RU': 'Низкий' } },
+            { id: 'lvl-b', factor_id: 'f-A', code: 'B', level_order: 1, points: 20, scale_value: 0, label_i18n: { 'ru-RU': 'Высокий' } },
+          ],
+        },
+      ],
+    };
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId('factor-A-edit')).toBeInTheDocument());
+    await user.click(screen.getByTestId('factor-A-edit'));
+    await waitFor(() => expect(screen.getByTestId('level-row-A')).toBeInTheDocument());
+
+    // Move the first level (A) DOWN.
+    await user.click(screen.getByTestId('level-A-move-down'));
+
+    // The reorder mutation fires with the COMPLETE re-indexed id order [B, A]
+    // matching the backend ReorderRequest contract ({ ordered_ids: [...] }).
+    await waitFor(() => expect(reorderLevelSpy).toHaveBeenCalledTimes(1));
+    expect(reorderLevelSpy.mock.calls[0][0]).toEqual({
+      ordered_ids: ['lvl-b', 'lvl-a'],
+    });
+  });
+
+  it('edits methodology metadata: PATCHes container type + version scoring_mode (ISSUE 2)', async () => {
+    const user = userEvent.setup();
+    (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
+    versionStore.version = { ...baseVersion, status: 'DRAFT', scoring_mode: 'WEIGHTED_POINTS' };
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId('action-edit-metadata')).toBeInTheDocument());
+    await user.click(screen.getByTestId('action-edit-metadata'));
+
+    // The builder-mode drawer exposes the type + scoring-mode selects.
+    await waitFor(() => expect(screen.getByTestId('metadata-scoring-mode')).toBeInTheDocument());
+    expect(screen.getByTestId('metadata-type')).toBeInTheDocument();
+
+    // Switch scoring_mode → a change warning appears.
+    await user.selectOptions(screen.getByTestId('metadata-scoring-mode'), 'DIRECT_POINTS');
+    expect(screen.getByTestId('metadata-scoring-change-warning')).toBeInTheDocument();
+
+    // Switch the container type too.
+    await user.selectOptions(screen.getByTestId('metadata-type'), 'CUSTOM');
+
+    // Save → both PATCH surfaces fire (container first, then version). Scope to
+    // the drawer dialog so the header "Save as template" button isn't matched.
+    const drawer = screen.getByRole('dialog');
+    await user.click(within(drawer).getByRole('button', { name: /^(save|сохранить|saqlash|сақлаш)$/i }));
+
+    await waitFor(() => expect(updateMethodologySpy).toHaveBeenCalledTimes(1));
+    expect(updateMethodologySpy.mock.calls[0][0].methodology_type).toBe('CUSTOM');
+    expect(updateVersionMetadataSpy).toHaveBeenCalledTimes(1);
+    expect(updateVersionMetadataSpy.mock.calls[0][0].scoring_mode).toBe('DIRECT_POINTS');
+  });
+
+  it('hides the Edit metadata affordance for non-DRAFT versions (readOnly path)', async () => {
+    (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
+    versionStore.version = { ...baseVersion, status: 'APPROVED', approved_at: '2026-04-12T10:00:00Z' };
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('locked-methodology-header')).toBeInTheDocument());
+    expect(screen.queryByTestId('action-edit-metadata')).toBeNull();
   });
 });

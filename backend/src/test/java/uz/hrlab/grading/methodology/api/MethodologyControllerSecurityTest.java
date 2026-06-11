@@ -165,6 +165,43 @@ class MethodologyControllerSecurityTest {
                 .andExpect(status().isForbidden());
     }
 
+    /**
+     * BE-5 — the extended PATCH carries methodology_type through to the use case
+     * (4-arg overload). Returns 200 with the persisted type.
+     */
+    @Test
+    void patchAppliesMethodologyType() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(updateMetadata.update(eq(id), any(), any(),
+                eq(MethodologyType.EXTENDED_11_CRITERIA)))
+                .willReturn(new Methodology(id, UUID.randomUUID(), null, "M1",
+                        Map.of("ru-RU", "X"), Map.of(),
+                        MethodologyType.EXTENDED_11_CRITERIA, MethodologyStatus.ACTIVE));
+        mvc.perform(patch("/api/v1/methodologies/{id}", id)
+                        .with(jwt().authorities(() -> "METHODOLOGY_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"methodology_type\":\"EXTENDED_11_CRITERIA\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.methodology_type").value("EXTENDED_11_CRITERIA"));
+    }
+
+    /**
+     * BE-4 — methodology_type change blocked when an APPROVED/LOCKED version
+     * exists ⇒ ValidationException METHODOLOGY_TYPE_LOCKED ⇒ 400.
+     */
+    @Test
+    void patchMethodologyTypeLockedReturns400() throws Exception {
+        given(updateMetadata.update(any(), any(), any(), any()))
+                .willThrow(new uz.hrlab.grading.common.exception.ValidationException(
+                        "METHODOLOGY_TYPE_LOCKED", "type locked"));
+        mvc.perform(patch("/api/v1/methodologies/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "METHODOLOGY_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"methodology_type\":\"CUSTOM\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("METHODOLOGY_TYPE_LOCKED"));
+    }
+
     @Test
     void unknownIdReturns404() throws Exception {
         UUID id = UUID.randomUUID();

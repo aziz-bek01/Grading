@@ -135,7 +135,7 @@ public class MethodologyController {
     public MethodologyResponse update(@PathVariable UUID id,
                                       @Valid @RequestBody UpdateMethodologyMetadataRequest req) {
         return MethodologyResponse.from(updateMetadata.update(id,
-                req.nameI18n(), req.descriptionI18n()));
+                req.nameI18n(), req.descriptionI18n(), req.methodologyType()));
     }
 
     @PostMapping("/{id}/archive")

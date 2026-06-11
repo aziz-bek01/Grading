@@ -21,6 +21,7 @@ import type {
   MethodologyTemplate,
   MethodologyUpdatePayload,
   MethodologyVersion,
+  MethodologyVersionMetadataUpdatePayload,
   MethodologyVersionSummary,
   ReorderPayload,
   SaveAsTemplatePayload,
@@ -209,6 +210,28 @@ export async function archiveVersion(
 ): Promise<MethodologyVersion> {
   const res = await httpClient.post<MethodologyVersion>(
     `/methodology-versions/${versionId}/archive`,
+    payload,
+  );
+  return res.data;
+}
+
+/**
+ * PATCH version-level scoring metadata (scoring_mode + target_total_points).
+ *
+ * DRAFT-only server-side. Changing scoring_mode PRESERVES factors & levels — only
+ * the scoring-time interpretation changes, so the caller must refetch the version
+ * + factors afterwards (the hook's invalidation does this) so the FactorEditor
+ * weight field / WeightSumVisualizer / points-vs-scale_value column re-render off
+ * the new mode. The backend returns the version object WITHOUT a `factors` field
+ * (same shape as `GET /methodology-versions/{id}`), so the response is typed
+ * without the aggregated `factors`.
+ */
+export async function updateMethodologyVersionMetadata(
+  versionId: string,
+  payload: MethodologyVersionMetadataUpdatePayload,
+): Promise<Omit<MethodologyVersion, 'factors'>> {
+  const res = await httpClient.patch<Omit<MethodologyVersion, 'factors'>>(
+    `/methodology-versions/${versionId}`,
     payload,
   );
   return res.data;

@@ -161,4 +161,73 @@ describe('FactorEditor', () => {
     const last = onUpdateLevel.mock.calls.at(-1)![0];
     expect(last.description_i18n['ru-RU']).toBe('Updated rubric');
   });
+
+  it('existing-level CODE is an editable input that commits (uppercased) on blur (ISSUE 1b)', () => {
+    const onUpdateLevel = vi.fn();
+    render(
+      renderWithProviders(
+        <FactorEditor
+          open
+          factor={{
+            ...factor,
+            levels: [
+              {
+                id: 'l-1',
+                factor_id: factor.id,
+                code: 'A',
+                level_order: 0,
+                points: 10,
+                scale_value: 0.5,
+                label_i18n: { 'ru-RU': 'А' },
+              },
+            ],
+          }}
+          scoringMode="WEIGHTED_POINTS"
+          onClose={() => {}}
+          onSubmit={() => {}}
+          onUpdateLevel={onUpdateLevel}
+        />,
+      ),
+    );
+
+    const codeInput = screen.getByTestId('level-A-code');
+    // Edit the code (lowercased input is uppercased), then blur → onUpdate fires.
+    fireEvent.change(codeInput, { target: { value: 'a2' } });
+    fireEvent.blur(codeInput);
+
+    expect(onUpdateLevel).toHaveBeenCalledTimes(1);
+    expect(onUpdateLevel.mock.calls[0][0].code).toBe('A2');
+  });
+
+  it('does not PATCH the level code when blurred unchanged (no needless write)', () => {
+    const onUpdateLevel = vi.fn();
+    render(
+      renderWithProviders(
+        <FactorEditor
+          open
+          factor={{
+            ...factor,
+            levels: [
+              {
+                id: 'l-1',
+                factor_id: factor.id,
+                code: 'A',
+                level_order: 0,
+                points: 10,
+                scale_value: 0.5,
+                label_i18n: { 'ru-RU': 'А' },
+              },
+            ],
+          }}
+          scoringMode="WEIGHTED_POINTS"
+          onClose={() => {}}
+          onSubmit={() => {}}
+          onUpdateLevel={onUpdateLevel}
+        />,
+      ),
+    );
+
+    fireEvent.blur(screen.getByTestId('level-A-code'));
+    expect(onUpdateLevel).not.toHaveBeenCalled();
+  });
 });

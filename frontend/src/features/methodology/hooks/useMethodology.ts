@@ -30,6 +30,7 @@ import {
   updateFactor,
   updateFactorLevel,
   updateMethodology,
+  updateMethodologyVersionMetadata,
 } from '../api/methodologyApi';
 import type {
   FactorCreatePayload,
@@ -40,6 +41,7 @@ import type {
   MethodologyCreatePayload,
   MethodologyReasonPayload,
   MethodologyUpdatePayload,
+  MethodologyVersionMetadataUpdatePayload,
   ReorderPayload,
   SaveAsTemplatePayload,
   UpdateTemplatePayload,
@@ -208,6 +210,26 @@ export function useCreateNewVersion(methodologyId: string, projectId?: string) {
   return useMutation({
     mutationFn: (sourceVersionId: string) => createNewVersion(methodologyId, sourceVersionId),
     onSuccess: (v) => invalidateMethodology(qc, projectId, methodologyId, v.id),
+  });
+}
+
+/**
+ * PATCH version-level scoring metadata (scoring_mode + target_total_points).
+ * Reuses the shared `invalidateMethodology` helper so the version detail (and
+ * thus the FactorEditor weight field / WeightSumVisualizer / ScoringModeBadge,
+ * all keyed off `scoring_mode`) refetch after a save. Errors propagate to the
+ * caller so the drawer can surface SCORING_TARGET_REQUIRED inline.
+ */
+export function useUpdateMethodologyVersionMetadata(
+  versionId: string,
+  methodologyId?: string,
+  projectId?: string,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: MethodologyVersionMetadataUpdatePayload) =>
+      updateMethodologyVersionMetadata(versionId, payload),
+    onSuccess: () => invalidateMethodology(qc, projectId, methodologyId, versionId),
   });
 }
 

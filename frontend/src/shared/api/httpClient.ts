@@ -88,7 +88,27 @@ export function setMockActiveTenantId(tenantId: string | null): void {
  * business `tenant_id` field — clients still never send tenant_id in path/query/
  * body (see noTenantIdLeak.test.ts, which explicitly allows this header).
  */
-let activeTenantId: string | null = null;
+// COLD-BOOT priming (BE-3-FIX FE): seed from the persisted last-active tenant so
+// the FIRST `/users/me` after an OIDC redirect already carries
+// X-Active-Tenant-Id. Without this, a multi-membership super admin's first /me
+// went out header-less, the backend failed closed to no active tenant, and the
+// whole shell locked (empty permissions). Read directly from localStorage here —
+// NOT via the auth store — because the store imports this module, and a
+// cross-module call during init would hit a temporal-dead-zone on this very
+// binding. A stale / non-member value is harmless: the backend validates the
+// header against the user's memberships and ignores a non-match (no cross-tenant
+// escalation), and /users/me still renders the shell via its single-tenant default.
+const LAST_ACTIVE_TENANT_KEY = 'auth.lastActiveTenantId';
+function readPersistedActiveTenantId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(LAST_ACTIVE_TENANT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+let activeTenantId: string | null = readPersistedActiveTenantId();
 export function setActiveTenantHeader(tenantId: string | null): void {
   activeTenantId = tenantId;
 }

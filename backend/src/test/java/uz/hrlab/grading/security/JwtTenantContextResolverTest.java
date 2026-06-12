@@ -80,6 +80,56 @@ class JwtTenantContextResolverTest extends AbstractIntegrationTest {
         assertThat(ctx.locale()).isEqualTo("ru-RU");
     }
 
+    /**
+     * BE-3-FIX latent-bug guard. The previous expansion guard required BOTH
+     * {@code roles} AND {@code permissions} claims to be empty before expanding
+     * from the DB. An IdP (e.g. Keycloak) that emits a flat {@code roles} claim
+     * but NO {@code permissions} claim would therefore have suppressed permission
+     * expansion entirely — leaving the principal with ZERO permissions. The fix
+     * gates ONLY on {@code permissions}: a roles-only token still gets its
+     * permissions DB-expanded for the active tenant.
+     */
+    @Test
+    void rolesClaimWithoutPermissionsClaimStillExpandsPermissionsFromDb() {
+        UUID tenant = seedTenant(UUID.randomUUID());
+        UUID userId = UUID.randomUUID();
+        String email = "rolesonly+" + userId + "@hrlab.uz";
+
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'ru-RU', 0)",
+                userId, email, "Roles Only");
+        UUID membershipId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                membershipId, userId, tenant);
+        jdbcTemplate.update(
+                "INSERT INTO public.user_roles (id, user_tenant_membership_id, role_id) "
+                        + "SELECT ?, ?, r.id FROM public.roles r WHERE r.code = 'HRLAB_SUPER_ADMIN'",
+                UUID.randomUUID(), membershipId);
+
+        // Token carries a flat roles claim (some custom value) but NO permissions.
+        Jwt jwt = Jwt.withTokenValue("token")
+                .header("alg", "RS256")
+                .subject("555")
+                .claim("email", email)
+                .claim("roles", java.util.List.of("SOME_IDP_ROLE"))
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .build();
+
+        TenantContext ctx = resolver.resolve(jwt);
+
+        assertThat(ctx.tenantId()).isEqualTo(tenant);
+        // The IdP-asserted role claim is honoured (kept verbatim)...
+        assertThat(ctx.roles()).contains("SOME_IDP_ROLE");
+        // ...but permissions are STILL DB-expanded — not suppressed to empty.
+        assertThat(ctx.permissions())
+                .as("roles-only token must not suppress DB permission expansion")
+                .contains("PROJECT_READ", "POSITION_READ");
+    }
+
     @Test
     void unknownEmailYieldsUserlessContextThatFailsClosed() {
         Jwt jwt = Jwt.withTokenValue("token")

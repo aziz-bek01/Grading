@@ -8,14 +8,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import uz.hrlab.grading.access.application.MembershipAuthorityResolver;
 import uz.hrlab.grading.access.application.UserScopeExpander;
 import uz.hrlab.grading.access.domain.MembershipStatus;
-import uz.hrlab.grading.access.infrastructure.RolePermissionRepository;
-import uz.hrlab.grading.access.infrastructure.RoleRepository;
 import uz.hrlab.grading.access.infrastructure.UserJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserRepository;
-import uz.hrlab.grading.access.infrastructure.UserRoleJpaEntity;
-import uz.hrlab.grading.access.infrastructure.UserRoleRepository;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
@@ -27,7 +24,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Maps a validated {@link Jwt} into a {@link TenantContext}.
@@ -66,22 +62,16 @@ public class JwtTenantContextResolver {
 
     private final UserRepository users;
     private final UserTenantMembershipRepository memberships;
-    private final UserRoleRepository userRoles;
-    private final RoleRepository roles;
-    private final RolePermissionRepository rolePermissions;
+    private final MembershipAuthorityResolver authorityResolver;
     private final UserScopeExpander scopeExpander;
 
     public JwtTenantContextResolver(UserRepository users,
                                     UserTenantMembershipRepository memberships,
-                                    UserRoleRepository userRoles,
-                                    RoleRepository roles,
-                                    RolePermissionRepository rolePermissions,
+                                    MembershipAuthorityResolver authorityResolver,
                                     UserScopeExpander scopeExpander) {
         this.users = users;
         this.memberships = memberships;
-        this.userRoles = userRoles;
-        this.roles = roles;
-        this.rolePermissions = rolePermissions;
+        this.authorityResolver = authorityResolver;
         this.scopeExpander = scopeExpander;
     }
 
@@ -134,9 +124,21 @@ public class JwtTenantContextResolver {
         boolean salaryPerm = claimSalaryPerm;
         UUID tenantId = activeMembership != null ? activeMembership.getTenantId() : null;
 
-        if (activeMembership != null && claimRoles.isEmpty() && claimPermissions.isEmpty()) {
-            Authority authority = expandAuthority(activeMembership);
-            resolvedRoles = authority.roleCodes();
+        // Latent-bug fix (BE-3-FIX): expand whenever the token carried NO
+        // permissions claim — gate on claimPermissions ONLY, not also on
+        // claimRoles. The previous guard (claimRoles.isEmpty() &&
+        // claimPermissions.isEmpty()) silently suppressed DB permission
+        // expansion if an IdP ever emitted a flat `roles` claim WITHOUT a
+        // `permissions` claim, leaving the principal with zero permissions.
+        // Permissions are what gate the app, so they drive the decision.
+        if (activeMembership != null && claimPermissions.isEmpty()) {
+            MembershipAuthorityResolver.Authority authority =
+                    authorityResolver.expand(activeMembership);
+            // Keep an explicit roles claim if present (IdP authoritative);
+            // otherwise take the DB-expanded role codes.
+            if (claimRoles.isEmpty()) {
+                resolvedRoles = authority.roleCodes();
+            }
             resolvedPermissions = authority.permissionCodes();
             // Salary gate is the membership flag unless the token explicitly
             // asserted it (claim wins when present and true).
@@ -291,33 +293,6 @@ public class JwtTenantContextResolver {
             log.debug("Could not read {} header from request context", JwtClaimNames.ACTIVE_TENANT_HEADER, ex);
         }
         return null;
-    }
-
-    /** Snapshot of the RBAC expanded for one membership. */
-    private record Authority(Set<String> roleCodes, Set<String> permissionCodes,
-                             boolean salaryPermission) {
-    }
-
-    /**
-     * Expand role codes + permission codes for a membership. Identical query
-     * path to {@link DevUserAuthorityResolver} so dev and prod resolve the same
-     * authority set for the same DB state.
-     */
-    private Authority expandAuthority(UserTenantMembershipJpaEntity membership) {
-        List<UUID> roleIds = userRoles.findAllByMembershipId(membership.getId()).stream()
-                .map(UserRoleJpaEntity::getRoleId)
-                .toList();
-        if (roleIds.isEmpty()) {
-            return new Authority(Set.of(), Set.of(), membership.isSalaryDataPermission());
-        }
-        Set<String> roleCodes = roles.findAllById(roleIds).stream()
-                .map(r -> r.getCode())
-                .collect(Collectors.toUnmodifiableSet());
-        List<String> permissionCodeList = rolePermissions.findPermissionCodesByRoleIds(roleIds);
-        Set<String> permissionCodes = permissionCodeList.isEmpty()
-                ? Set.of()
-                : Set.copyOf(permissionCodeList);
-        return new Authority(roleCodes, permissionCodes, membership.isSalaryDataPermission());
     }
 
     private static UUID parseUuid(String raw) {

@@ -35,6 +35,44 @@ function syncActiveTenantHeaders(tenantId: string | null): void {
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar.collapsed';
+const LAST_ACTIVE_TENANT_KEY = 'auth.lastActiveTenantId';
+
+/** SSR-safe read of the last selected company-client (for cold-boot header). */
+function readLastActiveTenantId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(LAST_ACTIVE_TENANT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * SSR-safe write of the last selected company-client. Persisting this lets the
+ * NEXT cold boot attach `X-Active-Tenant-Id` BEFORE the first `/users/me`, so a
+ * multi-membership super admin never hits the backend's ambiguous fail-closed
+ * branch on the very first request (which returned empty permissions and locked
+ * the whole shell). Best-effort; private-mode / quota failures are swallowed.
+ */
+function persistLastActiveTenantId(tenantId: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (tenantId) {
+      window.localStorage.setItem(LAST_ACTIVE_TENANT_KEY, tenantId);
+    } else {
+      window.localStorage.removeItem(LAST_ACTIVE_TENANT_KEY);
+    }
+  } catch {
+    /* ignore quota / disabled storage */
+  }
+}
+
+// NOTE: cold-boot header priming is done INSIDE shared/api/httpClient.ts (it
+// seeds its activeTenantId holder from localStorage at module init). Doing it
+// here would create a module-init cycle — httpClient imports this store, so a
+// top-level syncActiveTenantHeaders() call during authStore evaluation can hit
+// httpClient's `activeTenantId` before it is initialised (TDZ). The store still
+// owns persistence (persistLastActiveTenantId) and the runtime mirror.
 
 /** SSR-safe localStorage read for the sidebar collapse preference. */
 function readSidebarCollapsed(): boolean {
@@ -87,10 +125,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   sidebarCollapsed: readSidebarCollapsed(),
   setSession: (user, token) => {
     tokenStorage.set(token);
-    // default active tenant is first one user belongs to
-    const activeTenant = user.tenants[0] ?? null;
+    // Prefer the last-selected company-client if the user still belongs to it
+    // (stable workspace across logins); otherwise default to the first tenant.
+    const lastId = readLastActiveTenantId();
+    const activeTenant =
+      user.tenants.find((tnt) => tnt.id === lastId) ?? user.tenants[0] ?? null;
     // Attach the header BEFORE React re-renders / any approval query fires.
     syncActiveTenantHeaders(activeTenant?.id ?? null);
+    persistLastActiveTenantId(activeTenant?.id ?? null);
     set({
       user,
       isAuthenticated: true,
@@ -127,7 +169,24 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Switch the http header SYNCHRONOUSLY so the very next approval query (and
     // the gated inbox poll) carries the NEW X-Active-Tenant-Id, not the old one.
     syncActiveTenantHeaders(tenant?.id ?? null);
+    // Persist so the NEXT cold boot (OIDC redirect) can attach the header BEFORE
+    // the first /users/me — closing the window where a multi-membership super
+    // admin's first /me went out header-less and the backend failed closed to
+    // no active tenant -> empty permissions -> fully gated shell (BE-3-FIX FE).
+    persistLastActiveTenantId(tenant?.id ?? null);
     set({ activeTenant: tenant, activeProject: null });
+    // Permissions are scoped to the active tenant server-side. After a tenant
+    // switch the in-memory permission set is for the PREVIOUS tenant, so refresh
+    // /users/me to recompute roles/permissions for the newly selected tenant.
+    // Fire-and-forget; refreshUser preserves the just-set activeTenant. Errors
+    // are swallowed: a transient /me failure must NOT crash the app or surface as
+    // an unhandled rejection — the prior user object simply stays until the next
+    // successful refresh / navigation. No token (dev/tests) → refreshUser no-ops.
+    if (tenant) {
+      void useAuthStore.getState().refreshUser().catch(() => {
+        /* keep current session; next request/refresh will reconcile permissions */
+      });
+    }
   },
   setActiveProject: (project) => set({ activeProject: project }),
   setSidebarCollapsed: (v) => {
@@ -138,6 +197,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     tokenStorage.clear();
     // Drop the tenant header so no stale X-Active-Tenant-Id survives a logout.
     syncActiveTenantHeaders(null);
+    persistLastActiveTenantId(null);
     set({
       user: null,
       activeTenant: null,
@@ -149,6 +209,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     // 1) Local clear first (synchronous contract — tests rely on immediate state).
     tokenStorage.clear();
     syncActiveTenantHeaders(null);
+    persistLastActiveTenantId(null);
     set({
       user: null,
       activeTenant: null,

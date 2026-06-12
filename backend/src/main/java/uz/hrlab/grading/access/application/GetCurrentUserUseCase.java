@@ -18,6 +18,7 @@ import uz.hrlab.grading.tenancy.infrastructure.TenantJpaEntity;
 import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,10 +34,29 @@ import java.util.stream.Collectors;
  * tenants the caller can switch into. Revoked memberships are filtered out;
  * suspended/invited rows are kept so the UI can render the appropriate badge.
  *
- * <p>Roles + permissions remain JWT-derived because they are already pinned
- * to the active tenant by the IdP token contract (security-blueprint §5.1) —
- * recomputing them here from {@code user_roles} would risk surfacing
- * permissions from an OTHER tenant for the active context.
+ * <p>Roles + permissions are normally JWT/context-derived because the resolver
+ * already pins them to the active tenant (security-blueprint §5.1) — recomputing
+ * them here from {@code user_roles} would risk surfacing permissions from an
+ * OTHER tenant for the active context.
+ *
+ * <h3>Shell-render fix for ambiguous multi-membership (BE-3-FIX, 2026-06-12)</h3>
+ * {@code /users/me} is the IDENTITY endpoint, not tenant-scoped business data.
+ * When a user belongs to MORE THAN ONE active tenant and the request carries no
+ * {@code X-Active-Tenant-Id} header / {@code active_tenant_id} claim, the
+ * resolver fails closed to {@code tenantId == null} (correct for data reads — no
+ * cross-tenant leak, BE-3). But that would also leave {@code /me} permission-
+ * empty, locking the SPA shell entirely for the top-privilege super admin (the
+ * production regression). So, ONLY for this identity payload, we deterministically
+ * pick a SINGLE default tenant and expand permissions for THAT one tenant via
+ * {@link MembershipAuthorityResolver} so the shell can render. The SPA adopts the
+ * returned {@code activeTenantId} and sends it as {@code X-Active-Tenant-Id} on
+ * every subsequent request — so tenant-scoped DATA reads remain strictly scoped
+ * and the fail-closed guarantee on those reads is untouched.
+ *
+ * <p>SECURITY: the expansion is for EXACTLY ONE membership/tenant — it never
+ * unions permissions across tenants. The reported {@code activeTenantId} and the
+ * reported {@code permissions} are always for the SAME single tenant, so the
+ * shell never shows capabilities the user lacks in the tenant it will operate in.
  */
 @Service
 public class GetCurrentUserUseCase {
@@ -45,15 +65,18 @@ public class GetCurrentUserUseCase {
     private final UserTenantMembershipRepository membershipRepository;
     private final TenantRepository tenantRepository;
     private final ClientCompanyRepository clientCompanyRepository;
+    private final MembershipAuthorityResolver authorityResolver;
 
     public GetCurrentUserUseCase(UserRepository userRepository,
                                  UserTenantMembershipRepository membershipRepository,
                                  TenantRepository tenantRepository,
-                                 ClientCompanyRepository clientCompanyRepository) {
+                                 ClientCompanyRepository clientCompanyRepository,
+                                 MembershipAuthorityResolver authorityResolver) {
         this.userRepository = userRepository;
         this.membershipRepository = membershipRepository;
         this.tenantRepository = tenantRepository;
         this.clientCompanyRepository = clientCompanyRepository;
+        this.authorityResolver = authorityResolver;
     }
 
     @Transactional(readOnly = true)
@@ -76,6 +99,31 @@ public class GetCurrentUserUseCase {
 
         List<TenantMembershipSummary> tenantCards = buildTenantCards(memberships);
 
+        // Default: the context already pinned an active tenant; its roles/
+        // permissions are scoped to that tenant by the resolver. Use them verbatim.
+        UUID activeTenantId = ctx.tenantId();
+        Set<String> roles = Optional.ofNullable(ctx.roles()).orElse(Set.of());
+        Set<String> permissions = Optional.ofNullable(ctx.permissions()).orElse(Set.of());
+        boolean salaryPermission = ctx.salaryPermission();
+
+        // Shell-render fix (BE-3-FIX): the resolver failed closed to NO active
+        // tenant (ambiguous multi-membership, header-less first /me). For the
+        // IDENTITY payload only, pick ONE default tenant deterministically and
+        // expand permissions for THAT single tenant so the SPA shell renders.
+        // Data reads remain fail-closed (they need the X-Active-Tenant-Id header,
+        // which the SPA will now send because it adopts this activeTenantId).
+        if (activeTenantId == null) {
+            UserTenantMembershipJpaEntity defaultMembership = pickDefaultActiveMembership(memberships);
+            if (defaultMembership != null) {
+                MembershipAuthorityResolver.Authority authority =
+                        authorityResolver.expand(defaultMembership);
+                activeTenantId = defaultMembership.getTenantId();
+                roles = authority.roleCodes();
+                permissions = authority.permissionCodes();
+                salaryPermission = authority.salaryPermission();
+            }
+        }
+
         return new CurrentUserResponse(
                 new CurrentUserResponse.UserIdentity(
                         user.getId(),
@@ -85,11 +133,33 @@ public class GetCurrentUserUseCase {
                         user.getStatus() != null ? user.getStatus().name() : null
                 ),
                 tenantCards,
-                ctx.tenantId(),
-                Optional.ofNullable(ctx.roles()).orElse(Set.of()),
-                Optional.ofNullable(ctx.permissions()).orElse(Set.of()),
-                ctx.salaryPermission()
+                activeTenantId,
+                roles,
+                permissions,
+                salaryPermission
         );
+    }
+
+    /**
+     * Deterministically choose ONE default tenant for the {@code /users/me}
+     * identity payload when the request resolved to no active tenant. Order:
+     * earliest-created ACTIVE membership, tie-broken by tenant id for a stable
+     * choice across requests. Returns {@code null} when the user has no ACTIVE
+     * membership (e.g. only INVITED/SUSPENDED), in which case the shell stays
+     * gated and the SPA prompts to pick a company-client.
+     *
+     * <p>SECURITY: returns a SINGLE membership — the caller expands permissions
+     * for exactly this one tenant. Never unions across tenants.
+     */
+    private static UserTenantMembershipJpaEntity pickDefaultActiveMembership(
+            List<UserTenantMembershipJpaEntity> memberships) {
+        return memberships.stream()
+                .filter(m -> m.getStatus() == MembershipStatus.ACTIVE)
+                .min(Comparator
+                        .comparing(UserTenantMembershipJpaEntity::getCreatedAt,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(UserTenantMembershipJpaEntity::getTenantId))
+                .orElse(null);
     }
 
     private List<TenantMembershipSummary> buildTenantCards(List<UserTenantMembershipJpaEntity> memberships) {

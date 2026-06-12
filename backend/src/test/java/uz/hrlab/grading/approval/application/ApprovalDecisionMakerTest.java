@@ -62,7 +62,8 @@ class ApprovalDecisionMakerTest {
         queries = mock(ApprovalQueries.class);
         abacGate = mock(AbacGate.class);
         audit = mock(AuditService.class);
-        maker = new ApprovalDecisionMaker(requests, steps, decisions, queries, abacGate, audit);
+        maker = new ApprovalDecisionMaker(requests, steps, decisions, queries, abacGate, audit,
+                java.util.List.of());
 
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
@@ -126,6 +127,55 @@ class ApprovalDecisionMakerTest {
     void reject_shortReason_throws() {
         assertThatThrownBy(() -> maker.reject(requestId, stepId, "short"))
                 .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void outcomeListenerIsInvokedOnceWithEntityTypeOnTerminalApproval() {
+        // BE-10 manual coupling — on a terminal APPROVED status the decision maker
+        // notifies each registered ApprovalOutcomeListener exactly once with the
+        // request's entity type/id and the new status (the panel module listens
+        // for EVALUATION_PANEL).
+        UUID panelEntityId = UUID.randomUUID();
+        ApprovalRequestJpaEntity panelReq = new ApprovalRequestJpaEntity(requestId, tenantId,
+                projectId, ApprovalEntityType.EVALUATION_PANEL, panelEntityId, UUID.randomUUID(),
+                OffsetDateTime.now(), ApprovalRequestStatus.PENDING, null);
+        ApprovalStepJpaEntity panelStep = new ApprovalStepJpaEntity(stepId, tenantId, requestId, 1,
+                null, "EVALUATION_PANEL_APPROVE", ApprovalStepStatus.PENDING);
+        given(requests.findByIdAndTenantId(eq(requestId), eq(tenantId)))
+                .willReturn(Optional.of(panelReq));
+        given(steps.findByIdAndTenantId(eq(stepId), eq(tenantId)))
+                .willReturn(Optional.of(panelStep));
+
+        var listener = mock(ApprovalOutcomeListener.class);
+        var ctx = new TenantContext(userId, tenantId, Set.of(projectId),
+                Set.of("HRLAB_PROJECT_MANAGER"),
+                Set.of("APPROVAL_REQUEST_DECIDE", "EVALUATION_PANEL_APPROVE"),
+                Set.of(), false, "ru-RU");
+        TenantContextHolder.set(ctx);
+        ApprovalDecisionMaker withListener = new ApprovalDecisionMaker(
+                requests, steps, decisions, queries, abacGate, audit, java.util.List.of(listener));
+
+        withListener.approve(requestId, stepId, null);
+
+        org.mockito.Mockito.verify(listener).onApprovalRequestDecided(
+                eq(tenantId), eq(ApprovalEntityType.EVALUATION_PANEL), eq(panelEntityId),
+                eq(ApprovalRequestStatus.APPROVED), eq(userId));
+    }
+
+    @Test
+    void outcomeListenerIsNotInvokedOnMidChainPendingApproval() {
+        var listener = mock(ApprovalOutcomeListener.class);
+        ApprovalDecisionMaker withListener = new ApprovalDecisionMaker(
+                requests, steps, decisions, queries, abacGate, audit, java.util.List.of(listener));
+        // A pending next step keeps the request PENDING -> no terminal notification.
+        ApprovalStepJpaEntity next = new ApprovalStepJpaEntity(UUID.randomUUID(), tenantId,
+                requestId, 2, null, "JOB_PROFILE_APPROVE", ApprovalStepStatus.PENDING);
+        given(queries.findCurrentPendingStep(eq(tenantId), eq(requestId))).willReturn(next);
+
+        withListener.approve(requestId, stepId, null);
+
+        org.mockito.Mockito.verify(listener, org.mockito.Mockito.never())
+                .onApprovalRequestDecided(any(), any(), any(), any(), any());
     }
 
     @Test

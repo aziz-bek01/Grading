@@ -95,16 +95,32 @@ public class CreateEvaluationUseCase {
         abacGate.enforceCanWriteInDepartment(
                 ctx, position.getProjectId(), position.getDepartmentId());
 
-        boolean activeExists = evaluations
-                .existsByTenantIdAndPositionIdAndMethodologyVersionIdAndStatusNot(
-                        ctx.tenantId(), position.getId(), version.getId(),
-                        EvaluationStatus.ARCHIVED);
-        if (activeExists) {
-            throw new ValidationException(
-                    "An active evaluation already exists for this position and methodology version");
+        UUID evaluator = cmd.evaluatorUserId() != null ? cmd.evaluatorUserId() : ctx.userId();
+
+        // MVP2 multi-evaluator — the uniqueness moved UP to the panel level. A
+        // panel-seat evaluation guards one-active-per-(panel, evaluator); a
+        // panelless single evaluation keeps the legacy one-active-per-(position,
+        // methodology version) guard. The relaxed DB unique index is the source
+        // of truth in both cases; these are the friendly app-layer pre-checks.
+        if (cmd.panelId() != null) {
+            boolean seatExists = evaluations
+                    .existsByTenantIdAndPanelIdAndEvaluatorUserIdAndStatusNot(
+                            ctx.tenantId(), cmd.panelId(), evaluator, EvaluationStatus.ARCHIVED);
+            if (seatExists) {
+                throw new ValidationException(
+                        "An active evaluation already exists for this evaluator on the panel");
+            }
+        } else {
+            boolean activeExists = evaluations
+                    .existsByTenantIdAndPositionIdAndMethodologyVersionIdAndStatusNot(
+                            ctx.tenantId(), position.getId(), version.getId(),
+                            EvaluationStatus.ARCHIVED);
+            if (activeExists) {
+                throw new ValidationException(
+                        "An active evaluation already exists for this position and methodology version");
+            }
         }
 
-        UUID evaluator = cmd.evaluatorUserId() != null ? cmd.evaluatorUserId() : ctx.userId();
         EvaluationJpaEntity entity = new EvaluationJpaEntity(
                 UUID.randomUUID(),
                 ctx.tenantId(),
@@ -113,6 +129,8 @@ public class CreateEvaluationUseCase {
                 version.getId(),
                 evaluator,
                 EvaluationStatus.DRAFT);
+        entity.setPanelId(cmd.panelId());
+        entity.setEvaluatorRole(cmd.evaluatorRole());
         evaluations.save(entity);
 
         audit.record(AuditEvent.builder()

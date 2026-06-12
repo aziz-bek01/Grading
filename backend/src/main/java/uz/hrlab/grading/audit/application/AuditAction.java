@@ -182,6 +182,20 @@ public final class AuditAction {
     /** Bulk submit (multiple evaluations transitioned COMPLETE→SUBMITTED in one operation). */
     public static final String EVALUATION_BULK_SUBMITTED     = "EVALUATION_BULK_SUBMITTED";
 
+    // Evaluation panel — multi-evaluator (MVP2). Append-only; every row carries
+    // tenant_id + project_id + actor_user_id + panel_id (entity_id). Redacted:
+    // _AVERAGED stores evaluator_count + total only, never per-evaluator comments
+    // (REQ-AUD-3). Blind-bypass denials reuse ACCESS_DENIED_BY_ABAC.
+    public static final String EVALUATION_PANEL_CREATED             = "EVALUATION_PANEL_CREATED";
+    public static final String EVALUATION_PANEL_EVALUATOR_ASSIGNED  = "EVALUATION_PANEL_EVALUATOR_ASSIGNED";
+    public static final String EVALUATION_PANEL_EVALUATOR_WITHDRAWN = "EVALUATION_PANEL_EVALUATOR_WITHDRAWN";
+    public static final String EVALUATION_PANEL_ROSTER_LOCKED       = "EVALUATION_PANEL_ROSTER_LOCKED";
+    public static final String EVALUATION_PANEL_EVALUATOR_COMPLETED = "EVALUATION_PANEL_EVALUATOR_COMPLETED";
+    public static final String EVALUATION_PANEL_AVERAGED           = "EVALUATION_PANEL_AVERAGED";
+    public static final String EVALUATION_PANEL_SUBMITTED_TO_CEO   = "EVALUATION_PANEL_SUBMITTED_TO_CEO";
+    public static final String EVALUATION_PANEL_APPROVED           = "EVALUATION_PANEL_APPROVED";
+    public static final String EVALUATION_PANEL_REOPENED          = "EVALUATION_PANEL_REOPENED";
+
     // Grade structure (Phase 6)
     public static final String GRADE_STRUCTURE_CREATED          = "GRADE_STRUCTURE_CREATED";
     public static final String GRADE_STRUCTURE_UPDATED          = "GRADE_STRUCTURE_UPDATED";

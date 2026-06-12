@@ -41,6 +41,16 @@ public class EvaluationJpaEntity extends AuditedJpaEntity {
     @Column(name = "status", nullable = false, length = 32)
     private EvaluationStatus status;
 
+    // MVP2 multi-evaluator (changelog 035) — nullable: legacy single evaluations
+    // are backfilled into a min_evaluators=1 panel; brand-new single evaluations
+    // created outside a panel keep these null until linked.
+    @Column(name = "panel_id")
+    private UUID panelId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "evaluator_role", length = 40)
+    private uz.hrlab.grading.evaluation.domain.EvaluatorRole evaluatorRole;
+
     @Column(name = "raw_total_score", precision = 12, scale = 4, nullable = false)
     private BigDecimal rawTotalScore = BigDecimal.ZERO;
 
@@ -118,8 +128,14 @@ public class EvaluationJpaEntity extends AuditedJpaEntity {
     public UUID getLockedBy() { return lockedBy; }
     public OffsetDateTime getArchivedAt() { return archivedAt; }
     public UUID getArchivedBy() { return archivedBy; }
+    public UUID getPanelId() { return panelId; }
+    public uz.hrlab.grading.evaluation.domain.EvaluatorRole getEvaluatorRole() { return evaluatorRole; }
 
     public void setEvaluatorUserId(UUID v) { this.evaluatorUserId = v; }
+    public void setPanelId(UUID v) { this.panelId = v; }
+    public void setEvaluatorRole(uz.hrlab.grading.evaluation.domain.EvaluatorRole v) {
+        this.evaluatorRole = v;
+    }
     public void setStatus(EvaluationStatus v) { this.status = v; }
     public void setRawTotalScore(BigDecimal v) {
         this.rawTotalScore = v == null ? BigDecimal.ZERO : v;

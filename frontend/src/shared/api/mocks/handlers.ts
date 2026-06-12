@@ -38,6 +38,9 @@ import {
   mockDb,
   type MockCalibrationEvent,
   type MockDepartment,
+  type MockPanel,
+  type MockPanelAssignment,
+  type MockEvaluatorRole,
   type MockEvaluation,
   type MockEvaluationScore,
   type MockEvaluationStatus,
@@ -2959,6 +2962,11 @@ const MOCK_CURRENT_USER_PERMISSIONS = new Set<string>([
   'APPROVAL_STEP_REJECT',
   'APPROVAL_REQUEST_CREATE',
   'APPROVAL_REQUEST_CANCEL',
+  // EVALUATION_PANEL — the CEO sign-off step authority (distinct from per-sheet
+  // EVALUATION_APPROVE) so the panel approval shows in the dev inbox under MSW.
+  'EVALUATION_PANEL_APPROVE',
+  'EVALUATION_PANEL_MANAGE',
+  'CAMPAIGN_RESULTS_VIEW',
 ]);
 
 function approvalById(id: string) {
@@ -3127,6 +3135,268 @@ function handleApprovals(
     step.reason_i18n = { 'en-US': body.reason as string };
     a.current_status = 'CHANGES_REQUESTED';
     return ok(a);
+  }
+
+  return null;
+}
+
+// ============================================================
+// MVP 2 — EVALUATION_PANEL (multi-evaluator) handlers
+//
+// Written FROM the BE golden-file records (house rule MSW-from-BE). snake_case
+// wire; PageResponse { items, page, size, total } for the list; @JsonInclude
+// (NON_NULL) honoured by OMITTING null fields. The mass-assignment guard mirrors
+// the BE: client-supplied raw_total_score / displayed_total_score /
+// evaluator_count / assigned_grade_number / tenant_id are dropped on create.
+// ============================================================
+
+const MANDATORY_PANEL_ROLES: MockEvaluatorRole[] = [
+  'HR_DIRECTOR',
+  'DEPARTMENT_DIRECTOR',
+  'EXTERNAL_EXPERT',
+];
+
+function panelById(id: string): MockPanel | undefined {
+  return mockDb.panels.find((p) => p.id === id);
+}
+
+function panelRoster(panelId: string): MockPanelAssignment[] {
+  return mockDb.panelAssignments.filter((a) => a.panel_id === panelId);
+}
+
+/** Strip the server-computed / mass-assignment fields from a create body. */
+function stripPanelMassAssignment(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const clone = { ...body };
+  for (const k of [
+    'raw_total_score',
+    'displayed_total_score',
+    'evaluator_count',
+    'assigned_grade_number',
+    'grade_band_id',
+    'completed_count',
+    'status',
+  ]) {
+    delete clone[k];
+  }
+  return clone;
+}
+
+function handlePanels(
+  method: string,
+  path: string,
+  query: URLSearchParams,
+  config: AxiosRequestConfig,
+): MatchResult | null {
+  // GET /panels?project_id=&position_id=  → PageResponse<PanelResponse>
+  if (path === '/panels' && method === 'GET') {
+    const projectId = query.get('project_id');
+    const positionId = query.get('position_id');
+    let list = mockDb.panels;
+    if (projectId) list = list.filter((p) => p.project_id === projectId);
+    if (positionId) list = list.filter((p) => p.position_id === positionId);
+    return ok({
+      items: list,
+      page: 0,
+      size: Math.max(list.length, 1),
+      total: list.length,
+      total_pages: 1,
+    });
+  }
+
+  // POST /panels  → 201 PanelResponse (server-computed fields ignored)
+  if (path === '/panels' && method === 'POST') {
+    const raw = readBody<Record<string, unknown>>(config);
+    const stripped = stripTenantFromBody(
+      stripPanelMassAssignment(raw),
+      path,
+      'POST',
+    ) as {
+      position_id?: string;
+      methodology_version_id?: string;
+      min_evaluators?: number;
+    };
+    if (!stripped.position_id || !stripped.methodology_version_id) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'position_id + methodology_version_id required' },
+      };
+    }
+    const pos = mockDb.positions.find((p) => p.id === stripped.position_id);
+    if (!pos) return notFound();
+    const next: MockPanel = {
+      id: uuid(),
+      project_id: pos.project_id,
+      position_id: stripped.position_id,
+      position_title_i18n: pos.title_i18n,
+      methodology_version_id: stripped.methodology_version_id,
+      status: 'COLLECTING',
+      min_evaluators: Math.max(stripped.min_evaluators ?? 3, 1),
+      evaluator_count: 0,
+      completed_count: 0,
+      created_at: new Date().toISOString(),
+    };
+    mockDb.panels.unshift(next);
+    return ok(next, 201);
+  }
+
+  // GET /panels/:id  → PanelDetailResponse (blind-safe — STATUS only)
+  const detail = /^\/panels\/([^/]+)$/.exec(path);
+  if (detail && method === 'GET') {
+    const panel = panelById(detail[1]);
+    if (!panel) return notFound();
+    const roster = panelRoster(panel.id);
+    const active = roster.filter((a) => a.assignment_status !== 'WITHDRAWN');
+    return ok({
+      panel,
+      roster,
+      completed_count: active.filter((a) => a.assignment_status === 'COMPLETED').length,
+      total_count: active.length,
+    });
+  }
+
+  // GET /panels/:id/result  → PanelResultResponse (gated; 404 while collecting)
+  const resultMatch = /^\/panels\/([^/]+)\/result$/.exec(path);
+  if (resultMatch && method === 'GET') {
+    const panel = panelById(resultMatch[1]);
+    if (!panel) return notFound();
+    // REQ-ISO-5: no result until AVERAGED. 404 (no existence reveal of scores).
+    if (panel.status === 'COLLECTING' || panel.status === 'AWAITING_EVALUATIONS') {
+      return notFound();
+    }
+    return ok({
+      panel_id: panel.id,
+      displayed_total_score: panel.displayed_total_score ?? 0,
+      raw_total_score: panel.raw_total_score ?? 0,
+      evaluator_count: panel.evaluator_count,
+      factor_averages: mockDb.panelFactorAverages,
+      grade_band_id: panel.grade_band_id ?? undefined,
+      assigned_grade_number: panel.assigned_grade_number ?? undefined,
+    });
+  }
+
+  // POST /panels/:id/evaluators  → 201 PanelAssignmentResponse (COLLECTING only)
+  const evaluators = /^\/panels\/([^/]+)\/evaluators$/.exec(path);
+  if (evaluators && method === 'POST') {
+    const panel = panelById(evaluators[1]);
+    if (!panel) return notFound();
+    if (panel.status !== 'COLLECTING') {
+      return {
+        status: 409,
+        body: { code: 'ROSTER_LOCKED', message: 'Roster mutation only allowed while COLLECTING' },
+      };
+    }
+    const raw = readBody<Record<string, unknown>>(config);
+    const body = stripTenantFromBody(raw, path, 'POST') as {
+      evaluator_user_id?: string;
+      evaluator_role?: MockEvaluatorRole;
+    };
+    if (!body.evaluator_user_id || !body.evaluator_role) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'evaluator_user_id + evaluator_role required' },
+      };
+    }
+    // Best-effort name resolution (mirrors the BE ActorNameResolver): reuse any
+    // existing assignment's resolved name for the same user; otherwise null
+    // (NON_NULL omits it — the FE falls back to a short id).
+    const knownName = mockDb.panelAssignments.find(
+      (a) => a.evaluator_user_id === body.evaluator_user_id && a.evaluator_name,
+    )?.evaluator_name;
+    const next: MockPanelAssignment = {
+      id: uuid(),
+      panel_id: panel.id,
+      evaluator_user_id: body.evaluator_user_id,
+      evaluator_name: knownName ?? null,
+      evaluator_role: body.evaluator_role,
+      assignment_status: 'ASSIGNED',
+      updated_at: new Date().toISOString(),
+    };
+    mockDb.panelAssignments.push(next);
+    panel.evaluator_count = panelRoster(panel.id).filter(
+      (a) => a.assignment_status !== 'WITHDRAWN',
+    ).length;
+    return ok(next, 201);
+  }
+
+  // DELETE /panels/:id/evaluators/:userId → 204 (WITHDRAWN; COLLECTING only)
+  const evaluator = /^\/panels\/([^/]+)\/evaluators\/([^/]+)$/.exec(path);
+  if (evaluator && method === 'DELETE') {
+    const panel = panelById(evaluator[1]);
+    if (!panel) return notFound();
+    if (panel.status !== 'COLLECTING') {
+      return {
+        status: 409,
+        body: { code: 'ROSTER_LOCKED', message: 'Roster mutation only allowed while COLLECTING' },
+      };
+    }
+    const assignment = mockDb.panelAssignments.find(
+      (a) => a.panel_id === panel.id && a.evaluator_user_id === evaluator[2],
+    );
+    if (!assignment) return notFound();
+    assignment.assignment_status = 'WITHDRAWN';
+    assignment.updated_at = new Date().toISOString();
+    panel.evaluator_count = panelRoster(panel.id).filter(
+      (a) => a.assignment_status !== 'WITHDRAWN',
+    ).length;
+    return { status: 204, body: null };
+  }
+
+  // POST /panels/:id/lock-roster → 200 PanelResponse (min-3 + mandatory trio)
+  const lockRoster = /^\/panels\/([^/]+)\/lock-roster$/.exec(path);
+  if (lockRoster && method === 'POST') {
+    const panel = panelById(lockRoster[1]);
+    if (!panel) return notFound();
+    if (panel.status !== 'COLLECTING') {
+      return {
+        status: 409,
+        body: { code: 'INVALID_TRANSITION', message: `Cannot lock roster in ${panel.status}` },
+      };
+    }
+    const active = panelRoster(panel.id).filter(
+      (a) => a.assignment_status !== 'WITHDRAWN',
+    );
+    const roles = new Set(active.map((a) => a.evaluator_role));
+    const missing = MANDATORY_PANEL_ROLES.filter((r) => !roles.has(r));
+    if (missing.length > 0) {
+      return {
+        status: 400,
+        body: { code: 'MANDATORY_ROLES_MISSING', message: `Missing roles: ${missing.join(', ')}` },
+      };
+    }
+    if (active.length < panel.min_evaluators) {
+      return {
+        status: 400,
+        body: { code: 'ROSTER_BELOW_FLOOR', message: `Need >= ${panel.min_evaluators} evaluators` },
+      };
+    }
+    panel.status = 'AWAITING_EVALUATIONS';
+    panel.evaluator_count = active.length;
+    // Create one DRAFT evaluation per seat (mirrors AC-2).
+    for (const a of active) {
+      if (!a.evaluation_id) {
+        a.evaluation_id = uuid();
+        a.assignment_status = 'ASSIGNED';
+      }
+    }
+    return ok(panel);
+  }
+
+  // POST /panels/:id/submit → 200 PanelResponse (AVERAGED only; opens approval)
+  const submit = /^\/panels\/([^/]+)\/submit$/.exec(path);
+  if (submit && method === 'POST') {
+    const panel = panelById(submit[1]);
+    if (!panel) return notFound();
+    if (panel.status !== 'AVERAGED') {
+      return {
+        status: 409,
+        body: { code: 'PANEL_NOT_AVERAGED', message: 'Panel must be AVERAGED before CEO submit' },
+      };
+    }
+    panel.status = 'SUBMITTED';
+    panel.submitted_at = new Date().toISOString();
+    return ok(panel);
   }
 
   return null;
@@ -3918,6 +4188,7 @@ export function tryHandle(config: AxiosRequestConfig): MatchResult | null {
     handleGradeStructures(method, path, query, config) ??
     handleGradesAndBands(method, path, query, config) ??
     handleApprovals(method, path, query, config) ??
+    handlePanels(method, path, query, config) ??
     handleComments(method, path, query, config) ??
     handleImportTemplates(method, path) ??
     handleImports(method, path, query, config) ??

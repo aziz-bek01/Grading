@@ -426,6 +426,28 @@ class ArchitectureTest {
         rule.check(CLASSES);
     }
 
+    // ---------------------------------------------------------------------
+    //  Rule 12 (MVP2 multi-evaluator, BE-17) — PanelAveragingService is a PURE
+    //  domain service: it must NOT depend on any infrastructure/repository,
+    //  Spring data, clock, or IO. The whole point is golden-file reproducibility
+    //  (same inputs -> byte-identical output), exactly like EvaluationScoringEngine.
+    // ---------------------------------------------------------------------
+    @Test
+    void panelAveragingServiceMustBePure() {
+        ArchRule rule = noClasses()
+                .that().haveSimpleName("PanelAveragingService")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "..infrastructure..",
+                        "org.springframework.data..",
+                        "java.time..",
+                        "java.io..",
+                        "java.sql..")
+                .because("PanelAveragingService is the single pure averaging function "
+                        + "(MVP2 BE-3) — no IO, no clock, no repositories — so it is "
+                        + "golden-file reproducible like EvaluationScoringEngine.");
+        rule.check(CLASSES);
+    }
+
     @Test
     void controllersMustNotBindTenantIdAsPathVariableOutsideAdmin() {
         ArchRule rule = classes()

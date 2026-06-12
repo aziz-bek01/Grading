@@ -1,0 +1,174 @@
+# MVP2 multi-evaluator — SCHEMA-1. ADDITIVE: three new tables. Zero impact on
+# existing rows. Every index tenant_id-first; FKs/CHECKs/indexes in a sql block
+# (mirrors 015/032). The relocated uniqueness (old evaluations one-active rule
+# moved up to the panel level) lives here as uq_panels_active_per_position_version.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-034-create-evaluation-panels
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,multi-evaluator
+      changes:
+        - createTable:
+            tableName: evaluation_panels
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: tenant_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: project_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: position_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: methodology_version_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: status, type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: min_evaluators, type: INT, defaultValueNumeric: 3, constraints: { nullable: false } }
+              - column: { name: raw_total_score, type: NUMERIC(12,4) }
+              - column: { name: displayed_total_score, type: NUMERIC(12,2) }
+              - column: { name: grade_band_id, type: UUID }
+              - column: { name: assigned_grade_number, type: INT }
+              - column: { name: averaged_at, type: TIMESTAMPTZ }
+              - column: { name: averaged_by, type: UUID }
+              - column: { name: submitted_at, type: TIMESTAMPTZ }
+              - column: { name: submitted_by, type: UUID }
+              - column: { name: approved_at, type: TIMESTAMPTZ }
+              - column: { name: approved_by, type: UUID }
+              - column: { name: locked_at, type: TIMESTAMPTZ }
+              - column: { name: locked_by, type: UUID }
+              - column: { name: archived_at, type: TIMESTAMPTZ }
+              - column: { name: archived_by, type: UUID }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+        - sql:
+            sql: |
+              ALTER TABLE evaluation_panels ADD CONSTRAINT fk_evaluation_panels_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE evaluation_panels ADD CONSTRAINT fk_evaluation_panels_project
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT;
+              ALTER TABLE evaluation_panels ADD CONSTRAINT fk_evaluation_panels_position
+                FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE RESTRICT;
+              ALTER TABLE evaluation_panels ADD CONSTRAINT fk_evaluation_panels_methodology_version
+                FOREIGN KEY (methodology_version_id) REFERENCES methodology_versions(id) ON DELETE RESTRICT;
+              -- grade_band_id intentionally NOT FK-constrained — mirrors evaluations.grade_band_id
+              -- (015 leaves it un-FK'd, set by the grade-assignment service). Kept symmetric.
+              ALTER TABLE evaluation_panels ADD CONSTRAINT chk_panel_status
+                CHECK (status IN ('COLLECTING','AWAITING_EVALUATIONS','AVERAGED','SUBMITTED','APPROVED','LOCKED','ARCHIVED'));
+              ALTER TABLE evaluation_panels ADD CONSTRAINT chk_panel_min_evaluators
+                CHECK (min_evaluators >= 1);
+              ALTER TABLE evaluation_panels ADD CONSTRAINT chk_panel_raw_total_non_negative
+                CHECK (raw_total_score IS NULL OR raw_total_score >= 0);
+              ALTER TABLE evaluation_panels ADD CONSTRAINT chk_panel_displayed_total_non_negative
+                CHECK (displayed_total_score IS NULL OR displayed_total_score >= 0);
+              -- THE relocated uniqueness (old evaluations rule moved up one level):
+              CREATE UNIQUE INDEX uq_panels_active_per_position_version
+                ON evaluation_panels (tenant_id, project_id, position_id, methodology_version_id)
+                WHERE status <> 'ARCHIVED';
+              CREATE INDEX idx_panels_tenant_project_status ON evaluation_panels (tenant_id, project_id, status);
+              CREATE INDEX idx_panels_tenant_position       ON evaluation_panels (tenant_id, position_id);
+              CREATE INDEX idx_panels_mv                     ON evaluation_panels (tenant_id, methodology_version_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_panels_mv;
+              DROP INDEX IF EXISTS idx_panels_tenant_position;
+              DROP INDEX IF EXISTS idx_panels_tenant_project_status;
+              DROP INDEX IF EXISTS uq_panels_active_per_position_version;
+        - dropTable:
+            tableName: evaluation_panels
+
+  - changeSet:
+      id: tenant-034-create-panel-assignments
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,multi-evaluator
+      changes:
+        - createTable:
+            tableName: panel_assignments
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: tenant_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: panel_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: evaluator_user_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: evaluator_role, type: VARCHAR(40), constraints: { nullable: false } }
+              - column: { name: evaluation_id, type: UUID }
+              - column: { name: assignment_status, type: VARCHAR(24), constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+        - sql:
+            sql: |
+              ALTER TABLE panel_assignments ADD CONSTRAINT fk_panel_assignments_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE panel_assignments ADD CONSTRAINT fk_panel_assignments_panel
+                FOREIGN KEY (panel_id) REFERENCES evaluation_panels(id) ON DELETE CASCADE;
+              ALTER TABLE panel_assignments ADD CONSTRAINT fk_panel_assignments_evaluator
+                FOREIGN KEY (evaluator_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+              -- SET NULL: a deleted/archived per-evaluator row must not orphan-block the
+              -- assignment; the roster row remains as history.
+              ALTER TABLE panel_assignments ADD CONSTRAINT fk_panel_assignments_evaluation
+                FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL;
+              ALTER TABLE panel_assignments ADD CONSTRAINT chk_panel_assignment_role
+                CHECK (evaluator_role IN ('HR_DIRECTOR','DEPARTMENT_DIRECTOR','EXTERNAL_EXPERT','ADDITIONAL'));
+              ALTER TABLE panel_assignments ADD CONSTRAINT chk_panel_assignment_status
+                CHECK (assignment_status IN ('ASSIGNED','IN_PROGRESS','COMPLETED','WITHDRAWN'));
+              CREATE UNIQUE INDEX uq_panel_assignment_per_evaluator
+                ON panel_assignments (tenant_id, panel_id, evaluator_user_id)
+                WHERE assignment_status <> 'WITHDRAWN';
+              CREATE INDEX idx_panel_assignments_panel
+                ON panel_assignments (tenant_id, panel_id);
+              CREATE INDEX idx_panel_assignments_evaluator
+                ON panel_assignments (tenant_id, evaluator_user_id, assignment_status);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_panel_assignments_evaluator;
+              DROP INDEX IF EXISTS idx_panel_assignments_panel;
+              DROP INDEX IF EXISTS uq_panel_assignment_per_evaluator;
+        - dropTable:
+            tableName: panel_assignments
+
+  - changeSet:
+      id: tenant-034-create-panel-factor-averages
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,multi-evaluator
+      changes:
+        - createTable:
+            tableName: panel_factor_averages
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: gen_random_uuid(), constraints: { primaryKey: true, nullable: false } }
+              - column: { name: tenant_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: panel_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: factor_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: avg_raw_factor_score, type: NUMERIC(12,4), constraints: { nullable: false } }
+              - column: { name: evaluator_count, type: INT, constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+              - column: { name: created_by, type: UUID }
+              - column: { name: updated_by, type: UUID }
+        - sql:
+            sql: |
+              ALTER TABLE panel_factor_averages ADD CONSTRAINT fk_panel_factor_averages_tenant
+                FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE RESTRICT ON UPDATE NO ACTION;
+              ALTER TABLE panel_factor_averages ADD CONSTRAINT fk_panel_factor_averages_panel
+                FOREIGN KEY (panel_id) REFERENCES evaluation_panels(id) ON DELETE CASCADE;
+              ALTER TABLE panel_factor_averages ADD CONSTRAINT fk_panel_factor_averages_factor
+                FOREIGN KEY (factor_id) REFERENCES factors(id) ON DELETE RESTRICT;
+              ALTER TABLE panel_factor_averages ADD CONSTRAINT chk_panel_factor_avg_non_negative
+                CHECK (avg_raw_factor_score >= 0);
+              ALTER TABLE panel_factor_averages ADD CONSTRAINT chk_panel_factor_avg_evaluator_count
+                CHECK (evaluator_count >= 1);
+              CREATE UNIQUE INDEX uq_panel_factor_average
+                ON panel_factor_averages (tenant_id, panel_id, factor_id);
+              CREATE INDEX idx_panel_factor_averages_panel
+                ON panel_factor_averages (tenant_id, panel_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_panel_factor_averages_panel;
+              DROP INDEX IF EXISTS uq_panel_factor_average;
+        - dropTable:
+            tableName: panel_factor_averages

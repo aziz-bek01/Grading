@@ -1,0 +1,129 @@
+# MVP2 multi-evaluator — SCHEMA-3. IDEMPOTENT data migration. One
+# min_evaluators=1 panel per legacy active evaluation, then the ordering-sensitive
+# uniqueness swap (old evaluations one-active index dropped AFTER panels are
+# populated; relaxed one-active-per-(panel,evaluator) created). Pure DML,
+# splitStatements:true. Re-run is a no-op (WHERE guards). ARCHIVED evaluations are
+# NOT backfilled (panel_id stays NULL on archived history — harmless, the relaxed
+# evaluation index excludes ARCHIVED).
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-036-backfill-panels-from-evaluations
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,multi-evaluator,data-migration
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- (1) one panel per legacy active evaluation lacking a panel.
+              INSERT INTO evaluation_panels
+                (id, tenant_id, project_id, position_id, methodology_version_id, status, min_evaluators,
+                 raw_total_score, displayed_total_score, grade_band_id, assigned_grade_number,
+                 averaged_at, averaged_by,
+                 submitted_at, submitted_by,
+                 approved_at, approved_by, locked_at, locked_by, archived_at, archived_by,
+                 version, created_at, created_by)
+              SELECT
+                 gen_random_uuid(), e.tenant_id, e.project_id, e.position_id, e.methodology_version_id,
+                 CASE e.status
+                   WHEN 'DRAFT'      THEN 'COLLECTING'
+                   WHEN 'INCOMPLETE' THEN 'COLLECTING'
+                   WHEN 'COMPLETE'   THEN 'AWAITING_EVALUATIONS'
+                   WHEN 'SUBMITTED'  THEN 'SUBMITTED'
+                   WHEN 'APPROVED'   THEN 'APPROVED'
+                   WHEN 'LOCKED'     THEN 'LOCKED'
+                   WHEN 'ARCHIVED'   THEN 'ARCHIVED'
+                 END,
+                 1,
+                 CASE WHEN e.status IN ('APPROVED','LOCKED','ARCHIVED') THEN e.raw_total_score END,
+                 CASE WHEN e.status IN ('APPROVED','LOCKED','ARCHIVED') THEN e.displayed_total_score END,
+                 CASE WHEN e.status IN ('APPROVED','LOCKED','ARCHIVED') THEN e.grade_band_id END,
+                 CASE WHEN e.status IN ('APPROVED','LOCKED','ARCHIVED') THEN e.assigned_grade_number END,
+                 CASE WHEN e.status IN ('APPROVED','LOCKED','ARCHIVED') THEN e.approved_at END,
+                 CASE WHEN e.status IN ('APPROVED','LOCKED','ARCHIVED') THEN e.approved_by END,
+                 e.submitted_at, e.submitted_by,
+                 e.approved_at, e.approved_by, e.locked_at, e.locked_by, e.archived_at, e.archived_by,
+                 0, now(), e.created_by
+              FROM evaluations e
+              WHERE e.panel_id IS NULL
+                AND e.status <> 'ARCHIVED';
+
+              -- (2) link each active evaluation to its freshly created panel via the
+              --     business key. SAFE: the OLD one-active index (still present here)
+              --     guarantees exactly ONE active evaluation per business key -> 1:1 panel.
+              UPDATE evaluations e
+                 SET panel_id = p.id,
+                     evaluator_role = 'ADDITIONAL'
+              FROM evaluation_panels p
+              WHERE e.panel_id IS NULL
+                AND e.status <> 'ARCHIVED'
+                AND p.tenant_id              = e.tenant_id
+                AND p.project_id             = e.project_id
+                AND p.position_id            = e.position_id
+                AND p.methodology_version_id = e.methodology_version_id
+                AND p.min_evaluators = 1
+                AND p.status <> 'ARCHIVED';
+
+              -- (3) one roster assignment per linked evaluation (guarded: skip if present).
+              INSERT INTO panel_assignments
+                (id, tenant_id, panel_id, evaluator_user_id, evaluator_role, evaluation_id, assignment_status,
+                 version, created_at, created_by)
+              SELECT
+                 gen_random_uuid(), e.tenant_id, e.panel_id, e.evaluator_user_id, 'ADDITIONAL', e.id,
+                 CASE e.status
+                   WHEN 'DRAFT'      THEN 'ASSIGNED'
+                   WHEN 'INCOMPLETE' THEN 'IN_PROGRESS'
+                   WHEN 'COMPLETE'   THEN 'COMPLETED'
+                   WHEN 'SUBMITTED'  THEN 'COMPLETED'
+                   WHEN 'APPROVED'   THEN 'COMPLETED'
+                   WHEN 'LOCKED'     THEN 'COMPLETED'
+                 END,
+                 0, now(), e.created_by
+              FROM evaluations e
+              WHERE e.panel_id IS NOT NULL
+                AND e.status <> 'ARCHIVED'
+                AND NOT EXISTS (
+                  SELECT 1 FROM panel_assignments a
+                  WHERE a.tenant_id = e.tenant_id AND a.panel_id = e.panel_id
+                    AND a.evaluator_user_id = e.evaluator_user_id
+                );
+
+              -- (4) for already-approved/locked legacy evaluations, materialize their own
+              --     per-factor scores as the panel's averages (evaluator_count = 1) so the
+              --     panel result surface is consistent. Guarded against re-run.
+              INSERT INTO panel_factor_averages
+                (id, tenant_id, panel_id, factor_id, avg_raw_factor_score, evaluator_count,
+                 version, created_at, created_by)
+              SELECT
+                 gen_random_uuid(), e.tenant_id, e.panel_id, s.factor_id, s.raw_factor_score, 1,
+                 0, now(), e.created_by
+              FROM evaluations e
+              JOIN evaluation_scores s ON s.tenant_id = e.tenant_id AND s.evaluation_id = e.id
+              WHERE e.panel_id IS NOT NULL
+                AND e.status IN ('APPROVED','LOCKED')
+                AND NOT EXISTS (
+                  SELECT 1 FROM panel_factor_averages pfa
+                  WHERE pfa.tenant_id = e.tenant_id AND pfa.panel_id = e.panel_id
+                    AND pfa.factor_id = s.factor_id
+                );
+
+              -- (5) THE uniqueness transfer (ordering-sensitive — runs AFTER backfill so
+              --     panels are populated and there is never a window for duplicates).
+              DROP INDEX IF EXISTS uq_evaluations_active_per_position_version;
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_evaluations_active_per_panel_evaluator
+                ON evaluations (tenant_id, panel_id, evaluator_user_id)
+                WHERE status <> 'ARCHIVED' AND panel_id IS NOT NULL;
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              -- Reverse order: drop the relaxed index, re-create the old one-active index.
+              -- Legacy panels are 1:1 with their evaluation, so the old index cannot fail.
+              DROP INDEX IF EXISTS uq_evaluations_active_per_panel_evaluator;
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_evaluations_active_per_position_version
+                ON evaluations (tenant_id, project_id, position_id, methodology_version_id)
+                WHERE status <> 'ARCHIVED';
+              -- Unlink + clear backfilled data (panels themselves dropped by 034 rollback).
+              UPDATE evaluations SET panel_id = NULL, evaluator_role = NULL WHERE panel_id IS NOT NULL;

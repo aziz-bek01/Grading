@@ -59,6 +59,7 @@ public class EvaluationQueries {
     private final DepartmentRepository departments;
     private final DepartmentScopeFilter departmentScopeFilter;
     private final AbacGate abacGate;
+    private final PanelBiasGuard panelBiasGuard;
 
     public EvaluationQueries(EvaluationRepository evaluations,
                              EvaluationScoreRepository scores,
@@ -67,7 +68,8 @@ public class EvaluationQueries {
                              PositionRepository positions,
                              DepartmentRepository departments,
                              DepartmentScopeFilter departmentScopeFilter,
-                             AbacGate abacGate) {
+                             AbacGate abacGate,
+                             PanelBiasGuard panelBiasGuard) {
         this.evaluations = evaluations;
         this.scores = scores;
         this.calibrationEvents = calibrationEvents;
@@ -76,6 +78,7 @@ public class EvaluationQueries {
         this.departments = departments;
         this.departmentScopeFilter = departmentScopeFilter;
         this.abacGate = abacGate;
+        this.panelBiasGuard = panelBiasGuard;
     }
 
     @Transactional(readOnly = true)
@@ -90,6 +93,9 @@ public class EvaluationQueries {
         // fix), mirroring FindPositionQuery.findById. An evaluation inherits its
         // department from its Position; out-of-subtree scoped callers → 404.
         enforceReadScope(ctx, evaluation);
+        // BE-11 — bias-isolation: a peer cannot read another evaluator's sheet
+        // while the panel is collecting (deny-by-default; 404 + denial audit).
+        panelBiasGuard.enforceCanReadSheet(ctx, evaluation);
         return evaluation;
     }
 
@@ -143,6 +149,9 @@ public class EvaluationQueries {
                 .orElseThrow(TenantAccessDeniedException::new);
         // C-2 — department-scope read gate (intra-tenant IDOR fix).
         enforceReadScope(ctx, evaluation);
+        // BE-11 — bias-isolation: peer score read blocked while collecting
+        // (REQ-ISO-2/-4; 404/empty + denial audit on a foreign sheet).
+        panelBiasGuard.enforceCanReadSheet(ctx, evaluation);
         return scores.findAllByTenantIdAndEvaluationId(ctx.tenantId(), evaluationId);
     }
 
@@ -183,6 +192,14 @@ public class EvaluationQueries {
         // scoring a foreign-version evaluation against this factor.
         UUID methodologyVersionId = factor.getMethodologyVersionId();
 
+        // BE-11 — bias-isolation: a caller WITHOUT CAMPAIGN_RESULTS_VIEW is
+        // confined to their OWN evaluations on the grid so a peer never even sees
+        // another evaluator's row of a still-collecting panel (REQ-ISO-2). The
+        // confinement also drives the count (no leak). CAMPAIGN_RESULTS_VIEW
+        // holders see the full grid. EVALUATION_READ alone does NOT lift it.
+        boolean confineToOwn = panelBiasGuard.shouldConfineGridToOwn(ctx);
+        UUID ownEvaluator = confineToOwn ? ctx.userId() : null;
+
         // E4-S2 — department-scope filter on the K-sheet grid.
         Optional<Set<UUID>> scope = departmentScopeFilter.allowedDepartmentIds(ctx);
         Page<EvaluationJpaEntity> page;
@@ -190,12 +207,20 @@ public class EvaluationQueries {
             if (scope.get().isEmpty()) {
                 return Page.<EvaluationByFactorRow>empty(pageable); // scoped but no assignment
             }
-            page = evaluations.findForFactorGridInDepartments(
-                    tenant, projectId, methodologyVersionId, status, departmentId,
-                    scope.get(), pageable);
+            page = confineToOwn
+                    ? evaluations.findForFactorGridInDepartmentsOwnOnly(
+                            tenant, projectId, methodologyVersionId, status, departmentId,
+                            scope.get(), ownEvaluator, pageable)
+                    : evaluations.findForFactorGridInDepartments(
+                            tenant, projectId, methodologyVersionId, status, departmentId,
+                            scope.get(), pageable);
         } else {
-            page = evaluations.findForFactorGrid(
-                    tenant, projectId, methodologyVersionId, status, departmentId, pageable);
+            page = confineToOwn
+                    ? evaluations.findForFactorGridOwnOnly(
+                            tenant, projectId, methodologyVersionId, status, departmentId,
+                            ownEvaluator, pageable)
+                    : evaluations.findForFactorGrid(
+                            tenant, projectId, methodologyVersionId, status, departmentId, pageable);
         }
         if (page.isEmpty()) {
             return page.map(e -> null);
@@ -301,6 +326,9 @@ public class EvaluationQueries {
                 .orElseThrow(TenantAccessDeniedException::new);
         // C-2 — department-scope read gate (intra-tenant IDOR fix).
         enforceReadScope(ctx, evaluation);
+        // BE-11 — bias-isolation: calibration history is part of the per-evaluator
+        // sheet — blocked for peers while collecting.
+        panelBiasGuard.enforceCanReadSheet(ctx, evaluation);
         return calibrationEvents
                 .findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(ctx.tenantId(), evaluationId);
     }

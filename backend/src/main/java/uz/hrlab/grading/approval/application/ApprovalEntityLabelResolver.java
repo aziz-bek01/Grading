@@ -3,9 +3,12 @@ package uz.hrlab.grading.approval.application;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
+import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureJpaEntity;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureRepository;
 import uz.hrlab.grading.jobprofile.infrastructure.JobProfileJpaEntity;
@@ -18,6 +21,8 @@ import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.project.infrastructure.ProjectJpaEntity;
 import uz.hrlab.grading.project.infrastructure.ProjectRepository;
+import uz.hrlab.grading.tenancy.application.TenantContext;
+import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 import uz.hrlab.grading.tenancy.domain.Locale;
 
 import java.util.HashMap;
@@ -55,27 +60,54 @@ public class ApprovalEntityLabelResolver {
     private static final Logger log = LoggerFactory.getLogger(ApprovalEntityLabelResolver.class);
 
     private final EvaluationRepository evaluations;
+    private final PanelRepository panels;
     private final PositionRepository positions;
     private final MethodologyVersionRepository methodologyVersions;
     private final MethodologyRepository methodologies;
     private final GradeStructureRepository gradeStructures;
     private final JobProfileRepository jobProfiles;
     private final ProjectRepository projects;
+    private final AbacGate abacGate;
 
     public ApprovalEntityLabelResolver(EvaluationRepository evaluations,
+                                       PanelRepository panels,
                                        PositionRepository positions,
                                        MethodologyVersionRepository methodologyVersions,
                                        MethodologyRepository methodologies,
                                        GradeStructureRepository gradeStructures,
                                        JobProfileRepository jobProfiles,
-                                       ProjectRepository projects) {
+                                       ProjectRepository projects,
+                                       AbacGate abacGate) {
         this.evaluations = evaluations;
+        this.panels = panels;
         this.positions = positions;
         this.methodologyVersions = methodologyVersions;
         this.methodologies = methodologies;
         this.gradeStructures = gradeStructures;
         this.jobProfiles = jobProfiles;
         this.projects = projects;
+        this.abacGate = abacGate;
+    }
+
+    /**
+     * AC-20 / R5 — the position TITLE is department-subtree-protected. Before
+     * leaking it into a label, verify the CALLER (active request context) may
+     * read the position via the SAME ABAC gate the position APIs use. Fail
+     * CLOSED: no active context or a gate denial drops the title (the rest of
+     * the label still composes); never throws (R10).
+     */
+    private boolean positionTitleReadable(PositionJpaEntity p) {
+        if (p == null) {
+            return false;
+        }
+        try {
+            TenantContext ctx = TenantContextHolder.requireActive();
+            abacGate.enforceCanReadPosition(
+                    ctx, p.getId(), p.getProjectId(), p.getDepartmentId(), p.getStatus());
+            return true;
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
     /**
@@ -92,6 +124,7 @@ public class ApprovalEntityLabelResolver {
         try {
             return switch (type) {
                 case EVALUATION -> evaluationLabel(tenantId, entityId);
+                case EVALUATION_PANEL -> panelLabel(tenantId, entityId);
                 case METHODOLOGY_VERSION -> methodologyVersionLabel(tenantId, entityId);
                 case GRADE_STRUCTURE -> gradeStructureLabel(tenantId, entityId);
                 case JOB_PROFILE -> jobProfileLabel(tenantId, entityId);
@@ -109,7 +142,9 @@ public class ApprovalEntityLabelResolver {
             return null;
         }
         PositionJpaEntity p = positions.findByIdAndTenantId(e.getPositionId(), tenantId).orElse(null);
-        Map<String, String> positionTitle = p == null ? null : p.getTitleI18n();
+        // AC-20: the title only appears when the CALLER passes the position
+        // ABAC read gate; otherwise the label composes without it.
+        Map<String, String> positionTitle = positionTitleReadable(p) ? p.getTitleI18n() : null;
         MethodologyVersionJpaEntity v = methodologyVersions
                 .findByIdAndTenantId(e.getMethodologyVersionId(), tenantId).orElse(null);
         Map<String, String> methodologyName = v == null ? null
@@ -128,6 +163,54 @@ public class ApprovalEntityLabelResolver {
             }
         }
         return out.isEmpty() ? null : out;
+    }
+
+    /**
+     * BE-14 — label for an {@code EVALUATION_PANEL} approval (CEO inbox). Same
+     * composition as {@link #evaluationLabel} (position title + methodology name
+     * + version) plus a localized "average" marker. The position TITLE is gated
+     * by {@link #positionTitleReadable} (AC-20/R5): a department-scoped caller
+     * outside the position's subtree gets the label WITHOUT the title —
+     * "&lt;methodology&gt; vN · &lt;average&gt;" (or just the marker) — rather
+     * than 404-ing the inbox (R10). NO scores or grade value in the label (R7).
+     */
+    private Map<String, String> panelLabel(UUID tenantId, UUID panelId) {
+        EvaluationPanelJpaEntity panel = panels.findByIdAndTenantId(panelId, tenantId).orElse(null);
+        if (panel == null) {
+            return null;
+        }
+        PositionJpaEntity p = positions.findByIdAndTenantId(panel.getPositionId(), tenantId)
+                .orElse(null);
+        // AC-20: same caller-side ABAC read gate as evaluationLabel — outside
+        // the approver's subtree the title is dropped and the label degrades
+        // to "<methodology> vN · <average>" (or just the marker).
+        Map<String, String> positionTitle = positionTitleReadable(p) ? p.getTitleI18n() : null;
+        MethodologyVersionJpaEntity v = methodologyVersions
+                .findByIdAndTenantId(panel.getMethodologyVersionId(), tenantId).orElse(null);
+        Map<String, String> methodologyName = v == null ? null
+                : methodologyNameForVersion(tenantId, v);
+
+        Map<String, String> out = new HashMap<>();
+        for (String locale : Locale.SUPPORTED) {
+            String title = pick(positionTitle, locale);
+            String method = pick(methodologyName, locale);
+            String suffix = v == null ? null : "v" + v.getVersionNumber();
+            String base = compose(title, method, suffix);
+            String marker = averageMarker(locale);
+            String label = base == null ? marker : base + " · " + marker;
+            out.put(locale, label);
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    /** Localized "average" marker for the panel label (4 locales, R6). */
+    private static String averageMarker(String locale) {
+        return switch (locale) {
+            case Locale.UZ_CYRL_UZ -> "ўртача";
+            case Locale.UZ_LATN_UZ -> "o'rtacha";
+            case Locale.EN_US -> "average";
+            default -> "среднее"; // ru-RU
+        };
     }
 
     private Map<String, String> methodologyVersionLabel(UUID tenantId, UUID versionId) {

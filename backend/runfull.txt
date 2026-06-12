@@ -1,0 +1,121 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] --------------------------< uz.hrlab:grading >--------------------------
+[INFO] Building grading.hrlab.uz 0.1.0-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ grading ---
+[INFO] Copying 4 resources from src\main\resources to target\classes
+[INFO] Copying 56 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ grading ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ grading ---
+[INFO] Copying 0 resource from src\test\resources to target\test-classes
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ grading ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ grading ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running uz.hrlab.grading.approval.application.ApprovalDecisionMakerTest
+WARNING: A Java agent has been loaded dynamically (C:\Users\azasq\.m2\repository\net\bytebuddy\byte-buddy-agent\1.14.19\byte-buddy-agent-1.14.19.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.465 s -- in uz.hrlab.grading.approval.application.ApprovalDecisionMakerTest
+[INFO] Running uz.hrlab.grading.approval.application.ApprovalEntityLabelResolverTest
+16:20:30.981 [main] WARN uz.hrlab.grading.approval.application.ApprovalEntityLabelResolver -- Entity label resolution failed type=GRADE_STRUCTURE (referent unresolved); degrading to id
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.475 s -- in uz.hrlab.grading.approval.application.ApprovalEntityLabelResolverTest
+[INFO] Running uz.hrlab.grading.evaluation.api.PanelControllerWireTest
+16:20:31.928 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [uz.hrlab.grading.evaluation.api.PanelControllerWireTest]: PanelControllerWireTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+16:20:33.729 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration uz.hrlab.grading.GradingApplication for test class uz.hrlab.grading.evaluation.api.PanelControllerWireTest
+16:20:22,198 |-INFO in ch.qos.logback.classic.LoggerContext[default] - This is logback-classic version 1.5.8
+16:20:22,198 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - Here is a list of configurators discovered as a service, by rank: 
+16:20:22,198 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e -   org.springframework.boot.logging.logback.RootLogLevelConfigurator
+16:20:22,198 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - They will be invoked in order until ExecutionStatus.DO_NOT_INVOKE_NEXT_IF_ANY is returned.
+16:20:22,198 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - Constructed configurator of type class org.springframework.boot.logging.logback.RootLogLevelConfigurator
+16:20:22,224 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - org.springframework.boot.logging.logback.RootLogLevelConfigurator.configure() call lasted 0 milliseconds. ExecutionStatus=INVOKE_NEXT_IF_ANY
+16:20:22,224 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - Trying to configure with ch.qos.logback.classic.joran.SerializedModelConfigurator
+16:20:22,227 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - Constructed configurator of type class ch.qos.logback.classic.joran.SerializedModelConfigurator
+16:20:22,231 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback-test.scmo]
+16:20:22,231 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback.scmo]
+16:20:22,231 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - ch.qos.logback.classic.joran.SerializedModelConfigurator.configure() call lasted 4 milliseconds. ExecutionStatus=INVOKE_NEXT_IF_ANY
+16:20:22,231 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - Trying to configure with ch.qos.logback.classic.util.DefaultJoranConfigurator
+16:20:22,231 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - Constructed configurator of type class ch.qos.logback.classic.util.DefaultJoranConfigurator
+16:20:22,231 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback-test.xml]
+16:20:22,231 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback.xml]
+16:20:22,231 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - ch.qos.logback.classic.util.DefaultJoranConfigurator.configure() call lasted 0 milliseconds. ExecutionStatus=INVOKE_NEXT_IF_ANY
+16:20:22,231 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - Trying to configure with ch.qos.logback.classic.BasicConfigurator
+16:20:22,231 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - Constructed configurator of type class ch.qos.logback.classic.BasicConfigurator
+16:20:22,231 |-INFO in ch.qos.logback.classic.BasicConfigurator@22899683 - Setting up default configuration.
+16:20:22,303 |-INFO in ch.qos.logback.classic.util.ContextInitializer@1a3b1f7e - ch.qos.logback.classic.BasicConfigurator.configure() call lasted 72 milliseconds. ExecutionStatus=NEUTRAL
+16:20:35,562 |-WARN in ch.qos.logback.core.joran.action.ConversionRuleAction - [converterClass] attribute is deprecated and replaced by [class]. See element [conversionRule] near line 16
+16:20:35,681 |-INFO in ch.qos.logback.core.model.processor.ConversionRuleModelHandler - registering conversion word msg with class [ch.qos.logback.classic.pattern.MessageConverter]
+16:20:35,704 |-INFO in ch.qos.logback.core.model.processor.AppenderModelHandler - Processing appender named [STDOUT]
+16:20:35,704 |-INFO in ch.qos.logback.core.model.processor.AppenderModelHandler - About to instantiate appender of type [ch.qos.logback.core.ConsoleAppender]
+16:20:35,759 |-INFO in ch.qos.logback.core.model.processor.ModelInterpretationContext@40017e98 - value "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId:-}] [%X{tenantId:-}] [%X{userId:-}] %logger{36} - %msg%n" substituted for "${LOG_PATTERN}"
+16:20:35,788 |-INFO in ch.qos.logback.classic.model.processor.RootLoggerModelHandler - Setting level of ROOT logger to INFO
+16:20:35,788 |-INFO in ch.qos.logback.classic.jul.LevelChangePropagator@4fbe486c - Propagating INFO level on Logger[ROOT] onto the JUL framework
+16:20:35,790 |-INFO in ch.qos.logback.core.model.processor.AppenderRefModelHandler - Attaching appender named [STDOUT] to Logger[ROOT]
+16:20:35,791 |-INFO in ch.qos.logback.classic.model.processor.LoggerModelHandler - Setting level of logger [uz.hrlab.grading] to DEBUG
+16:20:35,791 |-INFO in ch.qos.logback.classic.jul.LevelChangePropagator@4fbe486c - Propagating DEBUG level on Logger[uz.hrlab.grading] onto the JUL framework
+16:20:35,791 |-INFO in ch.qos.logback.classic.model.processor.LoggerModelHandler - Setting level of logger [security.audit] to INFO
+16:20:35,791 |-INFO in ch.qos.logback.classic.jul.LevelChangePropagator@4fbe486c - Propagating INFO level on Logger[security.audit] onto the JUL framework
+16:20:35,791 |-INFO in ch.qos.logback.core.model.processor.DefaultProcessor@dbc7e0a - End of configuration.
+16:20:35,793 |-INFO in org.springframework.boot.logging.logback.SpringBootJoranConfigurator@636fccb0 - Registering current configuration as safe fallback point
+
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.3.4)
+
+2026-06-12 16:20:35.936 INFO  [] [] [] o.h.validator.internal.util.Version - HV000001: Hibernate Validator 8.0.1.Final
+2026-06-12 16:20:36.136 INFO  [] [] [] u.h.g.e.api.PanelControllerWireTest - Starting PanelControllerWireTest using Java 21.0.11 with PID 28076 (started by azasq in D:\2026\Лойи?алар\Грейдинг\grading.hrlab.uz\backend)
+2026-06-12 16:20:36.143 DEBUG [] [] [] u.h.g.e.api.PanelControllerWireTest - Running with Spring Boot v3.3.4, Spring v6.1.13
+2026-06-12 16:20:36.151 INFO  [] [] [] u.h.g.e.api.PanelControllerWireTest - No active profile set, falling back to 1 default profile: "local"
+2026-06-12 16:20:48.119 INFO  [] [] [] o.s.b.t.m.w.SpringBootMockServletContext - Initializing Spring TestDispatcherServlet ''
+2026-06-12 16:20:48.119 INFO  [] [] [] o.s.t.w.s.TestDispatcherServlet - Initializing Servlet ''
+2026-06-12 16:20:48.122 INFO  [] [] [] o.s.t.w.s.TestDispatcherServlet - Completed initialization in 3 ms
+2026-06-12 16:20:48.230 INFO  [] [] [] u.h.g.e.api.PanelControllerWireTest - Started PanelControllerWireTest in 14.1 seconds (process running for 28.283)
+2026-06-12 16:20:50.137 WARN  [] [] [] security.audit - CROSS_TENANT_ACCESS_ATTEMPT path=/api/v1/panels/2c7cd03a-f89e-4b10-8a28-9b0dab2e29c7/result cid=b0ea7b7b-6f8f-4d10-846b-d35eadab6f27
+2026-06-12 16:20:50.287 WARN  [] [] [] security.audit - CROSS_TENANT_ACCESS_ATTEMPT path=/api/v1/panels/bc492616-4881-4ab7-9a18-49f934acfac5 cid=0b875983-a9ab-40c6-80ad-a93d7d6aee67
+[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 19.15 s -- in uz.hrlab.grading.evaluation.api.PanelControllerWireTest
+[INFO] Running uz.hrlab.grading.evaluation.application.ApprovePanelUseCaseTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.200 s -- in uz.hrlab.grading.evaluation.application.ApprovePanelUseCaseTest
+[INFO] Running uz.hrlab.grading.evaluation.application.ComputePanelAverageUseCaseTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.361 s -- in uz.hrlab.grading.evaluation.application.ComputePanelAverageUseCaseTest
+[INFO] Running uz.hrlab.grading.evaluation.application.CreatePanelUseCaseTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.140 s -- in uz.hrlab.grading.evaluation.application.CreatePanelUseCaseTest
+[INFO] Running uz.hrlab.grading.evaluation.application.LockRosterUseCaseTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.382 s -- in uz.hrlab.grading.evaluation.application.LockRosterUseCaseTest
+[INFO] Running uz.hrlab.grading.evaluation.application.PanelBiasGuardTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.080 s -- in uz.hrlab.grading.evaluation.application.PanelBiasGuardTest
+[INFO] Running uz.hrlab.grading.evaluation.application.PanelCompletionWatcherTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.166 s -- in uz.hrlab.grading.evaluation.application.PanelCompletionWatcherTest
+[INFO] Running uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCaseTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.200 s -- in uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCaseTest
+[INFO] Running uz.hrlab.grading.evaluation.domain.PanelAveragingServiceTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.071 s -- in uz.hrlab.grading.evaluation.domain.PanelAveragingServiceTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 94, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  45.123 s
+[INFO] Finished at: 2026-06-12T16:20:52+05:00
+[INFO] ------------------------------------------------------------------------

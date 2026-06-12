@@ -33,6 +33,7 @@ export type ApprovalEntityType =
   | 'JOB_PROFILE'
   | 'METHODOLOGY_VERSION'
   | 'EVALUATION'
+  | 'EVALUATION_PANEL'
   | 'GRADE_STRUCTURE'
   | 'PROJECT';
 

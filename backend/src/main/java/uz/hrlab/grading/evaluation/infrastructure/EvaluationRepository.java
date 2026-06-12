@@ -38,6 +38,21 @@ public interface EvaluationRepository
             UUID tenantId, UUID positionId, UUID methodologyVersionId, EvaluationStatus excludedStatus);
 
     /**
+     * MVP2 multi-evaluator — all per-evaluator sheets belonging to a panel.
+     * Tenant-scoped (defense in depth). Drives the averaging input load
+     * (ComputePanelAverageUseCase) and the completion watcher.
+     */
+    List<EvaluationJpaEntity> findAllByTenantIdAndPanelId(UUID tenantId, UUID panelId);
+
+    /**
+     * MVP2 multi-evaluator — guard "one active evaluation per (panel, evaluator)"
+     * (the relaxed unique index replaces the old one-per-position rule). The
+     * unique index is the source of truth; this is the friendly pre-check.
+     */
+    boolean existsByTenantIdAndPanelIdAndEvaluatorUserIdAndStatusNot(
+            UUID tenantId, UUID panelId, UUID evaluatorUserId, EvaluationStatus excludedStatus);
+
+    /**
      * Tenant-scoped hard delete (Item 1, BE-2). {@link TenantAwareRepository}
      * intentionally hides the BOLA-prone single-arg {@code deleteById(id)}; this
      * derived deleter keeps the tenant filter in the predicate so a row from
@@ -87,6 +102,36 @@ public interface EvaluationRepository
             @Param("methodologyVersionId") UUID methodologyVersionId,
             @Param("status") EvaluationStatus status,
             @Param("departmentId") UUID departmentId,
+            Pageable pageable);
+
+    /**
+     * BE-11 bias-isolation — K-sheet grid confined to ONE evaluator's own rows.
+     * When {@code ownEvaluatorUserId} is non-null, only that evaluator's
+     * evaluations are returned (the blind-rule predicate
+     * {@code AND evaluator_user_id = :ownEvaluatorUserId}). The confinement also
+     * drives the JPA count, so pagination reflects only the caller's visible rows
+     * (no count leak). When the caller holds CAMPAIGN_RESULTS_VIEW the query
+     * layer passes a non-confining path (see {@link #findForFactorGrid}).
+     */
+    @Query("""
+           SELECT e FROM EvaluationJpaEntity e
+           WHERE e.tenantId = :tenantId
+             AND e.projectId = :projectId
+             AND e.methodologyVersionId = :methodologyVersionId
+             AND e.evaluatorUserId = :ownEvaluatorUserId
+             AND (:status IS NULL OR e.status = :status)
+             AND (:departmentId IS NULL OR e.positionId IN (
+                   SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
+                   WHERE p.tenantId = :tenantId AND p.departmentId = :departmentId
+             ))
+           """)
+    Page<EvaluationJpaEntity> findForFactorGridOwnOnly(
+            @Param("tenantId") UUID tenantId,
+            @Param("projectId") UUID projectId,
+            @Param("methodologyVersionId") UUID methodologyVersionId,
+            @Param("status") EvaluationStatus status,
+            @Param("departmentId") UUID departmentId,
+            @Param("ownEvaluatorUserId") UUID ownEvaluatorUserId,
             Pageable pageable);
 
     /**
@@ -158,5 +203,36 @@ public interface EvaluationRepository
             @Param("status") EvaluationStatus status,
             @Param("departmentId") UUID departmentId,
             @Param("scope") Collection<UUID> scopeDepartmentIds,
+            Pageable pageable);
+
+    /**
+     * BE-11 bias-isolation — department-scoped K-sheet grid ALSO confined to the
+     * caller's own evaluations ({@code AND evaluator_user_id =
+     * :ownEvaluatorUserId}). Combines the existing department-subtree confinement
+     * with the blind-rule own-only predicate so a scoped, non-result-viewer
+     * caller sees only their own rows within their subtree.
+     */
+    @Query("""
+           SELECT e FROM EvaluationJpaEntity e
+           WHERE e.tenantId = :tenantId
+             AND e.projectId = :projectId
+             AND e.methodologyVersionId = :methodologyVersionId
+             AND e.evaluatorUserId = :ownEvaluatorUserId
+             AND (:status IS NULL OR e.status = :status)
+             AND e.positionId IN (
+                   SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
+                   WHERE p.tenantId = :tenantId
+                     AND p.departmentId IN (:scope)
+                     AND (:departmentId IS NULL OR p.departmentId = :departmentId)
+             )
+           """)
+    Page<EvaluationJpaEntity> findForFactorGridInDepartmentsOwnOnly(
+            @Param("tenantId") UUID tenantId,
+            @Param("projectId") UUID projectId,
+            @Param("methodologyVersionId") UUID methodologyVersionId,
+            @Param("status") EvaluationStatus status,
+            @Param("departmentId") UUID departmentId,
+            @Param("scope") Collection<UUID> scopeDepartmentIds,
+            @Param("ownEvaluatorUserId") UUID ownEvaluatorUserId,
             Pageable pageable);
 }

@@ -1350,6 +1350,7 @@ export type MockApprovalEntityType =
   | 'JOB_PROFILE'
   | 'METHODOLOGY_VERSION'
   | 'EVALUATION'
+  | 'EVALUATION_PANEL'
   | 'GRADE_STRUCTURE'
   | 'PROJECT';
 
@@ -1974,6 +1975,243 @@ ksEvaluations.forEach((ev, evIdx) => {
   });
 });
 
+// ============================================================
+// MVP 2 — EVALUATION_PANEL fixtures (multi-evaluator).
+//
+// MIRROR THE BE GOLDEN-FILE RECORDS (PanelControllerWireTest), snake_case wire,
+// @JsonInclude(NON_NULL): scores/grade are OMITTED until AVERAGED/APPROVED. The
+// MSW handlers serve these so the FE adapter/components are exercised the same
+// way they are against the real backend.
+// ============================================================
+
+export type MockEvaluatorRole =
+  | 'HR_DIRECTOR'
+  | 'DEPARTMENT_DIRECTOR'
+  | 'EXTERNAL_EXPERT'
+  | 'ADDITIONAL';
+
+export type MockPanelStatus =
+  | 'COLLECTING'
+  | 'AWAITING_EVALUATIONS'
+  | 'AVERAGED'
+  | 'SUBMITTED'
+  | 'APPROVED'
+  | 'LOCKED'
+  | 'ARCHIVED';
+
+export type MockPanelAssignmentStatus =
+  | 'ASSIGNED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'WITHDRAWN';
+
+export interface MockPanel {
+  id: string;
+  project_id: string;
+  position_id: string;
+  position_title_i18n: Partial<Record<Locale, string>>;
+  methodology_version_id: string;
+  status: MockPanelStatus;
+  min_evaluators: number;
+  evaluator_count: number;
+  completed_count: number;
+  raw_total_score?: number | null;
+  displayed_total_score?: number | null;
+  assigned_grade_number?: number | null;
+  grade_band_id?: string | null;
+  averaged_at?: string | null;
+  submitted_at?: string | null;
+  approved_at?: string | null;
+  created_at: string;
+}
+
+export interface MockPanelAssignment {
+  id: string;
+  panel_id: string;
+  evaluator_user_id: string;
+  evaluator_name?: string | null;
+  evaluator_role: MockEvaluatorRole;
+  assignment_status: MockPanelAssignmentStatus;
+  evaluation_id?: string | null;
+  updated_at: string;
+}
+
+const PANEL_COLLECTING_ID = 'panel-cto-collecting';
+const PANEL_AVERAGED_ID = 'panel-cfo-averaged';
+
+const ctoTitle = positions.find((p) => p.id === 'pos-cto')?.title_i18n ?? {};
+const cfoTitle = positions.find((p) => p.id === 'pos-cfo')?.title_i18n ?? {};
+
+const panels: MockPanel[] = [
+  // 1) COLLECTING — roster present but not all completed (blind + progress).
+  {
+    id: PANEL_COLLECTING_ID,
+    project_id: 'proj-acme-2026',
+    position_id: 'pos-cto',
+    position_title_i18n: ctoTitle,
+    methodology_version_id: cfoV1Id,
+    status: 'AWAITING_EVALUATIONS',
+    min_evaluators: 3,
+    evaluator_count: 3,
+    completed_count: 1,
+    created_at: '2026-05-01T09:00:00Z',
+    // raw_total_score / displayed_total_score OMITTED — collecting (REQ-ISO-5).
+  },
+  // 2) AVERAGED — all completed; stored averages exist; CEO submit allowed.
+  {
+    id: PANEL_AVERAGED_ID,
+    project_id: 'proj-acme-2026',
+    position_id: 'pos-cfo',
+    position_title_i18n: cfoTitle,
+    methodology_version_id: cfoV1Id,
+    status: 'AVERAGED',
+    min_evaluators: 3,
+    evaluator_count: 3,
+    completed_count: 3,
+    raw_total_score: 712.5,
+    displayed_total_score: 712.5,
+    averaged_at: '2026-05-20T12:00:00Z',
+    created_at: '2026-05-02T09:00:00Z',
+  },
+];
+
+const panelAssignments: MockPanelAssignment[] = [
+  // COLLECTING panel roster.
+  {
+    id: 'pa-c-1',
+    panel_id: PANEL_COLLECTING_ID,
+    evaluator_user_id: 'user-hr-dir',
+    evaluator_name: 'Anvar Karimov',
+    evaluator_role: 'HR_DIRECTOR',
+    assignment_status: 'COMPLETED',
+    evaluation_id: 'eval-panel-c-1',
+    updated_at: '2026-05-10T10:00:00Z',
+  },
+  {
+    id: 'pa-c-2',
+    panel_id: PANEL_COLLECTING_ID,
+    evaluator_user_id: 'user-dept-dir',
+    evaluator_name: 'Dilnoza Yusupova',
+    evaluator_role: 'DEPARTMENT_DIRECTOR',
+    assignment_status: 'IN_PROGRESS',
+    evaluation_id: 'eval-panel-c-2',
+    updated_at: '2026-05-11T10:00:00Z',
+  },
+  {
+    id: 'pa-c-3',
+    panel_id: PANEL_COLLECTING_ID,
+    evaluator_user_id: 'user-ext-exp',
+    evaluator_name: 'Bobur Aliyev',
+    evaluator_role: 'EXTERNAL_EXPERT',
+    assignment_status: 'ASSIGNED',
+    updated_at: '2026-05-09T10:00:00Z',
+  },
+  // AVERAGED panel roster — all completed.
+  {
+    id: 'pa-a-1',
+    panel_id: PANEL_AVERAGED_ID,
+    evaluator_user_id: 'user-hr-dir',
+    evaluator_name: 'Anvar Karimov',
+    evaluator_role: 'HR_DIRECTOR',
+    assignment_status: 'COMPLETED',
+    evaluation_id: 'eval-panel-a-1',
+    updated_at: '2026-05-18T10:00:00Z',
+  },
+  {
+    id: 'pa-a-2',
+    panel_id: PANEL_AVERAGED_ID,
+    evaluator_user_id: 'user-dept-dir',
+    evaluator_name: 'Dilnoza Yusupova',
+    evaluator_role: 'DEPARTMENT_DIRECTOR',
+    assignment_status: 'COMPLETED',
+    evaluation_id: 'eval-panel-a-2',
+    updated_at: '2026-05-19T10:00:00Z',
+  },
+  {
+    id: 'pa-a-3',
+    panel_id: PANEL_AVERAGED_ID,
+    evaluator_user_id: 'user-ext-exp',
+    evaluator_name: 'Bobur Aliyev',
+    evaluator_role: 'EXTERNAL_EXPERT',
+    assignment_status: 'COMPLETED',
+    evaluation_id: 'eval-panel-a-3',
+    updated_at: '2026-05-20T10:00:00Z',
+  },
+];
+
+/**
+ * Stored per-factor averages for the AVERAGED panel. Derived from three
+ * deterministic per-evaluator scores per factor so the disagreement range
+ * (max-min) is non-null (>= 2 contributors). Shape mirrors
+ * PanelResultResponse.factor_averages.
+ */
+const panelFactorAverages = cfoV1Factors.map((f, idx) => {
+  const base = 80 + idx * 2;
+  const scores = [base, base + 5, base + 10];
+  const avg = (scores[0] + scores[1] + scores[2]) / 3;
+  return {
+    factor_id: f.id,
+    factor_name_i18n: f.name_i18n,
+    avg_raw_factor_score: Number(avg.toFixed(4)),
+    evaluator_count: 3,
+    per_evaluator: [
+      {
+        evaluator_user_id: 'user-hr-dir',
+        evaluator_name: 'Anvar Karimov',
+        evaluator_role: 'HR_DIRECTOR' as MockEvaluatorRole,
+        raw_factor_score: scores[0],
+      },
+      {
+        evaluator_user_id: 'user-dept-dir',
+        evaluator_name: 'Dilnoza Yusupova',
+        evaluator_role: 'DEPARTMENT_DIRECTOR' as MockEvaluatorRole,
+        raw_factor_score: scores[1],
+      },
+      {
+        evaluator_user_id: 'user-ext-exp',
+        evaluator_name: 'Bobur Aliyev',
+        evaluator_role: 'EXTERNAL_EXPERT' as MockEvaluatorRole,
+        raw_factor_score: scores[2],
+      },
+    ],
+    disagreement_range: Number((scores[2] - scores[0]).toFixed(4)),
+  };
+});
+
+/** Approval request for the AVERAGED panel's CEO step (entity_type EVALUATION_PANEL). */
+const panelApprovalRequest: MockApprovalRequest = {
+  id: 'appr-panel-cfo-1',
+  project_id: 'proj-acme-2026',
+  entity_type: 'EVALUATION_PANEL',
+  entity_id: PANEL_AVERAGED_ID,
+  requested_by: 'mock-evaluator-1',
+  requested_at: '2026-05-21T08:30:00Z',
+  current_status: 'PENDING',
+  // BE label resolver: '<position> · <methodology> v<n> · <average word>'.
+  // NO scores/grade in the label (R7). 4 locales with ru fallback.
+  entity_label_i18n: I18N(
+    'Финансовый директор · CFO Finance v1 · среднее',
+    'Молия директори · CFO Finance v1 · ўртача',
+    "Moliya direktori · CFO Finance v1 · o'rtacha",
+    'Chief Financial Officer · CFO Finance v1 · average',
+  ),
+  initiated_by_name: 'HRLab Consultant',
+  notes_i18n: I18N(
+    'Усреднённый результат готов к утверждению CEO.',
+    'Ўртача натижа CEO тасдиғига тайёр.',
+    "O'rtacha natija CEO tasdig'iga tayyor.",
+    'Averaged result ready for CEO approval.',
+  ),
+  steps: [
+    {
+      id: 'appr-panel-cfo-1-step-1',
+      step_order: 1,
+      required_permission: 'EVALUATION_PANEL_APPROVE',
+      status: 'PENDING',
+    },
+  ],
+};
+
 export const mockDb = {
   projects: [...projects],
   departments: [...departments, ...ksDepartments],
@@ -1993,7 +2231,10 @@ export const mockDb = {
     [acmeStructureId]: acmePyramidCounts,
     [betaStructureId]: betaPyramidCounts,
   } as Record<string, number[]>,
-  approvalRequests: [...approvalRequests],
+  approvalRequests: [...approvalRequests, panelApprovalRequest],
+  panels: [...panels],
+  panelAssignments: [...panelAssignments],
+  panelFactorAverages: [...panelFactorAverages],
   comments: [...comments],
   importBatches: [...importBatches],
   importErrors: [...importErrors],

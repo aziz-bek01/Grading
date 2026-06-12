@@ -1,0 +1,36 @@
+# MVP2 multi-evaluator — SCHEMA-2. ADDITIVE nullable columns on evaluations.
+# Online-safe; existing rows untouched. The CHECK is IS NULL OR ... so pre-backfill
+# rows (NULL) pass; SCHEMA-3 backfill populates them. Not NOT-VALID / strict.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-035-evaluations-add-panel-columns
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,multi-evaluator
+      changes:
+        - addColumn:
+            tableName: evaluations
+            columns:
+              - column: { name: panel_id, type: UUID }
+              - column: { name: evaluator_role, type: VARCHAR(40) }
+        - sql:
+            sql: |
+              ALTER TABLE evaluations ADD CONSTRAINT fk_evaluations_panel
+                FOREIGN KEY (panel_id) REFERENCES evaluation_panels(id) ON DELETE RESTRICT;
+              ALTER TABLE evaluations ADD CONSTRAINT chk_evaluations_evaluator_role
+                CHECK (evaluator_role IS NULL OR
+                       evaluator_role IN ('HR_DIRECTOR','DEPARTMENT_DIRECTOR','EXTERNAL_EXPERT','ADDITIONAL'));
+              CREATE INDEX idx_evaluations_panel ON evaluations (tenant_id, panel_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_evaluations_panel;
+              ALTER TABLE evaluations DROP CONSTRAINT IF EXISTS chk_evaluations_evaluator_role;
+              ALTER TABLE evaluations DROP CONSTRAINT IF EXISTS fk_evaluations_panel;
+        - dropColumn:
+            tableName: evaluations
+            columnName: evaluator_role
+        - dropColumn:
+            tableName: evaluations
+            columnName: panel_id

@@ -33,6 +33,16 @@ export function signIn(role: 'super-admin' | 'consultant' | 'viewer' = 'super-ad
   useAuthStore.getState().setSession(user, { value: 'test', expiresAt: Date.now() + 60_000 });
 }
 
+/**
+ * Sign in with an EXPLICIT permission set — used by tests that assert
+ * permission-gated rendering (e.g. CAMPAIGN_RESULTS_VIEW lifting the blind).
+ * Starts from the viewer seed (minimal) and replaces the permission array.
+ */
+export function signInWithPermissions(permissions: string[]) {
+  const user = { ...buildDevUser('viewer'), permissions: permissions as never };
+  useAuthStore.getState().setSession(user, { value: 'test', expiresAt: Date.now() + 60_000 });
+}
+
 export function signOut() {
   useAuthStore.getState().signOut();
 }

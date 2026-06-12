@@ -79,6 +79,22 @@ export const endpoints = {
     myMentions: '/comments/my-mentions',
   },
   /**
+   * Multi-evaluator EVALUATION_PANEL endpoints (MVP 2). Base /panels.
+   * Permissions: create/assign/withdraw/lock/submit → EVALUATION_PANEL_MANAGE;
+   * list/detail → EVALUATION_READ; result → CAMPAIGN_RESULTS_VIEW (404 while
+   * collecting). The CEO approval reuses the existing /approval-requests path
+   * (entity_type=EVALUATION_PANEL) — no panel-specific approval endpoint.
+   */
+  panels: {
+    list: '/panels',
+    detail: (id: string) => `/panels/${id}`,
+    result: (id: string) => `/panels/${id}/result`,
+    evaluators: (id: string) => `/panels/${id}/evaluators`,
+    evaluator: (id: string, userId: string) => `/panels/${id}/evaluators/${userId}`,
+    lockRoster: (id: string) => `/panels/${id}/lock-roster`,
+    submit: (id: string) => `/panels/${id}/submit`,
+  },
+  /**
    * Users & Access (10 endpoints — MVP 1 prompt §6).
    *
    * Tenant id appears in URL path ONLY for explicit cross-tenant membership

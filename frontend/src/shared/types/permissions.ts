@@ -67,6 +67,20 @@ export const PERMISSIONS = {
   /** @deprecated kept for transient back-compat with Phase 0 placeholders; remove after Phase 6. */
   EVALUATION_ADJUST: 'EVALUATION_ADJUST',
 
+  // Multi-evaluator panels (MVP 2 — EVALUATION_PANEL aggregate). Mirror BE
+  // PermissionCodes 1:1. Distinct from the per-sheet EVALUATION_* set:
+  //   - EVALUATION_PANEL_MANAGE  — create panel, assign/withdraw evaluators,
+  //     lock roster, submit-to-CEO (assigner authority).
+  //   - EVALUATION_PANEL_APPROVE — the CEO sign-off step on the panel approval
+  //     request; deliberately separate from the per-sheet EVALUATION_APPROVE so
+  //     a per-sheet approver CANNOT satisfy the CEO step (AC-12).
+  //   - CAMPAIGN_RESULTS_VIEW    — lifts the bias blind: see averaged totals +
+  //     per-evaluator breakdown after AVERAGED. EVALUATION_READ alone does NOT
+  //     lift the blind (AC-6). Server is the source of truth; the FE only hides.
+  EVALUATION_PANEL_MANAGE: 'EVALUATION_PANEL_MANAGE',
+  EVALUATION_PANEL_APPROVE: 'EVALUATION_PANEL_APPROVE',
+  CAMPAIGN_RESULTS_VIEW: 'CAMPAIGN_RESULTS_VIEW',
+
   // Grades + grade-structure (Phase 6)
   GRADE_READ: 'GRADE_READ',
   GRADE_EDIT: 'GRADE_EDIT',

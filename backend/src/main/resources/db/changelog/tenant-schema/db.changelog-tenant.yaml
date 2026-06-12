@@ -122,3 +122,25 @@ databaseChangeLog:
   - include:
       file: 033-create-grade-templates.yaml
       relativeToChangelogFile: true
+  # MVP2 multi-evaluator (panel/campaign). Apply order 034 -> 038:
+  #   034 additive tables (panels/assignments/factor-averages) + relocated uniqueness
+  #   035 additive nullable panel_id + evaluator_role on evaluations
+  #   036 idempotent backfill of legacy evaluations into min_evaluators=1 panels +
+  #       ordering-sensitive uniqueness swap (evaluations one-active index relaxed)
+  #   037 RLS FORCE + blank-safe NULLIF policies for the three new tables
+  #   038 seed EVALUATION_PANEL_MANAGE / EVALUATION_PANEL_APPROVE / CAMPAIGN_RESULTS_VIEW
+  - include:
+      file: 034-create-evaluation-panels.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 035-evaluations-add-panel-fk.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 036-backfill-panels-from-evaluations.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 037-rls-panels.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 038-seed-panel-permissions.yaml
+      relativeToChangelogFile: true

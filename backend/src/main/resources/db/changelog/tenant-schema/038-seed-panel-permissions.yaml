@@ -1,0 +1,74 @@
+# MVP2 multi-evaluator — seed EVALUATION_PANEL_MANAGE / EVALUATION_PANEL_APPROVE /
+# CAMPAIGN_RESULTS_VIEW (BE-15). Mirrors 016 (INSERT ... ON CONFLICT DO NOTHING +
+# role_permissions via WITH role_perm_map JOIN). Kept in sync with PermissionCodes
+# and the FE permission constants.
+#
+#   EVALUATION_PANEL_MANAGE  — roster build / lock / submit / reopen.
+#       -> HRLAB_SUPER_ADMIN, HRLAB_PROJECT_MANAGER, CLIENT_HR_DIRECTOR.
+#   EVALUATION_PANEL_APPROVE — the dedicated CEO sign-off step authority, DISTINCT
+#       from per-sheet EVALUATION_APPROVE.
+#       -> HRLAB_SUPER_ADMIN, CLIENT_HR_DIRECTOR (the client approval authority).
+#   CAMPAIGN_RESULTS_VIEW    — lifts the blind to averaged totals + per-evaluator
+#       breakdown. Result-viewers / oversight only; NOT plain committee evaluators.
+#       -> HRLAB_SUPER_ADMIN, HRLAB_PROJECT_MANAGER, HRLAB_CONSULTANT, CLIENT_HR_DIRECTOR.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-038-seed-panel-permissions-catalog
+      author: database-architect
+      context: seeds
+      labels: mvp2,multi-evaluator
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'EVALUATION_PANEL_MANAGE', 'EVALUATION_PANEL', 'MANAGE',
+                 'Build roster / lock / submit / reopen an evaluation panel (MVP2)'),
+                (gen_random_uuid(), 'EVALUATION_PANEL_APPROVE', 'EVALUATION_PANEL', 'APPROVE',
+                 'CEO sign-off on a panel averaged result (MVP2; distinct from EVALUATION_APPROVE)'),
+                (gen_random_uuid(), 'CAMPAIGN_RESULTS_VIEW', 'EVALUATION_PANEL', 'RESULTS_VIEW',
+                 'View averaged totals + per-evaluator breakdown; lifts the bias blind (MVP2)')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions
+               WHERE code IN ('EVALUATION_PANEL_MANAGE','EVALUATION_PANEL_APPROVE','CAMPAIGN_RESULTS_VIEW');
+
+  - changeSet:
+      id: tenant-038-seed-panel-role-permissions
+      author: database-architect
+      context: seeds
+      labels: mvp2,multi-evaluator
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              WITH role_perm_map(role_code, permission_code) AS (
+                VALUES
+                  ('HRLAB_SUPER_ADMIN',     'EVALUATION_PANEL_MANAGE'),
+                  ('HRLAB_PROJECT_MANAGER', 'EVALUATION_PANEL_MANAGE'),
+                  ('CLIENT_HR_DIRECTOR',    'EVALUATION_PANEL_MANAGE'),
+                  ('HRLAB_SUPER_ADMIN',     'EVALUATION_PANEL_APPROVE'),
+                  ('CLIENT_HR_DIRECTOR',    'EVALUATION_PANEL_APPROVE'),
+                  ('HRLAB_SUPER_ADMIN',     'CAMPAIGN_RESULTS_VIEW'),
+                  ('HRLAB_PROJECT_MANAGER', 'CAMPAIGN_RESULTS_VIEW'),
+                  ('HRLAB_CONSULTANT',      'CAMPAIGN_RESULTS_VIEW'),
+                  ('CLIENT_HR_DIRECTOR',    'CAMPAIGN_RESULTS_VIEW')
+              )
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM role_perm_map m
+                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.permissions p ON p.code = m.permission_code
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p
+                WHERE rp.permission_id = p.id
+                  AND p.code IN ('EVALUATION_PANEL_MANAGE','EVALUATION_PANEL_APPROVE','CAMPAIGN_RESULTS_VIEW');

@@ -557,6 +557,7 @@
       "JOB_PROFILE": "Lavozim profili",
       "METHODOLOGY_VERSION": "Metodologiya versiyasi",
       "EVALUATION": "Baholash",
+      "EVALUATION_PANEL": "Baholash paneli",
       "GRADE_STRUCTURE": "Greyd tuzilmasi",
       "PROJECT": "Loyiha"
     },
@@ -586,6 +587,81 @@
       "action_failed": "Amalni bajarib boʻlmadi. Qayta urinib koʻring.",
       "error_reason_required": "Sabab koʻrsatilishi shart (kamida 20 belgi).",
       "error_invalid_transition": "Amal mumkin emas: soʻrov holati allaqachon oʻzgargan. Sahifani yangilang."
+    }
+  },
+  "panel": {
+    "role": {
+      "HR_DIRECTOR": "HR direktor",
+      "DEPARTMENT_DIRECTOR": "Bo'lim direktori",
+      "EXTERNAL_EXPERT": "Tashqi ekspert",
+      "ADDITIONAL": "Qo'shimcha ekspert",
+      "self_prefix": "Siz: {{role}}"
+    },
+    "status": {
+      "COLLECTING": "Ekspertlar yig'ilmoqda",
+      "AWAITING_EVALUATIONS": "Baholashlar kutilmoqda",
+      "AVERAGED": "O'rtachalandi",
+      "SUBMITTED": "CEO tasdig'ida",
+      "APPROVED": "Tasdiqlandi",
+      "LOCKED": "Qulflandi",
+      "ARCHIVED": "Arxivda"
+    },
+    "assignment_status": {
+      "ASSIGNED": "Tayinlangan",
+      "IN_PROGRESS": "Jarayonda",
+      "COMPLETED": "Yakunlandi",
+      "WITHDRAWN": "Chaqirib olindi"
+    },
+    "blind_banner": "Boshqa ekspertlar bahosi barcha yakunlaguncha yashirin. Siz faqat o'z varag'ingizni ko'rasiz.",
+    "validation": {
+      "mandatory_roles_missing": "Uchala rol kerak: HR direktor, bo'lim direktori, tashqi ekspert.",
+      "below_floor": "Kamida 3 ekspert."
+    },
+    "dialog": {
+      "title": "Baholash panelini ochish",
+      "body": "Lavozim, metodologiya versiyasini tanlang va ekspertlarni tayinlang.",
+      "position": "Lavozim",
+      "methodology": "Metodologiya versiyasi",
+      "evaluators": "Ekspertlar",
+      "min_helper": "Kamida 3 ekspert: HR direktor, bo'lim direktori, tashqi ekspert. Qo'shimcha qo'shish mumkin.",
+      "add_evaluator": "Ekspert qo'shish",
+      "remove_evaluator": "Ekspertni olib tashlash",
+      "evaluator_placeholder": "Foydalanuvchini tanlang",
+      "evaluator_load_error": "Foydalanuvchilarni yuklab bo'lmadi",
+      "confirm": "Panel yaratish",
+      "result_ok": "Panel yaratildi.",
+      "result_partial": "Panel yaratildi, ammo {{failed}} tayinlash muvaffaqiyatsiz.",
+      "no_access": "Baholash panelini yaratish huquqi yo'q."
+    },
+    "progress": {
+      "empty_title": "Ekspertlar tayinlanmagan",
+      "empty_body": "Baholashni boshlash uchun ekspertlarni tayinlang.",
+      "assign_cta": "Ekspertlarni tayinlash",
+      "waiting_on": "Kutilmoqda:",
+      "all_complete": "Barcha ekspertlar baholashni yakunladi."
+    },
+    "result": {
+      "title": "O'rtacha natija",
+      "locked_title": "Natija hozircha mavjud emas",
+      "locked_body": "O'rtacha natija barcha ekspertlar yakunlagach ko'rsatiladi.",
+      "no_access_title": "Natijani ko'rish huquqi yo'q",
+      "no_access_body": "O'rtacha natijani ko'rish uchun CAMPAIGN_RESULTS_VIEW huquqi kerak.",
+      "evaluator_count": "{{count}} ekspert",
+      "toggle_evaluators": "Ekspertlar bo'yicha",
+      "col_factor": "Faktor",
+      "col_average": "O'rtacha",
+      "col_disagreement": "Tarqalish",
+      "disagreement_tooltip": "Baholar tarqalishi: {{range}}",
+      "row_total": "O'rtacha umumiy ball",
+      "official_note": "Server hisoblab saqlagan o'rtacha qiymat ko'rsatilmoqda (rasmiy natija)."
+    },
+    "approval_summary": {
+      "title": "Baholash paneli natijasi"
+    },
+    "add_after_start": {
+      "title": "Boshlangandan keyin ekspert qo'shilsinmi?",
+      "body": "Panel baholashlar kutilmoqda holatiga qaytadi. Bu yangi ekspert yakunlaguncha CEO bosqichini kechiktirishi mumkin.",
+      "confirm": "Ekspert qo'shish"
     }
   },
   "comment": {

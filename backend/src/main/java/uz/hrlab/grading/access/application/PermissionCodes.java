@@ -65,6 +65,20 @@ public final class PermissionCodes {
     public static final String EVALUATION_LOCK    = "EVALUATION_LOCK";
     public static final String CALIBRATION_EDIT   = "CALIBRATION_EDIT";
 
+    // Evaluation panel — multi-evaluator (MVP2). Kept in sync with seed 038 and
+    // the frontend permission constants.
+    //   EVALUATION_PANEL_MANAGE  — build roster / assign-withdraw / lock-roster /
+    //                              submit-to-CEO / reopen (HR Director / PM).
+    //   EVALUATION_PANEL_APPROVE — the dedicated CEO sign-off step authority,
+    //                              DISTINCT from per-sheet EVALUATION_APPROVE
+    //                              (REQ-CEO-2, deny-by-default).
+    //   CAMPAIGN_RESULTS_VIEW    — lifts the blind to see averaged totals +
+    //                              per-evaluator breakdown after AVERAGED;
+    //                              EVALUATION_READ alone NEVER lifts it (REQ-ISO-3).
+    public static final String EVALUATION_PANEL_MANAGE  = "EVALUATION_PANEL_MANAGE";
+    public static final String EVALUATION_PANEL_APPROVE = "EVALUATION_PANEL_APPROVE";
+    public static final String CAMPAIGN_RESULTS_VIEW    = "CAMPAIGN_RESULTS_VIEW";
+
     // Grade
     public static final String GRADE_READ = "GRADE_READ";
     public static final String GRADE_EDIT = "GRADE_EDIT";

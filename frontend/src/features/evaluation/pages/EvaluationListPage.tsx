@@ -27,8 +27,12 @@ import {
 } from '../hooks/useEvaluation';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { AddPositionsDialog } from '../components/AddPositionsDialog';
+import { OpenPanelDialog, type OpenPanelResult } from '../components/panel/OpenPanelDialog';
 import { EvaluationByFactorView } from '../components/byFactor/EvaluationByFactorView';
+import { useCreatePanel } from '../hooks/usePanels';
+import { assignEvaluator } from '../api/panelApi';
 import { isEvaluationDeletable } from '../types';
+import type { PanelEvaluatorDraft } from '../panelTypes';
 import type { Evaluation, EvaluationStatus } from '../types';
 
 type ViewMode = 'by-position' | 'by-factor';
@@ -104,6 +108,7 @@ export function EvaluationListPage() {
   const [statusFilter, setStatusFilter] = useState<EvaluationStatus | ''>('');
   const [methodologyFilter, setMethodologyFilter] = useState<string>('');
   const [adding, setAdding] = useState(false);
+  const [openingPanel, setOpeningPanel] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Evaluation | null>(null);
 
   const evalsQuery = useEvaluations({
@@ -117,6 +122,40 @@ export function EvaluationListPage() {
   const treeQuery = useDepartmentTree(projectId);
   const bulkCreateMutation = useBulkCreateEvaluations();
   const deleteMutation = useDeleteEvaluation();
+  const createPanelMutation = useCreatePanel();
+
+  /**
+   * Panel-open orchestration (FE-2): create the panel, then assign each chosen
+   * evaluator. Returns a partial-fail result so the dialog can surface which
+   * evaluator failed before closing. The min-3-mandatory-roles rule is also
+   * enforced server-side on lock-roster — the UI mirror only disables confirm.
+   */
+  const handleOpenPanel = useCallback(
+    async (
+      positionId: string,
+      versionId: string,
+      roster: PanelEvaluatorDraft[],
+    ): Promise<OpenPanelResult> => {
+      const panel = await createPanelMutation.mutateAsync({
+        position_id: positionId,
+        methodology_version_id: versionId,
+      });
+      const failed: OpenPanelResult['failed'] = [];
+      for (const row of roster) {
+        if (!row.evaluator_user_id) continue;
+        try {
+          await assignEvaluator(panel.id, {
+            evaluator_user_id: row.evaluator_user_id,
+            evaluator_role: row.role,
+          });
+        } catch (e) {
+          failed.push({ role: row.role, reason: (e as Error).message });
+        }
+      }
+      return { ok: failed.length === 0, failed };
+    },
+    [createPanelMutation],
+  );
 
   const positionMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -304,14 +343,25 @@ export function EvaluationListPage() {
             {t('evaluation.list_subtitle')}
           </p>
         </div>
-        <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
-          <Button
-            onClick={() => setAdding(true)}
-            data-testid="add-positions-open"
-          >
-            {t('evaluation.add_positions.cta')}
-          </Button>
-        </PermissionGate>
+        <div className="flex items-center gap-2">
+          <PermissionGate permission={PERMISSIONS.EVALUATION_PANEL_MANAGE}>
+            <Button
+              variant="secondary"
+              onClick={() => setOpeningPanel(true)}
+              data-testid="open-panel-cta"
+            >
+              {t('panel.dialog.title')}
+            </Button>
+          </PermissionGate>
+          <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
+            <Button
+              onClick={() => setAdding(true)}
+              data-testid="add-positions-open"
+            >
+              {t('evaluation.add_positions.cta')}
+            </Button>
+          </PermissionGate>
+        </div>
       </header>
 
       {/* Mode toggle — preserves URL state via ?mode= so refresh / share works. */}
@@ -447,6 +497,19 @@ export function EvaluationListPage() {
           return result;
         }}
         onClose={() => setAdding(false)}
+      />
+
+      {/* FE-2: multi-evaluator panel creation surface. Picks position +
+          methodology version + 3 mandatory evaluator roles (+ extras), creates a
+          panel then assigns each evaluator. Gated behind EVALUATION_PANEL_MANAGE. */}
+      <OpenPanelDialog
+        open={openingPanel}
+        positions={positionsQuery.data?.items ?? []}
+        methodologies={methodologiesQuery.data?.items ?? []}
+        departmentNameOf={departmentNameOfPosition}
+        defaultVersionId={selectedVersionId}
+        onConfirm={handleOpenPanel}
+        onClose={() => setOpeningPanel(false)}
       />
 
       {/* FE-3: delete confirmation for pre-submission rows — reuses ConfirmDialog

@@ -81,7 +81,9 @@ class UpsertEvaluationScoreUseCaseScopeGateTest {
                 List.of(new ProjectMembershipPolicy(), new DepartmentScopePolicy()), audit);
         useCase = new UpsertEvaluationScoreUseCase(
                 evaluations, scores, loader, recompute, immutability, abacGate,
-                audit, snapshot, positions);
+                audit, snapshot, positions,
+                org.mockito.Mockito.mock(
+                        uz.hrlab.grading.evaluation.application.PanelCompletionWatcher.class));
         tenantId = UUID.randomUUID();
         userId = UUID.randomUUID();
         projectId = UUID.randomUUID();

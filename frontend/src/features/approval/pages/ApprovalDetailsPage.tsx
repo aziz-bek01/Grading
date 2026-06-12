@@ -14,6 +14,7 @@ import { ApprovalStatusBadge } from '../components/ApprovalStatusBadge';
 import { ApprovalStepCard } from '../components/ApprovalStepCard';
 import { ApprovalDecisionsList } from '../components/ApprovalDecisionsList';
 import { ApprovalActionsBar } from '../components/ApprovalActionsBar';
+import { PanelApprovalSummary } from '@/features/evaluation/components/panel/PanelApprovalSummary';
 
 export function ApprovalDetailsPage() {
   const { t, i18n } = useTranslation();
@@ -60,6 +61,14 @@ export function ApprovalDetailsPage() {
       </header>
 
       <ApprovalActionsBar request={r} currentStep={currentStep} />
+
+      {/* FE-6: for EVALUATION_PANEL the CEO sees a read-only averaged result
+          summary (total + per-factor averages + per-evaluator breakdown) BETWEEN
+          the header and the steps. Reuses the SAME PanelAveragedResult table,
+          gated by CAMPAIGN_RESULTS_VIEW. entity_id IS the panel id. */}
+      {r.entityType === 'EVALUATION_PANEL' && r.entityId ? (
+        <PanelApprovalSummary panelId={r.entityId} />
+      ) : null}
 
       <Card title={t('approval.steps_title')} compact>
         <ol className="space-y-3">

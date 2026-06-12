@@ -21,10 +21,13 @@ import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -35,6 +38,7 @@ import java.util.UUID;
 public class ApprovalDecisionMaker {
 
     private static final int MIN_REASON_LENGTH = 20;
+    private static final Logger log = LoggerFactory.getLogger(ApprovalDecisionMaker.class);
 
     private final ApprovalRequestRepository requests;
     private final ApprovalStepRepository steps;
@@ -42,19 +46,23 @@ public class ApprovalDecisionMaker {
     private final ApprovalQueries queries;
     private final AbacGate abacGate;
     private final AuditService audit;
+    /** Manual coupling hooks (e.g. panel status flip on CEO decision — MVP2). */
+    private final List<ApprovalOutcomeListener> outcomeListeners;
 
     public ApprovalDecisionMaker(ApprovalRequestRepository requests,
                                  ApprovalStepRepository steps,
                                  ApprovalDecisionRepository decisions,
                                  ApprovalQueries queries,
                                  AbacGate abacGate,
-                                 AuditService audit) {
+                                 AuditService audit,
+                                 List<ApprovalOutcomeListener> outcomeListeners) {
         this.requests = requests;
         this.steps = steps;
         this.decisions = decisions;
         this.queries = queries;
         this.abacGate = abacGate;
         this.audit = audit;
+        this.outcomeListeners = outcomeListeners == null ? List.of() : outcomeListeners;
     }
 
     @Transactional
@@ -160,6 +168,23 @@ public class ApprovalDecisionMaker {
                 .entityId(step.getId())
                 .reason(reasonOrNotes)
                 .build());
+
+        // Manual coupling (MVP2) — notify entity owners ONLY when the whole
+        // request reached a terminal status (not a mid-chain step approval).
+        ApprovalRequestStatus newStatus = req.getCurrentStatus();
+        if (newStatus != ApprovalRequestStatus.PENDING) {
+            for (ApprovalOutcomeListener listener : outcomeListeners) {
+                try {
+                    listener.onApprovalRequestDecided(ctx.tenantId(), req.getEntityType(),
+                            req.getEntityId(), newStatus, ctx.userId());
+                } catch (RuntimeException ex) {
+                    // Fail-soft — a listener must not roll back a valid decision.
+                    log.error("Approval outcome listener {} failed for entity {}:{}",
+                            listener.getClass().getSimpleName(),
+                            req.getEntityType(), req.getEntityId(), ex);
+                }
+            }
+        }
         return queries.hydrate(req);
     }
 

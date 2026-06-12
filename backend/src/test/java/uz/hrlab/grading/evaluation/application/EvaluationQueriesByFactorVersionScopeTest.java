@@ -88,8 +88,12 @@ class EvaluationQueriesByFactorVersionScopeTest {
     void setUp() {
         abacGate = new AbacGate(
                 List.of(new ProjectMembershipPolicy(), new DepartmentScopePolicy()), audit);
+        var panelBiasGuard = new uz.hrlab.grading.evaluation.application.PanelBiasGuard(
+                org.mockito.Mockito.mock(
+                        uz.hrlab.grading.evaluation.infrastructure.PanelRepository.class),
+                audit);
         queries = new EvaluationQueries(evaluations, scores, calibrationEvents,
-                factors, positions, departments, departmentScopeFilter, abacGate);
+                factors, positions, departments, departmentScopeFilter, abacGate, panelBiasGuard);
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         factorId = UUID.randomUUID();
@@ -203,16 +207,19 @@ class EvaluationQueriesByFactorVersionScopeTest {
     }
 
     private void setBypassContext() {
+        // CAMPAIGN_RESULTS_VIEW = a result-viewer (HR director) — sees the FULL
+        // K-sheet grid (the bias blind is lifted), so the existing
+        // findForFactorGrid assertions still hold under MVP2 BE-11.
         TenantContextHolder.set(new TenantContext(
                 UUID.randomUUID(), tenantId, Set.of(projectId),
                 Set.of(RoleCodes.CLIENT_HR_DIRECTOR),
-                Set.of("EVALUATION_READ"), Set.of(), false, "ru-RU"));
+                Set.of("EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW"), Set.of(), false, "ru-RU"));
     }
 
     private void setScopedContext(Set<UUID> deptScope) {
         TenantContextHolder.set(new TenantContext(
                 UUID.randomUUID(), tenantId, Set.of(projectId),
                 Set.of(RoleCodes.EVALUATION_COMMITTEE_MEMBER),
-                Set.of("EVALUATION_READ"), deptScope, false, "ru-RU"));
+                Set.of("EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW"), deptScope, false, "ru-RU"));
     }
 }

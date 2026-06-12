@@ -1,0 +1,47 @@
+# MVP2 multi-evaluator — SCHEMA-4. RLS for the three panel tables. ENABLE + FORCE
+# ROW LEVEL SECURITY; blank-safe GUC (NULLIF, in lock-step with 030/031). Each
+# table carries tenant_id NOT NULL (defense in depth). Self-contained, mirrors the
+# 032/033 precedent of co-locating new-table RLS with the table changelog group.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-037-rls-panels
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,multi-evaluator,security,rls,blank-safe
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE public.evaluation_panels      ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.evaluation_panels      FORCE  ROW LEVEL SECURITY;
+              ALTER TABLE public.panel_assignments      ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.panel_assignments      FORCE  ROW LEVEL SECURITY;
+              ALTER TABLE public.panel_factor_averages  ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.panel_factor_averages  FORCE  ROW LEVEL SECURITY;
+
+              DROP POLICY IF EXISTS tenant_isolation_evaluation_panels ON public.evaluation_panels;
+              CREATE POLICY tenant_isolation_evaluation_panels ON public.evaluation_panels
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_panel_assignments ON public.panel_assignments;
+              CREATE POLICY tenant_isolation_panel_assignments ON public.panel_assignments
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+              DROP POLICY IF EXISTS tenant_isolation_panel_factor_averages ON public.panel_factor_averages;
+              CREATE POLICY tenant_isolation_panel_factor_averages ON public.panel_factor_averages
+                USING       (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                WITH CHECK  (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+      rollback:
+        - sql:
+            splitStatements: true
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation_panel_factor_averages ON public.panel_factor_averages;
+              DROP POLICY IF EXISTS tenant_isolation_panel_assignments ON public.panel_assignments;
+              DROP POLICY IF EXISTS tenant_isolation_evaluation_panels ON public.evaluation_panels;
+              ALTER TABLE public.panel_factor_averages  DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.panel_assignments      DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE public.evaluation_panels      DISABLE ROW LEVEL SECURITY;

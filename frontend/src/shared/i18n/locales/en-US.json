@@ -557,6 +557,7 @@
       "JOB_PROFILE": "Job profile",
       "METHODOLOGY_VERSION": "Methodology version",
       "EVALUATION": "Evaluation",
+      "EVALUATION_PANEL": "Evaluation panel",
       "GRADE_STRUCTURE": "Grade structure",
       "PROJECT": "Project"
     },
@@ -586,6 +587,81 @@
       "action_failed": "The action could not be completed. Please try again.",
       "error_reason_required": "A reason is required (at least 20 characters).",
       "error_invalid_transition": "Action not available: the request status has already changed. Refresh the page."
+    }
+  },
+  "panel": {
+    "role": {
+      "HR_DIRECTOR": "HR director",
+      "DEPARTMENT_DIRECTOR": "Department director",
+      "EXTERNAL_EXPERT": "External expert",
+      "ADDITIONAL": "Additional expert",
+      "self_prefix": "You: {{role}}"
+    },
+    "status": {
+      "COLLECTING": "Collecting evaluators",
+      "AWAITING_EVALUATIONS": "Awaiting evaluations",
+      "AVERAGED": "Averaged",
+      "SUBMITTED": "Awaiting CEO approval",
+      "APPROVED": "Approved",
+      "LOCKED": "Locked",
+      "ARCHIVED": "Archived"
+    },
+    "assignment_status": {
+      "ASSIGNED": "Assigned",
+      "IN_PROGRESS": "In progress",
+      "COMPLETED": "Completed",
+      "WITHDRAWN": "Withdrawn"
+    },
+    "blind_banner": "Other evaluators' scores are hidden until everyone finishes. You only see your own sheet.",
+    "validation": {
+      "mandatory_roles_missing": "All three roles required: HR director, department director, external expert.",
+      "below_floor": "At least 3 evaluators."
+    },
+    "dialog": {
+      "title": "Open evaluation panel",
+      "body": "Pick a position, methodology version and assign evaluators.",
+      "position": "Position",
+      "methodology": "Methodology version",
+      "evaluators": "Evaluators",
+      "min_helper": "At least 3 evaluators: HR director, department director, external expert. You may add more.",
+      "add_evaluator": "Add evaluator",
+      "remove_evaluator": "Remove evaluator",
+      "evaluator_placeholder": "Select a user",
+      "evaluator_load_error": "Could not load users",
+      "confirm": "Create panel",
+      "result_ok": "Panel created.",
+      "result_partial": "Panel created, but {{failed}} assignment(s) failed.",
+      "no_access": "You do not have permission to create an evaluation panel."
+    },
+    "progress": {
+      "empty_title": "No evaluators assigned",
+      "empty_body": "Assign evaluators to start collecting scores.",
+      "assign_cta": "Assign evaluators",
+      "waiting_on": "Waiting on:",
+      "all_complete": "All evaluators have completed their evaluation."
+    },
+    "result": {
+      "title": "Averaged result",
+      "locked_title": "Result not available yet",
+      "locked_body": "The average is shown once all evaluators finish.",
+      "no_access_title": "No permission to view the result",
+      "no_access_body": "Viewing the averaged result requires the CAMPAIGN_RESULTS_VIEW permission.",
+      "evaluator_count": "{{count}} evaluator(s)",
+      "toggle_evaluators": "By evaluator",
+      "col_factor": "Factor",
+      "col_average": "Average",
+      "col_disagreement": "Range",
+      "disagreement_tooltip": "Score range: {{range}}",
+      "row_total": "Averaged total score",
+      "official_note": "The displayed average is computed and stored by the backend (official result)."
+    },
+    "approval_summary": {
+      "title": "Evaluation panel result"
+    },
+    "add_after_start": {
+      "title": "Add an evaluator after start?",
+      "body": "The panel reopens to awaiting evaluations. This can delay the CEO step until the new evaluator completes.",
+      "confirm": "Add evaluator"
     }
   },
   "comment": {

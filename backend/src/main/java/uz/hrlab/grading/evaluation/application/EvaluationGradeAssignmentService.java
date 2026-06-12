@@ -7,6 +7,7 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
 import uz.hrlab.grading.gradestructure.application.GradeBandLookupService;
 import uz.hrlab.grading.gradestructure.application.GradeStructureQueries;
 import uz.hrlab.grading.gradestructure.domain.GradeBandLookupResult;
@@ -98,6 +99,67 @@ public class EvaluationGradeAssignmentService {
                     .entityType("Evaluation")
                     .entityId(evaluation.getId())
                     .reason("score=" + evaluation.getRawTotalScore()
+                            + ";grade=" + r.gradeNumber()
+                            + (previousGradeNumber == null ? "" : ";prev=" + previousGradeNumber)
+                            + ";structure=" + structure.getId())
+                    .build());
+        }
+        return previousBandId;
+    }
+
+    /**
+     * MVP2 multi-evaluator (BE-10) — assign a grade to a PANEL from its averaged
+     * {@code raw_total_score}, reusing the SAME band-lookup logic as the
+     * per-evaluation path (no new grade logic, REQ-CEO-3). Mirrors
+     * {@link #assignFromScore} exactly; only the entity differs. Emits
+     * {@code GRADE_ASSIGNED} on first assignment.
+     *
+     * @param panel        the panel (mutated in place; must carry rawTotalScore)
+     * @param actorUserId  acting user (for audit)
+     * @return previous gradeBandId before assignment (may be null)
+     */
+    public UUID assignToPanel(EvaluationPanelJpaEntity panel, UUID actorUserId) {
+        UUID previousBandId = panel.getGradeBandId();
+        Integer previousGradeNumber = panel.getAssignedGradeNumber();
+
+        Optional<GradeStructureJpaEntity> structOpt = gradeStructureQueries
+                .findActiveForProject(panel.getTenantId(), panel.getProjectId());
+        if (structOpt.isEmpty()) {
+            log.warn("Panel {} approved without active grade structure for project {} — "
+                    + "grade left unassigned (manual calibration required).",
+                    panel.getId(), panel.getProjectId());
+            panel.setGradeBandId(null);
+            panel.setAssignedGradeNumber(null);
+            return previousBandId;
+        }
+        GradeStructureJpaEntity structure = structOpt.get();
+        Optional<GradeBandLookupResult> result = lookupService.lookup(
+                panel.getTenantId(), structure.getId(), panel.getRawTotalScore());
+        if (result.isEmpty()) {
+            log.warn("Panel {} averaged score {} out of range / in gap of grade structure {} — "
+                    + "grade left unassigned (manual calibration required).",
+                    panel.getId(), panel.getRawTotalScore(), structure.getId());
+            panel.setGradeBandId(null);
+            panel.setAssignedGradeNumber(null);
+            return previousBandId;
+        }
+        GradeBandLookupResult r = result.get();
+        panel.setGradeBandId(r.gradeBandId());
+        panel.setAssignedGradeNumber(r.gradeNumber());
+
+        boolean firstAssignment = previousBandId == null;
+        boolean changed = !firstAssignment && !r.gradeBandId().equals(previousBandId);
+        String action = firstAssignment ? AuditAction.GRADE_ASSIGNED
+                : (changed ? AuditAction.GRADE_REASSIGNED : null);
+        if (action != null) {
+            audit.record(AuditEvent.builder()
+                    .tenantId(panel.getTenantId())
+                    .projectId(panel.getProjectId())
+                    .actorUserId(actorUserId)
+                    .action(action)
+                    .entityType("EvaluationPanel")
+                    .entityId(panel.getId())
+                    .reason("score=" + panel.getRawTotalScore()
                             + ";grade=" + r.gradeNumber()
                             + (previousGradeNumber == null ? "" : ";prev=" + previousGradeNumber)
                             + ";structure=" + structure.getId())

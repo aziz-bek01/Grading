@@ -55,6 +55,7 @@ public class UpsertEvaluationScoreUseCase {
     private final AuditService audit;
     private final EvaluationAuditSnapshot snapshot;
     private final PositionRepository positions;
+    private final PanelCompletionWatcher panelCompletionWatcher;
 
     public UpsertEvaluationScoreUseCase(EvaluationRepository evaluations,
                                         EvaluationScoreRepository scores,
@@ -64,7 +65,8 @@ public class UpsertEvaluationScoreUseCase {
                                         AbacGate abacGate,
                                         AuditService audit,
                                         EvaluationAuditSnapshot snapshot,
-                                        PositionRepository positions) {
+                                        PositionRepository positions,
+                                        PanelCompletionWatcher panelCompletionWatcher) {
         this.evaluations = evaluations;
         this.scores = scores;
         this.loader = loader;
@@ -74,6 +76,7 @@ public class UpsertEvaluationScoreUseCase {
         this.audit = audit;
         this.snapshot = snapshot;
         this.positions = positions;
+        this.panelCompletionWatcher = panelCompletionWatcher;
     }
 
     @Transactional
@@ -136,6 +139,12 @@ public class UpsertEvaluationScoreUseCase {
         // Recompute totals + completeness; persists evaluation updates.
         recompute.recompute(context);
         evaluations.save(evaluation);
+
+        // MVP2 multi-evaluator (BE-7) — if this evaluation belongs to a panel,
+        // sync its assignment status and, when every active assignment is
+        // COMPLETED, transition the panel to AVERAGED and compute the average.
+        // No-op for panelless / legacy evaluations.
+        panelCompletionWatcher.onEvaluationStatusRecomputed(evaluation, ctx.userId());
 
         audit.record(AuditEvent.builder()
                 .tenantId(ctx.tenantId())

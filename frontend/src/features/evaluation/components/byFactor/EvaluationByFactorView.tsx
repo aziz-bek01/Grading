@@ -45,6 +45,9 @@ import {
 import { PositionScoreRow } from './PositionScoreRow';
 import { BulkScoreDialog } from './BulkScoreDialog';
 import { BulkSubmitDialog } from './BulkSubmitDialog';
+import { PanelRoleChip } from '../panel/PanelRoleChip';
+import { PanelBlindBanner } from '../panel/PanelBlindBanner';
+import type { EvaluatorRole } from '../../panelTypes';
 
 interface EvaluationByFactorViewProps {
   projectId: string;
@@ -64,6 +67,19 @@ interface EvaluationByFactorViewProps {
    * same selection. Switching it also clears the factor param.
    */
   onMethodologyChange?: (methodologyId: string) => void;
+  /**
+   * Multi-evaluator (EVALUATION_PANEL) additive props — OPTIONAL so the shared
+   * K-sheet stays structurally unchanged for single-evaluator callers (FE-3).
+   *
+   * `selfRole`  — the current evaluator's seat role; renders a "Сиз: …" chip in
+   *   the header strip so the evaluator knows which seat they fill.
+   * `blind`     — when true a blind banner is shown while the panel is still
+   *   collecting ("other evaluators' scores hidden until completion"). This is
+   *   UX ONLY — the real isolation is the BE read guard that auto-scopes rows to
+   *   the current evaluator; the FE simply never receives others' columns.
+   */
+  selfRole?: EvaluatorRole | null;
+  blind?: boolean;
 }
 
 const STATUSES: EvaluationStatus[] = [
@@ -105,6 +121,8 @@ export function EvaluationByFactorView({
   onFactorChange,
   methodologyIdFromUrl = null,
   onMethodologyChange,
+  selfRole = null,
+  blind = false,
 }: EvaluationByFactorViewProps) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -491,7 +509,17 @@ export function EvaluationByFactorView({
           <span data-testid="byfactor-scoring-mode-badge">
             <ScoringModeBadge mode={scoringMode} />
           </span>
+          {/* FE-3: the evaluator's own seat role chip (panel mode only). */}
+          {selfRole ? (
+            <span data-testid="byfactor-self-role">
+              <PanelRoleChip role={selfRole} self />
+            </span>
+          ) : null}
         </div>
+        {/* FE-3: blind banner while the panel collects — UX only; the BE read
+            guard is the real isolation control. Reuses the ScorePreviewBanner
+            visual language via PanelBlindBanner. */}
+        {blind ? <PanelBlindBanner className="mb-1.5" /> : null}
         <FactorTabs
           // Sticky offset + z-index come from the SHARED constant so the tabs
           // and the header never diverge. top-20 (80px) clears the 62px TopBar.

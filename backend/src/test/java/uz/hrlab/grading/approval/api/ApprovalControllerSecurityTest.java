@@ -24,20 +24,31 @@ import uz.hrlab.grading.approval.application.RequestChangesUseCase;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.approval.domain.ApprovalRequest;
 import uz.hrlab.grading.approval.domain.ApprovalRequestStatus;
+import uz.hrlab.grading.approval.domain.ApprovalStep;
+import uz.hrlab.grading.approval.domain.ApprovalStepStatus;
+import uz.hrlab.grading.approval.infrastructure.ApprovalRequestJpaEntity;
 import uz.hrlab.grading.approval.infrastructure.ApprovalRequestRepository;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.GlobalExceptionHandler;
 import uz.hrlab.grading.common.api.WebMvcSecurityTestConfig;
+import uz.hrlab.grading.tenancy.application.TenantContext;
+import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Tag("security")
@@ -133,9 +144,106 @@ class ApprovalControllerSecurityTest {
                 .andExpect(status().isOk());
     }
 
+    // ---------------------------------------------------------------------
+    // WIRE CONTRACT PINS (golden-file lesson, grade module). These lock the
+    // REAL snake_case JSON shape the FE adapter is built against, so any future
+    // BE field rename breaks THIS test, not the production Approvals page.
+    // Contract source of truth: ApprovalRequestResponse / ApprovalStepResponse
+    // + global SNAKE_CASE strategy (application.yml:38) + @JsonInclude(NON_NULL).
+    // ---------------------------------------------------------------------
+
+    @Test
+    void inboxWireIsBareArrayWithSnakeCaseKeys() throws Exception {
+        ApprovalRequest req = fullStub();
+        given(inboxQuery.list()).willReturn(List.of(req));
+
+        mvc.perform(get("/api/v1/approval-requests/my-inbox")
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE")))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                // BARE ARRAY (not a PageResponse envelope) — element 0 is the request.
+                .andExpect(jsonPath("$[0].id").value(req.id().toString()))
+                .andExpect(jsonPath("$[0].project_id").value(req.projectId().toString()))
+                .andExpect(jsonPath("$[0].entity_type").value("JOB_PROFILE"))
+                .andExpect(jsonPath("$[0].entity_id").value(req.entityId().toString()))
+                .andExpect(jsonPath("$[0].requested_by").value(req.requestedBy().toString()))
+                .andExpect(jsonPath("$[0].requested_at").exists())
+                .andExpect(jsonPath("$[0].current_status").value("PENDING"))
+                .andExpect(jsonPath("$[0].notes_i18n.['en-US']").value("note"))
+                // nested steps[] — snake_case + i18n map keys preserved verbatim.
+                .andExpect(jsonPath("$[0].steps[0].id").exists())
+                .andExpect(jsonPath("$[0].steps[0].step_order").value(1))
+                .andExpect(jsonPath("$[0].steps[0].approver_user_id").exists())
+                .andExpect(jsonPath("$[0].steps[0].required_permission").value("JOB_PROFILE_APPROVE"))
+                .andExpect(jsonPath("$[0].steps[0].status").value("APPROVED"))
+                .andExpect(jsonPath("$[0].steps[0].decided_by").exists())
+                .andExpect(jsonPath("$[0].steps[0].decided_at").exists())
+                .andExpect(jsonPath("$[0].steps[0].reason_i18n.['en-US']").value("looks good"))
+                // PENDING step omits decided_* and reason_i18n (@JsonInclude NON_NULL).
+                .andExpect(jsonPath("$[0].steps[1].step_order").value(2))
+                .andExpect(jsonPath("$[0].steps[1].status").value("PENDING"))
+                .andExpect(jsonPath("$[0].steps[1].decided_by").doesNotExist())
+                .andExpect(jsonPath("$[0].steps[1].decided_at").doesNotExist())
+                .andExpect(jsonPath("$[0].steps[1].reason_i18n").doesNotExist())
+                // enrichment fields are NOT on the wire (FE must derive). Pin
+                // their ABSENCE so an accidental add is a deliberate, tested change.
+                .andExpect(jsonPath("$[0].initiated_by_name").doesNotExist())
+                .andExpect(jsonPath("$[0].total_steps").doesNotExist())
+                .andExpect(jsonPath("$[0].current_step_order").doesNotExist())
+                .andExpect(jsonPath("$[0].entity_label").doesNotExist());
+    }
+
+    @Test
+    void getByIdWireIsSingleObjectWithSnakeCaseKeys() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        ApprovalRequest req = fullStub();
+        ApprovalRequestJpaEntity entity = mock(ApprovalRequestJpaEntity.class);
+        given(requests.findByIdAndTenantId(eq(id), any())).willReturn(Optional.of(entity));
+        given(queries.hydrate(entity)).willReturn(req);
+
+        try {
+            TenantContextHolder.set(new TenantContext(
+                    UUID.randomUUID(), tenantId, java.util.Set.of(), java.util.Set.of(),
+                    java.util.Set.of("APPROVAL_REQUEST_DECIDE"), java.util.Set.of(),
+                    false, "en-US"));
+            mvc.perform(get("/api/v1/approval-requests/{id}", id)
+                            .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.id").value(req.id().toString()))
+                    .andExpect(jsonPath("$.project_id").exists())
+                    .andExpect(jsonPath("$.entity_type").value("JOB_PROFILE"))
+                    .andExpect(jsonPath("$.current_status").value("PENDING"))
+                    .andExpect(jsonPath("$.steps[0].step_order").value(1))
+                    .andExpect(jsonPath("$.steps[0].required_permission").value("JOB_PROFILE_APPROVE"));
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
     private ApprovalRequest stubRequest(UUID id) {
         return new ApprovalRequest(id, UUID.randomUUID(), UUID.randomUUID(),
                 ApprovalEntityType.JOB_PROFILE, UUID.randomUUID(), UUID.randomUUID(),
                 OffsetDateTime.now(), ApprovalRequestStatus.APPROVED, null, List.of());
+    }
+
+    /**
+     * Rich stub exercising every nullable field path of the wire: a decided
+     * step (all fields present) and a pending step (decided_by, decided_at and
+     * reason_i18n omitted by JsonInclude NON_NULL), plus notes_i18n.
+     */
+    private ApprovalRequest fullStub() {
+        UUID requestId = UUID.randomUUID();
+        ApprovalStep decided = new ApprovalStep(
+                UUID.randomUUID(), requestId, 1, UUID.randomUUID(), "JOB_PROFILE_APPROVE",
+                ApprovalStepStatus.APPROVED, UUID.randomUUID(), OffsetDateTime.now(),
+                Map.of("en-US", "looks good"));
+        ApprovalStep pending = new ApprovalStep(
+                UUID.randomUUID(), requestId, 2, UUID.randomUUID(), "JOB_PROFILE_APPROVE",
+                ApprovalStepStatus.PENDING, null, null, null);
+        return new ApprovalRequest(requestId, UUID.randomUUID(), UUID.randomUUID(),
+                ApprovalEntityType.JOB_PROFILE, UUID.randomUUID(), UUID.randomUUID(),
+                OffsetDateTime.now(), ApprovalRequestStatus.PENDING,
+                Map.of("en-US", "note"), List.of(decided, pending));
     }
 }

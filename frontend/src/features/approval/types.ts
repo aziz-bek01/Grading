@@ -1,6 +1,17 @@
 /**
- * Approval domain types — mirror the MVP 2 Phase 1 backend contract for
- * ApprovalRequest, ApprovalStep, ApprovalDecision.
+ * Approval domain types — POST-ADAPTER DOMAIN shapes (camelCase).
+ *
+ * The REAL backend wire is SNAKE_CASE (`spring.jackson.property-naming-strategy:
+ * SNAKE_CASE`, application.yml:38) with `@JsonInclude(NON_NULL)` (null fields are
+ * OMITTED, never sent). The single wire→domain boundary that translates
+ * snake_case → camelCase and derives display-only fields is
+ * `normalizeApprovalRequest` / `normalizeApprovalStep` in `api/approvalApi.ts`.
+ * No component touches the raw wire — they all consume these domain types.
+ *
+ * `decisions[]` is SYNTHESIZED by the adapter from already-decided steps; it is
+ * NOT a backend field on this endpoint. Likewise `initiatedByName`,
+ * `entityLabel`, `approverName`, `decidedByName`, `totalSteps` and
+ * `currentStepOrder` are derived/fallback fields the BE does not send today.
  */
 import type { Locale } from '@/shared/types/common';
 
@@ -67,6 +78,11 @@ export interface ApprovalRequestSummary {
 
 export interface ApprovalRequest extends ApprovalRequestSummary {
   steps: ApprovalStep[];
+  /**
+   * SYNTHESIZED by `normalizeApprovalRequest` from steps that are already
+   * decided (APPROVED/REJECTED with a `decided_at`). This is NOT a backend
+   * field — the BE response carries only `steps[]`. Always an array.
+   */
   decisions: ApprovalDecision[];
   completedAt?: string | null;
 }

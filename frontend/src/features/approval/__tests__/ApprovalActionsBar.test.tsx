@@ -1,10 +1,21 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, signIn } from '@/test/testUtils';
 import { ApprovalActionsBar } from '../components/ApprovalActionsBar';
 import type { ApprovalRequest, ApprovalStep } from '../types';
 import { useAuthStore } from '@/features/auth/authStore';
+import { ApiError } from '@/shared/api/apiError';
+
+// Controllable mutation state so the AC8 inline-error path is testable
+// without a network round-trip. `mutate` stays a no-op for the other tests.
+const mut = vi.hoisted(() => ({ approveError: null as unknown }));
+vi.mock('../hooks/useApprovals', () => ({
+  useApproveStep: () => ({ mutate: vi.fn(), error: mut.approveError }),
+  useRejectStep: () => ({ mutate: vi.fn(), error: null }),
+  useRequestChangesStep: () => ({ mutate: vi.fn(), error: null }),
+  useCancelApprovalRequest: () => ({ mutate: vi.fn(), error: null }),
+}));
 
 /** Resolve the currently signed-in user's id (set by `signIn` in beforeEach). */
 function meId(): string {
@@ -41,6 +52,7 @@ function buildRequest(overrides: Partial<ApprovalRequest> = {}, step?: Partial<A
 describe('<ApprovalActionsBar />', () => {
   beforeEach(() => {
     signIn('super-admin');
+    mut.approveError = null;
   });
 
   it('shows approve / reject / request-changes when user has permission', () => {
@@ -88,5 +100,26 @@ describe('<ApprovalActionsBar />', () => {
     });
     render(renderWithProviders(<ApprovalActionsBar request={req} currentStep={req.steps[0]} />));
     expect(screen.getByTestId('approval-actions-bar')).toBeInTheDocument();
+  });
+
+  it('AC8: a failed mutation surfaces an inline alert — page stays rendered', () => {
+    mut.approveError = new ApiError(409, {
+      code: 'INVALID_TRANSITION',
+      message: 'already decided',
+    });
+    const req = buildRequest();
+    render(renderWithProviders(<ApprovalActionsBar request={req} currentStep={req.steps[0]} />));
+    // The bar itself still renders (no global error state)...
+    expect(screen.getByTestId('approval-actions-bar')).toBeInTheDocument();
+    // ...and the failure is SHOWN to the user, not silently swallowed.
+    const alert = screen.getByTestId('approval-action-error');
+    expect(alert).toHaveAttribute('role', 'alert');
+    expect(alert.textContent ?? '').not.toHaveLength(0);
+  });
+
+  it('AC8: no alert is rendered when no mutation has failed', () => {
+    const req = buildRequest();
+    render(renderWithProviders(<ApprovalActionsBar request={req} currentStep={req.steps[0]} />));
+    expect(screen.queryByTestId('approval-action-error')).not.toBeInTheDocument();
   });
 });

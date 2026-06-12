@@ -100,7 +100,9 @@ interface StatusBadgeProps {
  * 9 tones per design-foundation §3.6 / §10.
  */
 export function StatusBadge({ tone, label, outline, className }: StatusBadgeProps) {
-  const t = toneMap[tone];
+  // Defensive: an unknown/undefined tone must never crash the whole page with
+  // `toneMap[undefined].bg`. Fall back to the neutral `draft` spec.
+  const t = toneMap[tone] ?? toneMap.draft;
   return (
     <span
       className={cn(

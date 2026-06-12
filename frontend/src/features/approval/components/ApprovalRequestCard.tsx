@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Card } from '@/shared/components/ui/Card';
 import { pickLocalized } from '@/shared/lib/localized';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { routes } from '@/shared/config/routes';
 import { ApprovalStatusBadge } from './ApprovalStatusBadge';
 import type { ApprovalRequestSummary } from '../types';
@@ -12,10 +13,11 @@ interface Props {
 
 export function ApprovalRequestCard({ request }: Props) {
   const { t, i18n } = useTranslation();
-  const initiated = new Date(request.initiatedAt).toLocaleString(i18n.language);
-  const entityLabel = request.entityLabel
+  const initiated = formatDateSafe(request.initiatedAt, i18n.language, t('common.dash'));
+  const entityLabelText = request.entityLabel
     ? pickLocalized(request.entityLabel, i18n.language)
-    : request.entityId;
+    : '';
+  const entityLabel = entityLabelText.length > 0 ? entityLabelText : request.entityId;
   return (
     <Card compact data-testid="approval-request-card">
       <div className="flex items-start justify-between gap-3">

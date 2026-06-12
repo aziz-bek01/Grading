@@ -1347,73 +1347,55 @@ export type MockApprovalEntityType =
   | 'GRADE_STRUCTURE'
   | 'PROJECT';
 
+/**
+ * MSW approval fixtures MIRROR THE BACKEND RECORDS exactly (snake_case wire),
+ * NOT the FE domain types. This is the grade-module lesson: the mock must equal
+ * the prod wire so the `normalizeApprovalRequest` adapter is exercised here the
+ * same way it is in production. Field names match `ApprovalRequestResponse` /
+ * `ApprovalStepResponse` after Jackson SNAKE_CASE serialisation.
+ *
+ * Backend `@JsonInclude(NON_NULL)` OMITS null fields — the mock honours this by
+ * making decision-only step fields OPTIONAL (omitted while a step is PENDING).
+ * The mock does NOT emit initiated_by_name / total_steps / current_step_order /
+ * entity_label / decisions[] — those are derived by the FE adapter.
+ */
 export interface MockApprovalStep {
   id: string;
-  approvalRequestId: string;
-  stepOrder: number;
-  approverUserId: string | null;
-  approverName: string | null;
-  requiredPermission: string | null;
+  step_order: number;
+  approver_user_id?: string;
+  required_permission?: string;
   status: MockApprovalStepStatus;
-  decidedAt: string | null;
-  decidedByUserId: string | null;
-  decidedByName: string | null;
-  notes: string | null;
-  reason: string | null;
-}
-
-export interface MockApprovalDecision {
-  id: string;
-  approvalRequestId: string;
-  approvalStepId: string;
-  decision: 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
-  decidedByUserId: string;
-  decidedByName: string;
-  decidedAt: string;
-  notes: string | null;
-  reason: string | null;
+  decided_by?: string;
+  decided_at?: string;
+  reason_i18n?: Partial<Record<Locale, string>>;
 }
 
 export interface MockApprovalRequest {
   id: string;
-  projectId: string;
-  entityType: MockApprovalEntityType;
-  entityId: string;
-  entityLabel: Partial<Record<Locale, string>>;
-  status: MockApprovalRequestStatus;
-  initiatedByUserId: string;
-  initiatedByName: string;
-  initiatedAt: string;
-  currentStepOrder: number | null;
-  totalSteps: number;
-  notesI18n: Partial<Record<Locale, string>>;
+  project_id: string;
+  entity_type: MockApprovalEntityType;
+  entity_id: string;
+  requested_by: string;
+  requested_at: string;
+  current_status: MockApprovalRequestStatus;
+  notes_i18n: Partial<Record<Locale, string>>;
   steps: MockApprovalStep[];
-  decisions: MockApprovalDecision[];
-  completedAt: string | null;
 }
 
 const SUPER_ADMIN_ID = '00000000-0000-0000-0000-000000000001';
 
 const approvalRequests: MockApprovalRequest[] = [
-  // 1) CFO Job Profile awaiting approval — current super-admin is approver
+  // 1) CFO Job Profile awaiting approval — current super-admin is approver.
+  //    Snake_case wire shape; PENDING steps OMIT decided_by/decided_at/reason_i18n.
   {
     id: 'appr-cfo-jp-1',
-    projectId: 'proj-acme-2026',
-    entityType: 'JOB_PROFILE',
-    entityId: 'jp-cfo-v1',
-    entityLabel: I18N(
-      'Должностной профиль: Финансовый директор',
-      'Лавозим профили: Молия директори',
-      'Lavozim profili: Moliya direktori',
-      'Job profile: Chief Financial Officer',
-    ),
-    status: 'PENDING',
-    initiatedByUserId: 'mock-evaluator-1',
-    initiatedByName: 'HRLab Consultant',
-    initiatedAt: '2026-04-20T09:00:00Z',
-    currentStepOrder: 1,
-    totalSteps: 1,
-    notesI18n: I18N(
+    project_id: 'proj-acme-2026',
+    entity_type: 'JOB_PROFILE',
+    entity_id: 'jp-cfo-v1',
+    requested_by: 'mock-evaluator-1',
+    requested_at: '2026-04-20T09:00:00Z',
+    current_status: 'PENDING',
+    notes_i18n: I18N(
       'Прошу проверить и утвердить профиль.',
       'Профайлни кўриб чиқиб тасдиқлашингизни сўрайман.',
       "Profilni ko'rib chiqib tasdiqlashingizni so'rayman.",
@@ -1422,41 +1404,23 @@ const approvalRequests: MockApprovalRequest[] = [
     steps: [
       {
         id: 'appr-cfo-jp-1-step-1',
-        approvalRequestId: 'appr-cfo-jp-1',
-        stepOrder: 1,
-        approverUserId: SUPER_ADMIN_ID,
-        approverName: 'Dev User',
-        requiredPermission: 'JOB_PROFILE_APPROVE',
+        step_order: 1,
+        approver_user_id: SUPER_ADMIN_ID,
+        required_permission: 'JOB_PROFILE_APPROVE',
         status: 'PENDING',
-        decidedAt: null,
-        decidedByUserId: null,
-        decidedByName: null,
-        notes: null,
-        reason: null,
       },
     ],
-    decisions: [],
-    completedAt: null,
   },
-  // 2) Senior SWE evaluation awaiting approval
+  // 2) Senior SWE evaluation awaiting approval (2-step).
   {
     id: 'appr-swe-eval-1',
-    projectId: 'proj-acme-2026',
-    entityType: 'EVALUATION',
-    entityId: 'eval-swe-1',
-    entityLabel: I18N(
-      'Оценка: Senior Software Engineer',
-      'Баҳолаш: Senior Software Engineer',
-      'Baholash: Senior Software Engineer',
-      'Evaluation: Senior Software Engineer',
-    ),
-    status: 'PENDING',
-    initiatedByUserId: 'mock-evaluator-1',
-    initiatedByName: 'HRLab Consultant',
-    initiatedAt: '2026-05-15T08:30:00Z',
-    currentStepOrder: 1,
-    totalSteps: 2,
-    notesI18n: I18N(
+    project_id: 'proj-acme-2026',
+    entity_type: 'EVALUATION',
+    entity_id: 'eval-swe-1',
+    requested_by: 'mock-evaluator-1',
+    requested_at: '2026-05-15T08:30:00Z',
+    current_status: 'PENDING',
+    notes_i18n: I18N(
       'Оценка готова к утверждению комитетом.',
       'Баҳолаш қўмита томонидан тасдиқланишга тайёр.',
       "Baholash qo'mita tomonidan tasdiqlanishga tayyor.",
@@ -1465,35 +1429,18 @@ const approvalRequests: MockApprovalRequest[] = [
     steps: [
       {
         id: 'appr-swe-eval-1-step-1',
-        approvalRequestId: 'appr-swe-eval-1',
-        stepOrder: 1,
-        approverUserId: SUPER_ADMIN_ID,
-        approverName: 'Dev User',
-        requiredPermission: 'EVALUATION_APPROVE',
+        step_order: 1,
+        approver_user_id: SUPER_ADMIN_ID,
+        required_permission: 'EVALUATION_APPROVE',
         status: 'PENDING',
-        decidedAt: null,
-        decidedByUserId: null,
-        decidedByName: null,
-        notes: null,
-        reason: null,
       },
       {
         id: 'appr-swe-eval-1-step-2',
-        approvalRequestId: 'appr-swe-eval-1',
-        stepOrder: 2,
-        approverUserId: null,
-        approverName: null,
-        requiredPermission: 'EVALUATION_LOCK',
+        step_order: 2,
+        required_permission: 'EVALUATION_LOCK',
         status: 'PENDING',
-        decidedAt: null,
-        decidedByUserId: null,
-        decidedByName: null,
-        notes: null,
-        reason: null,
       },
     ],
-    decisions: [],
-    completedAt: null,
   },
 ];
 

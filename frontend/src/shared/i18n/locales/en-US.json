@@ -7,6 +7,7 @@
     "no_project": "No project selected"
   },
   "common": {
+    "dash": "—",
     "cancel": "Cancel",
     "confirm": "Confirm",
     "save": "Save",
@@ -538,7 +539,8 @@
       "APPROVED": "Approved",
       "REJECTED": "Rejected",
       "CHANGES_REQUESTED": "Changes requested",
-      "CANCELLED": "Cancelled"
+      "CANCELLED": "Cancelled",
+      "UNKNOWN": "Unknown"
     },
     "stepStatus": {
       "PENDING": "Pending",
@@ -580,7 +582,10 @@
       "changes_dialog_title": "Request changes",
       "changes_dialog_body": "Describe what needs to change (minimum 20 characters).",
       "cancel_confirm_title": "Withdraw approval request?",
-      "cancel_confirm_body": "The request will be cancelled. You can create a new one later."
+      "cancel_confirm_body": "The request will be cancelled. You can create a new one later.",
+      "action_failed": "The action could not be completed. Please try again.",
+      "error_reason_required": "A reason is required (at least 20 characters).",
+      "error_invalid_transition": "Action not available: the request status has already changed. Refresh the page."
     }
   },
   "comment": {

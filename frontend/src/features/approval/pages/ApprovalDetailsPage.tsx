@@ -22,9 +22,13 @@ export function ApprovalDetailsPage() {
   if (!approval.data) return <EmptyState />;
 
   const r = approval.data;
-  const steps = [...r.steps].sort((a, b) => a.stepOrder - b.stepOrder);
+  // Defensive: the adapter guarantees arrays, but guard so a malformed
+  // payload can never make `.sort` / `.map` throw (scout: :25 / :54).
+  const steps = [...(r.steps ?? [])].sort((a, b) => a.stepOrder - b.stepOrder);
+  const decisions = r.decisions ?? [];
   const currentStep = steps.find((s) => s.status === 'PENDING') ?? null;
-  const entityLabel = r.entityLabel ? pickLocalized(r.entityLabel, i18n.language) : r.entityId;
+  const entityLabelText = r.entityLabel ? pickLocalized(r.entityLabel, i18n.language) : '';
+  const entityLabel = entityLabelText.length > 0 ? entityLabelText : r.entityId;
 
   return (
     <div className="space-y-6" data-testid="approval-details-page">
@@ -51,7 +55,7 @@ export function ApprovalDetailsPage() {
         </ol>
       </Card>
 
-      <ApprovalDecisionsList decisions={r.decisions} />
+      <ApprovalDecisionsList decisions={decisions} />
     </div>
   );
 }

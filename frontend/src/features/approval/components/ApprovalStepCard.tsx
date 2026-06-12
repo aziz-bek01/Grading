@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Clock, AlertTriangle, MinusCircle } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
+import { formatDateSafe } from '@/shared/lib/dates';
 import type { ApprovalStep, ApprovalStepStatus } from '../types';
 
 const icon: Record<ApprovalStepStatus, React.ReactNode> = {
@@ -25,8 +26,10 @@ interface Props {
 export function ApprovalStepCard({ step, isCurrent }: Props) {
   const { t, i18n } = useTranslation();
   const decided = step.decidedAt
-    ? new Date(step.decidedAt).toLocaleString(i18n.language)
+    ? formatDateSafe(step.decidedAt, i18n.language, t('common.dash'))
     : null;
+  // Decided-by display name falls back to the UUID (BE does not send a name).
+  const decidedByDisplay = step.decidedByName ?? step.decidedByUserId;
   return (
     <div
       className={cn(
@@ -59,9 +62,9 @@ export function ApprovalStepCard({ step, isCurrent }: Props) {
           <span>{t('approval.step.any_approver')}</span>
         )}
       </div>
-      {step.decidedByName && decided ? (
+      {decidedByDisplay && decided ? (
         <div className="text-xs text-text-muted">
-          {t('approval.step.decided_by', { name: step.decidedByName, time: decided })}
+          {t('approval.step.decided_by', { name: decidedByDisplay, time: decided })}
         </div>
       ) : null}
       {step.reason ? (

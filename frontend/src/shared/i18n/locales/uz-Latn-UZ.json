@@ -7,6 +7,7 @@
     "no_project": "Loyiha tanlanmagan"
   },
   "common": {
+    "dash": "—",
     "cancel": "Bekor qilish",
     "confirm": "Tasdiqlash",
     "save": "Saqlash",
@@ -538,7 +539,8 @@
       "APPROVED": "Tasdiqlandi",
       "REJECTED": "Rad etildi",
       "CHANGES_REQUESTED": "Oʻzgartirishlar talab qilindi",
-      "CANCELLED": "Bekor qilindi"
+      "CANCELLED": "Bekor qilindi",
+      "UNKNOWN": "Nomaʼlum"
     },
     "stepStatus": {
       "PENDING": "Kutilmoqda",
@@ -580,7 +582,10 @@
       "changes_dialog_title": "Oʻzgartirishlar soʻrash",
       "changes_dialog_body": "Qanday oʻzgartirishlar talab qilinayotganini yozing (kamida 20 ta belgi).",
       "cancel_confirm_title": "Tasdiqlash soʻrovini qaytarib olasizmi?",
-      "cancel_confirm_body": "Soʻrov bekor qilinadi. Keyinroq yangisini yaratish mumkin."
+      "cancel_confirm_body": "Soʻrov bekor qilinadi. Keyinroq yangisini yaratish mumkin.",
+      "action_failed": "Amalni bajarib boʻlmadi. Qayta urinib koʻring.",
+      "error_reason_required": "Sabab koʻrsatilishi shart (kamida 20 belgi).",
+      "error_invalid_transition": "Amal mumkin emas: soʻrov holati allaqachon oʻzgargan. Sahifani yangilang."
     }
   },
   "comment": {

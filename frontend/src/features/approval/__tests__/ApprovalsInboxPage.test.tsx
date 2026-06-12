@@ -27,10 +27,11 @@ describe('<ApprovalsInboxPage />', () => {
   });
 
   it('renders an empty state when no requests match', async () => {
-    // Clear inbox by marking all PENDING as APPROVED then refetch
-    const snapshot = mockDb.approvalRequests.map((a) => ({ ...a, status: a.status }));
+    // Clear inbox by marking all PENDING as APPROVED then refetch.
+    // `current_status` is the REAL snake_case wire field (BE record contract).
+    const snapshot = mockDb.approvalRequests.map((a) => a.current_status);
     mockDb.approvalRequests.forEach((a) => {
-      a.status = 'APPROVED';
+      a.current_status = 'APPROVED';
     });
     render(renderWithProviders(<ApprovalsInboxPage />));
     await waitFor(() => {
@@ -38,7 +39,7 @@ describe('<ApprovalsInboxPage />', () => {
     });
     // restore
     mockDb.approvalRequests.forEach((a, i) => {
-      a.status = snapshot[i].status as never;
+      a.current_status = snapshot[i];
     });
     httpClient.defaults.adapter = originalAdapter;
   });

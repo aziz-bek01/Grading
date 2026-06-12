@@ -10,18 +10,27 @@ const tone: Record<ApprovalRequestStatus, StatusTone> = {
   CANCELLED: 'locked',
 };
 
+/** Safe fallback tone for an unknown/undefined status — never index with undefined. */
+const FALLBACK_TONE: StatusTone = 'draft';
+
 interface Props {
-  status: ApprovalRequestStatus;
+  /** Accept a possibly-undefined status defensively (real wire / partial data). */
+  status: ApprovalRequestStatus | undefined | null;
   outline?: boolean;
   className?: string;
 }
 
 export function ApprovalStatusBadge({ status, outline, className }: Props) {
   const { t } = useTranslation();
+  const known = status && status in tone;
+  const resolvedTone = known ? tone[status as ApprovalRequestStatus] : FALLBACK_TONE;
+  const label = known
+    ? t(`approval.status.${status}`)
+    : t('approval.status.UNKNOWN');
   return (
     <StatusBadge
-      tone={tone[status]}
-      label={t(`approval.status.${status}`)}
+      tone={resolvedTone}
+      label={label}
       outline={outline}
       className={className}
     />

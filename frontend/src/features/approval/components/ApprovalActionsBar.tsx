@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
 import { ReasonRequiredDialog } from '@/shared/components/confirm-dialog/ReasonRequiredDialog';
 import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog';
+import { ApiError } from '@/shared/api/apiError';
 import { useAuthStore } from '@/features/auth/authStore';
 import {
   useApproveStep,
@@ -17,6 +18,34 @@ import { PERMISSIONS } from '@/shared/types/permissions';
 interface Props {
   request: ApprovalRequest;
   currentStep: ApprovalStep | null;
+}
+
+/** Known backend rejection codes mapped to specific localized messages. */
+const ACTION_ERROR_KEYS: Record<string, string> = {
+  REASON_REQUIRED: 'approval.actions.error_reason_required',
+  INVALID_TRANSITION: 'approval.actions.error_invalid_transition',
+};
+
+/**
+ * Inline error strip for approve/reject/request-changes/cancel mutation
+ * failures (AC8): a BE 400/409 must be SHOWN to the user, never silently
+ * swallowed — while the page itself stays rendered (no global error state).
+ * One component, reused by both render branches of the actions bar.
+ */
+function ActionErrorAlert({ error }: { error: unknown }) {
+  const { t } = useTranslation();
+  if (!error) return null;
+  const key =
+    error instanceof ApiError ? ACTION_ERROR_KEYS[error.code] : undefined;
+  return (
+    <p
+      role="alert"
+      data-testid="approval-action-error"
+      className="w-full text-xs text-danger-700"
+    >
+      {key ? t(key) : t('approval.actions.action_failed')}
+    </p>
+  );
 }
 
 /**
@@ -49,12 +78,17 @@ export function ApprovalActionsBar({ request, currentStep }: Props) {
     request.status === 'PENDING' &&
     request.initiatedByUserId === user.id;
 
+  // First failed mutation (if any) — surfaced inline below the buttons.
+  const actionError =
+    approveMut.error ?? rejectMut.error ?? requestChangesMut.error ?? cancelMut.error;
+
   if (!currentStep || request.status !== 'PENDING') {
     return canCancel ? (
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={() => setConfirmCancel(true)}>
           {t('approval.actions.cancel_request')}
         </Button>
+        <ActionErrorAlert error={cancelMut.error} />
         <ConfirmDialogWrapper
           open={confirmCancel}
           onCancel={() => setConfirmCancel(false)}
@@ -119,6 +153,8 @@ export function ApprovalActionsBar({ request, currentStep }: Props) {
           {t('approval.actions.cancel_request')}
         </Button>
       ) : null}
+
+      <ActionErrorAlert error={actionError} />
 
       <ConfirmDialog
         open={confirmApprove}

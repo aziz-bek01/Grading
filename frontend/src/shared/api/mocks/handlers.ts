@@ -2969,18 +2969,16 @@ function reasonRequired(reason: string | undefined): MatchResult | null {
   return null;
 }
 
-function isStepActionableByMe(step: { approverUserId: string | null; requiredPermission: string | null }) {
-  if (step.approverUserId && step.approverUserId === MOCK_CURRENT_USER_ID) return true;
-  if (step.requiredPermission && MOCK_CURRENT_USER_PERMISSIONS.has(step.requiredPermission)) return true;
+function isStepActionableByMe(step: { approver_user_id?: string; required_permission?: string }) {
+  if (step.approver_user_id && step.approver_user_id === MOCK_CURRENT_USER_ID) return true;
+  if (step.required_permission && MOCK_CURRENT_USER_PERMISSIONS.has(step.required_permission)) return true;
   return false;
 }
 
-function approvalSummary(a: (typeof mockDb.approvalRequests)[number]) {
-  // omit nested steps/decisions for list responses
-  const { steps: _steps, decisions: _decisions, ...rest } = a;
-  void _steps;
-  void _decisions;
-  return rest;
+/** Lowest step_order among PENDING steps — the "current" step (mirrors BE). */
+function currentPendingOrder(a: (typeof mockDb.approvalRequests)[number]): number | null {
+  const orders = a.steps.filter((s) => s.status === 'PENDING').map((s) => s.step_order);
+  return orders.length > 0 ? Math.min(...orders) : null;
 }
 
 function handleApprovals(
@@ -2989,19 +2987,21 @@ function handleApprovals(
   query: URLSearchParams,
   config: AxiosRequestConfig,
 ): MatchResult | null {
-  // GET /approval-requests/my-inbox
+  // GET /approval-requests/my-inbox — BARE ARRAY (ApprovalController.inbox()),
+  // NOT a PageResponse envelope. Each element is the full snake_case object.
   if (path === '/approval-requests/my-inbox' && method === 'GET') {
     const items = mockDb.approvalRequests
-      .filter((a) => a.status === 'PENDING')
+      .filter((a) => a.current_status === 'PENDING')
       .filter((a) => {
-        const current = a.steps.find((s) => s.status === 'PENDING' && s.stepOrder === a.currentStepOrder);
+        const order = currentPendingOrder(a);
+        const current = a.steps.find((s) => s.status === 'PENDING' && s.step_order === order);
         return current && isStepActionableByMe(current);
-      })
-      .map(approvalSummary);
-    return ok({ items });
+      });
+    return ok(items);
   }
 
-  // GET /approval-requests
+  // GET /approval-requests — PageResponse envelope
+  // { items, page, size, total_elements, total_pages } of full snake_case objects.
   if (path === '/approval-requests' && method === 'GET') {
     let list = mockDb.approvalRequests;
     const projectId = query.get('projectId');
@@ -3009,14 +3009,20 @@ function handleApprovals(
     const entityId = query.get('entityId');
     const status = query.get('status');
     const forCurrentUser = query.get('forCurrentUser');
-    if (projectId) list = list.filter((a) => a.projectId === projectId);
-    if (entityType) list = list.filter((a) => a.entityType === entityType);
-    if (entityId) list = list.filter((a) => a.entityId === entityId);
-    if (status) list = list.filter((a) => a.status === status);
+    if (projectId) list = list.filter((a) => a.project_id === projectId);
+    if (entityType) list = list.filter((a) => a.entity_type === entityType);
+    if (entityId) list = list.filter((a) => a.entity_id === entityId);
+    if (status) list = list.filter((a) => a.current_status === status);
     if (forCurrentUser === 'true') {
       list = list.filter((a) => a.steps.some((s) => isStepActionableByMe(s)));
     }
-    return ok({ items: list.map(approvalSummary) });
+    return ok({
+      items: list,
+      page: 0,
+      size: Math.max(list.length, 1),
+      total_elements: list.length,
+      total_pages: 1,
+    });
   }
 
   // POST /approval-requests
@@ -3033,34 +3039,20 @@ function handleApprovals(
     const id = uuid();
     const step: (typeof mockDb.approvalRequests)[number]['steps'][number] = {
       id: uuid(),
-      approvalRequestId: id,
-      stepOrder: 1,
-      approverUserId: null,
-      approverName: null,
-      requiredPermission: `${body.entityType}_APPROVE`,
+      step_order: 1,
+      required_permission: `${body.entityType}_APPROVE`,
       status: 'PENDING',
-      decidedAt: null,
-      decidedByUserId: null,
-      decidedByName: null,
-      notes: null,
-      reason: null,
     };
     const next: (typeof mockDb.approvalRequests)[number] = {
       id,
-      projectId: 'proj-acme-2026',
-      entityType: body.entityType as never,
-      entityId: body.entityId,
-      entityLabel: {},
-      status: 'PENDING',
-      initiatedByUserId: MOCK_CURRENT_USER_ID,
-      initiatedByName: MOCK_CURRENT_USER_NAME,
-      initiatedAt: new Date().toISOString(),
-      currentStepOrder: 1,
-      totalSteps: 1,
-      notesI18n: (body.notesI18n ?? {}) as never,
+      project_id: 'proj-acme-2026',
+      entity_type: body.entityType as never,
+      entity_id: body.entityId,
+      requested_by: MOCK_CURRENT_USER_ID,
+      requested_at: new Date().toISOString(),
+      current_status: 'PENDING',
+      notes_i18n: (body.notesI18n ?? {}) as never,
       steps: [step],
-      decisions: [],
-      completedAt: null,
     };
     mockDb.approvalRequests.unshift(next);
     return ok(next, 201);
@@ -3079,12 +3071,10 @@ function handleApprovals(
   if (cancel && method === 'POST') {
     const a = approvalById(cancel[1]);
     if (!a) return notFound();
-    if (a.status !== 'PENDING') {
-      return { status: 409, body: { code: 'INVALID_TRANSITION', message: `Cannot cancel ${a.status}` } };
+    if (a.current_status !== 'PENDING') {
+      return { status: 409, body: { code: 'INVALID_TRANSITION', message: `Cannot cancel ${a.current_status}` } };
     }
-    a.status = 'CANCELLED';
-    a.completedAt = new Date().toISOString();
-    a.currentStepOrder = null;
+    a.current_status = 'CANCELLED';
     return ok(a);
   }
 
@@ -3095,8 +3085,8 @@ function handleApprovals(
     if (!a) return notFound();
     const step = a.steps.find((s) => s.id === stepAct[2]);
     if (!step) return notFound();
-    if (a.status !== 'PENDING') {
-      return { status: 409, body: { code: 'INVALID_TRANSITION', message: `Cannot act on ${a.status}` } };
+    if (a.current_status !== 'PENDING') {
+      return { status: 409, body: { code: 'INVALID_TRANSITION', message: `Cannot act on ${a.current_status}` } };
     }
     if (step.status !== 'PENDING') {
       return { status: 409, body: { code: 'INVALID_TRANSITION', message: `Step already ${step.status}` } };
@@ -3107,29 +3097,13 @@ function handleApprovals(
     const now = new Date().toISOString();
     if (action === 'approve') {
       step.status = 'APPROVED';
-      step.decidedAt = now;
-      step.decidedByUserId = MOCK_CURRENT_USER_ID;
-      step.decidedByName = MOCK_CURRENT_USER_NAME;
-      step.notes = body.notes ?? null;
-      a.decisions.push({
-        id: uuid(),
-        approvalRequestId: a.id,
-        approvalStepId: step.id,
-        decision: 'APPROVED',
-        decidedByUserId: MOCK_CURRENT_USER_ID,
-        decidedByName: MOCK_CURRENT_USER_NAME,
-        decidedAt: now,
-        notes: body.notes ?? null,
-        reason: null,
-      });
-      // Advance to next step or complete
-      const nextStep = a.steps.find((s) => s.stepOrder === step.stepOrder + 1);
-      if (nextStep) {
-        a.currentStepOrder = nextStep.stepOrder;
-      } else {
-        a.status = 'APPROVED';
-        a.completedAt = now;
-        a.currentStepOrder = null;
+      step.decided_at = now;
+      step.decided_by = MOCK_CURRENT_USER_ID;
+      if (body.notes) step.reason_i18n = { 'en-US': body.notes };
+      // Advance to next step or complete the whole request.
+      const nextStep = a.steps.find((s) => s.step_order === step.step_order + 1);
+      if (!nextStep) {
+        a.current_status = 'APPROVED';
       }
       return ok(a);
     }
@@ -3137,42 +3111,15 @@ function handleApprovals(
     if (reasonErr) return reasonErr;
     if (action === 'reject') {
       step.status = 'REJECTED';
-      step.decidedAt = now;
-      step.decidedByUserId = MOCK_CURRENT_USER_ID;
-      step.decidedByName = MOCK_CURRENT_USER_NAME;
-      step.reason = body.reason ?? null;
-      a.status = 'REJECTED';
-      a.completedAt = now;
-      a.currentStepOrder = null;
-      a.decisions.push({
-        id: uuid(),
-        approvalRequestId: a.id,
-        approvalStepId: step.id,
-        decision: 'REJECTED',
-        decidedByUserId: MOCK_CURRENT_USER_ID,
-        decidedByName: MOCK_CURRENT_USER_NAME,
-        decidedAt: now,
-        notes: null,
-        reason: body.reason ?? null,
-      });
+      step.decided_at = now;
+      step.decided_by = MOCK_CURRENT_USER_ID;
+      step.reason_i18n = { 'en-US': body.reason as string };
+      a.current_status = 'REJECTED';
       return ok(a);
     }
-    // request-changes
-    step.status = 'PENDING';
-    step.reason = body.reason ?? null;
-    a.status = 'CHANGES_REQUESTED';
-    a.completedAt = now;
-    a.decisions.push({
-      id: uuid(),
-      approvalRequestId: a.id,
-      approvalStepId: step.id,
-      decision: 'CHANGES_REQUESTED',
-      decidedByUserId: MOCK_CURRENT_USER_ID,
-      decidedByName: MOCK_CURRENT_USER_NAME,
-      decidedAt: now,
-      notes: null,
-      reason: body.reason ?? null,
-    });
+    // request-changes: the step stays PENDING but the request is parked.
+    step.reason_i18n = { 'en-US': body.reason as string };
+    a.current_status = 'CHANGES_REQUESTED';
     return ok(a);
   }
 

@@ -129,8 +129,8 @@ Legend: `Y` = granted by default; `.` = not granted by default. ABAC scoping (te
 
 | Role | Granted |
 |---|---|
-| HRLAB_SUPER_ADMIN | 29 |
-| HRLAB_PROJECT_MANAGER | 25 |
+| HRLAB_SUPER_ADMIN | 65 (full current catalogue minus 7 carve-outs — see §5.1 and §4a) |
+| HRLAB_PROJECT_MANAGER | 25 (MVP 1 baseline; widened by per-module MVP 2 seeds) |
 | HRLAB_CONSULTANT | 16 |
 | HRLAB_ANALYST | 15 |
 | CLIENT_COMPANY_ADMIN | 11 |
@@ -146,15 +146,91 @@ Legend: `Y` = granted by default; `.` = not granted by default. ABAC scoping (te
 **AUDIT_READ default grants:** `2` (HRLAB_SUPER_ADMIN, EXTERNAL_AUDITOR).
 **AI_ASSIST_USE default grants:** `0` (MVP 4 — not yet wired).
 
+> The §4 master matrix above is the **MVP 1 baseline snapshot (34 atomic codes,
+> 151 grants)**. The catalogue has since grown across MVP 1 Phase 3–6 and MVP 2
+> to **72 atomic codes**. §4a below records the current full catalogue and the
+> authoritative HRLAB_SUPER_ADMIN grant after that growth.
+
+---
+
+## 4a. Current full catalogue (72 codes) and authoritative HRLAB_SUPER_ADMIN grant
+
+The permission catalogue is seeded across the following Liquibase files:
+
+| Seed file | Codes added |
+|---|---|
+| `seeds/001-default-permissions.yaml` | 34 (MVP 1 baseline) |
+| `seeds/004` (user-management catalogue block) | +9 (`USER_LIST/VIEW/INVITE/UPDATE/MEMBERSHIP_MANAGE/ROLE_ASSIGN/ROLE_ASSIGN_HRLAB/SALARY_PERMISSION_TOGGLE`, `AUDIT_VIEW`) |
+| `tenant-schema/007` | +3 (`JOB_PROFILE_APPROVE`, `JOB_ANALYSIS_READ`, `JOB_ANALYSIS_EDIT`) |
+| `tenant-schema/013` | +1 (`METHODOLOGY_CREATE`) |
+| `tenant-schema/016` | +2 (`CALIBRATION_EDIT`, `EVALUATION_LOCK`) |
+| `tenant-schema/019` | +2 (`GRADE_STRUCTURE_APPROVE`, `GRADE_STRUCTURE_LOCK`) |
+| `tenant-schema/023` | +9 (`WORKFLOW_READ/EDIT`, `APPROVAL_REQUEST_CREATE/DECIDE/CANCEL`, `COMMENT_READ/CREATE/EDIT/DELETE`) |
+| `tenant-schema/027` | +9 (`ORG_IMPORT`, `POSITION_IMPORT`, `METHODOLOGY_IMPORT`, `GRADE_IMPORT`, `PAYROLL_IMPORT`, `IMPORT_READ`, `IMPORT_CANCEL`, `EXPORT_READ`, `EXPORT_REQUEST`) |
+| `tenant-schema/038` | +3 (`EVALUATION_PANEL_MANAGE`, `EVALUATION_PANEL_APPROVE`, `CAMPAIGN_RESULTS_VIEW`) |
+| **Total** | **72** |
+
+> Note: `tenant-schema/029` adds **role grants** for the already-existing
+> `REPORT_*` codes; it does not add new catalogue codes. The frontend constant
+> map (`frontend/src/shared/types/permissions.ts`) also lists a handful of
+> **aspirational / OR-fallback** codes that are NOT seeded as catalogue rows and
+> are therefore intentionally excluded from the 72-code catalogue and from any
+> role grant: `TENANT_ARCHIVE` (the archive endpoint enforces `TENANT_EDIT`),
+> `CLIENT_LIST/CLIENT_VIEW/CLIENT_UPDATE` (each `@PreAuthorize` OR-falls-back to
+> `TENANT_READ`/`TENANT_EDIT`), `AUDIT_READ_CROSS_TENANT`, `EXPORT_GENERAL`,
+> `GRADE_APPROVE`, `APPROVAL_STEP_APPROVE/REJECT`, `EVALUATION_ADJUST`. These are
+> tracked as FE-cleanup items; they do not affect backend authority.
+
+**HRLAB_SUPER_ADMIN holds 65 of the 72 codes** — i.e. **every operational and
+control-plane code** (tenant CRUD, project lifecycle, org/position/profile/
+job-analysis, methodology incl. create/import/approve/lock, evaluation incl.
+calibrate/lock, panels + campaign results, grade structure incl. approve/lock,
+workflow, approval-request decide, comments, imports/exports, all `USER_*`
+admin codes incl. `USER_ROLE_ASSIGN_HRLAB`, `AUDIT_READ` + `AUDIT_VIEW`,
+reports incl. export, file upload/download).
+
+**Explicitly NOT granted to HRLAB_SUPER_ADMIN (7 carve-outs):**
+
+| Code | Reason withheld |
+|---|---|
+| `SALARY_VIEW` | Separation of duty — salary is per-user only (§1 rule #1). |
+| `SALARY_EDIT` | Same — per-user only. |
+| `SALARY_EXPORT` | Same — per-user only. |
+| `SALARY_SCENARIO_RUN` | Same — per-user only (MVP 3). |
+| `AI_ASSIST_USE` | MVP 4 module; granted to no role yet. |
+| `PAYROLL_IMPORT` | MVP 4 payroll connector; granted to no role yet. |
+| `USER_SALARY_PERMISSION_TOGGLE` | HRLAB_* roles must NEVER hold it (architecture §8.4); only `CLIENT_COMPANY_ADMIN` holds it. |
+
+**Enforcement / corrective seed.** Because the per-module grants for newer codes
+live in `tenant-schema/` changesets (owned by the per-tenant provisioning
+bundle), environments where those grants did not land in the control-plane
+`public.role_permissions` collapsed HRLAB_SUPER_ADMIN back toward the stale
+29-code MVP 1 baseline — surfacing as the **"super admin sees everything
+locked/hidden"** defect (neither backend `PermissionService` nor frontend
+`permissionUtils` has a super-admin wildcard; authority == exactly the granted
+union). The forward-only corrective seed
+`seeds/005-superadmin-permission-backfill.yaml` grants HRLAB_SUPER_ADMIN every
+catalogue code except the 7 carve-outs above (idempotent `ON CONFLICT DO
+NOTHING`), and carries a post-condition invariant `DO`-block asserting both the
+carve-outs and full coverage. This file is the authoritative grant going
+forward; future catalogue additions are auto-included by its `NOT IN (carve-outs)`
+predicate unless a new carve-out is explicitly added to that list and to the
+invariant block.
+
 ---
 
 ## 5. Per-role rationale
 
-### 5.1 HRLAB_SUPER_ADMIN — 29 grants
+### 5.1 HRLAB_SUPER_ADMIN — 65 grants (full current catalogue minus 7 carve-outs)
 
-Receives every business-and-control-plane permission required to operate the platform across tenants: tenant CRUD, project workflow, all business modules (org/position/profile/methodology/evaluation/grade), audit read, user access management, reports (incl. export), file ops.
+> The original MVP 1 baseline was 29 grants against a 34-code catalogue. After
+> the MVP 1 Phase 3–6 and MVP 2 catalogue growth to 72 codes, HRLAB_SUPER_ADMIN
+> holds **65** of them. See §4a for the authoritative grant, the seed
+> provenance, and the corrective `seeds/005-superadmin-permission-backfill.yaml`.
 
-**Explicitly NOT granted (4):** `SALARY_VIEW`, `SALARY_EDIT`, `SALARY_EXPORT`, `SALARY_SCENARIO_RUN`. Salary access is per-user, never role-default — separation-of-duty rule from the security blueprint §8 and PRD §7.1. Also not granted: `AI_ASSIST_USE` (MVP 4).
+Receives every business-and-control-plane permission required to operate the platform across tenants: tenant CRUD, project workflow, all business modules (org/position/profile/job-analysis/methodology/evaluation/panels/grade incl. approve+lock), workflow + approval-request decide + comments, imports/exports, all `USER_*` admin codes (incl. `USER_ROLE_ASSIGN_HRLAB`), audit read + view, user access management, reports (incl. export), file ops.
+
+**Explicitly NOT granted (7 carve-outs):** `SALARY_VIEW`, `SALARY_EDIT`, `SALARY_EXPORT`, `SALARY_SCENARIO_RUN` — salary access is per-user, never role-default (separation-of-duty rule from security blueprint §8 and PRD §7.1); `AI_ASSIST_USE` and `PAYROLL_IMPORT` — MVP 4, granted to no role yet; `USER_SALARY_PERMISSION_TOGGLE` — HRLAB_* roles must never hold it (architecture §8.4). See §4a table.
 
 ### 5.2 HRLAB_PROJECT_MANAGER — 25 grants
 
@@ -255,11 +331,11 @@ The Liquibase seed `004-default-role-permissions.yaml` is considered correct onl
 |---|---|
 | `salary_grants_count_is_zero` | Count of rows in `role_permissions` where permission code starts with `SALARY_` is 0. |
 | `audit_read_only_two_roles` | Exactly two roles join `role_permissions` to `AUDIT_READ`: `HRLAB_SUPER_ADMIN` and `EXTERNAL_AUDITOR`. |
-| `super_admin_has_29_permissions` | HRLAB_SUPER_ADMIN has 29 grants, and none of them is a SALARY_* permission. |
+| `super_admin_has_full_catalogue_minus_carveouts` | After `seeds/005-superadmin-permission-backfill.yaml`, HRLAB_SUPER_ADMIN holds **every** `public.permissions` code EXCEPT the 7 carve-outs (`SALARY_VIEW/EDIT/EXPORT/SCENARIO_RUN`, `AI_ASSIST_USE`, `PAYROLL_IMPORT`, `USER_SALARY_PERMISSION_TOGGLE`). Equivalently: `COUNT(catalogue) - COUNT(super_admin grants) = 7` and the missing 7 are exactly that set. (Superseded the MVP 1 `super_admin_has_29_permissions` check.) |
 | `tenant_create_only_super_admin` | Only HRLAB_SUPER_ADMIN has `TENANT_CREATE`. |
 | `viewer_has_no_edit_permission` | VIEWER has no permission whose code ends in `_EDIT`, `_CREATE`, `_APPROVE`, `_LOCK`, or `_EXPORT`. |
 | `external_auditor_no_edit` | EXTERNAL_AUDITOR has no permission ending in `_EDIT`, `_CREATE`, `_APPROVE`, `_LOCK`, `_EXPORT`, `_SCENARIO_RUN`. |
-| `total_grant_count` | Total `role_permissions` rows = 151. |
+| `total_grant_count` | Total `role_permissions` rows = 151 at the MVP 1 baseline (`seeds/004` only). With the full MVP 1 Phase 3–6 + MVP 2 per-module seeds and the `seeds/005` super-admin backfill applied, the total is larger; assert per-role expectations (e.g. the super-admin row above) rather than a single global constant. |
 | `client_company_admin_has_user_access_manage` | CLIENT_COMPANY_ADMIN has `USER_ACCESS_MANAGE`. |
 | `committee_no_approve` | EVALUATION_COMMITTEE_MEMBER does not have `EVALUATION_APPROVE`. |
 | `idempotent_seed` | Running the changeset twice does not duplicate rows (insert-on-conflict-do-nothing). |

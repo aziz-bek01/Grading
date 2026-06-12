@@ -16,14 +16,18 @@
  */
 import { httpClient } from '@/shared/api/httpClient';
 import { endpoints } from '@/shared/api/endpoints';
+import { ApiError } from '@/shared/api/apiError';
 import type {
   AssignEvaluatorPayload,
+  BulkCreatePanelsPayload,
+  BulkCreatePanelsResult,
   CreatePanelPayload,
   Panel,
   PanelAssignment,
   PanelDetail,
   PanelPageResponse,
   PanelResult,
+  RosterSuggestions,
 } from '../panelTypes';
 
 export const panelKeys = {
@@ -31,6 +35,8 @@ export const panelKeys = {
   list: (filters: PanelListFilters) => ['panels', 'list', filters] as const,
   detail: (id: string) => ['panels', 'detail', id] as const,
   result: (id: string) => ['panels', 'result', id] as const,
+  rosterSuggestions: (projectId: string, departmentId: string) =>
+    ['panels', 'roster-suggestions', projectId, departmentId] as const,
 };
 
 export interface PanelListFilters {
@@ -50,6 +56,62 @@ export async function createPanel(payload: CreatePanelPayload): Promise<Panel> {
   };
   const res = await httpClient.post<Panel>(endpoints.panels.list, body);
   return res.data;
+}
+
+/**
+ * POST /panels/bulk-create — opens one panel per position with the SAME shared
+ * roster in a SINGLE request (replaces the create-then-loop-assign sequence).
+ * The body is whitelisted: only the three contract fields ever reach the wire,
+ * so no mass-assignment / tenant_id field can leak. Returns the per-position
+ * failure collector — partially-failed rows surface in `failed[]` while the rest
+ * are created (no sibling rollback).
+ */
+export async function bulkCreatePanels(
+  payload: BulkCreatePanelsPayload,
+): Promise<BulkCreatePanelsResult> {
+  const body: BulkCreatePanelsPayload = {
+    methodology_version_id: payload.methodology_version_id,
+    position_ids: payload.position_ids,
+    ...(payload.roster && payload.roster.length > 0
+      ? {
+          roster: payload.roster.map((s) => ({
+            evaluator_user_id: s.evaluator_user_id,
+            evaluator_role: s.evaluator_role,
+          })),
+        }
+      : {}),
+  };
+  const res = await httpClient.post<BulkCreatePanelsResult>(
+    endpoints.panels.bulkCreate,
+    body,
+  );
+  return res.data;
+}
+
+/**
+ * GET /panels/roster-suggestions — ADVISORY dept-director candidates for the
+ * chosen department. The query params are SNAKE_CASE and REQUIRED
+ * (project_id / department_id). A 404 means the department is outside the
+ * caller's ABAC subtree → we resolve to an EMPTY candidate list (seat stays
+ * editable), never a hard error. Other errors propagate so the caller can show
+ * the suggestion-failed (still editable) state.
+ */
+export async function fetchRosterSuggestions(
+  projectId: string,
+  departmentId: string,
+): Promise<RosterSuggestions> {
+  try {
+    const res = await httpClient.get<RosterSuggestions>(
+      endpoints.panels.rosterSuggestions,
+      { params: { project_id: projectId, department_id: departmentId } },
+    );
+    return res.data;
+  } catch (e) {
+    if (e instanceof ApiError && e.isNotFound()) {
+      return { department_id: departmentId, dept_director_candidates: [] };
+    }
+    throw e;
+  }
 }
 
 export async function fetchPanels(

@@ -19,6 +19,7 @@ import uz.hrlab.grading.common.api.WebMvcSecurityTestConfig;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.evaluation.application.AssignEvaluatorUseCase;
+import uz.hrlab.grading.evaluation.application.BulkCreatePanelsUseCase;
 import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
 import uz.hrlab.grading.evaluation.application.PanelQueries;
@@ -68,6 +69,7 @@ class PanelControllerWireTest {
     @Autowired ObjectMapper json;
 
     @MockBean CreatePanelUseCase createUseCase;
+    @MockBean BulkCreatePanelsUseCase bulkCreateUseCase;
     @MockBean AssignEvaluatorUseCase assignUseCase;
     @MockBean WithdrawEvaluatorUseCase withdrawUseCase;
     @MockBean LockRosterUseCase lockRosterUseCase;
@@ -114,6 +116,24 @@ class PanelControllerWireTest {
     @Test
     void submitRequiresPanelManage() throws Exception {
         mvc.perform(post("/api/v1/panels/{id}/submit", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void bulkCreateRequiresPanelManage() throws Exception {
+        mvc.perform(post("/api/v1/panels/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bulkCreateBody()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void rosterSuggestionsRequiresPanelManage() throws Exception {
+        mvc.perform(get("/api/v1/panels/roster-suggestions")
+                        .param("project_id", UUID.randomUUID().toString())
+                        .param("department_id", UUID.randomUUID().toString())
                         .with(jwt().authorities(() -> "EVALUATION_READ")))
                 .andExpect(status().isForbidden());
     }
@@ -194,6 +214,90 @@ class PanelControllerWireTest {
                                 {"methodology_version_id": "00000000-0000-0000-0000-000000000020"}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void bulkCreateReturns201WithCreatedAndPositionKeyedFailures() throws Exception {
+        // BE-3/BE-9 — success-all + partial-fail in one shape: created count plus
+        // failed[] keyed on position_id (NOT panel_id), with snake_case error_code.
+        UUID failedPos = UUID.randomUUID();
+        given(bulkCreateUseCase.execute(any())).willReturn(
+                new BulkCreatePanelsResponse(2, List.of(
+                        BulkCreatePanelsResponse.Failure.of(
+                                failedPos, "ALREADY_EXISTS", "active panel already exists"))));
+        mvc.perform(post("/api/v1/panels/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bulkCreateBody()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.created").value(2))
+                .andExpect(jsonPath("$.failed[0].position_id").value(failedPos.toString()))
+                .andExpect(jsonPath("$.failed[0].error_code").value("ALREADY_EXISTS"))
+                // NON_NULL — no seat_failures key on a fully-failed (no-panel) row.
+                .andExpect(jsonPath("$.failed[0].seat_failures").doesNotExist());
+    }
+
+    @Test
+    void bulkCreateRosterPartialCarriesSeatFailures() throws Exception {
+        UUID partialPos = UUID.randomUUID();
+        UUID badUser = UUID.randomUUID();
+        given(bulkCreateUseCase.execute(any())).willReturn(
+                new BulkCreatePanelsResponse(1, List.of(
+                        BulkCreatePanelsResponse.Failure.rosterPartial(partialPos, List.of(
+                                new BulkCreatePanelsResponse.SeatFailure(
+                                        "EXTERNAL_EXPERT", badUser, "VALIDATION: already assigned"))))));
+        mvc.perform(post("/api/v1/panels/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bulkCreateBody()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.created").value(1))
+                .andExpect(jsonPath("$.failed[0].position_id").value(partialPos.toString()))
+                .andExpect(jsonPath("$.failed[0].error_code").value("ROSTER_PARTIAL"))
+                .andExpect(jsonPath("$.failed[0].seat_failures[0].evaluator_role").value("EXTERNAL_EXPERT"))
+                .andExpect(jsonPath("$.failed[0].seat_failures[0].evaluator_user_id").value(badUser.toString()))
+                .andExpect(jsonPath("$.failed[0].seat_failures[0].reason").exists());
+    }
+
+    @Test
+    void bulkCreateRejectsEmptyPositionIds() throws Exception {
+        mvc.perform(post("/api/v1/panels/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"methodology_version_id": "00000000-0000-0000-0000-000000000020",
+                                 "position_ids": []}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rosterSuggestionsReturnsSnakeCaseAdvisoryShape() throws Exception {
+        UUID deptId = UUID.randomUUID();
+        UUID candidate = UUID.randomUUID();
+        given(queries.suggestDepartmentDirector(any(), any())).willReturn(
+                new RosterSuggestionResponse(deptId, List.of(
+                        new RosterSuggestionResponse.Candidate(candidate, "Ali Valiyev"))));
+        mvc.perform(get("/api/v1/panels/roster-suggestions")
+                        .param("project_id", UUID.randomUUID().toString())
+                        .param("department_id", deptId.toString())
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.department_id").value(deptId.toString()))
+                .andExpect(jsonPath("$.dept_director_candidates[0].user_id").value(candidate.toString()))
+                .andExpect(jsonPath("$.dept_director_candidates[0].full_name").value("Ali Valiyev"));
+    }
+
+    @Test
+    void rosterSuggestionsOutOfSubtreeIs404() throws Exception {
+        // ABAC department read gate denies an out-of-subtree probe with a 404.
+        given(queries.suggestDepartmentDirector(any(), any()))
+                .willThrow(new TenantAccessDeniedException());
+        mvc.perform(get("/api/v1/panels/roster-suggestions")
+                        .param("project_id", UUID.randomUUID().toString())
+                        .param("department_id", UUID.randomUUID().toString())
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE")))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -354,6 +458,23 @@ class PanelControllerWireTest {
                 {
                   "evaluator_user_id": "00000000-0000-0000-0000-000000000030",
                   "evaluator_role": "EXTERNAL_EXPERT"
+                }
+                """;
+    }
+
+    private String bulkCreateBody() {
+        return """
+                {
+                  "methodology_version_id": "00000000-0000-0000-0000-000000000020",
+                  "position_ids": [
+                    "00000000-0000-0000-0000-000000000011",
+                    "00000000-0000-0000-0000-000000000012"
+                  ],
+                  "roster": [
+                    {"evaluator_user_id": "00000000-0000-0000-0000-000000000031", "evaluator_role": "HR_DIRECTOR"},
+                    {"evaluator_user_id": "00000000-0000-0000-0000-000000000032", "evaluator_role": "DEPARTMENT_DIRECTOR"},
+                    {"evaluator_user_id": "00000000-0000-0000-0000-000000000033", "evaluator_role": "EXTERNAL_EXPERT"}
+                  ]
                 }
                 """;
     }

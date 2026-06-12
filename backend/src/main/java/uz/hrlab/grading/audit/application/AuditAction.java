@@ -187,6 +187,15 @@ public final class AuditAction {
     // _AVERAGED stores evaluator_count + total only, never per-evaluator comments
     // (REQ-AUD-3). Blind-bypass denials reuse ACCESS_DENIED_BY_ABAC.
     public static final String EVALUATION_PANEL_CREATED             = "EVALUATION_PANEL_CREATED";
+    /**
+     * BE-6 — ONE wrapper event per bulk panel create (department commission
+     * setup). Emitted at the use-case level IN ADDITION to every inherited
+     * per-panel {@code EVALUATION_PANEL_CREATED} and per-seat assign audit, so a
+     * whole-department commission is traceable as a single operation. Its reason
+     * carries methodology_version_id + requested_count + created_count +
+     * failed_count. No per-panel event is replaced or deleted.
+     */
+    public static final String EVALUATION_PANEL_BULK_CREATED        = "EVALUATION_PANEL_BULK_CREATED";
     public static final String EVALUATION_PANEL_EVALUATOR_ASSIGNED  = "EVALUATION_PANEL_EVALUATOR_ASSIGNED";
     public static final String EVALUATION_PANEL_EVALUATOR_WITHDRAWN = "EVALUATION_PANEL_EVALUATOR_WITHDRAWN";
     public static final String EVALUATION_PANEL_ROSTER_LOCKED       = "EVALUATION_PANEL_ROSTER_LOCKED";

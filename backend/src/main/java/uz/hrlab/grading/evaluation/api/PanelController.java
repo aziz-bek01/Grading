@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uz.hrlab.grading.common.api.PageResponse;
 import uz.hrlab.grading.evaluation.application.AssignEvaluatorUseCase;
+import uz.hrlab.grading.evaluation.application.BulkCreatePanelsCommand;
+import uz.hrlab.grading.evaluation.application.BulkCreatePanelsUseCase;
 import uz.hrlab.grading.evaluation.application.CreatePanelCommand;
 import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
@@ -26,6 +28,7 @@ import uz.hrlab.grading.evaluation.application.WithdrawEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
 import uz.hrlab.grading.evaluation.domain.PanelAssignment;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -44,6 +47,7 @@ public class PanelController {
     public static final int MAX_PAGE_SIZE = 200;
 
     private final CreatePanelUseCase createUseCase;
+    private final BulkCreatePanelsUseCase bulkCreateUseCase;
     private final AssignEvaluatorUseCase assignUseCase;
     private final WithdrawEvaluatorUseCase withdrawUseCase;
     private final LockRosterUseCase lockRosterUseCase;
@@ -51,12 +55,14 @@ public class PanelController {
     private final PanelQueries queries;
 
     public PanelController(CreatePanelUseCase createUseCase,
+                          BulkCreatePanelsUseCase bulkCreateUseCase,
                           AssignEvaluatorUseCase assignUseCase,
                           WithdrawEvaluatorUseCase withdrawUseCase,
                           LockRosterUseCase lockRosterUseCase,
                           SubmitPanelToCeoUseCase submitUseCase,
                           PanelQueries queries) {
         this.createUseCase = createUseCase;
+        this.bulkCreateUseCase = bulkCreateUseCase;
         this.assignUseCase = assignUseCase;
         this.withdrawUseCase = withdrawUseCase;
         this.lockRosterUseCase = lockRosterUseCase;
@@ -71,6 +77,43 @@ public class PanelController {
                 req.positionId(), req.methodologyVersionId(), req.minEvaluators()));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(PanelResponse.from(panel, null, 0, 0));
+    }
+
+    /**
+     * BE-3 — bulk-create panels (department commission). One shared roster
+     * applied to every position_id, all against one methodology_version_id. Each
+     * row flows through the single-panel create + assign use cases UNCHANGED so
+     * permission + tenant scoping + version-status guard + ABAC + per-panel /
+     * per-seat audit fire per row. Per-row failures are collected (keyed on
+     * position_id; ROSTER_PARTIAL carries seat_failures). Returns 201.
+     */
+    @PostMapping("/bulk-create")
+    @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
+    public ResponseEntity<BulkCreatePanelsResponse> bulkCreate(
+            @Valid @RequestBody BulkCreatePanelsRequest req) {
+        List<BulkCreatePanelsCommand.RosterSeat> roster = (req.roster() == null ? List.<BulkCreatePanelsRequest.RosterSeat>of() : req.roster())
+                .stream()
+                .map(s -> new BulkCreatePanelsCommand.RosterSeat(
+                        s.evaluatorUserId(), s.evaluatorRole()))
+                .toList();
+        BulkCreatePanelsResponse body = bulkCreateUseCase.execute(new BulkCreatePanelsCommand(
+                req.methodologyVersionId(), req.positionIds(), roster));
+        return ResponseEntity.status(HttpStatus.CREATED).body(body);
+    }
+
+    /**
+     * BE-5 — ADVISORY roster suggestions: department-director candidates for a
+     * department (resolved from user_department_scopes ∩ the dept-scoped role).
+     * Read-only; gated on {@code EVALUATION_PANEL_MANAGE} plus the ABAC
+     * department read gate inside the query. The server re-validates membership
+     * on the actual assign — this is a UI convenience only.
+     */
+    @GetMapping("/roster-suggestions")
+    @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
+    public RosterSuggestionResponse rosterSuggestions(
+            @RequestParam("project_id") UUID projectId,
+            @RequestParam("department_id") UUID departmentId) {
+        return queries.suggestDepartmentDirector(projectId, departmentId);
     }
 
     @PostMapping("/{id}/evaluators")

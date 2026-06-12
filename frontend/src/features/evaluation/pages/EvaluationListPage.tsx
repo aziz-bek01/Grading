@@ -27,12 +27,12 @@ import {
 } from '../hooks/useEvaluation';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { AddPositionsDialog } from '../components/AddPositionsDialog';
-import { OpenPanelDialog, type OpenPanelResult } from '../components/panel/OpenPanelDialog';
+import { OpenPanelDialog, type RosterSeed } from '../components/panel/OpenPanelDialog';
 import { EvaluationByFactorView } from '../components/byFactor/EvaluationByFactorView';
-import { useCreatePanel } from '../hooks/usePanels';
-import { assignEvaluator } from '../api/panelApi';
+import { useBulkCreatePanels, usePanels } from '../hooks/usePanels';
+import { DepartmentPanelProgress } from '../components/panel/DepartmentPanelProgress';
 import { isEvaluationDeletable } from '../types';
-import type { PanelEvaluatorDraft } from '../panelTypes';
+import type { BulkCreatePanelsResult, PanelEvaluatorDraft } from '../panelTypes';
 import type { Evaluation, EvaluationStatus } from '../types';
 
 type ViewMode = 'by-position' | 'by-factor';
@@ -109,52 +109,51 @@ export function EvaluationListPage() {
   const [methodologyFilter, setMethodologyFilter] = useState<string>('');
   const [adding, setAdding] = useState(false);
   const [openingPanel, setOpeningPanel] = useState(false);
+  // Roster seed for the copy-roster affordance (FE-6) — kept across reopen so a
+  // whole department can be commissioned then the roster reused for the next.
+  const [rosterSeed, setRosterSeed] = useState<RosterSeed | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Evaluation | null>(null);
 
   const evalsQuery = useEvaluations({
     projectId,
     status: statusFilter || undefined,
   });
-  const positionsQuery = usePositions(projectId ? { projectId } : null);
+  const positionsQuery = usePositions(projectId ? { projectId, size: 200 } : null);
   const methodologiesQuery = useMethodologies(projectId);
   // FE-1: the same department tree the by-factor view consumes — used to map
   // position.department_id -> localized department name FE-side (no BE change).
   const treeQuery = useDepartmentTree(projectId);
+  // FE-7: already-loaded panel set for the per-department progress column.
+  const panelsQuery = usePanels(projectId ? { projectId } : {});
   const bulkCreateMutation = useBulkCreateEvaluations();
   const deleteMutation = useDeleteEvaluation();
-  const createPanelMutation = useCreatePanel();
+  const bulkCreatePanelsMutation = useBulkCreatePanels();
 
   /**
-   * Panel-open orchestration (FE-2): create the panel, then assign each chosen
-   * evaluator. Returns a partial-fail result so the dialog can surface which
-   * evaluator failed before closing. The min-3-mandatory-roles rule is also
-   * enforced server-side on lock-roster — the UI mirror only disables confirm.
+   * Panel-commission orchestration (FE-5): a SINGLE bulk-create carrying the
+   * shared roster + every chosen position. The BE opens one panel per position
+   * and returns the per-position failure collector (no sibling rollback). The
+   * min-3-mandatory-roles rule is enforced server-side on lock-roster — the UI
+   * mirror only disables confirm.
    */
-  const handleOpenPanel = useCallback(
+  const handleBulkOpenPanels = useCallback(
     async (
-      positionId: string,
       versionId: string,
+      positionIds: string[],
       roster: PanelEvaluatorDraft[],
-    ): Promise<OpenPanelResult> => {
-      const panel = await createPanelMutation.mutateAsync({
-        position_id: positionId,
+    ): Promise<BulkCreatePanelsResult> => {
+      return bulkCreatePanelsMutation.mutateAsync({
         methodology_version_id: versionId,
+        position_ids: positionIds,
+        roster: roster
+          .filter((r) => r.evaluator_user_id)
+          .map((r) => ({
+            evaluator_user_id: r.evaluator_user_id!,
+            evaluator_role: r.role,
+          })),
       });
-      const failed: OpenPanelResult['failed'] = [];
-      for (const row of roster) {
-        if (!row.evaluator_user_id) continue;
-        try {
-          await assignEvaluator(panel.id, {
-            evaluator_user_id: row.evaluator_user_id,
-            evaluator_role: row.role,
-          });
-        } catch (e) {
-          failed.push({ role: row.role, reason: (e as Error).message });
-        }
-      }
-      return { ok: failed.length === 0, failed };
     },
-    [createPanelMutation],
+    [bulkCreatePanelsMutation],
   );
 
   const positionMap = useMemo(() => {
@@ -417,6 +416,18 @@ export function EvaluationListPage() {
           : t('evaluation.mode_hint.by_factor')}
       </p>
 
+      {/* FE-7: per-department panel coverage (X of Y positions paneled),
+          derived from the already-loaded panels + department tree + positions —
+          no new endpoint. Dept directors only see their own scope because the
+          BE GET /panels response is ABAC-scoped (no FE-only hiding). */}
+      {mode === 'by-position' ? (
+        <DepartmentPanelProgress
+          departments={treeQuery.data ?? []}
+          positions={positionsQuery.data?.items ?? []}
+          panels={panelsQuery.data?.items ?? []}
+        />
+      ) : null}
+
       {mode === 'by-factor' ? (
         <EvaluationByFactorView
           projectId={projectId}
@@ -499,17 +510,28 @@ export function EvaluationListPage() {
         onClose={() => setAdding(false)}
       />
 
-      {/* FE-2: multi-evaluator panel creation surface. Picks position +
-          methodology version + 3 mandatory evaluator roles (+ extras), creates a
-          panel then assigns each evaluator. Gated behind EVALUATION_PANEL_MANAGE. */}
+      {/* FE-1..FE-6: dept-first 3-step panel wizard (replaces the flat
+          single-position dialog). Step 1 department → Step 2 server-filtered
+          positions → Step 3 shared roster, then ONE bulk-create. Gated behind
+          EVALUATION_PANEL_MANAGE. */}
       <OpenPanelDialog
         open={openingPanel}
-        positions={positionsQuery.data?.items ?? []}
+        projectId={projectId}
         methodologies={methodologiesQuery.data?.items ?? []}
-        departmentNameOf={departmentNameOfPosition}
         defaultVersionId={selectedVersionId}
-        onConfirm={handleOpenPanel}
-        onClose={() => setOpeningPanel(false)}
+        rosterSeed={rosterSeed}
+        onConfirm={handleBulkOpenPanels}
+        onCopyRosterToNext={(seed) => {
+          // FE-6: keep HR + externals (dept director already cleared by the
+          // wizard), reopen at Step 1 for the next department.
+          setRosterSeed(seed);
+          setOpeningPanel(false);
+          setTimeout(() => setOpeningPanel(true), 0);
+        }}
+        onClose={() => {
+          setOpeningPanel(false);
+          setRosterSeed(null);
+        }}
       />
 
       {/* FE-3: delete confirmation for pre-submission rows — reuses ConfirmDialog

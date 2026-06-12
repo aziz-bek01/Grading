@@ -43,6 +43,22 @@ export const MANDATORY_EVALUATOR_ROLES: readonly EvaluatorRole[] = [
 export const PANEL_MIN_EVALUATORS = 3;
 
 /**
+ * Max position rows per bulk-create call. Mirrors the BE MAX_PAGE_SIZE guard
+ * (POST /panels/bulk-create returns 400 VALIDATION_FAILED above this) — kept in
+ * sync with the bulk-create-evaluations cap so the dept-first wizard never
+ * submits a request the server would reject.
+ */
+export const MAX_BULK_PANEL_POSITIONS = 200;
+
+/**
+ * UI cap on EXTERNAL_EXPERT seats in the dept-first wizard: one mandatory
+ * EXTERNAL_EXPERT seat + up to 3 ADDITIONAL externals = 4. The BE imposes NO
+ * per-role uniqueness (extra externals ride the ADDITIONAL role); this cap is a
+ * product convenience so the roster does not grow unbounded.
+ */
+export const MAX_EXTERNAL_SEATS = 4;
+
+/**
  * Panel lifecycle. Mirrors BE `PanelStatus`:
  *   COLLECTING          — roster mutable; assign/withdraw allowed.
  *   AWAITING_EVALUATIONS — roster locked; one DRAFT evaluation per seat.
@@ -223,4 +239,85 @@ export interface PanelEvaluatorDraft {
   evaluator_user_id: string | null;
   /** Display name resolved client-side from the people picker, for the chip. */
   evaluator_name?: string | null;
+}
+
+// ============================================================
+// Bulk-create panels (dept-first wizard) — snake_case wire
+// ============================================================
+
+/** One shared roster seat carried by the bulk-create body. */
+export interface BulkPanelRosterSeat {
+  evaluator_user_id: string;
+  evaluator_role: EvaluatorRole;
+}
+
+/**
+ * POST /panels/bulk-create body. The SAME roster is applied to every position;
+ * the BE opens one panel per position_id (NOT a single mega-panel). The
+ * mandatory-trio / min-3 rule is NOT enforced here — that is the lock-roster
+ * enforcement point; bulk-create just assigns the provided seats and leaves
+ * panels COLLECTING. tenant_id is NEVER sent (JWT-derived).
+ */
+export interface BulkCreatePanelsPayload {
+  methodology_version_id: string;
+  position_ids: string[];
+  /** Optional; shared across every position. */
+  roster?: BulkPanelRosterSeat[];
+}
+
+/** Stable per-position error codes returned by bulk-create. */
+export type BulkCreatePanelErrorCode =
+  | 'ALREADY_EXISTS'
+  | 'ACCESS_DENIED'
+  | 'VALIDATION'
+  | 'ROSTER_PARTIAL'
+  | 'INTERNAL_ERROR';
+
+/**
+ * A seat that could not be assigned on an otherwise-created panel. PRESENT ONLY
+ * when error_code == ROSTER_PARTIAL (the panel WAS opened in COLLECTING but a
+ * seat failed) — Jackson NON_NULL drops the key for every other code.
+ */
+export interface BulkPanelSeatFailure {
+  evaluator_role: EvaluatorRole;
+  evaluator_user_id: string;
+  reason: string;
+}
+
+/**
+ * One per-position failure. Keys on `position_id` (NOT panel_id — a fully-failed
+ * row has no panel), mirroring BulkCreateEvaluationsResponse. `seat_failures` is
+ * absent unless error_code == ROSTER_PARTIAL.
+ */
+export interface BulkCreatePanelFailure {
+  position_id: string;
+  error_code: BulkCreatePanelErrorCode;
+  message: string;
+  seat_failures?: BulkPanelSeatFailure[];
+}
+
+/**
+ * POST /panels/bulk-create response (HTTP 201). `created` counts panels opened
+ * in COLLECTING — INCLUDING rows that also appear in `failed` as ROSTER_PARTIAL.
+ */
+export interface BulkCreatePanelsResult {
+  created: number;
+  failed: BulkCreatePanelFailure[];
+}
+
+/** GET /panels/roster-suggestions advisory dept-director candidate. */
+export interface RosterDeptDirectorCandidate {
+  user_id: string;
+  full_name: string;
+}
+
+/**
+ * GET /panels/roster-suggestions?project_id=&department_id= response. ADVISORY
+ * only — the BE re-validates membership on the real assign. A 404 means the
+ * department is outside the caller's ABAC subtree → FE treats it as "no
+ * suggestions / not visible", NOT a hard error (the seat stays editable).
+ */
+export interface RosterSuggestions {
+  department_id: string;
+  dept_director_candidates: RosterDeptDirectorCandidate[];
 }

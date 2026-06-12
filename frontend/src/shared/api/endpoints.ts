@@ -87,6 +87,20 @@ export const endpoints = {
    */
   panels: {
     list: '/panels',
+    /**
+     * POST /panels/bulk-create (EVALUATION_PANEL_MANAGE) — one shared roster ⇒
+     * one panel per position_id (NOT a mega-panel). Returns 201 with
+     * { created, failed[] } where failed[] keys on position_id. Replaces the
+     * sequential create-then-loop-assign orchestration.
+     */
+    bulkCreate: '/panels/bulk-create',
+    /**
+     * GET /panels/roster-suggestions?project_id=&department_id= — ADVISORY
+     * dept-director candidates (snake_case REQUIRED query params). 404 when the
+     * department is outside the caller's ABAC subtree → treat as "no
+     * suggestions", not a hard error.
+     */
+    rosterSuggestions: '/panels/roster-suggestions',
     detail: (id: string) => `/panels/${id}`,
     result: (id: string) => `/panels/${id}/result`,
     evaluators: (id: string) => `/panels/${id}/evaluators`,

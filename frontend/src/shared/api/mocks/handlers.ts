@@ -3189,6 +3189,149 @@ function handlePanels(
   query: URLSearchParams,
   config: AxiosRequestConfig,
 ): MatchResult | null {
+  // POST /panels/bulk-create → 201 { created, failed[] }
+  // ONE shared roster ⇒ one panel per position_id (NOT a mega-panel). Mirrors
+  // the recorded BE shape: failed[] keys on position_id; seat_failures present
+  // ONLY for ROSTER_PARTIAL rows.
+  if (path === '/panels/bulk-create' && method === 'POST') {
+    const raw = readBody<Record<string, unknown>>(config);
+    const body = stripTenantFromBody(raw, path, 'POST') as {
+      methodology_version_id?: string;
+      position_ids?: string[];
+      roster?: { evaluator_user_id: string; evaluator_role: MockEvaluatorRole }[];
+    };
+    if (!body.methodology_version_id) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'methodology_version_id required' },
+      };
+    }
+    const positionIds = Array.isArray(body.position_ids) ? body.position_ids : [];
+    if (positionIds.length === 0) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'position_ids must be non-empty' },
+      };
+    }
+    // BE cap: MAX_PAGE_SIZE (200). Reject the whole call above the cap.
+    if (positionIds.length > 200) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'position_ids exceeds 200' },
+      };
+    }
+    const versionId = body.methodology_version_id;
+    const roster = Array.isArray(body.roster) ? body.roster : [];
+    const failed: Array<{
+      position_id: string;
+      error_code: string;
+      message: string;
+      seat_failures?: { evaluator_role: MockEvaluatorRole; evaluator_user_id: string; reason: string }[];
+    }> = [];
+    let created = 0;
+    for (const positionId of positionIds) {
+      const pos = mockDb.positions.find((p) => p.id === positionId);
+      if (!pos) {
+        // Cross-tenant probe / unknown → ACCESS_DENIED (no existence reveal).
+        failed.push({
+          position_id: positionId,
+          error_code: 'ACCESS_DENIED',
+          message: 'Not found or no access',
+        });
+        continue;
+      }
+      // Duplicate-active panel for this position+version → ALREADY_EXISTS.
+      const dup = mockDb.panels.some(
+        (p) =>
+          p.position_id === positionId &&
+          p.methodology_version_id === versionId &&
+          p.status !== 'ARCHIVED',
+      );
+      if (dup) {
+        failed.push({
+          position_id: positionId,
+          error_code: 'ALREADY_EXISTS',
+          message: 'An active panel already exists for this position and version',
+        });
+        continue;
+      }
+      // Open the panel (COLLECTING) — counts toward `created` even if a seat
+      // later fails (ROSTER_PARTIAL).
+      const panel: MockPanel = {
+        id: uuid(),
+        project_id: pos.project_id,
+        position_id: positionId,
+        position_title_i18n: pos.title_i18n,
+        methodology_version_id: versionId,
+        status: 'COLLECTING',
+        min_evaluators: 3,
+        evaluator_count: 0,
+        completed_count: 0,
+        created_at: new Date().toISOString(),
+      };
+      mockDb.panels.unshift(panel);
+      created += 1;
+      // Assign each shared seat. A seat whose user is flagged withdrawn in the
+      // mock directory fails → ROSTER_PARTIAL (panel still COLLECTING).
+      const seatFailures: { evaluator_role: MockEvaluatorRole; evaluator_user_id: string; reason: string }[] = [];
+      for (const seat of roster) {
+        if (mockDb.panelWithdrawnUserIds.includes(seat.evaluator_user_id)) {
+          seatFailures.push({
+            evaluator_role: seat.evaluator_role,
+            evaluator_user_id: seat.evaluator_user_id,
+            reason: 'Evaluator membership withdrawn',
+          });
+          continue;
+        }
+        mockDb.panelAssignments.push({
+          id: uuid(),
+          panel_id: panel.id,
+          evaluator_user_id: seat.evaluator_user_id,
+          evaluator_name: null,
+          evaluator_role: seat.evaluator_role,
+          assignment_status: 'ASSIGNED',
+          updated_at: new Date().toISOString(),
+        });
+      }
+      panel.evaluator_count = mockDb.panelAssignments.filter(
+        (a) => a.panel_id === panel.id && a.assignment_status !== 'WITHDRAWN',
+      ).length;
+      if (seatFailures.length > 0) {
+        failed.push({
+          position_id: positionId,
+          error_code: 'ROSTER_PARTIAL',
+          message: 'Panel opened but a seat could not be assigned',
+          seat_failures: seatFailures,
+        });
+      }
+    }
+    return ok({ created, failed }, 201);
+  }
+
+  // GET /panels/roster-suggestions?project_id=&department_id= → advisory
+  // dept-director candidates (snake_case REQUIRED params). 404 when the
+  // department is outside the caller's ABAC subtree (treated by FE as "no
+  // suggestions"). Capped at 50.
+  if (path === '/panels/roster-suggestions' && method === 'GET') {
+    const projectId = query.get('project_id');
+    const departmentId = query.get('department_id');
+    if (!projectId || !departmentId) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'project_id + department_id required' },
+      };
+    }
+    // Out-of-subtree marker → 404 (no existence reveal).
+    if (mockDb.panelOutOfScopeDepartmentIds.includes(departmentId)) {
+      return notFound();
+    }
+    const candidates = (mockDb.panelRosterSuggestions[departmentId] ?? []).slice(0, 50);
+    return ok({
+      department_id: departmentId,
+      dept_director_candidates: candidates,
+    });
+  }
+
   // GET /panels?project_id=&position_id=  → PageResponse<PanelResponse>
   if (path === '/panels' && method === 'GET') {
     const projectId = query.get('project_id');

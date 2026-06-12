@@ -40,6 +40,17 @@ import java.util.UUID;
 @Component
 public class DepartmentScopePolicy implements ScopePolicy {
 
+    /**
+     * Single source of truth for the role code of the "department director" —
+     * the dept-scoped role whose users are confined to (and the natural
+     * suggestion for) their department subtree. Exposed (BE-5) so the panel
+     * roster-suggestion query references THIS constant instead of re-typing the
+     * literal {@code "DEPARTMENT_MANAGER"} elsewhere, keeping the dept-scoped
+     * director role defined in exactly one place (mirrors
+     * {@link #isDepartmentScoped(TenantContext)}).
+     */
+    public static final String DEPARTMENT_DIRECTOR_ROLE_CODE = RoleCodes.DEPARTMENT_MANAGER;
+
     @Override
     public String name() { return "DepartmentScopePolicy"; }
 

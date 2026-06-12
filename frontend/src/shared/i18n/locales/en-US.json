@@ -615,7 +615,57 @@
     "blind_banner": "Other evaluators' scores are hidden until everyone finishes. You only see your own sheet.",
     "validation": {
       "mandatory_roles_missing": "All three roles required: HR director, department director, external expert.",
-      "below_floor": "At least 3 evaluators."
+      "below_floor": "At least 3 evaluators.",
+      "externals_capped": "Up to 4 external experts (1 required + 3 additional).",
+      "no_positions": "Select at least one position.",
+      "too_many_positions": "Select at most 200 positions per commission."
+    },
+    "wizard": {
+      "steps_aria": "Panel setup steps",
+      "step_1_title": "Department",
+      "step_2_title": "Positions",
+      "step_3_title": "Commission",
+      "step_1_body": "Choose the department to commission. Each department gets its own evaluation commission.",
+      "step_2_body": "Select the positions in {{department}} to evaluate.",
+      "step_3_body": "Assign the shared commission for {{count}} position(s) in {{department}}.",
+      "next": "Next",
+      "confirm": "Create commission",
+      "selected_count": "{{count}} selected",
+      "copy_roster": "Copy roster to next department",
+      "dept": {
+        "search_placeholder": "Search departments…",
+        "empty": "No departments yet.",
+        "no_match": "No departments match the search.",
+        "load_error": "Could not load departments.",
+        "position_count": "{{count}} pos.",
+        "paneled_count": "{{count}} paneled",
+        "fully_paneled": "All paneled"
+      },
+      "positions": {
+        "empty": "This department has no candidate positions.",
+        "fully_paneled": "Every position in this department is already paneled for the selected version.",
+        "already_paneled": "Already paneled"
+      },
+      "roster": {
+        "dept_director_suggested": "Suggested",
+        "suggestion_error": "Could not load a department-director suggestion. You can still pick one."
+      },
+      "result": {
+        "summary": "Created {{created}} panel(s); {{failed}} failed.",
+        "error": {
+          "ALREADY_EXISTS": "Already has an active panel for this version",
+          "ACCESS_DENIED": "No access to this position",
+          "VALIDATION": "Invalid request",
+          "ROSTER_PARTIAL": "Panel created, but a seat could not be assigned",
+          "INTERNAL_ERROR": "Unexpected error"
+        }
+      }
+    },
+    "dept_progress": {
+      "title": "Department coverage",
+      "coverage": "{{paneled}} of {{total}} paneled",
+      "show_all": "Show all {{count}} departments",
+      "show_less": "Show fewer"
     },
     "dialog": {
       "title": "Open evaluation panel",

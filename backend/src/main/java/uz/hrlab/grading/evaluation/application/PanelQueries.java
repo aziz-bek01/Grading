@@ -7,12 +7,17 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.ActorNameResolver;
 import uz.hrlab.grading.access.application.PermissionCodes;
+import uz.hrlab.grading.access.domain.DepartmentScopePolicy;
+import uz.hrlab.grading.access.infrastructure.UserDepartmentScopeRepository;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.api.PanelAssignmentResponse;
 import uz.hrlab.grading.evaluation.api.PanelDetailResponse;
 import uz.hrlab.grading.evaluation.api.PanelResponse;
 import uz.hrlab.grading.evaluation.api.PanelResultResponse;
+import uz.hrlab.grading.evaluation.api.RosterSuggestionResponse;
+import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.domain.PanelAssignmentStatus;
@@ -60,6 +65,9 @@ import java.util.UUID;
 @Service
 public class PanelQueries {
 
+    /** Advisory suggestion cap — never return an unbounded candidate list (BE-5). */
+    public static final int MAX_SUGGESTIONS = 50;
+
     private final PanelRepository panels;
     private final PanelAssignmentRepository assignments;
     private final PanelFactorAverageRepository averages;
@@ -69,6 +77,8 @@ public class PanelQueries {
     private final FactorRepository factors;
     private final ActorNameResolver actorNames;
     private final AbacGate abacGate;
+    private final DepartmentRepository departments;
+    private final UserDepartmentScopeRepository departmentScopes;
 
     public PanelQueries(PanelRepository panels,
                         PanelAssignmentRepository assignments,
@@ -78,7 +88,9 @@ public class PanelQueries {
                         PositionRepository positions,
                         FactorRepository factors,
                         ActorNameResolver actorNames,
-                        AbacGate abacGate) {
+                        AbacGate abacGate,
+                        DepartmentRepository departments,
+                        UserDepartmentScopeRepository departmentScopes) {
         this.panels = panels;
         this.assignments = assignments;
         this.averages = averages;
@@ -88,6 +100,51 @@ public class PanelQueries {
         this.factors = factors;
         this.actorNames = actorNames;
         this.abacGate = abacGate;
+        this.departments = departments;
+        this.departmentScopes = departmentScopes;
+    }
+
+    /**
+     * BE-5 — ADVISORY roster suggestion: department-director candidates for a
+     * department. Resolves the department subtree (reusing
+     * {@code DepartmentRepository.findSubtreeIds}) and returns distinct users who
+     * hold an ACTIVE scope intersecting that subtree AND carry the dept-director
+     * role ({@link DepartmentScopePolicy#DEPARTMENT_DIRECTOR_ROLE_CODE} — single
+     * source of truth) on an ACTIVE membership.
+     *
+     * <p>Gates: {@code EVALUATION_PANEL_MANAGE} (the panel-setup permission) PLUS
+     * the ABAC department READ gate, so a department-scoped caller cannot probe
+     * directors of a department outside their own subtree (out-of-subtree → 404,
+     * no existence reveal). The result is ADVISORY only — the server re-validates
+     * membership on the actual assign.
+     */
+    @Transactional(readOnly = true)
+    public RosterSuggestionResponse suggestDepartmentDirector(UUID projectId, UUID departmentId) {
+        TenantContext ctx = TenantContextHolder.requireActive();
+        if (!ctx.hasPermission(PermissionCodes.EVALUATION_PANEL_MANAGE)) {
+            throw new PermissionDeniedException();
+        }
+        if (projectId == null || departmentId == null) {
+            throw new ValidationException("project_id and department_id are required");
+        }
+        UUID tenant = ctx.tenantId();
+        // ABAC read gate on the target department — denies an out-of-subtree probe
+        // with a 404 + ACCESS_DENIED_BY_ABAC audit (no existence reveal).
+        abacGate.enforceCanReadDepartment(ctx, departmentId, projectId, null);
+
+        // Expand to subtree so a scope on a parent department also surfaces its
+        // descendants' directors. Reuses the org-module CTE — no reimplementation.
+        List<UUID> subtree = departments.findSubtreeIds(List.of(departmentId), tenant);
+        if (subtree.isEmpty()) {
+            subtree = List.of(departmentId);
+        }
+        List<RosterSuggestionResponse.Candidate> candidates = departmentScopes
+                .findDeptScopedCandidates(tenant, subtree,
+                        DepartmentScopePolicy.DEPARTMENT_DIRECTOR_ROLE_CODE).stream()
+                .limit(MAX_SUGGESTIONS)
+                .map(c -> new RosterSuggestionResponse.Candidate(c.getUserId(), c.getFullName()))
+                .toList();
+        return new RosterSuggestionResponse(departmentId, candidates);
     }
 
     @Transactional(readOnly = true)

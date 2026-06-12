@@ -2212,6 +2212,36 @@ const panelApprovalRequest: MockApprovalRequest = {
   ],
 };
 
+/**
+ * ADVISORY dept-director suggestions per department (GET
+ * /panels/roster-suggestions). Resolved BE-side from user_department_scopes ∩
+ * DEPARTMENT_MANAGER over the subtree; the mock just maps a department to a
+ * small candidate list. Departments absent here return an empty list (no
+ * suggestion → seat stays editable). Capped at 50 by the handler.
+ */
+const panelRosterSuggestions: Record<
+  string,
+  { user_id: string; full_name: string }[]
+> = {
+  'dep-acme-ops': [{ user_id: 'user-dept-dir', full_name: 'Dilnoza Yusupova' }],
+  'dep-acme-hr': [{ user_id: 'user-dept-dir', full_name: 'Dilnoza Yusupova' }],
+  'dep-acme-sales': [{ user_id: 'user-dept-dir', full_name: 'Dilnoza Yusupova' }],
+};
+
+/**
+ * Departments treated as OUTSIDE the caller's ABAC subtree → roster-suggestions
+ * returns 404 (FE resolves to "no suggestions", seat editable). Empty by
+ * default; tests set it via the mockDb reset.
+ */
+const panelOutOfScopeDepartmentIds: string[] = [];
+
+/**
+ * User ids whose membership is "withdrawn" — a bulk-create seat for them fails
+ * with ROSTER_PARTIAL while the panel is still opened in COLLECTING. Empty by
+ * default; tests use the MSW path directly with their own users.
+ */
+const panelWithdrawnUserIds: string[] = [];
+
 export const mockDb = {
   projects: [...projects],
   departments: [...departments, ...ksDepartments],
@@ -2235,6 +2265,9 @@ export const mockDb = {
   panels: [...panels],
   panelAssignments: [...panelAssignments],
   panelFactorAverages: [...panelFactorAverages],
+  panelRosterSuggestions: { ...panelRosterSuggestions },
+  panelOutOfScopeDepartmentIds: [...panelOutOfScopeDepartmentIds],
+  panelWithdrawnUserIds: [...panelWithdrawnUserIds],
   comments: [...comments],
   importBatches: [...importBatches],
   importErrors: [...importErrors],

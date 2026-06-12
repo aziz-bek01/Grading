@@ -615,7 +615,57 @@
     "blind_banner": "Boshqa ekspertlar bahosi barcha yakunlaguncha yashirin. Siz faqat o'z varag'ingizni ko'rasiz.",
     "validation": {
       "mandatory_roles_missing": "Uchala rol kerak: HR direktor, bo'lim direktori, tashqi ekspert.",
-      "below_floor": "Kamida 3 ekspert."
+      "below_floor": "Kamida 3 ekspert.",
+      "externals_capped": "Eng ko'pi 4 tashqi ekspert (1 majburiy + 3 qo'shimcha).",
+      "no_positions": "Kamida bitta lavozim tanlang.",
+      "too_many_positions": "Bitta komissiyaga eng ko'pi 200 lavozim."
+    },
+    "wizard": {
+      "steps_aria": "Panelni sozlash qadamlari",
+      "step_1_title": "Bo'lim",
+      "step_2_title": "Lavozimlar",
+      "step_3_title": "Komissiya",
+      "step_1_body": "Baholanadigan bo'limni tanlang. Har bir bo'lim uchun alohida baholash komissiyasi yaratiladi.",
+      "step_2_body": "«{{department}}» bo'limidagi baholanadigan lavozimlarni tanlang.",
+      "step_3_body": "«{{department}}» bo'limidagi {{count}} ta lavozim uchun umumiy komissiyani tayinlang.",
+      "next": "Keyingisi",
+      "confirm": "Komissiya yaratish",
+      "selected_count": "Tanlandi: {{count}}",
+      "copy_roster": "Tarkibni keyingi bo'limga nusxalash",
+      "dept": {
+        "search_placeholder": "Bo'limlarni qidirish…",
+        "empty": "Hozircha bo'limlar yo'q.",
+        "no_match": "So'rov bo'yicha bo'lim topilmadi.",
+        "load_error": "Bo'limlarni yuklab bo'lmadi.",
+        "position_count": "{{count}} lav.",
+        "paneled_count": "{{count}} panelda",
+        "fully_paneled": "Barchasi panelda"
+      },
+      "positions": {
+        "empty": "Bu bo'limda mos lavozimlar yo'q.",
+        "fully_paneled": "Bu bo'limning barcha lavozimlari tanlangan versiya uchun allaqachon panelda.",
+        "already_paneled": "Allaqachon panelda"
+      },
+      "roster": {
+        "dept_director_suggested": "Tavsiya etildi",
+        "suggestion_error": "Bo'lim direktori tavsiyasini yuklab bo'lmadi. Qo'lda tanlashingiz mumkin."
+      },
+      "result": {
+        "summary": "Yaratilgan panellar: {{created}}; xatolar: {{failed}}.",
+        "error": {
+          "ALREADY_EXISTS": "Bu versiya uchun faol panel allaqachon mavjud",
+          "ACCESS_DENIED": "Bu lavozimga ruxsat yo'q",
+          "VALIDATION": "So'rov noto'g'ri",
+          "ROSTER_PARTIAL": "Panel yaratildi, lekin o'rin tayinlanmadi",
+          "INTERNAL_ERROR": "Kutilmagan xato"
+        }
+      }
+    },
+    "dept_progress": {
+      "title": "Bo'limlar bo'yicha qamrov",
+      "coverage": "{{total}} tadan {{paneled}} tasi panelda",
+      "show_all": "Barcha bo'limlarni ko'rsatish ({{count}})",
+      "show_less": "Yig'ish"
     },
     "dialog": {
       "title": "Baholash panelini ochish",

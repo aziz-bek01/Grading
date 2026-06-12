@@ -222,6 +222,19 @@ public class EvaluationQueries {
         for (UUID did : departmentIds) {
             departments.findByIdAndTenantId(did, tenant).ifPresent(d -> departmentById.put(did, d));
         }
+        // BE-11 — resolve the PARENT department for each immediate department so
+        // the K-sheet can show "department · unit" (unit = parent org node).
+        // Tenant-scoped lookup; root departments (no parent) yield no unit.
+        Set<UUID> parentIds = new HashSet<>();
+        departmentById.values().forEach(d -> {
+            if (d.getParentId() != null) {
+                parentIds.add(d.getParentId());
+            }
+        });
+        Map<UUID, DepartmentJpaEntity> parentById = new HashMap<>();
+        for (UUID pid : parentIds) {
+            departments.findByIdAndTenantId(pid, tenant).ifPresent(d -> parentById.put(pid, d));
+        }
 
         // Pre-fetch all per-evaluation factor scores for this single factor in one pass.
         // Repository method finds (tenant, evaluation, factor) — we loop per evaluation
@@ -240,6 +253,9 @@ public class EvaluationQueries {
             PositionJpaEntity p = positionById.get(e.getPositionId());
             UUID deptId = p == null ? null : p.getDepartmentId();
             DepartmentJpaEntity d = deptId == null ? null : departmentById.get(deptId);
+            // BE-11 — unit = parent department name (broader org node), tenant-scoped.
+            DepartmentJpaEntity parent = (d == null || d.getParentId() == null)
+                    ? null : parentById.get(d.getParentId());
             EvaluationScoreJpaEntity s = scoreByEval.get(e.getId());
 
             // Cache total per methodology version (same N for all rows of one version).
@@ -254,6 +270,7 @@ public class EvaluationQueries {
                     p == null ? null : p.getCode(),
                     p == null ? null : pickLocalized(p.getTitleI18n(), locale),
                     d == null ? null : pickLocalized(d.getNameI18n(), locale),
+                    parent == null ? null : pickLocalized(parent.getNameI18n(), locale),
                     deptId,
                     e.getStatus(),
                     filledByEval.getOrDefault(e.getId(), 0),

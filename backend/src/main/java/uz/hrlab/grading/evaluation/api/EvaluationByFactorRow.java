@@ -18,6 +18,13 @@ public record EvaluationByFactorRow(
         String positionCode,
         String positionTitle,
         String departmentName,
+        // BE-11 (SWEEP) — wire key: unit_name. The position's broader org unit
+        // (its department's PARENT in the org tree); department_name is the
+        // immediate department. Null when the department is a root (no parent)
+        // or the parent is not resolvable tenant-scoped. NON_NULL is NOT used on
+        // this record (it is a plain row), so null serializes as JSON null — the
+        // FE treats `unit_name: null` as absent (` ? ... : ''`).
+        String unitName,
         UUID departmentId,
         EvaluationStatus status,
         Integer filledFactorsCount,

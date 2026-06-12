@@ -13,10 +13,13 @@ import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import uz.hrlab.grading.access.application.ActorNameResolver;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.GlobalExceptionHandler;
 import uz.hrlab.grading.common.api.WebMvcSecurityTestConfig;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.tenancy.application.TenantContext;
+import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 import uz.hrlab.grading.workflow.application.AdvanceWorkflowStageUseCase;
 import uz.hrlab.grading.workflow.application.GetProjectWorkflowQuery;
 import uz.hrlab.grading.workflow.application.RecomputeWorkflowUseCase;
@@ -24,6 +27,7 @@ import uz.hrlab.grading.workflow.domain.ProjectWorkflow;
 import uz.hrlab.grading.workflow.domain.WorkflowStage;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -53,6 +57,9 @@ class WorkflowControllerSecurityTest {
     @MockBean AdvanceWorkflowStageUseCase advanceUseCase;
     @MockBean RecomputeWorkflowUseCase recomputeUseCase;
     @MockBean AuditService audit;
+    // BE-10 — controller now batch-resolves stage actor names via the shared
+    // resolver; mock it (empty workflows ⇒ never invoked, but the bean must exist).
+    @MockBean ActorNameResolver actorNames;
 
     @Test
     void anonymousIsUnauthorized() throws Exception {
@@ -71,9 +78,9 @@ class WorkflowControllerSecurityTest {
     void getWithReadReturns200() throws Exception {
         UUID projectId = UUID.randomUUID();
         given(getQuery.get(eq(projectId))).willReturn(stubWorkflow(projectId));
-        mvc.perform(get("/api/v1/projects/{id}/workflow-progress", projectId)
+        withTenant(() -> mvc.perform(get("/api/v1/projects/{id}/workflow-progress", projectId)
                         .with(jwt().authorities(() -> "WORKFLOW_READ")))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()));
     }
 
     @Test
@@ -89,11 +96,11 @@ class WorkflowControllerSecurityTest {
     void advanceWithEditSucceeds() throws Exception {
         UUID projectId = UUID.randomUUID();
         given(advanceUseCase.advance(eq(projectId), any())).willReturn(stubWorkflow(projectId));
-        mvc.perform(post("/api/v1/projects/{id}/workflow/advance", projectId)
+        withTenant(() -> mvc.perform(post("/api/v1/projects/{id}/workflow/advance", projectId)
                         .with(jwt().authorities(() -> "WORKFLOW_EDIT"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"target_stage\":\"METHODOLOGY\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()));
     }
 
     @Test
@@ -115,5 +122,23 @@ class WorkflowControllerSecurityTest {
     private ProjectWorkflow stubWorkflow(UUID projectId) {
         return new ProjectWorkflow(UUID.randomUUID(), UUID.randomUUID(), projectId,
                 WorkflowStage.SETUP, null, null, List.of());
+    }
+
+    /** Run inside an active TenantContext — the controller's name-batch step
+     *  sources the tenant from the context (BE-10). */
+    private void withTenant(ThrowingRunnable body) throws Exception {
+        try {
+            TenantContextHolder.set(new TenantContext(
+                    UUID.randomUUID(), UUID.randomUUID(), Set.of(), Set.of(),
+                    Set.of("WORKFLOW_READ", "WORKFLOW_EDIT"), Set.of(), false, "en-US"));
+            body.run();
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
     }
 }

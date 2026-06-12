@@ -133,7 +133,22 @@ export const PERMISSIONS = {
   WORKFLOW_EDIT: 'WORKFLOW_EDIT',
   APPROVAL_REQUEST_CREATE: 'APPROVAL_REQUEST_CREATE',
   APPROVAL_REQUEST_CANCEL: 'APPROVAL_REQUEST_CANCEL',
+  /**
+   * CANONICAL decide permission — the backend `@PreAuthorize` on every
+   * approve / reject / request-changes endpoint AND on `GET
+   * /approval-requests/{id}` / `/my-inbox` checks `APPROVAL_REQUEST_DECIDE`
+   * (PermissionCodes.java + seed 023-seed-workflow-approval-permissions.yaml).
+   * It is granted to CLIENT_HR_DIRECTOR / HRLAB_PROJECT_MANAGER /
+   * HRLAB_SUPER_ADMIN. Previously MISSING from this map, so a decider role that
+   * holds DECIDE but not CREATE/STEP_APPROVE could be served an inbox item by
+   * the backend yet be blocked by the FE route/sidebar guards — the approval
+   * detail "Хатолик юз берди" crash trigger (BE-7). Gates that currently key off
+   * the non-canonical APPROVAL_STEP_* codes should accept this code too.
+   */
+  APPROVAL_REQUEST_DECIDE: 'APPROVAL_REQUEST_DECIDE',
+  /** @deprecated non-canonical FE alias — backend uses APPROVAL_REQUEST_DECIDE. */
   APPROVAL_STEP_APPROVE: 'APPROVAL_STEP_APPROVE',
+  /** @deprecated non-canonical FE alias — backend uses APPROVAL_REQUEST_DECIDE. */
   APPROVAL_STEP_REJECT: 'APPROVAL_STEP_REJECT',
   COMMENT_CREATE: 'COMMENT_CREATE',
   COMMENT_EDIT: 'COMMENT_EDIT',

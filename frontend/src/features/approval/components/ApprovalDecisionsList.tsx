@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/shared/components/ui/Card';
 import { formatDateSafe } from '@/shared/lib/dates';
+import { shortId } from '@/shared/lib/shortId';
 import type { ApprovalDecision } from '../types';
 
 interface Props {
@@ -33,7 +34,7 @@ export function ApprovalDecisionsList({ decisions }: Props) {
               </span>
             </div>
             <div className="text-xs text-text-secondary mt-0.5">
-              {d.decidedByName ?? d.decidedByUserId}
+              {d.decidedByName ?? shortId(d.decidedByUserId)}
             </div>
             {d.reason ? (
               <p className="mt-1 text-sm text-text-primary whitespace-pre-wrap">{d.reason}</p>

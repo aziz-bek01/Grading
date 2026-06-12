@@ -4,8 +4,11 @@ import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { EmptyState } from '@/shared/components/feedback/EmptyState';
+import { NoAccessState } from '@/shared/components/feedback/NoAccessState';
 import { Card } from '@/shared/components/ui/Card';
 import { pickLocalized } from '@/shared/lib/localized';
+import { shortId } from '@/shared/lib/shortId';
+import { ApiError } from '@/shared/api/apiError';
 import { useApprovalRequest } from '../hooks/useApprovals';
 import { ApprovalStatusBadge } from '../components/ApprovalStatusBadge';
 import { ApprovalStepCard } from '../components/ApprovalStepCard';
@@ -18,7 +21,18 @@ export function ApprovalDetailsPage() {
   const approval = useApprovalRequest(approvalId);
 
   if (approval.isLoading) return <LoadingState />;
-  if (approval.error) return <ErrorState onRetry={() => approval.refetch()} />;
+  if (approval.error) {
+    const err = approval.error;
+    // A genuine 403 means the decider cannot reach THIS request (e.g. another
+    // tenant / not an approver) — show a specific, non-enumerating no-access
+    // state instead of the generic "Хатолик юз берди" (FE-5). 404 / unknown id
+    // and any other error fall through to the retryable ErrorState.
+    if (err instanceof ApiError && err.isForbidden()) {
+      return <NoAccessState />;
+    }
+    const correlationId = err instanceof ApiError ? err.correlationId : undefined;
+    return <ErrorState correlationId={correlationId} onRetry={() => approval.refetch()} />;
+  }
   if (!approval.data) return <EmptyState />;
 
   const r = approval.data;
@@ -28,7 +42,8 @@ export function ApprovalDetailsPage() {
   const decisions = r.decisions ?? [];
   const currentStep = steps.find((s) => s.status === 'PENDING') ?? null;
   const entityLabelText = r.entityLabel ? pickLocalized(r.entityLabel, i18n.language) : '';
-  const entityLabel = entityLabelText.length > 0 ? entityLabelText : r.entityId;
+  // Missing label degrades to a SHORT id, never a raw 36-char UUID header (FE-2).
+  const entityLabel = entityLabelText.length > 0 ? entityLabelText : shortId(r.entityId);
 
   return (
     <div className="space-y-6" data-testid="approval-details-page">
@@ -37,7 +52,8 @@ export function ApprovalDetailsPage() {
         <div>
           <h1 className="text-2xl text-text-primary">{entityLabel}</h1>
           <p className="text-sm text-text-secondary mt-1">
-            {t(`approval.entityType.${r.entityType}`)} · {r.entityId}
+            {t(`approval.entityType.${r.entityType}`)} ·{' '}
+            <span title={r.entityId}>{shortId(r.entityId)}</span>
           </p>
         </div>
         <ApprovalStatusBadge status={r.status} />

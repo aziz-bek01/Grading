@@ -154,6 +154,8 @@ export function AppRouter() {
                 <RequirePermission
                   permissions={[
                     PERMISSIONS.APPROVAL_REQUEST_CREATE,
+                    // Canonical decide code (BE gates getById/inbox/decide on it).
+                    PERMISSIONS.APPROVAL_REQUEST_DECIDE,
                     PERMISSIONS.APPROVAL_STEP_APPROVE,
                   ]}
                   mode="any"

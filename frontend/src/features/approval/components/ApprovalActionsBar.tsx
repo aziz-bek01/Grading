@@ -111,8 +111,14 @@ export function ApprovalActionsBar({ request, currentStep }: Props) {
     user.permissions.includes(currentStep.requiredPermission as PermissionCode);
   const canAct = userIsExplicitApprover || userHasPermission;
 
-  const canApprove = canAct && user.permissions.includes(PERMISSIONS.APPROVAL_STEP_APPROVE);
-  const canReject = canAct && user.permissions.includes(PERMISSIONS.APPROVAL_STEP_REJECT);
+  // The backend gates every approve/reject/request-changes endpoint on the
+  // canonical APPROVAL_REQUEST_DECIDE; accept it alongside the legacy STEP codes
+  // so a decider-only role can act (FE-4).
+  const canDecide = user.permissions.includes(PERMISSIONS.APPROVAL_REQUEST_DECIDE);
+  const canApprove =
+    canAct && (canDecide || user.permissions.includes(PERMISSIONS.APPROVAL_STEP_APPROVE));
+  const canReject =
+    canAct && (canDecide || user.permissions.includes(PERMISSIONS.APPROVAL_STEP_REJECT));
 
   if (!canAct) {
     return (

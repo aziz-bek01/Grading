@@ -190,8 +190,9 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
   if (wfMatch && method === 'GET') {
     const id = wfMatch[1];
     const found = mockDb.workflowProgress[id] ?? mockDb.workflowProgress['proj-acme-2026'];
-    // MVP 2 Phase 1 shape: top-level workflow snapshot + stages[].
-    return ok({ ...found, projectId: id });
+    // MVP 2 Phase 1 shape: top-level workflow snapshot + stages[]. The real
+    // wire is SNAKE_CASE; serve `project_id` so the FE adapter consumes it.
+    return ok({ ...found, project_id: id });
   }
 
   const wfAdvance = /^\/projects\/([^/]+)\/workflow\/advance$/.exec(path);
@@ -199,15 +200,15 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
     const id = wfAdvance[1];
     const wf = mockDb.workflowProgress[id] ?? mockDb.workflowProgress['proj-acme-2026'];
     const body = readBody<{ targetStage?: string }>(config);
-    if (body.targetStage) wf.currentStage = body.targetStage;
-    return ok({ ...wf, projectId: id });
+    if (body.targetStage) wf.current_stage = body.targetStage;
+    return ok({ ...wf, project_id: id });
   }
 
   const wfRecompute = /^\/projects\/([^/]+)\/workflow\/recompute$/.exec(path);
   if (wfRecompute && method === 'POST') {
     const id = wfRecompute[1];
     const wf = mockDb.workflowProgress[id] ?? mockDb.workflowProgress['proj-acme-2026'];
-    return ok({ ...wf, projectId: id });
+    return ok({ ...wf, project_id: id });
   }
   return null;
 }
@@ -2952,6 +2953,8 @@ const MOCK_CURRENT_USER_PERMISSIONS = new Set<string>([
   'EVALUATION_LOCK',
   'GRADE_STRUCTURE_APPROVE',
   'GRADE_STRUCTURE_LOCK',
+  // Canonical decide code the real backend gates approve/reject on.
+  'APPROVAL_REQUEST_DECIDE',
   'APPROVAL_STEP_APPROVE',
   'APPROVAL_STEP_REJECT',
   'APPROVAL_REQUEST_CREATE',
@@ -3099,6 +3102,8 @@ function handleApprovals(
       step.status = 'APPROVED';
       step.decided_at = now;
       step.decided_by = MOCK_CURRENT_USER_ID;
+      // BE resolves decided_by_name server-side; mock the current decider's name.
+      step.decided_by_name = MOCK_CURRENT_USER_NAME;
       if (body.notes) step.reason_i18n = { 'en-US': body.notes };
       // Advance to next step or complete the whole request.
       const nextStep = a.steps.find((s) => s.step_order === step.step_order + 1);
@@ -3113,6 +3118,7 @@ function handleApprovals(
       step.status = 'REJECTED';
       step.decided_at = now;
       step.decided_by = MOCK_CURRENT_USER_ID;
+      step.decided_by_name = MOCK_CURRENT_USER_NAME;
       step.reason_i18n = { 'en-US': body.reason as string };
       a.current_status = 'REJECTED';
       return ok(a);
@@ -3270,9 +3276,9 @@ function progressImportBatch(id: string) {
     const b = find();
     if (b && b.status === 'VALIDATING') {
       b.status = 'READY_FOR_REVIEW';
-      b.totalRowCount = b.totalRowCount ?? 12;
-      b.errorRowCount = b.errorRowCount ?? 0;
-      b.warningRowCount = b.warningRowCount ?? 0;
+      b.total_row_count = b.total_row_count ?? 12;
+      b.error_row_count = b.error_row_count ?? 0;
+      b.warning_row_count = b.warning_row_count ?? 0;
     }
   }, 2500);
   void advance;
@@ -3307,20 +3313,20 @@ function handleImports(
     }
     const batch = {
       id,
-      projectId,
-      templateCode,
+      project_id: projectId,
+      template_code: templateCode,
       status: 'UPLOADED' as const,
-      originalFilename: filename,
-      fileSize: size,
-      fileChecksum: 'sha256:mock',
-      totalRowCount: null,
-      errorRowCount: null,
-      warningRowCount: null,
-      committedRowCount: null,
-      containsSalaryData: false,
-      uploadedBy: '00000000-0000-0000-0000-000000000001',
-      uploadedAt: now,
-      traceId: `trace-${id}`,
+      original_filename: filename,
+      file_size: size,
+      file_checksum: 'sha256:mock',
+      total_row_count: null,
+      error_row_count: null,
+      warning_row_count: null,
+      committed_row_count: null,
+      contains_salary_data: false,
+      uploaded_by: '00000000-0000-0000-0000-000000000001',
+      uploaded_at: now,
+      trace_id: `trace-${id}`,
     };
     mockDb.importBatches.unshift(batch);
     progressImportBatch(id);
@@ -3333,9 +3339,9 @@ function handleImports(
     const status = query.get('status');
     const templateCode = query.get('templateCode');
     let list = mockDb.importBatches;
-    if (projectId) list = list.filter((b) => b.projectId === projectId);
+    if (projectId) list = list.filter((b) => b.project_id === projectId);
     if (status) list = list.filter((b) => b.status === status);
-    if (templateCode) list = list.filter((b) => b.templateCode === templateCode);
+    if (templateCode) list = list.filter((b) => b.template_code === templateCode);
     const page = parseInt(query.get('page') ?? '0', 10);
     const size = parseInt(query.get('size') ?? '20', 10);
     return ok(paginate(list, page, size));
@@ -3354,8 +3360,8 @@ function handleImports(
   if (errs && method === 'GET') {
     const id = errs[1];
     const level = query.get('level');
-    let list = mockDb.importErrors.filter((e) => e.importBatchId === id);
-    if (level) list = list.filter((e) => e.errorLevel === level);
+    let list = mockDb.importErrors.filter((e) => e.import_batch_id === id);
+    if (level) list = list.filter((e) => e.error_level === level);
     const page = parseInt(query.get('page') ?? '0', 10);
     const size = parseInt(query.get('size') ?? '50', 10);
     return ok(paginate(list, page, size));
@@ -3373,9 +3379,9 @@ function handleImports(
       };
     }
     b.status = 'COMMITTED';
-    b.committedAt = new Date().toISOString();
-    b.committedBy = '00000000-0000-0000-0000-000000000001';
-    b.committedRowCount = (b.totalRowCount ?? 0) - (b.errorRowCount ?? 0);
+    b.committed_at = new Date().toISOString();
+    b.committed_by = '00000000-0000-0000-0000-000000000001';
+    b.committed_row_count = (b.total_row_count ?? 0) - (b.error_row_count ?? 0);
     return ok(b);
   }
 
@@ -3422,22 +3428,22 @@ function handleExports(
     const now = new Date().toISOString();
     const job = {
       id,
-      projectId: body.projectId,
-      exportType: body.exportType,
+      project_id: body.projectId,
+      export_type: body.exportType,
       format: body.format,
       status: 'REQUESTED' as const,
-      requestedBy: '00000000-0000-0000-0000-000000000001',
-      requestedAt: now,
-      generatedAt: null,
-      expiresAt: null,
-      downloadedAt: null,
-      rowCount: null,
-      fileSize: null,
-      containsSalaryData: ['SALARY_RANGES', 'RED_GREEN_CIRCLE', 'COMPENSATION_SCENARIOS'].includes(
+      requested_by: '00000000-0000-0000-0000-000000000001',
+      requested_at: now,
+      generated_at: null,
+      expires_at: null,
+      downloaded_at: null,
+      row_count: null,
+      file_size: null,
+      contains_salary_data: ['SALARY_RANGES', 'RED_GREEN_CIRCLE', 'COMPENSATION_SCENARIOS'].includes(
         body.exportType,
       ),
-      containsPersonalData: false,
-      signedUrl: null,
+      contains_personal_data: false,
+      signed_url: null,
     };
     mockDb.exportJobs.unshift(job);
     // Simulate worker pipeline.
@@ -3454,11 +3460,11 @@ function handleExports(
       if (j && j.status === 'GENERATING') {
         const t = new Date().toISOString();
         j.status = 'GENERATED';
-        j.generatedAt = t;
-        j.expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-        j.rowCount = 42;
-        j.fileSize = 56234;
-        j.signedUrl = `https://mock-storage.local/exports/${id}/result.${j.format.toLowerCase()}?sig=stub`;
+        j.generated_at = t;
+        j.expires_at = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+        j.row_count = 42;
+        j.file_size = 56234;
+        j.signed_url = `https://mock-storage.local/exports/${id}/result.${j.format.toLowerCase()}?sig=stub`;
       }
     }, 1500);
     return ok(job, 201);
@@ -3470,9 +3476,9 @@ function handleExports(
     const status = query.get('status');
     const type = query.get('type');
     let list = mockDb.exportJobs;
-    if (projectId) list = list.filter((j) => j.projectId === projectId);
+    if (projectId) list = list.filter((j) => j.project_id === projectId);
     if (status) list = list.filter((j) => j.status === status);
-    if (type) list = list.filter((j) => j.exportType === type);
+    if (type) list = list.filter((j) => j.export_type === type);
     const page = parseInt(query.get('page') ?? '0', 10);
     const size = parseInt(query.get('size') ?? '20', 10);
     return ok(paginate(list, page, size));
@@ -3497,19 +3503,19 @@ function handleExports(
         body: { code: 'NOT_DOWNLOADABLE', message: `Export not in downloadable state (${j.status})` },
       };
     }
-    j.downloadedAt = new Date().toISOString();
+    j.downloaded_at = new Date().toISOString();
     if (j.status === 'GENERATED') j.status = 'DOWNLOADED';
     // Generate a real file (CSV with DEMO banner) and serve via blob URL so
     // the browser performs a real download instead of navigating to a stub
     // hostname. See PO spec §6.2.
     if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-      const blob = exportBlobFor(j.exportType);
+      const blob = exportBlobFor(j.export_type);
       const url = URL.createObjectURL(blob);
-      j.signedUrl = url;
+      j.signed_url = url;
       return ok({ url });
     }
     // Fallback (non-browser env): keep prior stub.
-    return ok({ url: j.signedUrl ?? `https://mock-storage.local/exports/${j.id}/result.xlsx?sig=stub` });
+    return ok({ url: j.signed_url ?? `https://mock-storage.local/exports/${j.id}/result.xlsx?sig=stub` });
   }
 
   // POST /exports/:id/cancel
@@ -3597,24 +3603,24 @@ function handleReports(
     const now = new Date().toISOString();
     const report: import('./fixtures').MockReport = {
       id,
-      projectId: body.projectId,
-      reportType: body.reportType as import('./fixtures').MockReportType,
+      project_id: body.projectId,
+      report_type: body.reportType as import('./fixtures').MockReportType,
       format: body.format,
       status: 'REQUESTED',
       title: defaultReportTitle(body.reportType),
       locale: 'ru-RU',
-      requestedBy: '00000000-0000-0000-0000-000000000001',
-      requestedAt: now,
-      generatedAt: null,
-      expiresAt: null,
-      downloadedAt: null,
-      fileSize: null,
-      containsSalaryData: false,
-      containsPersonalData: false,
-      attemptCount: 0,
-      failureReason: null,
-      traceId: `trace-${id}`,
-      signedUrl: null,
+      requested_by: '00000000-0000-0000-0000-000000000001',
+      requested_at: now,
+      generated_at: null,
+      expires_at: null,
+      downloaded_at: null,
+      file_size: null,
+      contains_salary_data: false,
+      contains_personal_data: false,
+      attempt_count: 0,
+      failure_reason: null,
+      trace_id: `trace-${id}`,
+      signed_url: null,
     };
     mockDb.reports.unshift(report);
     // Simulate the async worker pipeline over ~2 seconds.
@@ -3631,11 +3637,11 @@ function handleReports(
       if (r && r.status === 'GENERATING') {
         const t = new Date().toISOString();
         r.status = 'GENERATED';
-        r.generatedAt = t;
-        r.expiresAt = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString();
-        r.fileSize = 134267;
-        r.attemptCount = 1;
-        r.signedUrl = `https://mock-storage.local/reports/${id}/result.${r.format.toLowerCase()}?sig=stub`;
+        r.generated_at = t;
+        r.expires_at = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString();
+        r.file_size = 134267;
+        r.attempt_count = 1;
+        r.signed_url = `https://mock-storage.local/reports/${id}/result.${r.format.toLowerCase()}?sig=stub`;
       }
     }, 2000);
     return ok(report, 201);
@@ -3648,9 +3654,9 @@ function handleReports(
     const type = query.get('type');
     const format = query.get('format');
     let list = mockDb.reports;
-    if (projectId) list = list.filter((r) => r.projectId === projectId);
+    if (projectId) list = list.filter((r) => r.project_id === projectId);
     if (status) list = list.filter((r) => r.status === status);
-    if (type) list = list.filter((r) => r.reportType === type);
+    if (type) list = list.filter((r) => r.report_type === type);
     if (format) list = list.filter((r) => r.format === format);
     const page = parseInt(query.get('page') ?? '0', 10);
     const size = Math.min(parseInt(query.get('size') ?? '20', 10), 200);
@@ -3668,17 +3674,17 @@ function handleReports(
         body: { code: 'NOT_DOWNLOADABLE', message: `Report not in downloadable state (${r.status})` },
       };
     }
-    r.downloadedAt = new Date().toISOString();
+    r.downloaded_at = new Date().toISOString();
     if (r.status === 'GENERATED') r.status = 'DOWNLOADED';
     if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
       const blob = exportBlobFor('REPORT_EXECUTIVE');
       const url = URL.createObjectURL(blob);
-      r.signedUrl = url;
+      r.signed_url = url;
       return ok({ url });
     }
     return ok({
       url:
-        r.signedUrl ??
+        r.signed_url ??
         `https://mock-storage.local/reports/${r.id}/result.${r.format.toLowerCase()}?sig=stub`,
     });
   }

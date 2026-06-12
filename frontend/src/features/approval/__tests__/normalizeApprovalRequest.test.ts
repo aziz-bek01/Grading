@@ -154,4 +154,57 @@ describe('normalizeApprovalRequest (wire → domain adapter)', () => {
     expect(s.status).toBe('SKIPPED');
     expect(s.reason).toBeNull();
   });
+
+  // FE-1 / BE-3..BE-6: once the backend enriches the response, the SAME adapter
+  // consumes entity_label_i18n + initiated_by_name + steps[].approver_name +
+  // steps[].decided_by_name with no FE adapter change.
+  it('consumes BE enrichment fields (entity label + actor names)', () => {
+    const enriched = normalizeApprovalRequest({
+      ...REAL_WIRE_DETAIL,
+      entity_label_i18n: {
+        'ru-RU': 'Старший разработчик · CFO Finance v1',
+        'en-US': 'Senior SWE · CFO Finance v1',
+      },
+      initiated_by_name: 'HRLab Consultant',
+      steps: [
+        {
+          id: 'step-1',
+          step_order: 1,
+          approver_user_id: 'user-approver',
+          approver_name: 'Dev User',
+          required_permission: 'EVALUATION_APPROVE',
+          status: 'APPROVED',
+          decided_by: 'user-approver',
+          decided_by_name: 'Dev User',
+          decided_at: '2026-05-16T09:00:00Z',
+          reason_i18n: { 'en-US': 'Looks good.' },
+        },
+      ],
+    });
+    expect(enriched.entityLabel).toEqual({
+      'ru-RU': 'Старший разработчик · CFO Finance v1',
+      'en-US': 'Senior SWE · CFO Finance v1',
+    });
+    expect(enriched.initiatedByName).toBe('HRLab Consultant');
+    expect(enriched.steps[0].approverName).toBe('Dev User');
+    expect(enriched.steps[0].decidedByName).toBe('Dev User');
+    // synthesized decision carries the decided-by name too
+    expect(enriched.decisions[0].decidedByName).toBe('Dev User');
+  });
+
+  // FE-1: when a label/name is OMITTED (NON_NULL), the adapter yields null and
+  // the consumer falls back to a SHORT id (verified in the shortId + card tests),
+  // never a raw full UUID. The adapter itself must keep the raw entityId intact.
+  it('leaves entityLabel/names null when the BE omits them (NON_NULL)', () => {
+    const bare = normalizeApprovalRequest({
+      ...REAL_WIRE_DETAIL,
+      entity_id: '40000000-0000-0000-0000-0000000000a2',
+      requested_by: '50000000-0000-0000-0000-0000000000b3',
+    });
+    expect(bare.entityLabel).toBeUndefined();
+    expect(bare.initiatedByName).toBeNull();
+    // raw UUID preserved so the consumer can shorten it for display
+    expect(bare.entityId).toBe('40000000-0000-0000-0000-0000000000a2');
+    expect(bare.initiatedByUserId).toBe('50000000-0000-0000-0000-0000000000b3');
+  });
 });

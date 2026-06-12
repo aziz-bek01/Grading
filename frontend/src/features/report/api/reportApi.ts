@@ -19,6 +19,53 @@ import type {
   ReportType,
 } from '../types';
 
+/* ------------------------------------------------------------------ *
+ * Wire → domain adapter
+ *
+ * The real backend serialises every response in SNAKE_CASE (global Jackson)
+ * with `@JsonInclude(NON_NULL)`. The Report domain type + every consumer
+ * (Reports Center table, detail page, date/actor badges) read camelCase.
+ * Without this map `requestedAt`/`generatedAt` are `undefined` → "Invalid
+ * Date" badges and `projectId`/`requestedBy` columns are blank (scout
+ * sweep #4). Mirrors `normalizeApprovalRequest`: snake_case FIRST with a
+ * camelCase fallback so the MSW mock and the real backend both deserialise.
+ * Single adapter — no per-component mapping.
+ * ------------------------------------------------------------------ */
+
+type Raw = Record<string, unknown>;
+
+function pick<T = string>(raw: Raw, snake: string, camel: string): T | null {
+  return ((raw[snake] ?? raw[camel]) as T | undefined) ?? null;
+}
+
+function pickBool(raw: Raw, snake: string, camel: string): boolean {
+  return Boolean(raw[snake] ?? raw[camel] ?? false);
+}
+
+export function normalizeReport(input: unknown): Report {
+  const raw = (input ?? {}) as Raw;
+  return {
+    id: String(raw.id ?? ''),
+    projectId: pick(raw, 'project_id', 'projectId') ?? '',
+    reportType: (pick(raw, 'report_type', 'reportType') ?? '') as ReportType,
+    format: (pick(raw, 'format', 'format') ?? 'PDF') as ReportFormat,
+    status: (pick(raw, 'status', 'status') ?? 'REQUESTED') as ReportStatus,
+    title: pick(raw, 'title', 'title'),
+    locale: pick(raw, 'locale', 'locale'),
+    requestedBy: pick(raw, 'requested_by', 'requestedBy'),
+    requestedAt: pick(raw, 'requested_at', 'requestedAt') ?? '',
+    generatedAt: pick(raw, 'generated_at', 'generatedAt'),
+    expiresAt: pick(raw, 'expires_at', 'expiresAt'),
+    downloadedAt: pick(raw, 'downloaded_at', 'downloadedAt'),
+    fileSize: pick<number>(raw, 'file_size', 'fileSize'),
+    containsSalaryData: pickBool(raw, 'contains_salary_data', 'containsSalaryData'),
+    containsPersonalData: pickBool(raw, 'contains_personal_data', 'containsPersonalData'),
+    attemptCount: Number(pick<number>(raw, 'attempt_count', 'attemptCount') ?? 0),
+    failureReason: pick(raw, 'failure_reason', 'failureReason'),
+    traceId: pick(raw, 'trace_id', 'traceId'),
+  };
+}
+
 export const reportKeys = {
   all: ['reports'] as const,
   list: (
@@ -32,8 +79,8 @@ export const reportKeys = {
 };
 
 export async function requestReport(payload: ReportRequestPayload): Promise<Report> {
-  const res = await httpClient.post<Report>('/reports/request', payload);
-  return res.data;
+  const res = await httpClient.post<unknown>('/reports/request', payload);
+  return normalizeReport(res.data);
 }
 
 export async function fetchReports(filters: {
@@ -55,13 +102,21 @@ export async function fetchReports(filters: {
   if (filters.requestedBy) params.requestedBy = filters.requestedBy;
   if (filters.page !== undefined) params.page = filters.page;
   if (filters.size !== undefined) params.size = filters.size;
-  const res = await httpClient.get<ReportPage<Report>>('/reports', { params });
-  return res.data;
+  const res = await httpClient.get<unknown>('/reports', { params });
+  const env = (res.data ?? {}) as Record<string, unknown>;
+  const rawItems = Array.isArray(env.items) ? (env.items as unknown[]) : [];
+  return {
+    items: rawItems.map((r) => normalizeReport(r)),
+    page: Number(env.page ?? 0),
+    size: Number(env.size ?? rawItems.length),
+    totalElements: Number(env.total_elements ?? env.totalElements ?? rawItems.length),
+    totalPages: Number(env.total_pages ?? env.totalPages ?? 1),
+  };
 }
 
 export async function fetchReport(id: string): Promise<Report> {
-  const res = await httpClient.get<Report>(`/reports/${id}`);
-  return res.data;
+  const res = await httpClient.get<unknown>(`/reports/${id}`);
+  return normalizeReport(res.data);
 }
 
 /**
@@ -75,6 +130,6 @@ export async function fetchReportDownloadUrl(id: string): Promise<string> {
 }
 
 export async function cancelReport(id: string): Promise<Report> {
-  const res = await httpClient.post<Report>(`/reports/${id}/cancel`, {});
-  return res.data;
+  const res = await httpClient.post<unknown>(`/reports/${id}/cancel`, {});
+  return normalizeReport(res.data);
 }

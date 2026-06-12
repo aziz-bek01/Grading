@@ -48,26 +48,32 @@ export interface MockPosition {
 }
 
 /**
- * Workflow stage progress shape — mirrors backend MVP 2 Phase 1 contract.
+ * Workflow stage progress shape — mirrors the REAL backend MVP 2 Phase 1
+ * wire (global SNAKE_CASE). The FE `normalizeWorkflowStage` adapter reads
+ * these keys snake-first, so MSW must serve them exactly as the backend does.
  * Status enum: NOT_STARTED | IN_PROGRESS | COMPLETE | BLOCKED | LOCKED_FUTURE.
+ *
+ * `responsible_user_name` / `last_updated_by_name` are the BE-10 enriched
+ * display names (OMITTED when unknown/non-member).
  */
 export interface MockStage {
   stage: string;
   status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'BLOCKED' | 'LOCKED_FUTURE';
-  completionPercent: number;
-  responsibleUserId?: string | null;
-  responsibleUserName?: string | null;
-  lastUpdatedAt?: string | null;
-  lastUpdatedBy?: string | null;
-  sortOrder: number;
+  completion_percent: number;
+  responsible_user_id?: string | null;
+  responsible_user_name?: string | null;
+  last_updated_at?: string | null;
+  last_updated_by?: string | null;
+  last_updated_by_name?: string | null;
+  sort_order: number;
 }
 
 export interface MockWorkflowProgress {
   id: string;
-  projectId: string;
-  currentStage: string;
-  startedAt: string;
-  archivedAt?: string | null;
+  project_id: string;
+  current_stage: string;
+  started_at: string;
+  archived_at?: string | null;
   stages: MockStage[];
 }
 
@@ -257,22 +263,22 @@ const positions: MockPosition[] = [
 const workflowProgress: Record<string, MockWorkflowProgress> = {
   'proj-acme-2026': {
     id: 'wf-acme-2026',
-    projectId: 'proj-acme-2026',
-    currentStage: 'EVALUATION',
-    startedAt: '2026-01-15T08:00:00Z',
-    archivedAt: null,
+    project_id: 'proj-acme-2026',
+    current_stage: 'EVALUATION',
+    started_at: '2026-01-15T08:00:00Z',
+    archived_at: null,
     stages: [
-      { stage: 'SETUP', status: 'COMPLETE', completionPercent: 100, sortOrder: 0, responsibleUserName: 'HRLab Analyst', lastUpdatedAt: '2026-02-01T08:00:00Z', lastUpdatedBy: 'HRLab Analyst' },
-      { stage: 'ORGANIZATION', status: 'COMPLETE', completionPercent: 100, sortOrder: 1, responsibleUserName: 'HRLab Analyst', lastUpdatedAt: '2026-02-12T08:00:00Z', lastUpdatedBy: 'HRLab Analyst' },
-      { stage: 'POSITIONS', status: 'IN_PROGRESS', completionPercent: 80, sortOrder: 2, responsibleUserName: 'HRLab Analyst', lastUpdatedAt: '2026-04-30T08:00:00Z', lastUpdatedBy: 'HRLab Analyst' },
-      { stage: 'JOB_PROFILES', status: 'IN_PROGRESS', completionPercent: 25, sortOrder: 3, responsibleUserName: 'HRLab Consultant', lastUpdatedAt: '2026-04-22T10:00:00Z', lastUpdatedBy: 'HRLab Consultant' },
-      { stage: 'METHODOLOGY', status: 'COMPLETE', completionPercent: 100, sortOrder: 4, responsibleUserName: 'HRLab Consultant', lastUpdatedAt: '2026-03-25T08:00:00Z', lastUpdatedBy: 'HRLab Super Admin' },
-      { stage: 'EVALUATION', status: 'IN_PROGRESS', completionPercent: 50, sortOrder: 5, responsibleUserName: 'HRLab Consultant', lastUpdatedAt: '2026-05-15T08:00:00Z', lastUpdatedBy: 'mock-evaluator-1' },
-      { stage: 'CALIBRATION', status: 'NOT_STARTED', completionPercent: 0, sortOrder: 6 },
-      { stage: 'GRADES', status: 'COMPLETE', completionPercent: 100, sortOrder: 7, responsibleUserName: 'HRLab Super Admin', lastUpdatedAt: '2026-04-10T08:00:00Z', lastUpdatedBy: 'HRLab Super Admin' },
-      { stage: 'COMPENSATION', status: 'LOCKED_FUTURE', completionPercent: 0, sortOrder: 8 },
-      { stage: 'REPORTS', status: 'LOCKED_FUTURE', completionPercent: 0, sortOrder: 9 },
-      { stage: 'ARCHIVE', status: 'NOT_STARTED', completionPercent: 0, sortOrder: 10 },
+      { stage: 'SETUP', status: 'COMPLETE', completion_percent: 100, sort_order: 0, responsible_user_name: 'HRLab Analyst', last_updated_at: '2026-02-01T08:00:00Z', last_updated_by_name: 'HRLab Analyst' },
+      { stage: 'ORGANIZATION', status: 'COMPLETE', completion_percent: 100, sort_order: 1, responsible_user_name: 'HRLab Analyst', last_updated_at: '2026-02-12T08:00:00Z', last_updated_by_name: 'HRLab Analyst' },
+      { stage: 'POSITIONS', status: 'IN_PROGRESS', completion_percent: 80, sort_order: 2, responsible_user_name: 'HRLab Analyst', last_updated_at: '2026-04-30T08:00:00Z', last_updated_by_name: 'HRLab Analyst' },
+      { stage: 'JOB_PROFILES', status: 'IN_PROGRESS', completion_percent: 25, sort_order: 3, responsible_user_name: 'HRLab Consultant', last_updated_at: '2026-04-22T10:00:00Z', last_updated_by_name: 'HRLab Consultant' },
+      { stage: 'METHODOLOGY', status: 'COMPLETE', completion_percent: 100, sort_order: 4, responsible_user_name: 'HRLab Consultant', last_updated_at: '2026-03-25T08:00:00Z', last_updated_by_name: 'HRLab Super Admin' },
+      { stage: 'EVALUATION', status: 'IN_PROGRESS', completion_percent: 50, sort_order: 5, responsible_user_name: 'HRLab Consultant', last_updated_at: '2026-05-15T08:00:00Z', last_updated_by_name: 'HRLab Evaluator' },
+      { stage: 'CALIBRATION', status: 'NOT_STARTED', completion_percent: 0, sort_order: 6 },
+      { stage: 'GRADES', status: 'COMPLETE', completion_percent: 100, sort_order: 7, responsible_user_name: 'HRLab Super Admin', last_updated_at: '2026-04-10T08:00:00Z', last_updated_by_name: 'HRLab Super Admin' },
+      { stage: 'COMPENSATION', status: 'LOCKED_FUTURE', completion_percent: 0, sort_order: 8 },
+      { stage: 'REPORTS', status: 'LOCKED_FUTURE', completion_percent: 0, sort_order: 9 },
+      { stage: 'ARCHIVE', status: 'NOT_STARTED', completion_percent: 0, sort_order: 10 },
     ],
   },
 };
@@ -1356,16 +1362,24 @@ export type MockApprovalEntityType =
  *
  * Backend `@JsonInclude(NON_NULL)` OMITS null fields — the mock honours this by
  * making decision-only step fields OPTIONAL (omitted while a step is PENDING).
- * The mock does NOT emit initiated_by_name / total_steps / current_step_order /
- * entity_label / decisions[] — those are derived by the FE adapter.
+ *
+ * BE-3..BE-6 enrichment (READ paths only — detail / inbox / list): the backend
+ * resolves `entity_label_i18n`, `initiated_by_name`, `steps[].approver_name`,
+ * `steps[].decided_by_name` server-side and OMITS them when the entity/user is
+ * missing or cross-tenant. The mock honours this by making them OPTIONAL. The
+ * FE adapter still DERIVES total_steps / current_step_order / decisions[].
  */
 export interface MockApprovalStep {
   id: string;
   step_order: number;
   approver_user_id?: string;
+  /** BE-resolved display name for approver_user_id (OMITTED when unknown). */
+  approver_name?: string;
   required_permission?: string;
   status: MockApprovalStepStatus;
   decided_by?: string;
+  /** BE-resolved display name for decided_by (OMITTED while undecided). */
+  decided_by_name?: string;
   decided_at?: string;
   reason_i18n?: Partial<Record<Locale, string>>;
 }
@@ -1378,6 +1392,10 @@ export interface MockApprovalRequest {
   requested_by: string;
   requested_at: string;
   current_status: MockApprovalRequestStatus;
+  /** BE-resolved human label for the entity (OMITTED when unlabellable). */
+  entity_label_i18n?: Partial<Record<Locale, string>>;
+  /** BE-resolved display name for requested_by (OMITTED when unknown). */
+  initiated_by_name?: string;
   notes_i18n: Partial<Record<Locale, string>>;
   steps: MockApprovalStep[];
 }
@@ -1420,6 +1438,15 @@ const approvalRequests: MockApprovalRequest[] = [
     requested_by: 'mock-evaluator-1',
     requested_at: '2026-05-15T08:30:00Z',
     current_status: 'PENDING',
+    // BE-3..BE-6 enrichment (server-resolved, SNAKE_CASE; OMITTED when missing).
+    // EVALUATION label = "<position title> · <methodology name> v<n>".
+    entity_label_i18n: I18N(
+      'Старший разработчик · CFO Finance v1',
+      'Катта дастурчи · CFO Finance v1',
+      'Katta dasturchi · CFO Finance v1',
+      'Senior Software Engineer · CFO Finance v1',
+    ),
+    initiated_by_name: 'HRLab Consultant',
     notes_i18n: I18N(
       'Оценка готова к утверждению комитетом.',
       'Баҳолаш қўмита томонидан тасдиқланишга тайёр.',
@@ -1431,6 +1458,7 @@ const approvalRequests: MockApprovalRequest[] = [
         id: 'appr-swe-eval-1-step-1',
         step_order: 1,
         approver_user_id: SUPER_ADMIN_ID,
+        approver_name: 'Dev User',
         required_permission: 'EVALUATION_APPROVE',
         status: 'PENDING',
       },
@@ -1542,36 +1570,44 @@ export type MockImportBatchStatus =
 
 export type MockImportErrorLevel = 'BLOCKER' | 'ERROR' | 'WARNING' | 'INFO';
 
+/**
+ * MSW shape mirrors the REAL backend wire (global SNAKE_CASE). The FE
+ * `normalizeImportBatch` adapter reads snake-first; serving snake_case here
+ * exercises that boundary exactly as production does.
+ * `import_batch_id` is an MSW-internal join key (not serialised by the BE
+ * inside ImportError, but kept here to scope the errors fixture per batch).
+ */
 export interface MockImportBatch {
   id: string;
-  projectId: string | null;
-  templateCode: string;
+  project_id: string | null;
+  template_code: string;
   status: MockImportBatchStatus;
-  originalFilename: string;
-  fileSize: number;
-  fileChecksum?: string | null;
-  totalRowCount?: number | null;
-  errorRowCount?: number | null;
-  warningRowCount?: number | null;
-  committedRowCount?: number | null;
-  containsSalaryData: boolean;
-  uploadedBy?: string | null;
-  uploadedAt: string;
-  committedBy?: string | null;
-  committedAt?: string | null;
-  traceId?: string | null;
+  original_filename: string;
+  file_size: number;
+  file_checksum?: string | null;
+  total_row_count?: number | null;
+  error_row_count?: number | null;
+  warning_row_count?: number | null;
+  committed_row_count?: number | null;
+  contains_salary_data: boolean;
+  uploaded_by?: string | null;
+  uploaded_at: string;
+  committed_by?: string | null;
+  committed_at?: string | null;
+  trace_id?: string | null;
 }
 
 export interface MockImportError {
   id: string;
-  importBatchId: string;
-  importBatchRowId?: string | null;
-  errorLevel: MockImportErrorLevel;
-  errorCode: string;
-  fieldName?: string | null;
+  /** MSW-internal join key (not part of the BE ImportError wire). */
+  import_batch_id: string;
+  import_batch_row_id?: string | null;
+  error_level: MockImportErrorLevel;
+  error_code: string;
+  field_name?: string | null;
   message: string;
-  suggestedFix?: string | null;
-  rowNumber?: number | null;
+  suggested_fix?: string | null;
+  row_number?: number | null;
 }
 
 export type MockExportJobStatus =
@@ -1584,85 +1620,91 @@ export type MockExportJobStatus =
   | 'EXPIRED'
   | 'CANCELLED';
 
+/**
+ * MSW shape mirrors the REAL backend wire (global SNAKE_CASE). The FE
+ * `normalizeExportJob` adapter reads snake-first. `signed_url` is an
+ * MSW-internal pointer to the storage object (not part of the BE list/detail
+ * response — only the download-url endpoint returns a `{ url }`).
+ */
 export interface MockExportJob {
   id: string;
-  projectId: string;
-  exportType: string;
+  project_id: string;
+  export_type: string;
   format: 'XLSX' | 'CSV' | 'PDF' | 'DOCX';
   status: MockExportJobStatus;
-  requestedBy?: string | null;
-  requestedAt: string;
-  generatedAt?: string | null;
-  expiresAt?: string | null;
-  downloadedAt?: string | null;
-  rowCount?: number | null;
-  fileSize?: number | null;
-  containsSalaryData: boolean;
-  containsPersonalData: boolean;
-  signedUrl?: string | null;
+  requested_by?: string | null;
+  requested_at: string;
+  generated_at?: string | null;
+  expires_at?: string | null;
+  downloaded_at?: string | null;
+  row_count?: number | null;
+  file_size?: number | null;
+  contains_salary_data: boolean;
+  contains_personal_data: boolean;
+  signed_url?: string | null;
 }
 
 const importBatches: MockImportBatch[] = [
   {
     id: 'imp-org-1',
-    projectId: 'proj-acme-2026',
-    templateCode: 'ORG_STRUCTURE_V1',
+    project_id: 'proj-acme-2026',
+    template_code: 'ORG_STRUCTURE_V1',
     status: 'READY_FOR_REVIEW',
-    originalFilename: 'acme_org_structure_2026.xlsx',
-    fileSize: 84321,
-    fileChecksum: 'sha256:demo-checksum',
-    totalRowCount: 12,
-    errorRowCount: 0,
-    warningRowCount: 2,
-    committedRowCount: 0,
-    containsSalaryData: false,
-    uploadedBy: '00000000-0000-0000-0000-000000000001',
-    uploadedAt: '2026-05-22T09:30:00Z',
-    traceId: 'trace-imp-org-1',
+    original_filename: 'acme_org_structure_2026.xlsx',
+    file_size: 84321,
+    file_checksum: 'sha256:demo-checksum',
+    total_row_count: 12,
+    error_row_count: 0,
+    warning_row_count: 2,
+    committed_row_count: 0,
+    contains_salary_data: false,
+    uploaded_by: '00000000-0000-0000-0000-000000000001',
+    uploaded_at: '2026-05-22T09:30:00Z',
+    trace_id: 'trace-imp-org-1',
   },
 ];
 
 const importErrors: MockImportError[] = [
   {
     id: 'err-org-1-w1',
-    importBatchId: 'imp-org-1',
-    importBatchRowId: 'row-3',
-    errorLevel: 'WARNING',
-    errorCode: 'PARENT_HIERARCHY_DEEP',
-    fieldName: 'parentCode',
+    import_batch_id: 'imp-org-1',
+    import_batch_row_id: 'row-3',
+    error_level: 'WARNING',
+    error_code: 'PARENT_HIERARCHY_DEEP',
+    field_name: 'parentCode',
     message: 'Подразделение находится на 5 уровне иерархии — рекомендуется не глубже 4.',
-    suggestedFix: 'Пересмотрите иерархию подразделений.',
-    rowNumber: 3,
+    suggested_fix: 'Пересмотрите иерархию подразделений.',
+    row_number: 3,
   },
   {
     id: 'err-org-1-w2',
-    importBatchId: 'imp-org-1',
-    importBatchRowId: 'row-7',
-    errorLevel: 'WARNING',
-    errorCode: 'NAME_NOT_LOCALIZED',
-    fieldName: 'name.uz-Cyrl-UZ',
+    import_batch_id: 'imp-org-1',
+    import_batch_row_id: 'row-7',
+    error_level: 'WARNING',
+    error_code: 'NAME_NOT_LOCALIZED',
+    field_name: 'name.uz-Cyrl-UZ',
     message: 'Поле name.uz-Cyrl-UZ пустое — будет применен fallback на ru-RU.',
-    suggestedFix: 'Добавьте перевод на узбекский (кириллица).',
-    rowNumber: 7,
+    suggested_fix: 'Добавьте перевод на узбекский (кириллица).',
+    row_number: 7,
   },
 ];
 
 const exportJobs: MockExportJob[] = [
   {
     id: 'exp-eval-1',
-    projectId: 'proj-acme-2026',
-    exportType: 'EVALUATION_MATRIX',
+    project_id: 'proj-acme-2026',
+    export_type: 'EVALUATION_MATRIX',
     format: 'XLSX',
     status: 'GENERATED',
-    requestedBy: '00000000-0000-0000-0000-000000000001',
-    requestedAt: '2026-05-22T10:00:00Z',
-    generatedAt: '2026-05-22T10:00:08Z',
-    expiresAt: '2026-05-29T10:00:08Z',
-    rowCount: 42,
-    fileSize: 56234,
-    containsSalaryData: false,
-    containsPersonalData: false,
-    signedUrl: 'https://mock-storage.local/exports/exp-eval-1/result.xlsx?sig=stub',
+    requested_by: '00000000-0000-0000-0000-000000000001',
+    requested_at: '2026-05-22T10:00:00Z',
+    generated_at: '2026-05-22T10:00:08Z',
+    expires_at: '2026-05-29T10:00:08Z',
+    row_count: 42,
+    file_size: 56234,
+    contains_salary_data: false,
+    contains_personal_data: false,
+    signed_url: 'https://mock-storage.local/exports/exp-eval-1/result.xlsx?sig=stub',
   },
 ];
 
@@ -1691,94 +1733,99 @@ export type MockReportType =
 
 export type MockReportFormat = 'PDF' | 'DOCX' | 'XLSX';
 
+/**
+ * MSW shape mirrors the REAL backend wire (global SNAKE_CASE). The FE
+ * `normalizeReport` adapter reads snake-first. `signed_url` is an MSW-only
+ * pointer to the storage object (the BE returns it only from download-url).
+ */
 export interface MockReport {
   id: string;
-  projectId: string;
-  reportType: MockReportType;
+  project_id: string;
+  report_type: MockReportType;
   format: MockReportFormat;
   status: MockReportStatus;
   title: string | null;
   locale: string | null;
-  requestedBy: string | null;
-  requestedAt: string;
-  generatedAt: string | null;
-  expiresAt: string | null;
-  downloadedAt: string | null;
-  fileSize: number | null;
-  containsSalaryData: boolean;
-  containsPersonalData: boolean;
-  attemptCount: number;
-  failureReason: string | null;
-  traceId: string | null;
+  requested_by: string | null;
+  requested_at: string;
+  generated_at: string | null;
+  expires_at: string | null;
+  downloaded_at: string | null;
+  file_size: number | null;
+  contains_salary_data: boolean;
+  contains_personal_data: boolean;
+  attempt_count: number;
+  failure_reason: string | null;
+  trace_id: string | null;
   /** MSW-only internal pointer to the storage object. */
-  signedUrl?: string | null;
+  signed_url?: string | null;
 }
 
 const reports: MockReport[] = [
   {
     id: 'rep-grade-dist-1',
-    projectId: 'proj-acme-2026',
-    reportType: 'GRADE_DISTRIBUTION',
+    project_id: 'proj-acme-2026',
+    report_type: 'GRADE_DISTRIBUTION',
     format: 'PDF',
     status: 'GENERATED',
     title: 'Grade distribution — ACME Grading 2026',
     locale: 'ru-RU',
-    requestedBy: '00000000-0000-0000-0000-000000000001',
-    requestedAt: '2026-05-23T08:15:00Z',
-    generatedAt: '2026-05-23T08:15:12Z',
-    expiresAt: '2026-06-06T08:15:12Z',
-    downloadedAt: null,
-    fileSize: 184273,
-    containsSalaryData: false,
-    containsPersonalData: false,
-    attemptCount: 1,
-    failureReason: null,
-    traceId: 'trace-rep-grade-dist-1',
-    signedUrl:
+    requested_by: '00000000-0000-0000-0000-000000000001',
+    requested_at: '2026-05-23T08:15:00Z',
+    generated_at: '2026-05-23T08:15:12Z',
+    expires_at: '2026-06-06T08:15:12Z',
+    downloaded_at: null,
+    file_size: 184273,
+    contains_salary_data: false,
+    contains_personal_data: false,
+    attempt_count: 1,
+    failure_reason: null,
+    trace_id: 'trace-rep-grade-dist-1',
+    signed_url:
       'https://mock-storage.local/reports/rep-grade-dist-1/result.pdf?sig=stub',
   },
   {
     id: 'rep-eval-summary-1',
-    projectId: 'proj-acme-2026',
-    reportType: 'EVALUATION_SUMMARY',
+    project_id: 'proj-acme-2026',
+    report_type: 'EVALUATION_SUMMARY',
     format: 'DOCX',
     status: 'GENERATED',
     title: 'Evaluation summary — ACME Q1 2026',
     locale: 'ru-RU',
-    requestedBy: '00000000-0000-0000-0000-000000000001',
-    requestedAt: '2026-05-23T09:00:00Z',
-    generatedAt: '2026-05-23T09:00:18Z',
-    expiresAt: '2026-06-06T09:00:18Z',
-    downloadedAt: null,
-    fileSize: 92841,
-    containsSalaryData: false,
-    containsPersonalData: false,
-    attemptCount: 1,
-    failureReason: null,
-    traceId: 'trace-rep-eval-summary-1',
-    signedUrl:
+    requested_by: '00000000-0000-0000-0000-000000000001',
+    requested_at: '2026-05-23T09:00:00Z',
+    generated_at: '2026-05-23T09:00:18Z',
+    expires_at: '2026-06-06T09:00:18Z',
+    downloaded_at: null,
+    file_size: 92841,
+    contains_salary_data: false,
+    contains_personal_data: false,
+    attempt_count: 1,
+    failure_reason: null,
+    trace_id: 'trace-rep-eval-summary-1',
+    signed_url:
       'https://mock-storage.local/reports/rep-eval-summary-1/result.docx?sig=stub',
   },
   {
     id: 'rep-method-spec-1',
-    projectId: 'proj-acme-2026',
-    reportType: 'METHODOLOGY_SPEC',
+    project_id: 'proj-acme-2026',
+    report_type: 'METHODOLOGY_SPEC',
     format: 'PDF',
     status: 'GENERATING',
     title: 'Methodology spec — CFO Finance v1',
     locale: 'ru-RU',
-    requestedBy: '00000000-0000-0000-0000-000000000001',
-    requestedAt: '2026-05-23T10:30:00Z',
-    generatedAt: null,
-    expiresAt: null,
-    downloadedAt: null,
-    fileSize: null,
-    containsSalaryData: false,
-    containsPersonalData: false,
-    attemptCount: 1,
-    failureReason: null,
-    traceId: 'trace-rep-method-spec-1',
-    signedUrl: null,
+    requested_by: '00000000-0000-0000-0000-000000000001',
+    requested_at: '2026-05-23T10:30:00Z',
+    generated_at: null,
+    expires_at: null,
+    downloaded_at: null,
+    file_size: null,
+    contains_salary_data: false,
+    contains_personal_data: false,
+    attempt_count: 1,
+    failure_reason: null,
+    trace_id: 'trace-rep-method-spec-1',
+    signed_url: null,
   },
 ];
 

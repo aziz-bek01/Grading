@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uz.hrlab.grading.approval.application.ApprovalQueries;
+import uz.hrlab.grading.approval.application.ApprovalResponseAssembler;
 import uz.hrlab.grading.approval.application.ApproveStepUseCase;
 import uz.hrlab.grading.approval.application.CancelApprovalRequestUseCase;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestCommand;
@@ -46,6 +47,7 @@ public class ApprovalController {
     private final FindApprovalRequestByEntityQuery findByEntity;
     private final ApprovalRequestRepository requests;
     private final ApprovalQueries queries;
+    private final ApprovalResponseAssembler assembler;
 
     public ApprovalController(CreateApprovalRequestUseCase createUseCase,
                               ApproveStepUseCase approveUseCase,
@@ -55,7 +57,8 @@ public class ApprovalController {
                               ListMyPendingApprovalsQuery inboxQuery,
                               FindApprovalRequestByEntityQuery findByEntity,
                               ApprovalRequestRepository requests,
-                              ApprovalQueries queries) {
+                              ApprovalQueries queries,
+                              ApprovalResponseAssembler assembler) {
         this.createUseCase = createUseCase;
         this.approveUseCase = approveUseCase;
         this.rejectUseCase = rejectUseCase;
@@ -65,6 +68,7 @@ public class ApprovalController {
         this.findByEntity = findByEntity;
         this.requests = requests;
         this.queries = queries;
+        this.assembler = assembler;
     }
 
     @PostMapping
@@ -93,19 +97,25 @@ public class ApprovalController {
         UUID tenantId = TenantContextHolder.requireActive().tenantId();
         if (entityType != null && entityId != null) {
             // Entity-scoped: return all (typically a small number) as a single page.
-            List<ApprovalRequestResponse> rows = findByEntity.findAll(entityType, entityId)
-                    .stream().map(ApprovalRequestResponse::from).toList();
+            // Enriched (BE-5) — batch name + label resolution over the small set.
+            List<ApprovalRequestResponse> rows = assembler.enrichAll(tenantId,
+                    findByEntity.findAll(entityType, entityId));
             return new PageResponse<>(rows, 0, Math.max(rows.size(), 1), rows.size(), 1);
         }
         Page<ApprovalRequestJpaEntity> page = requests.search(tenantId, projectId,
                 entityType, status, pageable);
-        return PageResponse.of(page, e -> ApprovalRequestResponse.from(queries.hydrate(e)));
+        // Hydrate the page then batch-enrich (one user-name + per-type label pass).
+        List<ApprovalRequestResponse> enriched = assembler.enrichAll(tenantId,
+                page.getContent().stream().map(queries::hydrate).toList());
+        return new PageResponse<>(enriched, page.getNumber(), page.getSize(),
+                page.getTotalElements(), page.getTotalPages());
     }
 
     @GetMapping("/my-inbox")
     @PreAuthorize("hasAuthority('APPROVAL_REQUEST_DECIDE')")
     public List<ApprovalRequestResponse> inbox() {
-        return inboxQuery.list().stream().map(ApprovalRequestResponse::from).toList();
+        UUID tenantId = TenantContextHolder.requireActive().tenantId();
+        return assembler.enrichAll(tenantId, inboxQuery.list());
     }
 
     @GetMapping("/{id}")
@@ -114,7 +124,7 @@ public class ApprovalController {
         UUID tenantId = TenantContextHolder.requireActive().tenantId();
         var req = requests.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(TenantAccessDeniedException::new);
-        return ApprovalRequestResponse.from(queries.hydrate(req));
+        return assembler.enrich(tenantId, queries.hydrate(req));
     }
 
     @PostMapping("/{id}/steps/{stepId}/approve")

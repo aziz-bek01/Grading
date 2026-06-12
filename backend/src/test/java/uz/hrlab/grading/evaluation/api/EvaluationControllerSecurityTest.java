@@ -225,9 +225,10 @@ class EvaluationControllerSecurityTest {
         UUID positionId = UUID.randomUUID();
         UUID departmentId = UUID.randomUUID();
         UUID levelId = UUID.randomUUID();
+        // BE-11 — unit_name (parent org unit) now ships alongside department_name.
         EvaluationByFactorRow row = new EvaluationByFactorRow(
                 evaluationId, positionId, "P-001", "Кассир", "Операционный отдел",
-                departmentId, EvaluationStatus.DRAFT, 3, 8, levelId,
+                "Розничный блок", departmentId, EvaluationStatus.DRAFT, 3, 8, levelId,
                 new BigDecimal("12.5000"), "ok");
         given(queries.listByFactor(any(), any(), any(), any(), any()))
                 .willReturn((Page) new PageImpl<>(List.of(row)));
@@ -241,6 +242,8 @@ class EvaluationControllerSecurityTest {
                 .andExpect(jsonPath("$.items[0].evaluation_id").value(evaluationId.toString()))
                 .andExpect(jsonPath("$.items[0].position_id").value(positionId.toString()))
                 .andExpect(jsonPath("$.items[0].position_code").value("P-001"))
+                .andExpect(jsonPath("$.items[0].department_name").value("Операционный отдел"))
+                .andExpect(jsonPath("$.items[0].unit_name").value("Розничный блок"))
                 .andExpect(jsonPath("$.items[0].department_id").value(departmentId.toString()))
                 .andExpect(jsonPath("$.items[0].filled_factors_count").value(3))
                 .andExpect(jsonPath("$.items[0].total_factors_count").value(8))

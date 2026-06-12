@@ -13,7 +13,10 @@ import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import uz.hrlab.grading.access.application.ActorNameResolver;
+import uz.hrlab.grading.approval.application.ApprovalEntityLabelResolver;
 import uz.hrlab.grading.approval.application.ApprovalQueries;
+import uz.hrlab.grading.approval.application.ApprovalResponseAssembler;
 import uz.hrlab.grading.approval.application.ApproveStepUseCase;
 import uz.hrlab.grading.approval.application.CancelApprovalRequestUseCase;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase;
@@ -60,7 +63,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.REGEX,
                 pattern = "uz\\.hrlab\\.grading\\.security\\..*"))
-@Import({WebMvcSecurityTestConfig.class, GlobalExceptionHandler.class})
+@Import({WebMvcSecurityTestConfig.class, GlobalExceptionHandler.class,
+        ApprovalResponseAssembler.class})
 class ApprovalControllerSecurityTest {
 
     @Autowired MockMvc mvc;
@@ -76,6 +80,11 @@ class ApprovalControllerSecurityTest {
     @MockBean ApprovalRequestRepository requests;
     @MockBean ApprovalQueries queries;
     @MockBean AuditService audit;
+    // BE-9 — the REAL ApprovalResponseAssembler is imported so the enrichment
+    // serialization path is exercised; its two collaborators are mocked so we
+    // control the resolved names / labels the wire must carry.
+    @MockBean ActorNameResolver actorNames;
+    @MockBean ApprovalEntityLabelResolver entityLabels;
 
     @Test
     void anonymousIsUnauthorized() throws Exception {
@@ -139,9 +148,12 @@ class ApprovalControllerSecurityTest {
                         .with(jwt().authorities(() -> "APPROVAL_REQUEST_CREATE")))
                 .andExpect(status().isForbidden());
         given(inboxQuery.list()).willReturn(List.of());
-        mvc.perform(get("/api/v1/approval-requests/my-inbox")
+        // The inbox read derives the active tenant from the TenantContext to
+        // batch-resolve names (BE-5); the WebMvc slice excludes the tenant filter
+        // so set the context manually for the 200 branch.
+        withTenant(() -> mvc.perform(get("/api/v1/approval-requests/my-inbox")
                         .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE")))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()));
     }
 
     // ---------------------------------------------------------------------
@@ -153,11 +165,12 @@ class ApprovalControllerSecurityTest {
     // ---------------------------------------------------------------------
 
     @Test
-    void inboxWireIsBareArrayWithSnakeCaseKeys() throws Exception {
+    void inboxWireIsBareArrayWithSnakeCaseKeysAndEnrichment() throws Exception {
         ApprovalRequest req = fullStub();
         given(inboxQuery.list()).willReturn(List.of(req));
+        stubEnrichment(req);
 
-        mvc.perform(get("/api/v1/approval-requests/my-inbox")
+        withTenant(() -> mvc.perform(get("/api/v1/approval-requests/my-inbox")
                         .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE")))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -185,22 +198,30 @@ class ApprovalControllerSecurityTest {
                 .andExpect(jsonPath("$[0].steps[1].decided_by").doesNotExist())
                 .andExpect(jsonPath("$[0].steps[1].decided_at").doesNotExist())
                 .andExpect(jsonPath("$[0].steps[1].reason_i18n").doesNotExist())
-                // enrichment fields are NOT on the wire (FE must derive). Pin
-                // their ABSENCE so an accidental add is a deliberate, tested change.
-                .andExpect(jsonPath("$[0].initiated_by_name").doesNotExist())
-                .andExpect(jsonPath("$[0].total_steps").doesNotExist())
-                .andExpect(jsonPath("$[0].current_step_order").doesNotExist())
-                .andExpect(jsonPath("$[0].entity_label").doesNotExist());
+                // BE-9 — enrichment fields are now PINNED PRESENT (deliberate,
+                // reviewed contract change). snake_case keys + NON_NULL semantics.
+                .andExpect(jsonPath("$[0].initiated_by_name").value("Initiator User"))
+                .andExpect(jsonPath("$[0].entity_label_i18n.['ru-RU']").value("Профиль RU"))
+                .andExpect(jsonPath("$[0].entity_label_i18n.['uz-Cyrl-UZ']").value("Профил UZ-Cyrl"))
+                .andExpect(jsonPath("$[0].entity_label_i18n.['uz-Latn-UZ']").value("Profil UZ-Latn"))
+                .andExpect(jsonPath("$[0].entity_label_i18n.['en-US']").value("Profile EN"))
+                // decided step carries both approver + decider names.
+                .andExpect(jsonPath("$[0].steps[0].approver_name").value("Approver One"))
+                .andExpect(jsonPath("$[0].steps[0].decided_by_name").value("Decider One"))
+                // PENDING step has an approver name but NO decider name (NON_NULL omit).
+                .andExpect(jsonPath("$[0].steps[1].approver_name").value("Approver Two"))
+                .andExpect(jsonPath("$[0].steps[1].decided_by_name").doesNotExist()));
     }
 
     @Test
-    void getByIdWireIsSingleObjectWithSnakeCaseKeys() throws Exception {
+    void getByIdWireIsSingleObjectWithSnakeCaseKeysAndEnrichment() throws Exception {
         UUID id = UUID.randomUUID();
         UUID tenantId = UUID.randomUUID();
         ApprovalRequest req = fullStub();
         ApprovalRequestJpaEntity entity = mock(ApprovalRequestJpaEntity.class);
         given(requests.findByIdAndTenantId(eq(id), any())).willReturn(Optional.of(entity));
         given(queries.hydrate(entity)).willReturn(req);
+        stubEnrichment(req);
 
         try {
             TenantContextHolder.set(new TenantContext(
@@ -215,16 +236,68 @@ class ApprovalControllerSecurityTest {
                     .andExpect(jsonPath("$.entity_type").value("JOB_PROFILE"))
                     .andExpect(jsonPath("$.current_status").value("PENDING"))
                     .andExpect(jsonPath("$.steps[0].step_order").value(1))
-                    .andExpect(jsonPath("$.steps[0].required_permission").value("JOB_PROFILE_APPROVE"));
+                    .andExpect(jsonPath("$.steps[0].required_permission").value("JOB_PROFILE_APPROVE"))
+                    // BE-9 — detail path enrichment pinned PRESENT.
+                    .andExpect(jsonPath("$.initiated_by_name").value("Initiator User"))
+                    .andExpect(jsonPath("$.entity_label_i18n.['ru-RU']").value("Профиль RU"))
+                    .andExpect(jsonPath("$.entity_label_i18n.['en-US']").value("Profile EN"))
+                    .andExpect(jsonPath("$.steps[0].approver_name").value("Approver One"))
+                    .andExpect(jsonPath("$.steps[0].decided_by_name").value("Decider One"))
+                    .andExpect(jsonPath("$.steps[1].decided_by_name").doesNotExist());
         } finally {
             TenantContextHolder.clear();
         }
+    }
+
+    /**
+     * Stubs the two enrichment collaborators for {@code req}: the
+     * {@link ActorNameResolver} returns a deterministic name per harvested user
+     * id, and the {@link ApprovalEntityLabelResolver} returns a 4-locale label
+     * map. The PENDING step's {@code decided_by} is null, so its
+     * {@code decided_by_name} must be omitted (NON_NULL) — proving the wire
+     * honors the contract for absent decisions.
+     */
+    private void stubEnrichment(ApprovalRequest req) {
+        ApprovalStep decided = req.steps().get(0);
+        ApprovalStep pending = req.steps().get(1);
+        Map<UUID, String> names = new java.util.HashMap<>();
+        names.put(req.requestedBy(), "Initiator User");
+        names.put(decided.approverUserId(), "Approver One");
+        names.put(decided.decidedBy(), "Decider One");
+        names.put(pending.approverUserId(), "Approver Two");
+        // pending.decidedBy() is null → intentionally NOT mapped → name omitted.
+        given(actorNames.resolveAll(any(), any())).willReturn(names);
+        given(entityLabels.resolve(any(), eq(req.entityType()), eq(req.entityId())))
+                .willReturn(Map.of(
+                        "ru-RU", "Профиль RU",
+                        "uz-Cyrl-UZ", "Профил UZ-Cyrl",
+                        "uz-Latn-UZ", "Profil UZ-Latn",
+                        "en-US", "Profile EN"));
     }
 
     private ApprovalRequest stubRequest(UUID id) {
         return new ApprovalRequest(id, UUID.randomUUID(), UUID.randomUUID(),
                 ApprovalEntityType.JOB_PROFILE, UUID.randomUUID(), UUID.randomUUID(),
                 OffsetDateTime.now(), ApprovalRequestStatus.APPROVED, null, List.of());
+    }
+
+    /** Run inside an active TenantContext — the read paths batch-resolve names
+     *  using the tenant from the context (BE-5). */
+    private void withTenant(ThrowingRunnable body) throws Exception {
+        try {
+            TenantContextHolder.set(new TenantContext(
+                    UUID.randomUUID(), UUID.randomUUID(), java.util.Set.of(), java.util.Set.of(),
+                    java.util.Set.of("APPROVAL_REQUEST_DECIDE"), java.util.Set.of(),
+                    false, "en-US"));
+            body.run();
+        } finally {
+            TenantContextHolder.clear();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
     }
 
     /**

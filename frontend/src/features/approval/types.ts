@@ -9,9 +9,14 @@
  * No component touches the raw wire — they all consume these domain types.
  *
  * `decisions[]` is SYNTHESIZED by the adapter from already-decided steps; it is
- * NOT a backend field on this endpoint. Likewise `initiatedByName`,
- * `entityLabel`, `approverName`, `decidedByName`, `totalSteps` and
- * `currentStepOrder` are derived/fallback fields the BE does not send today.
+ * NOT a backend field on this endpoint. `totalSteps` and `currentStepOrder` are
+ * likewise derived by the adapter.
+ *
+ * `entityLabel` (from `entity_label_i18n`), `initiatedByName`, `approverName`
+ * and `decidedByName` ARE sent by the backend on the READ paths (detail /
+ * inbox / list — BE-3..BE-6) and consumed by the adapter snake-first. They are
+ * OMITTED (`@JsonInclude(NON_NULL)`) when the entity/user is missing or
+ * cross-tenant; the components then fall back to a SHORT id via `shortId`.
  */
 import type { Locale } from '@/shared/types/common';
 

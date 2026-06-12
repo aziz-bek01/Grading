@@ -6,30 +6,34 @@ import { useAuthStore } from '@/features/auth/authStore';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { httpClient } from '@/shared/api/httpClient';
 import { ReportsCenterPage } from '../pages/ReportsCenterPage';
-import type { Report } from '../types';
 
 const PROJECT_ID = '11111111-1111-1111-1111-111111111111';
 
-function makeReport(overrides: Partial<Report> = {}): Report {
+/**
+ * Real backend wire shape: global SNAKE_CASE with `@JsonInclude(NON_NULL)`.
+ * Feeding the page snake_case here exercises `normalizeReport` against the
+ * exact shape the backend serialises (FE-7 regression).
+ */
+function makeReportWire(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: 'rep-1',
-    projectId: PROJECT_ID,
-    reportType: 'GRADE_DISTRIBUTION',
+    project_id: PROJECT_ID,
+    report_type: 'GRADE_DISTRIBUTION',
     format: 'PDF',
     status: 'GENERATED',
     title: 'Grade distribution — ACME Grading 2026',
     locale: 'ru-RU',
-    requestedBy: '00000000-0000-0000-0000-000000000001',
-    requestedAt: '2026-05-23T08:15:00Z',
-    generatedAt: '2026-05-23T08:15:12Z',
-    expiresAt: '2026-06-06T08:15:12Z',
-    downloadedAt: null,
-    fileSize: 12345,
-    containsSalaryData: false,
-    containsPersonalData: false,
-    attemptCount: 1,
-    failureReason: null,
-    traceId: null,
+    requested_by: '00000000-0000-0000-0000-000000000001',
+    requested_at: '2026-05-23T08:15:00Z',
+    generated_at: '2026-05-23T08:15:12Z',
+    expires_at: '2026-06-06T08:15:12Z',
+    downloaded_at: null,
+    file_size: 12345,
+    contains_salary_data: false,
+    contains_personal_data: false,
+    attempt_count: 1,
+    failure_reason: null,
+    trace_id: null,
     ...overrides,
   };
 }
@@ -58,20 +62,20 @@ describe('ReportsCenterPage', () => {
     vi.spyOn(httpClient, 'get').mockResolvedValue({
       data: {
         items: [
-          makeReport({ id: 'rep-1', title: 'Grade distribution — ACME Grading 2026' }),
-          makeReport({
+          makeReportWire({ id: 'rep-1', title: 'Grade distribution — ACME Grading 2026' }),
+          makeReportWire({
             id: 'rep-2',
             title: 'Methodology spec — CFO Finance v1',
-            reportType: 'METHODOLOGY_SPEC',
+            report_type: 'METHODOLOGY_SPEC',
             status: 'GENERATING',
-            generatedAt: null,
-            expiresAt: null,
+            generated_at: null,
+            expires_at: null,
           }),
         ],
         page: 0,
         size: 2,
-        totalElements: 2,
-        totalPages: 1,
+        total_elements: 2,
+        total_pages: 1,
       },
     } as Awaited<ReturnType<typeof httpClient.get>>);
 
@@ -85,6 +89,9 @@ describe('ReportsCenterPage', () => {
     });
     expect(screen.getByText('Methodology spec — CFO Finance v1')).toBeInTheDocument();
     expect(screen.getAllByTestId('report-row')).toHaveLength(2);
+    // FE-7 / AC10: the snake_case `requested_at` is normalized, so no row
+    // shows the literal "Invalid Date" badge.
+    expect(screen.queryByText(/Invalid Date/)).toBeNull();
   });
 
   it('hides the "+ Request report" CTA when REPORT_CREATE is missing', async () => {

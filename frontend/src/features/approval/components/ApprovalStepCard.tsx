@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Clock, AlertTriangle, MinusCircle } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { formatDateSafe } from '@/shared/lib/dates';
+import { shortId } from '@/shared/lib/shortId';
 import type { ApprovalStep, ApprovalStepStatus } from '../types';
 
 const icon: Record<ApprovalStepStatus, React.ReactNode> = {
@@ -28,8 +29,12 @@ export function ApprovalStepCard({ step, isCurrent }: Props) {
   const decided = step.decidedAt
     ? formatDateSafe(step.decidedAt, i18n.language, t('common.dash'))
     : null;
-  // Decided-by display name falls back to the UUID (BE does not send a name).
-  const decidedByDisplay = step.decidedByName ?? step.decidedByUserId;
+  // Prefer the BE-resolved name; fall back to a SHORT id, never a raw UUID (FE-3).
+  const decidedByDisplay = step.decidedByName ?? shortId(step.decidedByUserId);
+  // Approver name prefers the BE-resolved name; falls back to a short id only
+  // when there is an explicit approver but no resolved name.
+  const approverDisplay =
+    step.approverName ?? (step.approverUserId ? shortId(step.approverUserId) : null);
   return (
     <div
       className={cn(
@@ -50,9 +55,9 @@ export function ApprovalStepCard({ step, isCurrent }: Props) {
         <span className="text-xs">{t(`approval.stepStatus.${step.status}`)}</span>
       </div>
       <div className="text-sm text-text-secondary">
-        {step.approverName ? (
+        {approverDisplay ? (
           <span>
-            {t('approval.step.approver')}: <strong>{step.approverName}</strong>
+            {t('approval.step.approver')}: <strong>{approverDisplay}</strong>
           </span>
         ) : step.requiredPermission ? (
           <span>

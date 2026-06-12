@@ -1,0 +1,179 @@
+# Seed: corrective, forward-only HRLAB_SUPER_ADMIN permission backfill.
+#
+# DEFECT (grading.hrlab.uz): "super adminga hamma narsa berkilib qolibdi" —
+# HRLab Super Admin saw newer modules (workflow, approvals, comments, panels,
+# imports/exports, grade-structure approve/lock, fine-grained USER_* codes,
+# methodology create/import, calibration, evaluation lock, campaign results,
+# job-analysis, etc.) hidden / locked.
+#
+# ROOT CAUSE (authoritative audit, hr-product-owner + lead re-verify):
+#   * There is NO super-admin wildcard/bypass anywhere. Both backend
+#     (PermissionService.has -> TenantContext.hasPermission) and frontend
+#     (permissionUtils.can) resolve authority as the EXACT union of codes
+#     granted to the role in public.role_permissions. No grant => hidden/blocked.
+#   * The permission catalogue grew to 72 codes across MVP1+MVP2, but the
+#     base super-admin grant in seeds/004-default-role-permissions.yaml is the
+#     stale "HRLAB_SUPER_ADMIN — 29 permissions" block. Newer codes are granted
+#     in PER-MODULE seeds that live under tenant-schema/ (007/013/016/019/023/
+#     027/038). Those changesets DO insert into public.role_permissions in
+#     mode-shared, but they are owned by the tenant-schema provisioning bundle —
+#     so in any environment where the per-module grants did not land in the
+#     control-plane public.role_permissions, super admin's effective authority
+#     collapses back toward the stale ~29-code baseline and modules disappear.
+#
+# FIX: a single control-plane corrective grant that makes HRLAB_SUPER_ADMIN hold
+# EVERY catalogue code EXCEPT the deliberate carve-outs (see below), idempotently
+# (ON CONFLICT DO NOTHING). Forward-only; does NOT edit any already-applied
+# historical changelog. Lives in seeds/ (control-plane public schema) on purpose:
+# the JWT permission union is assembled from public.role_permissions, so this is
+# the one location guaranteed to run against the schema that gates the UI in BOTH
+# mode-shared and schema-per-tenant deployments.
+#
+# DELIBERATE CARVE-OUTS — NOT granted here (least-privilege / separation-of-duty,
+# per docs/mvp1/role-permissions-matrix.md §1 hard rules; the invariant DO-blocks
+# in 004 will RAISE EXCEPTION if any of these are ever granted to super admin):
+#   * SALARY_VIEW / SALARY_EDIT / SALARY_EXPORT / SALARY_SCENARIO_RUN
+#       Salary is per-user only (user_tenant_memberships.salary_data_permission +
+#       per-user grant). Even super admin gets NO salary code by role default.
+#   * AI_ASSIST_USE — MVP 4 module, granted to no role yet.
+#   * PAYROLL_IMPORT — MVP 4 payroll connector, granted to no role yet.
+#   * USER_SALARY_PERMISSION_TOGGLE — must NEVER be held by an HRLAB_* role
+#       (architecture §8.4; 004 invariant guard enforces this).
+#
+# Source of truth: docs/mvp1/role-permissions-matrix.md (HRLAB_SUPER_ADMIN row).
+
+databaseChangeLog:
+  - changeSet:
+      id: seed-superadmin-permission-backfill
+      author: hr-product-owner
+      context: seeds
+      labels: mvp2,hotfix-superadmin-lockout
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- =====================================================================
+              -- HRLAB_SUPER_ADMIN — backfill EVERY catalogue permission EXCEPT the
+              -- four SALARY_* codes, AI_ASSIST_USE, PAYROLL_IMPORT and
+              -- USER_SALARY_PERMISSION_TOGGLE. NOT NULL-safe and idempotent: the
+              -- NOT IN list pins the carve-outs even if future catalogue codes are
+              -- added, and ON CONFLICT keeps re-runs and partial prior application
+              -- harmless.
+              -- =====================================================================
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM public.roles r
+                JOIN public.permissions p
+                  ON p.code NOT IN (
+                       'SALARY_VIEW','SALARY_EDIT','SALARY_EXPORT','SALARY_SCENARIO_RUN',
+                       'AI_ASSIST_USE',
+                       'PAYROLL_IMPORT',
+                       'USER_SALARY_PERMISSION_TOGGLE'
+                     )
+               WHERE r.code = 'HRLAB_SUPER_ADMIN'
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              -- Roll back only the rows this changeset could have added: every
+              -- HRLAB_SUPER_ADMIN grant whose code is NOT one of the carve-outs.
+              -- Safe relative to 004 because 004's rollback removes its own
+              -- explicit list; rows it inserted are simply re-removed here too if
+              -- both roll back. Re-running 004+005 forward restores the full set.
+              DELETE FROM public.role_permissions rp
+                USING public.roles r, public.permissions p
+                WHERE rp.role_id = r.id
+                  AND rp.permission_id = p.id
+                  AND r.code = 'HRLAB_SUPER_ADMIN'
+                  AND p.code NOT IN (
+                        'SALARY_VIEW','SALARY_EDIT','SALARY_EXPORT','SALARY_SCENARIO_RUN',
+                        'AI_ASSIST_USE',
+                        'PAYROLL_IMPORT',
+                        'USER_SALARY_PERMISSION_TOGGLE'
+                      );
+
+  # ---------------------------------------------------------------------------
+  # Post-condition invariants. Re-assert the non-negotiable carve-outs AFTER the
+  # backfill so a botched future edit to the NOT IN list is caught at migration
+  # time. Mirrors the dollar-quoted DO-block style from 004 (own changeSet,
+  # splitStatements:false, dbms:postgresql).
+  # ---------------------------------------------------------------------------
+  - changeSet:
+      id: seed-superadmin-permission-backfill-invariants
+      author: hr-product-owner
+      context: seeds
+      labels: mvp2,hotfix-superadmin-lockout
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              DECLARE
+                sa_salary_grants  INT;
+                sa_ai_grants      INT;
+                sa_payroll_grants INT;
+                sa_salary_toggle  INT;
+                sa_total_grants   INT;
+              BEGIN
+                -- Super admin must hold NO salary code.
+                SELECT COUNT(*) INTO sa_salary_grants
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                  JOIN public.roles r       ON r.id = rp.role_id
+                 WHERE r.code = 'HRLAB_SUPER_ADMIN'
+                   AND p.code IN ('SALARY_VIEW','SALARY_EDIT','SALARY_EXPORT','SALARY_SCENARIO_RUN');
+                IF sa_salary_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: HRLAB_SUPER_ADMIN must hold no SALARY_* code (found %)', sa_salary_grants;
+                END IF;
+
+                -- Super admin must NOT hold AI_ASSIST_USE (MVP 4).
+                SELECT COUNT(*) INTO sa_ai_grants
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                  JOIN public.roles r       ON r.id = rp.role_id
+                 WHERE r.code = 'HRLAB_SUPER_ADMIN' AND p.code = 'AI_ASSIST_USE';
+                IF sa_ai_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: HRLAB_SUPER_ADMIN must not hold AI_ASSIST_USE (found %)', sa_ai_grants;
+                END IF;
+
+                -- Super admin must NOT hold PAYROLL_IMPORT (MVP 4).
+                SELECT COUNT(*) INTO sa_payroll_grants
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                  JOIN public.roles r       ON r.id = rp.role_id
+                 WHERE r.code = 'HRLAB_SUPER_ADMIN' AND p.code = 'PAYROLL_IMPORT';
+                IF sa_payroll_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: HRLAB_SUPER_ADMIN must not hold PAYROLL_IMPORT (found %)', sa_payroll_grants;
+                END IF;
+
+                -- Super admin (an HRLAB_* role) must NOT hold USER_SALARY_PERMISSION_TOGGLE.
+                SELECT COUNT(*) INTO sa_salary_toggle
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                  JOIN public.roles r       ON r.id = rp.role_id
+                 WHERE r.code = 'HRLAB_SUPER_ADMIN' AND p.code = 'USER_SALARY_PERMISSION_TOGGLE';
+                IF sa_salary_toggle <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: HRLAB_SUPER_ADMIN must not hold USER_SALARY_PERMISSION_TOGGLE (found %)', sa_salary_toggle;
+                END IF;
+
+                -- Positive assertion: super admin now holds every non-carve-out code.
+                SELECT COUNT(*) INTO sa_total_grants
+                  FROM public.permissions p
+                 WHERE p.code NOT IN (
+                         'SALARY_VIEW','SALARY_EDIT','SALARY_EXPORT','SALARY_SCENARIO_RUN',
+                         'AI_ASSIST_USE','PAYROLL_IMPORT','USER_SALARY_PERMISSION_TOGGLE')
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.role_permissions rp
+                       JOIN public.roles r ON r.id = rp.role_id
+                      WHERE rp.permission_id = p.id AND r.code = 'HRLAB_SUPER_ADMIN');
+                IF sa_total_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: HRLAB_SUPER_ADMIN is missing % non-carve-out permission grant(s) after backfill', sa_total_grants;
+                END IF;
+              END
+              $$;
+      rollback:
+        - sql:
+            sql: SELECT 1;

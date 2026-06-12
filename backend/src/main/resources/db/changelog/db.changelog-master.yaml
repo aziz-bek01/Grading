@@ -55,6 +55,19 @@ databaseChangeLog:
       file: tenant-schema/db.changelog-tenant.yaml
       relativeToChangelogFile: true
 
+  # Corrective, forward-only HRLAB_SUPER_ADMIN permission backfill (hotfix:
+  # "super adminga hamma narsa berkilib qolibdi"). MUST run AFTER seeds/004 AND
+  # after the tenant-schema bundle above, because that bundle inserts the newer
+  # MVP1/MVP2 permission CATALOGUE rows (007/013/016/019/023/027/038) into
+  # public.permissions in mode-shared. Running last guarantees every catalogue
+  # code exists when the wildcard-minus-carve-outs grant for HRLAB_SUPER_ADMIN
+  # runs, and lets the changeset's own post-condition invariant assert that the
+  # super admin holds every non-carve-out code. Idempotent (ON CONFLICT DO
+  # NOTHING); only touches public.role_permissions for HRLAB_SUPER_ADMIN.
+  - include:
+      file: seeds/005-superadmin-permission-backfill.yaml
+      relativeToChangelogFile: true
+
   # ------------------------------------------------------------------------
   # Dev-only seed (BE-SEED-003). EVERY changeset inside this file declares
   # `context: dev`. Production application.yml contexts list does NOT include

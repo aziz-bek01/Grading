@@ -20,8 +20,8 @@ databaseChangeLog:
               - column: { name: methodology_version_id, type: UUID, constraints: { nullable: false } }
               - column: { name: status, type: VARCHAR(32), constraints: { nullable: false } }
               - column: { name: min_evaluators, type: INT, defaultValueNumeric: 3, constraints: { nullable: false } }
-              - column: { name: raw_total_score, type: NUMERIC(12,4) }
-              - column: { name: displayed_total_score, type: NUMERIC(12,2) }
+              - column: { name: raw_total_score, type: "NUMERIC(12,4)" }
+              - column: { name: displayed_total_score, type: "NUMERIC(12,2)" }
               - column: { name: grade_band_id, type: UUID }
               - column: { name: assigned_grade_number, type: INT }
               - column: { name: averaged_at, type: TIMESTAMPTZ }
@@ -142,7 +142,7 @@ databaseChangeLog:
               - column: { name: tenant_id, type: UUID, constraints: { nullable: false } }
               - column: { name: panel_id, type: UUID, constraints: { nullable: false } }
               - column: { name: factor_id, type: UUID, constraints: { nullable: false } }
-              - column: { name: avg_raw_factor_score, type: NUMERIC(12,4), constraints: { nullable: false } }
+              - column: { name: avg_raw_factor_score, type: "NUMERIC(12,4)", constraints: { nullable: false } }
               - column: { name: evaluator_count, type: INT, constraints: { nullable: false } }
               - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
               - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: now(), constraints: { nullable: false } }

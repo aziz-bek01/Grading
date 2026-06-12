@@ -118,6 +118,99 @@ class GetCurrentUserUseCaseTest extends AbstractIntegrationTest {
         assertThat(resp.tenants().get(0).id()).isEqualTo(acme);
     }
 
+    /**
+     * BE-3-FIX (production lockout regression). A multi-membership super admin's
+     * first {@code /users/me} after an OIDC redirect goes out header-less, so the
+     * resolver fails closed to NO active tenant ({@code tenantId == null},
+     * permission-empty context — correct for tenant-scoped DATA reads). The
+     * IDENTITY payload must NOT inherit that emptiness: it picks ONE default
+     * tenant and expands that tenant's permissions so the SPA shell renders.
+     *
+     * <p>This proves (a) of the acceptance criteria: a multi-membership super
+     * admin with no selected tenant still gets a usable permission set for a
+     * single, reported tenant — without unioning across tenants.
+     */
+    @Test
+    void ambiguousMultiMembershipStillRendersShellWithSingleTenantPermissions() {
+        UUID acme = seedTenant(UUID.randomUUID());
+        UUID beta = seedTenant(UUID.randomUUID());
+
+        UUID userId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'ru-RU', 0)",
+                userId, userId + "@dev.local", "Ambiguous Super Admin");
+
+        UUID acmeMembership = UUID.randomUUID();
+        UUID betaMembership = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                acmeMembership, userId, acme);
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                betaMembership, userId, beta);
+
+        // Attach HRLAB_SUPER_ADMIN to BOTH memberships so the assertion holds
+        // regardless of which membership the deterministic default-picker selects.
+        jdbcTemplate.update(
+                "INSERT INTO public.user_roles (id, user_tenant_membership_id, role_id) "
+                        + "SELECT ?, ?, r.id FROM public.roles r WHERE r.code = 'HRLAB_SUPER_ADMIN'",
+                UUID.randomUUID(), acmeMembership);
+        jdbcTemplate.update(
+                "INSERT INTO public.user_roles (id, user_tenant_membership_id, role_id) "
+                        + "SELECT ?, ?, r.id FROM public.roles r WHERE r.code = 'HRLAB_SUPER_ADMIN'",
+                UUID.randomUUID(), betaMembership);
+
+        // Mimic the resolver's fail-closed output for an ambiguous multi-tenant
+        // request: a valid user but NO active tenant and an empty permission set.
+        TenantContextHolder.set(new TenantContext(userId, null, Set.of(),
+                Set.of(), Set.of(), Set.of(), false, "ru-RU"));
+
+        CurrentUserResponse resp = getCurrentUserUseCase.currentUser();
+
+        // The shell renders: a single default tenant is reported and its
+        // permissions are non-empty (full HRLAB_SUPER_ADMIN catalogue).
+        assertThat(resp.activeTenantId())
+                .as("identity payload must default to ONE of the user's active tenants")
+                .isIn(acme, beta);
+        assertThat(resp.roles()).contains("HRLAB_SUPER_ADMIN");
+        assertThat(resp.permissions())
+                .as("multi-membership super admin must get full permissions for the shell")
+                .contains("PROJECT_READ", "POSITION_READ", "METHODOLOGY_READ", "EVALUATION_READ");
+        // Both memberships still surface in the switcher.
+        assertThat(resp.tenants()).hasSize(2);
+    }
+
+    /**
+     * BE-3-FIX security companion. When the ambiguous user has NO ACTIVE
+     * membership (only INVITED/SUSPENDED), the identity payload stays gated —
+     * no tenant defaulted, no permissions invented — so the SPA prompts for a
+     * company-client rather than escalating.
+     */
+    @Test
+    void noActiveMembershipKeepsShellGated() {
+        UUID acme = seedTenant(UUID.randomUUID());
+        UUID userId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'ru-RU', 0)",
+                userId, userId + "@dev.local", "Invited Only");
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'INVITED', false, 0)",
+                UUID.randomUUID(), userId, acme);
+
+        TenantContextHolder.set(new TenantContext(userId, null, Set.of(),
+                Set.of(), Set.of(), Set.of(), false, "ru-RU"));
+
+        CurrentUserResponse resp = getCurrentUserUseCase.currentUser();
+
+        assertThat(resp.activeTenantId()).isNull();
+        assertThat(resp.permissions()).isEmpty();
+    }
+
     @Test
     void unknownUserResultsInNotFound() {
         TenantContextHolder.set(new TenantContext(UUID.randomUUID(), null, Set.of(),

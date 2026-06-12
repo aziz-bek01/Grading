@@ -55,7 +55,9 @@ jobs:
         run: |
           BRANCH="${{ github.head_ref }}"
           echo "Validating branch: $BRANCH"
-          if ! echo "$BRANCH" | grep -Eq '^(feat|fix|chore|docs|refactor|test|ci|build|perf|revert)/[a-z0-9._-]+$|^(main|develop|release/.+|hotfix/.+)$'; then
+          # `claude/...` is the auto-generated prefix for Claude Code on the web
+          # sessions — allow it alongside the conventional <type>/<slug> set.
+          if ! echo "$BRANCH" | grep -Eq '^(feat|fix|chore|docs|refactor|test|ci|build|perf|revert|claude)/[a-z0-9._-]+$|^(main|develop|release/.+|hotfix/.+)$'; then
             echo "::error::Branch name '$BRANCH' does not follow <type>/<slug> convention."
             exit 1
           fi

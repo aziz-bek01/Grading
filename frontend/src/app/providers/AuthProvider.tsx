@@ -41,10 +41,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [navigate, clearSession]);
 
   useEffect(() => {
+    // Defensive backstop ONLY. The authoritative, SYNCHRONOUS mirror now lives
+    // in the auth store setters (setSession/setActiveTenant/refreshUser/
+    // clearSession/signOut → syncActiveTenantHeaders) so the header is attached
+    // BEFORE any approval query/poll fires (FE-1, cross-tenant inbox leak fix).
+    // This effect simply re-asserts the same value on mount / external hydration;
+    // it is idempotent and must not be the only writer.
     setMockActiveTenantId(activeTenantId);
-    // Real backend: tells the API which company-client is active (validated
-    // against the user's memberships server-side) so data + permissions scope
-    // to it. Without this, a user with >1 tenant gets no active tenant -> 403.
     setActiveTenantHeader(activeTenantId);
   }, [activeTenantId]);
 

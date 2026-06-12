@@ -20,7 +20,15 @@ export const approvalKeys = {
   list: (filters?: ApprovalRequestListFilters) =>
     ['approvals', 'list', filters ?? {}] as const,
   detail: (id: string) => ['approvals', 'detail', id] as const,
+  // Legacy un-scoped key (kept for back-compat with any direct cache writes).
   myInbox: ['approvals', 'my-inbox'] as const,
+  // FE-1 (2026-06-12) — tenant-scoped inbox key. Including the active tenant id
+  // means a tenant switch yields a DIFFERENT cache entry, so the inbox + sidebar
+  // badge can never render the previous company-client's rows. The badge shares
+  // THIS exact key (Sidebar.useApprovalInboxCount → useMyApprovalInbox), so
+  // badge count == inbox length always (FE-3).
+  myInboxForTenant: (tenantId: string | null) =>
+    ['approvals', 'my-inbox', tenantId] as const,
 };
 
 /* ------------------------------------------------------------------ *

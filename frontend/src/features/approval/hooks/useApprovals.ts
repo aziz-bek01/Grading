@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '@/features/auth/authStore';
 import {
   approvalKeys,
   approveStep,
@@ -31,9 +32,23 @@ export function useApprovalRequest(id: string | undefined) {
 }
 
 export function useMyApprovalInbox() {
+  // FE-1 (2026-06-12) — close the unattended-poll wrong-tenant window.
+  //
+  // The 30s inbox poll (and the sidebar badge that shares this query) must
+  // NEVER fire before an active company-client is selected: a poll fired without
+  // X-Active-Tenant-Id reached a backend that, for a multi-membership user,
+  // silently defaulted to some tenant and returned its rows (the cross-tenant
+  // inbox leak). Now:
+  //   - `enabled: !!activeTenantId` blocks the query (and the poll) until a
+  //     tenant is active;
+  //   - the query key INCLUDES the active tenant id, so switching companies
+  //     invalidates the cached inbox/badge instead of showing the previous
+  //     tenant's rows.
+  const activeTenantId = useAuthStore((s) => s.activeTenant?.id ?? null);
   return useQuery({
-    queryKey: approvalKeys.myInbox,
+    queryKey: approvalKeys.myInboxForTenant(activeTenantId),
     queryFn: fetchMyInbox,
+    enabled: !!activeTenantId,
     refetchInterval: 30_000,
   });
 }

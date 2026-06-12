@@ -1,9 +1,19 @@
-# Dev profile — extends `local` semantics but is the canonical alias used by
-# CI smoke jobs and the Maven `dev` profile (`./mvnw clean verify -Pdev`).
+# Dev profile — the canonical alias used by CI smoke jobs and the Maven `dev`
+# profile (`./mvnw clean verify -Pdev`). Unlike `local`, this profile models a
+# DEPLOYED runtime (dev/demo VPS), so it MUST exercise the same tenant-isolation
+# posture as prod.
 #
-# All datasource defaults match application-local.yml; the only meaningful
-# difference is the explicit inclusion of the `dev` Liquibase context so the
-# BE-SEED-003 demo tenants (ACME, Beta) are bootstrapped.
+# DATASOURCE ROLE (BE-1, RLS gap closure — 2026-06-12):
+#   The runtime connects as `grading_runtime`, a NON-superuser, NON-BYPASSRLS
+#   role that is SUBJECT to FORCE ROW LEVEL SECURITY. The previous credential
+#   (`grading_app`, the bootstrap superuser) silently BYPASSED RLS, so a missing
+#   app.tenant_id GUC or a forgotten tenant predicate would NOT be caught at the
+#   DB layer — the exact gap behind the approvals cross-tenant inbox leak.
+#   `grading_runtime` LOGIN + dev password are provisioned by the `test-roles`
+#   Liquibase context (already included below); Liquibase migrations still run
+#   under the bootstrap superuser via the migration job, NOT this runtime role.
+#   A boot-time guard (DatasourceRolePrivilegeGuard) FAILS STARTUP if this
+#   runtime role ever turns out to be superuser/bypassrls in a non-local profile.
 #
 # PRODUCTION SAFETY:
 #   - This file is NEVER active in production. Production deployments must
@@ -16,8 +26,8 @@
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/grading_control_db
-    username: grading_app
-    password: grading_app_pwd
+    username: grading_runtime
+    password: grading_runtime_pwd
     driver-class-name: org.postgresql.Driver
   jpa:
     properties:

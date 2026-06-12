@@ -157,6 +157,110 @@ class ApprovalControllerSecurityTest {
     }
 
     // ---------------------------------------------------------------------
+    // BE-6 (2026-06-12) — cross-tenant denial at the controller layer.
+    //
+    // Each approval subpage must DENY a caller who has the right permission but
+    // is acting in the WRONG tenant. The denial is driven through the REAL
+    // controller -> use-case/repository boundary (the mock simulates a
+    // findByIdAndTenantId MISS / TenantAccessDeniedException), so a future
+    // regression that drops the tenant predicate is caught here, not in prod.
+    // TenantAccessDeniedException -> HTTP 404 (no existence-revealing) +
+    // CROSS_TENANT_ACCESS_ATTEMPT security log (GlobalExceptionHandler).
+    // ---------------------------------------------------------------------
+
+    @Test
+    void getByIdDeniesOtherTenant() throws Exception {
+        UUID otherTenantRequestId = UUID.randomUUID();
+        // Cross-tenant probe: findByIdAndTenantId(otherTenantRequestId, myTenant)
+        // returns empty -> controller throws TenantAccessDeniedException -> 404.
+        given(requests.findByIdAndTenantId(eq(otherTenantRequestId), any()))
+                .willReturn(Optional.empty());
+
+        withTenant(() -> mvc.perform(get("/api/v1/approval-requests/{id}", otherTenantRequestId)
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE")))
+                .andExpect(status().isNotFound()));
+    }
+
+    @Test
+    void listInboxDeniesOtherTenant() throws Exception {
+        // The real inbox query tenant-scopes (steps.findInbox + findByIdAndTenantId);
+        // a cross-tenant request must NEVER reach the wire. Here the query — which
+        // takes the active tenant from the TenantContext — yields nothing for the
+        // caller's tenant, so the inbox is empty (no other tenant's rows).
+        given(inboxQuery.list()).willReturn(List.of());
+        withTenant(() -> mvc.perform(get("/api/v1/approval-requests/my-inbox")
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE")))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0)));
+    }
+
+    @Test
+    void listDeniesOtherTenant() throws Exception {
+        // The project-list (search) endpoint scopes by the active tenant; a
+        // cross-tenant probe returns no rows. The wire is a PageResponse with an
+        // empty items array — never another tenant's metadata.
+        given(requests.search(any(), any(), any(), any(), any()))
+                .willReturn(org.springframework.data.domain.Page.empty());
+        withTenant(() -> mvc.perform(get("/api/v1/approval-requests")
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(0)));
+    }
+
+    @Test
+    void approveDeniesOtherTenant() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID sid = UUID.randomUUID();
+        // Use case resolves request via findByIdAndTenantId and throws on a miss.
+        given(approveUseCase.approve(eq(id), eq(sid), any()))
+                .willThrow(new uz.hrlab.grading.common.exception.TenantAccessDeniedException());
+        mvc.perform(post("/api/v1/approval-requests/{id}/steps/{sid}/approve", id, sid)
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void rejectDeniesOtherTenant() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID sid = UUID.randomUUID();
+        given(rejectUseCase.reject(eq(id), eq(sid), any()))
+                .willThrow(new uz.hrlab.grading.common.exception.TenantAccessDeniedException());
+        mvc.perform(post("/api/v1/approval-requests/{id}/steps/{sid}/reject", id, sid)
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"long enough reason yes truly here\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void requestChangesDeniesOtherTenant() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID sid = UUID.randomUUID();
+        given(requestChangesUseCase.requestChanges(eq(id), eq(sid), any()))
+                .willThrow(new uz.hrlab.grading.common.exception.TenantAccessDeniedException());
+        mvc.perform(post("/api/v1/approval-requests/{id}/steps/{sid}/request-changes", id, sid)
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"long enough reason yes truly here\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void cancelDeniesOtherTenant() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(cancelUseCase.cancel(eq(id)))
+                .willThrow(new uz.hrlab.grading.common.exception.TenantAccessDeniedException());
+        mvc.perform(post("/api/v1/approval-requests/{id}/cancel", id)
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_CANCEL")))
+                .andExpect(status().isNotFound());
+    }
+
+    // ---------------------------------------------------------------------
     // WIRE CONTRACT PINS (golden-file lesson, grade module). These lock the
     // REAL snake_case JSON shape the FE adapter is built against, so any future
     // BE field rename breaks THIS test, not the production Approvals page.

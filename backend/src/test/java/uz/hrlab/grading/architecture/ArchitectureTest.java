@@ -448,6 +448,77 @@ class ArchitectureTest {
         rule.check(CLASSES);
     }
 
+    // ---------------------------------------------------------------------
+    //  Rule 13 (BE-4, 2026-06-12 — approval tenant-scoping defense-in-depth)
+    //  Every query method declared on an approval repository MUST be tenant-
+    //  scoped: either its derived name contains `TenantId`, or it accepts a
+    //  parameter named `tenantId` (the @Query path). This pins the invariant
+    //  "no query may read approval_* without a tenant_id predicate" so a future
+    //  developer cannot add a BOLA-prone finder on approval_requests /
+    //  approval_steps / approval_decisions. Inherited base methods
+    //  (findByIdAndTenantId, findAllByTenantId, existsByIdAndTenantId, save,
+    //  count) are not re-declared on the subtypes, so they are out of scope.
+    // ---------------------------------------------------------------------
+    @Test
+    void approvalRepositoryQueryMethodsMustBeTenantScoped() {
+        ArchRule rule = classes()
+                .that().areInterfaces()
+                .and().resideInAPackage("..approval.infrastructure..")
+                .and().haveSimpleNameEndingWith("Repository")
+                .should(new ArchCondition<>("declare only tenant-scoped query methods "
+                        + "(name contains 'TenantId' OR a 'tenantId' parameter)") {
+                    @Override
+                    public void check(JavaClass item, ConditionEvents events) {
+                        for (JavaMethod method : item.getMethods()) {
+                            // Non-read mutators / inherited overloads are not the concern;
+                            // we only audit finder/search/count style reads.
+                            if (!isReadMethod(method.getName())) {
+                                continue;
+                            }
+                            boolean nameScoped = method.getName().contains("TenantId");
+                            boolean paramScoped = method.getParameters().stream()
+                                    .anyMatch(p -> hasTenantIdParamName(p));
+                            if (!nameScoped && !paramScoped) {
+                                events.add(SimpleConditionEvent.violated(method,
+                                        item.getName() + "." + method.getName()
+                                                + "(...) reads approval data without a tenant_id "
+                                                + "predicate — every approval query MUST be tenant-"
+                                                + "scoped (BE-4 / security-blueprint §5.2)."));
+                            }
+                        }
+                    }
+                })
+                .because("BE-4 (2026-06-12) — the approvals cross-tenant inbox leak. No query "
+                        + "may read approval_requests/approval_steps/approval_decisions without "
+                        + "an explicit tenant_id predicate, even though FORCE RLS is a second line "
+                        + "of defense.");
+        rule.check(CLASSES);
+    }
+
+    private static boolean isReadMethod(String name) {
+        return name.startsWith("find")
+                || name.startsWith("get")
+                || name.startsWith("search")
+                || name.startsWith("count")
+                || name.startsWith("exists");
+    }
+
+    /**
+     * True when an {@code @Query} method parameter is the tenant id, identified
+     * by a {@code @Param("tenantId")} binding (case-insensitive). Derived
+     * (non-{@code @Query}) finders are covered by the name-contains-'TenantId'
+     * check instead, so this only needs to recognise the explicit JPQL path.
+     */
+    private static boolean hasTenantIdParamName(JavaParameter param) {
+        return param.getAnnotations().stream()
+                .filter(a -> a.getRawType().getName()
+                        .equals(org.springframework.data.repository.query.Param.class.getName()))
+                .anyMatch(a -> {
+                    Object value = a.getProperties().get("value");
+                    return value != null && "tenantId".equalsIgnoreCase(value.toString().trim());
+                });
+    }
+
     @Test
     void controllersMustNotBindTenantIdAsPathVariableOutsideAdmin() {
         ArchRule rule = classes()

@@ -21,7 +21,6 @@ import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -203,17 +202,25 @@ public class JwtTenantContextResolver {
      *       membership in it.</li>
      *   <li><b>{@code active_tenant_id} claim</b> — honoured ONLY if the user has
      *       an ACTIVE membership in it.</li>
-     *   <li><b>single ACTIVE membership</b> — the one membership.</li>
-     *   <li><b>deterministic default</b> — earliest-created ACTIVE membership
-     *       (tie-broken by membership id). NEVER null when at least one ACTIVE
-     *       membership exists.</li>
+     *   <li><b>single ACTIVE membership</b> — the one membership (unambiguous
+     *       default; no tenant to choose between).</li>
+     *   <li><b>fail closed</b> — with MORE THAN ONE ACTIVE membership and neither
+     *       a header nor a claim resolving to a member tenant, return
+     *       {@code null} (NO active tenant). The caller then yields a
+     *       {@code tenantId == null} context, downstream reads fail closed (the
+     *       RLS GUC is left unset → zero rows; {@code requireActive()} rejects),
+     *       and the SPA shows a "select a company-client" state.</li>
      * </ol>
      *
-     * <p>SECURITY: only a tenant the user is an ACTIVE member of is ever
-     * selected. A header/claim pointing at a non-member tenant is silently
-     * ignored (falls through) — no cross-tenant escalation. The downstream
-     * {@code TenantContextFilter} membership cross-check stays in place as
-     * defense in depth.
+     * <p>SECURITY (BE-3, 2026-06-12): a multi-membership user must NEVER be
+     * silently defaulted to some "earliest-created" tenant when the active
+     * tenant is ambiguous — that leaked a default tenant's data (e.g. an
+     * unattended inbox poll fired before the tenant switcher set the header).
+     * Failing closed to no-active-tenant is the safe behaviour: zero rows, no
+     * cross-tenant exposure. A header/claim pointing at a NON-member tenant is
+     * still silently ignored (falls through to fail-closed) — no cross-tenant
+     * escalation. The downstream {@code TenantContextFilter} membership
+     * cross-check stays in place as defense in depth.
      */
     private UserTenantMembershipJpaEntity pickActiveMembership(
             List<UserTenantMembershipJpaEntity> active, UUID claimTenantId, UUID headerTenantId) {
@@ -230,18 +237,19 @@ public class JwtTenantContextResolver {
         if (byClaim != null) {
             return byClaim;
         }
-        // 3) Exactly one ACTIVE membership.
+        // 3) Exactly one ACTIVE membership — unambiguous default.
         if (active.size() == 1) {
             return active.get(0);
         }
-        // 4) Deterministic default: earliest-created ACTIVE membership, id as a
-        //    stable tie-breaker. Never null here — the user has memberships.
-        return active.stream()
-                .min(Comparator
-                        .comparing((UserTenantMembershipJpaEntity m) -> m.getCreatedAt(),
-                                Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(UserTenantMembershipJpaEntity::getId))
-                .orElse(active.get(0));
+        // 4) Ambiguous: >1 ACTIVE membership and neither header nor claim
+        //    resolved to a member tenant. FAIL CLOSED — no active tenant — rather
+        //    than leaking a default tenant's data. The SPA must send a valid
+        //    X-Active-Tenant-Id (tenant switcher) for reads to return rows.
+        log.warn("Ambiguous active tenant: user has {} ACTIVE memberships but no "
+                + "X-Active-Tenant-Id header / active_tenant_id claim resolved to a "
+                + "member tenant — resolving to NO active tenant (fail closed).",
+                active.size());
+        return null;
     }
 
     /**

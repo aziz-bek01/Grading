@@ -98,8 +98,19 @@ class JwtTenantContextResolverTest extends AbstractIntegrationTest {
         assertThat(ctx.permissions()).isEmpty();
     }
 
+    /**
+     * BE-3 (2026-06-12, wrong-active-tenant fallthrough closure). With MORE
+     * THAN ONE ACTIVE membership and NEITHER an {@code X-Active-Tenant-Id}
+     * header NOR an {@code active_tenant_id} claim resolving to a member tenant,
+     * the resolver must FAIL CLOSED — {@code tenantId == null}, NO active tenant
+     * — instead of silently defaulting to an earliest-created tenant (which
+     * leaked a default tenant's data, e.g. an unattended inbox poll firing
+     * before the SPA tenant switcher set the header). The user identity is still
+     * resolved so {@code /users/me} can list both memberships and the SPA can
+     * prompt to select a company-client.
+     */
     @Test
-    void multipleActiveTenantsWithoutClaimPicksDeterministicDefaultTenant() {
+    void multipleActiveTenantsWithoutClaimOrHeaderFailsClosedWithNoActiveTenant() {
         UUID tenantA = seedTenant(UUID.randomUUID());
         UUID tenantB = seedTenant(UUID.randomUUID());
         UUID userId = UUID.randomUUID();
@@ -128,12 +139,55 @@ class JwtTenantContextResolverTest extends AbstractIntegrationTest {
 
         TenantContext ctx = resolver.resolve(jwt);
 
-        // With multiple ACTIVE memberships and no claim/header, the resolver
-        // auto-picks a deterministic default (earliest-created ACTIVE membership)
-        // so permissions resolve and a Super Admin never loses all rights. The
-        // SPA can still switch tenants via the X-Active-Tenant-Id header;
-        // /users/me lists both memberships.
+        // Identity resolved...
         assertThat(ctx.userId()).isEqualTo(userId);
-        assertThat(ctx.tenantId()).isNotNull().isIn(tenantA, tenantB);
+        // ...but NO active tenant is chosen — fail closed. Downstream reads
+        // return zero rows (RLS GUC unset) / requireActive() rejects.
+        assertThat(ctx.tenantId())
+                .as("ambiguous multi-tenant context must NOT default to a tenant")
+                .isNull();
+    }
+
+    /**
+     * BE-3 companion: a multi-membership user that DOES declare a valid active
+     * tenant via the {@code active_tenant_id} claim still resolves to THAT
+     * tenant (and only that tenant) — fail-closed never breaks the legitimate
+     * tenant-switch path.
+     */
+    @Test
+    void multipleActiveTenantsWithMatchingClaimResolvesToThatTenant() {
+        UUID tenantA = seedTenant(UUID.randomUUID());
+        UUID tenantB = seedTenant(UUID.randomUUID());
+        UUID userId = UUID.randomUUID();
+        String email = "multi2+" + userId + "@hrlab.uz";
+
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'en-US', 0)",
+                userId, email, "Multi Tenant 2");
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                UUID.randomUUID(), userId, tenantA);
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                UUID.randomUUID(), userId, tenantB);
+
+        Jwt jwt = Jwt.withTokenValue("token")
+                .header("alg", "RS256")
+                .subject("123")
+                .claim("email", email)
+                .claim("active_tenant_id", tenantB.toString())
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .build();
+
+        TenantContext ctx = resolver.resolve(jwt);
+
+        assertThat(ctx.userId()).isEqualTo(userId);
+        assertThat(ctx.tenantId())
+                .as("a member-resolvable active_tenant_id claim must select that tenant")
+                .isEqualTo(tenantB);
     }
 }

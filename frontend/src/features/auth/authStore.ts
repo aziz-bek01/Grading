@@ -7,11 +7,32 @@ import type {
 } from '@/shared/auth/authTypes';
 import { tokenStorage } from '@/shared/auth/tokenStorage';
 import {
+  setActiveTenantHeader,
+  setMockActiveTenantId,
+} from '@/shared/api/httpClient';
+import {
   isOidcAvailable,
   startSignoutRedirect,
 } from '@/shared/auth/oidcClient';
 import { fetchCurrentUser } from './authApi';
 import { mapMeResponse } from './mapMeResponse';
+
+/**
+ * FE-1/FE-2 (2026-06-12) — mirror the active company-client into the http
+ * client's module-scoped header holders SYNCHRONOUSLY, the moment the store
+ * changes, rather than in a post-render `useEffect` (AuthProvider). This closes
+ * the window where an approval query/poll could fire after `activeTenant` was
+ * set but before the effect attached `X-Active-Tenant-Id`, which the backend
+ * would have resolved to a defaulted tenant -> cross-tenant inbox leak.
+ *
+ * `setActiveTenantHeader` is the real-backend header; `setMockActiveTenantId`
+ * feeds the in-process MSW adapter. Both are guarded internally so production
+ * builds dead-code-eliminate the mock branch.
+ */
+function syncActiveTenantHeaders(tenantId: string | null): void {
+  setActiveTenantHeader(tenantId);
+  setMockActiveTenantId(tenantId);
+}
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar.collapsed';
 
@@ -66,11 +87,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   sidebarCollapsed: readSidebarCollapsed(),
   setSession: (user, token) => {
     tokenStorage.set(token);
+    // default active tenant is first one user belongs to
+    const activeTenant = user.tenants[0] ?? null;
+    // Attach the header BEFORE React re-renders / any approval query fires.
+    syncActiveTenantHeaders(activeTenant?.id ?? null);
     set({
       user,
       isAuthenticated: true,
-      // default active tenant is first one user belongs to
-      activeTenant: user.tenants[0] ?? null,
+      activeTenant,
       activeProject: null,
     });
   },
@@ -87,6 +111,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       // so a valid X-Active-Tenant-Id is always sent and the backend can resolve
       // permissions for an actual company.
       const activeTenant = state.activeTenant ?? user.tenants[0] ?? null;
+      // Keep the http header in lock-step (it may have auto-selected a tenant).
+      syncActiveTenantHeaders(activeTenant?.id ?? null);
       return {
         user,
         isAuthenticated: state.isAuthenticated,
@@ -97,7 +123,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       };
     });
   },
-  setActiveTenant: (tenant) => set({ activeTenant: tenant, activeProject: null }),
+  setActiveTenant: (tenant) => {
+    // Switch the http header SYNCHRONOUSLY so the very next approval query (and
+    // the gated inbox poll) carries the NEW X-Active-Tenant-Id, not the old one.
+    syncActiveTenantHeaders(tenant?.id ?? null);
+    set({ activeTenant: tenant, activeProject: null });
+  },
   setActiveProject: (project) => set({ activeProject: project }),
   setSidebarCollapsed: (v) => {
     persistSidebarCollapsed(v);
@@ -105,6 +136,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   clearSession: () => {
     tokenStorage.clear();
+    // Drop the tenant header so no stale X-Active-Tenant-Id survives a logout.
+    syncActiveTenantHeaders(null);
     set({
       user: null,
       activeTenant: null,
@@ -115,6 +148,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   signOut: () => {
     // 1) Local clear first (synchronous contract — tests rely on immediate state).
     tokenStorage.clear();
+    syncActiveTenantHeaders(null);
     set({
       user: null,
       activeTenant: null,

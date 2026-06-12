@@ -100,3 +100,32 @@ A single superuser remains acceptable for local development per the
 application-local.yml comment, but operators are encouraged to switch
 the application's datasource username to `grading_runtime` locally to
 exercise the same code path as production.
+
+## 6. RLS posture per profile (BE-1, 2026-06-12 — standing control)
+
+> **MANDATE:** every NON-LOCAL profile — `dev`, `demo`, staging, `prod`, and
+> the CI smoke job — MUST connect the runtime as **`grading_runtime`**
+> (NON-superuser, NON-`bypassrls`). Only `local` (developer single-superuser
+> convenience) and `test` (Testcontainers superuser) may run as a role that
+> bypasses RLS, and neither is ever deployed.
+
+**Why this is a security control, not a preference.** PostgreSQL exempts a role
+with `rolsuper` or `rolbypassrls` from Row-Level Security — *even on tables with
+`FORCE ROW LEVEL SECURITY`*. Running the app as the bootstrap superuser
+`grading_app` therefore **silently disables the entire tenant-isolation RLS
+layer** (changelogs 030/031, the `app.tenant_id` GUC, the NULLIF policies). With
+RLS bypassed, a single forgotten tenant predicate or an unbound GUC leaks
+cross-tenant rows. This was the root cause behind the approvals cross-tenant
+inbox leak (2026-06-12): `application-dev.yml` ran the deployed dev/demo runtime
+as `grading_app`, so FORCE RLS never engaged. `application-dev.yml` now uses
+`grading_runtime` / `grading_runtime_pwd`.
+
+**Standing control — boot-time superuser/bypassrls guard.**
+`DatasourceRolePrivilegeGuard` (in `uz.hrlab.grading.common.persistence`) runs
+once on `ApplicationReadyEvent`, queries `pg_roles` for the effective
+`current_user`, and **FAILS STARTUP** in any non-`local`/non-`test` profile if
+the runtime role has `rolsuper = true` or `rolbypassrls = true`. Fail-closed:
+a superuser runtime can never again silently disable tenant isolation, and an
+unverifiable role in a deployed profile is treated as unsafe (also fails
+startup). Verified by `ApprovalRlsRuntimeRoleIntegrationTest` (raw read under
+`grading_runtime` returns ZERO cross-tenant approval rows).

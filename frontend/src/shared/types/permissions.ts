@@ -52,6 +52,15 @@ export const PERMISSIONS = {
   METHODOLOGY_EDIT: 'METHODOLOGY_EDIT',
   METHODOLOGY_APPROVE: 'METHODOLOGY_APPROVE',
   METHODOLOGY_LOCK: 'METHODOLOGY_LOCK',
+  /**
+   * Edit factor/level scoring on an APPROVED version — granted to
+   * HRLAB_SUPER_ADMIN only. Backend accepts this (in addition to
+   * METHODOLOGY_EDIT for DRAFT) on the factor/level write endpoints and
+   * enforces status×permission. LOCKED/ARCHIVED stay immutable for everyone.
+   * Existing evaluations are preserved server-side (byte-for-byte); edits
+   * affect only future evaluations.
+   */
+  METHODOLOGY_EDIT_APPROVED: 'METHODOLOGY_EDIT_APPROVED',
 
   // Evaluation (Phase 5)
   EVALUATION_READ: 'EVALUATION_READ',

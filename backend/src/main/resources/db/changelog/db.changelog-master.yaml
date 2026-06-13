@@ -55,6 +55,14 @@ databaseChangeLog:
       file: tenant-schema/db.changelog-tenant.yaml
       relativeToChangelogFile: true
 
+  # BE-1 — METHODOLOGY_EDIT_APPROVED catalogue code + super-admin-only grant +
+  # invariant. Registered BEFORE seeds/005 so the super-admin backfill below
+  # ALSO picks the new non-carve-out code up automatically (existing super admins
+  # get it), and so seeds/005's positive-assertion invariant still holds.
+  - include:
+      file: seeds/006-methodology-edit-approved-permission.yaml
+      relativeToChangelogFile: true
+
   # Corrective, forward-only HRLAB_SUPER_ADMIN permission backfill (hotfix:
   # "super adminga hamma narsa berkilib qolibdi"). MUST run AFTER seeds/004 AND
   # after the tenant-schema bundle above, because that bundle inserts the newer

@@ -48,6 +48,13 @@ public class FactorLevelJpaEntity extends AuditedJpaEntity {
     @Column(name = "description_i18n", columnDefinition = "jsonb")
     private Map<String, String> descriptionI18n = new HashMap<>();
 
+    // DA-2 / BE-4 soft-deprecation: NULL = active.
+    @Column(name = "deprecated_at")
+    private java.time.OffsetDateTime deprecatedAt;
+
+    @Column(name = "deprecated_by")
+    private UUID deprecatedBy;
+
     protected FactorLevelJpaEntity() { }
 
     public FactorLevelJpaEntity(UUID id, UUID tenantId, UUID factorId, String code,
@@ -75,6 +82,9 @@ public class FactorLevelJpaEntity extends AuditedJpaEntity {
     public BigDecimal getScaleValue() { return scaleValue; }
     public Map<String, String> getLabelI18n() { return labelI18n; }
     public Map<String, String> getDescriptionI18n() { return descriptionI18n; }
+    public java.time.OffsetDateTime getDeprecatedAt() { return deprecatedAt; }
+    public UUID getDeprecatedBy() { return deprecatedBy; }
+    public boolean isDeprecated() { return deprecatedAt != null; }
 
     public void setCode(String v) { this.code = v; }
     public void setLevelOrder(int v) { this.levelOrder = v; }
@@ -82,6 +92,8 @@ public class FactorLevelJpaEntity extends AuditedJpaEntity {
     public void setScaleValue(BigDecimal v) { this.scaleValue = v; }
     public void setLabelI18n(Map<String, String> v) { this.labelI18n = nullSafe(v); }
     public void setDescriptionI18n(Map<String, String> v) { this.descriptionI18n = nullSafe(v); }
+    public void setDeprecatedAt(java.time.OffsetDateTime v) { this.deprecatedAt = v; }
+    public void setDeprecatedBy(UUID v) { this.deprecatedBy = v; }
 
     private static Map<String, String> nullSafe(Map<String, String> in) {
         return in == null ? new HashMap<>() : new HashMap<>(in);

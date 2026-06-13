@@ -23,6 +23,7 @@ import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -30,7 +31,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** FactorLevel write operations (add / update / remove / reorder). */
+/**
+ * FactorLevel write operations (add / update / remove / reorder). Same
+ * DRAFT-free / APPROVED-carve-out / LOCKED-immutable gating as
+ * {@link FactorService} (BE-2); the APPROVED branch sets the
+ * {@code app.methodology_approved_edit} GUC and emits the BE-5 umbrella audit.
+ */
 @Service
 public class FactorLevelService {
 
@@ -42,6 +48,9 @@ public class FactorLevelService {
     private final MethodologyVersionImmutabilityPolicy immutabilityPolicy;
     private final AuditService audit;
     private final MethodologyAuditSnapshot snapshot;
+    private final ApprovedEditGuc approvedEditGuc;
+    private final ApprovedEditAudit approvedEditAudit;
+    private final MethodologyReferencePort referencePort;
 
     public FactorLevelService(MethodologyRepository methodologies,
                               MethodologyVersionRepository versions,
@@ -50,7 +59,10 @@ public class FactorLevelService {
                               AbacGate abacGate,
                               MethodologyVersionImmutabilityPolicy immutabilityPolicy,
                               AuditService audit,
-                              MethodologyAuditSnapshot snapshot) {
+                              MethodologyAuditSnapshot snapshot,
+                              ApprovedEditGuc approvedEditGuc,
+                              ApprovedEditAudit approvedEditAudit,
+                              MethodologyReferencePort referencePort) {
         this.methodologies = methodologies;
         this.versions = versions;
         this.factors = factors;
@@ -59,13 +71,15 @@ public class FactorLevelService {
         this.immutabilityPolicy = immutabilityPolicy;
         this.audit = audit;
         this.snapshot = snapshot;
+        this.approvedEditGuc = approvedEditGuc;
+        this.approvedEditAudit = approvedEditAudit;
+        this.referencePort = referencePort;
     }
 
     @Transactional
     public FactorLevel add(UUID factorId, FactorLevelCommand cmd) {
         TenantContext ctx = requireEditPerm();
         Ctx vctx = loadAndGate(factorId, ctx);
-        immutabilityPolicy.ensureMutable(vctx.version.getStatus());
 
         if (levels.existsByTenantIdAndFactorIdAndCode(ctx.tenantId(), factorId, cmd.code())) {
             throw new ValidationException("LEVEL_CODE_DUPLICATE",
@@ -88,6 +102,7 @@ public class FactorLevelService {
         l.setDescriptionI18n(cmd.descriptionI18n());
         levels.save(l);
 
+        var afterJson = snapshot.of(l);
         audit.record(AuditEvent.builder()
                 .tenantId(ctx.tenantId())
                 .projectId(vctx.methodology.getProjectId())
@@ -95,8 +110,12 @@ public class FactorLevelService {
                 .action(AuditAction.FACTOR_LEVEL_CREATED)
                 .entityType("FactorLevel")
                 .entityId(id)
-                .afterJson(snapshot.of(l))
+                .afterJson(afterJson)
                 .build());
+        if (vctx.approvedEdit) {
+            approvedEditAudit.emit(ctx.tenantId(), vctx.methodology.getProjectId(),
+                    ctx.userId(), vctx.version.getId(), afterJson, "factor level added");
+        }
         return l.toDomain();
     }
 
@@ -106,7 +125,6 @@ public class FactorLevelService {
         FactorLevelJpaEntity l = levels.findByIdAndTenantId(levelId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         Ctx vctx = loadAndGate(l.getFactorId(), ctx);
-        immutabilityPolicy.ensureMutable(vctx.version.getStatus());
 
         var beforeJson = snapshot.of(l);
         if (cmd.code() != null && !cmd.code().equals(l.getCode())) {
@@ -123,6 +141,7 @@ public class FactorLevelService {
         if (cmd.descriptionI18n() != null) l.setDescriptionI18n(cmd.descriptionI18n());
         levels.save(l);
 
+        var afterJson = snapshot.of(l);
         audit.record(AuditEvent.builder()
                 .tenantId(ctx.tenantId())
                 .projectId(vctx.methodology.getProjectId())
@@ -131,21 +150,60 @@ public class FactorLevelService {
                 .entityType("FactorLevel")
                 .entityId(levelId)
                 .beforeJson(beforeJson)
-                .afterJson(snapshot.of(l))
+                .afterJson(afterJson)
                 .build());
+        if (vctx.approvedEdit) {
+            approvedEditAudit.emit(ctx.tenantId(), vctx.methodology.getProjectId(),
+                    ctx.userId(), vctx.version.getId(), afterJson, "factor level scoring fields edited");
+        }
         return l.toDomain();
     }
 
+    /**
+     * Remove a factor level. BE-4: a level referenced by any
+     * {@code evaluation_scores} that is being edited under the APPROVED carve-out
+     * is SOFT-deprecated (preserved for historical evaluations) rather than
+     * hard-deleted, emitting {@code FACTOR_LEVEL_DEPRECATED}. Unreferenced levels
+     * are hard-deleted; a raw FK violation (23503) maps to
+     * {@code LEVEL_REFERENCED_BY_EVALUATIONS}.
+     */
     @Transactional
     public void remove(UUID levelId) {
         TenantContext ctx = requireEditPerm();
         FactorLevelJpaEntity l = levels.findByIdAndTenantId(levelId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         Ctx vctx = loadAndGate(l.getFactorId(), ctx);
-        immutabilityPolicy.ensureMutable(vctx.version.getStatus());
 
         var beforeJson = snapshot.of(l);
-        levels.delete(l);
+        boolean referenced = referencePort.isFactorLevelReferenced(ctx.tenantId(), levelId);
+
+        if (referenced && vctx.approvedEdit) {
+            l.setDeprecatedAt(OffsetDateTime.now());
+            l.setDeprecatedBy(ctx.userId());
+            levels.save(l);
+            var afterJson = snapshot.of(l);
+            audit.record(AuditEvent.builder()
+                    .tenantId(ctx.tenantId())
+                    .projectId(vctx.methodology.getProjectId())
+                    .actorUserId(ctx.userId())
+                    .action(AuditAction.FACTOR_LEVEL_DEPRECATED)
+                    .entityType("FactorLevel")
+                    .entityId(levelId)
+                    .beforeJson(beforeJson)
+                    .afterJson(afterJson)
+                    .build());
+            approvedEditAudit.emit(ctx.tenantId(), vctx.methodology.getProjectId(),
+                    ctx.userId(), vctx.version.getId(), afterJson, "factor level deprecated");
+            return;
+        }
+
+        try {
+            levels.delete(l);
+            levels.flush();
+        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+            throw new ValidationException("LEVEL_REFERENCED_BY_EVALUATIONS",
+                    "Factor level is referenced by existing evaluations and cannot be deleted");
+        }
         audit.record(AuditEvent.builder()
                 .tenantId(ctx.tenantId())
                 .projectId(vctx.methodology.getProjectId())
@@ -155,13 +213,16 @@ public class FactorLevelService {
                 .entityId(levelId)
                 .beforeJson(beforeJson)
                 .build());
+        if (vctx.approvedEdit) {
+            approvedEditAudit.emit(ctx.tenantId(), vctx.methodology.getProjectId(),
+                    ctx.userId(), vctx.version.getId(), beforeJson, "factor level removed");
+        }
     }
 
     @Transactional
     public void reorder(UUID factorId, List<UUID> orderedIds) {
         TenantContext ctx = requireEditPerm();
         Ctx vctx = loadAndGate(factorId, ctx);
-        immutabilityPolicy.ensureMutable(vctx.version.getStatus());
 
         List<FactorLevelJpaEntity> existing = levels
                 .findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(ctx.tenantId(), factorId);
@@ -198,6 +259,10 @@ public class FactorLevelService {
                 .entityId(factorId)
                 .reason("count=" + orderedIds.size())
                 .build());
+        if (vctx.approvedEdit) {
+            approvedEditAudit.emit(ctx.tenantId(), vctx.methodology.getProjectId(),
+                    ctx.userId(), vctx.version.getId(), null, "factor levels reordered");
+        }
     }
 
     /**
@@ -211,9 +276,11 @@ public class FactorLevelService {
         return max == null ? 1 : max + 1;
     }
 
+    /** Coarse gate (BE-2): METHODOLOGY_EDIT OR METHODOLOGY_EDIT_APPROVED. */
     private TenantContext requireEditPerm() {
         TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT)) {
+        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT)
+                && !ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT_APPROVED)) {
             throw new PermissionDeniedException();
         }
         return ctx;
@@ -231,10 +298,16 @@ public class FactorLevelService {
         if (m.getProjectId() != null) {
             abacGate.enforceCanWriteInProject(ctx, m.getProjectId());
         }
-        return new Ctx(m, v, f);
+        boolean approvedEdit = immutabilityPolicy.ensureMutableOrApprovedEdit(
+                v.getStatus(), ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT_APPROVED));
+        if (approvedEdit) {
+            approvedEditGuc.enableForCurrentTransaction();
+        }
+        return new Ctx(m, v, f, approvedEdit);
     }
 
     private record Ctx(MethodologyJpaEntity methodology,
                        MethodologyVersionJpaEntity version,
-                       FactorJpaEntity factor) { }
+                       FactorJpaEntity factor,
+                       boolean approvedEdit) { }
 }

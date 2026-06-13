@@ -1,0 +1,80 @@
+# DA-2 — Soft-deprecate columns for referenced factor / factor_level "remove".
+#
+# When a SUPER_ADMIN edits an APPROVED methodology version they may want to
+# "remove" a factor or level. A hard DELETE is impossible/undesirable: those
+# rows are referenced by evaluation_scores / evaluation_calibration_events via
+# ON DELETE RESTRICT FKs (015) and must remain for historical evaluations and
+# reporting. Instead we SOFT-deprecate: stamp deprecated_at/by, and exclude
+# deprecated rows from the "active factors/levels for a NEW evaluation" list.
+#
+# ADDITIVE, online-safe, all NULLABLE (mirrors the archived_at/archived_by
+# style used on evaluations etc.):
+#   factors:        deprecated_at TIMESTAMPTZ, deprecated_by UUID
+#   factor_levels:  deprecated_at TIMESTAMPTZ, deprecated_by UUID
+# No backfill: every existing row is NULL = active, which is exactly correct.
+#
+# Partial indexes supporting the new-evaluation query path
+# (active factors/levels of a version), distinct from the existing
+# idx_factors_version / idx_factor_levels_factor (those have no deprecated_at
+# predicate, so no duplication — verified against 011):
+#   idx_factors_active_version        ON factors        (tenant_id, methodology_version_id, sort_order) WHERE deprecated_at IS NULL
+#   idx_factor_levels_active_factor   ON factor_levels  (tenant_id, factor_id, level_order)             WHERE deprecated_at IS NULL
+#
+# Tenant-safety: both tables already have FORCE RLS + tenant_isolation_* (030/031).
+# New columns inherit the table policy; no policy change (no new table). Indexes
+# lead with tenant_id, consistent with every other index in this schema.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-041-factors-add-deprecation
+      author: database-architect
+      context: mode-shared
+      labels: methodology-approved-edit,soft-delete,da-2
+      changes:
+        - addColumn:
+            tableName: factors
+            columns:
+              - column: { name: deprecated_at, type: TIMESTAMPTZ }
+              - column: { name: deprecated_by, type: UUID }
+        - sql:
+            sql: |
+              CREATE INDEX idx_factors_active_version
+                ON factors (tenant_id, methodology_version_id, sort_order)
+                WHERE deprecated_at IS NULL;
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_factors_active_version;
+        - dropColumn:
+            tableName: factors
+            columnName: deprecated_by
+        - dropColumn:
+            tableName: factors
+            columnName: deprecated_at
+
+  - changeSet:
+      id: tenant-041-factor-levels-add-deprecation
+      author: database-architect
+      context: mode-shared
+      labels: methodology-approved-edit,soft-delete,da-2
+      changes:
+        - addColumn:
+            tableName: factor_levels
+            columns:
+              - column: { name: deprecated_at, type: TIMESTAMPTZ }
+              - column: { name: deprecated_by, type: UUID }
+        - sql:
+            sql: |
+              CREATE INDEX idx_factor_levels_active_factor
+                ON factor_levels (tenant_id, factor_id, level_order)
+                WHERE deprecated_at IS NULL;
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_factor_levels_active_factor;
+        - dropColumn:
+            tableName: factor_levels
+            columnName: deprecated_by
+        - dropColumn:
+            tableName: factor_levels
+            columnName: deprecated_at

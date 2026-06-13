@@ -45,7 +45,7 @@ public class FactorController {
     }
 
     @PatchMapping("/factors/{id}")
-    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT') or hasAuthority('METHODOLOGY_EDIT_APPROVED')")
     public FactorResponse updateFactor(@PathVariable UUID id,
                                        @Valid @RequestBody FactorRequest req) {
         FactorCommand cmd = new FactorCommand(req.code(), req.nameI18n(),
@@ -55,7 +55,7 @@ public class FactorController {
     }
 
     @DeleteMapping("/factors/{id}")
-    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT') or hasAuthority('METHODOLOGY_EDIT_APPROVED')")
     public ResponseEntity<Void> deleteFactor(@PathVariable UUID id) {
         factorService.remove(id);
         return ResponseEntity.noContent().build();
@@ -70,7 +70,7 @@ public class FactorController {
     }
 
     @PostMapping("/factors/{id}/levels")
-    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT') or hasAuthority('METHODOLOGY_EDIT_APPROVED')")
     public ResponseEntity<FactorLevelResponse> addLevel(@PathVariable UUID id,
                                                         @Valid @RequestBody FactorLevelRequest req) {
         FactorLevelCommand cmd = new FactorLevelCommand(req.code(), req.levelOrder(),
@@ -81,7 +81,7 @@ public class FactorController {
     }
 
     @PostMapping("/factors/{id}/levels/reorder")
-    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT') or hasAuthority('METHODOLOGY_EDIT_APPROVED')")
     public ResponseEntity<Void> reorderLevels(@PathVariable UUID id,
                                               @Valid @RequestBody ReorderRequest req) {
         levelService.reorder(id, req.orderedIds());
@@ -89,7 +89,7 @@ public class FactorController {
     }
 
     @PatchMapping("/factor-levels/{id}")
-    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT') or hasAuthority('METHODOLOGY_EDIT_APPROVED')")
     public FactorLevelResponse updateLevel(@PathVariable UUID id,
                                            @Valid @RequestBody FactorLevelRequest req) {
         FactorLevelCommand cmd = new FactorLevelCommand(req.code(), req.levelOrder(),
@@ -99,7 +99,7 @@ public class FactorController {
     }
 
     @DeleteMapping("/factor-levels/{id}")
-    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT') or hasAuthority('METHODOLOGY_EDIT_APPROVED')")
     public ResponseEntity<Void> deleteLevel(@PathVariable UUID id) {
         levelService.remove(id);
         return ResponseEntity.noContent().build();

@@ -99,6 +99,20 @@ public class EvaluationQueries {
         return evaluation;
     }
 
+    /**
+     * BE-3 — frozen methodology basis snapshot of an evaluation, for reporting.
+     * The snapshot is the factors/levels (id/code/weight/max_points/required/
+     * sort_order + per-level id/code/points/scale_value) as they stood when the
+     * evaluation first became scorable; it is what reports must use rather than
+     * the (possibly later-edited) live methodology version. Returns {@code null}
+     * when not yet captured. Same EVALUATION_READ + department-scope gating as
+     * {@link #findById}.
+     */
+    @Transactional(readOnly = true)
+    public com.fasterxml.jackson.databind.JsonNode findMethodologyBasisSnapshot(UUID id) {
+        return findById(id).getMethodologyBasisSnapshot();
+    }
+
     @Transactional(readOnly = true)
     public Page<EvaluationJpaEntity> list(UUID projectId, UUID positionId,
                                           UUID evaluatorUserId, EvaluationStatus status,

@@ -55,6 +55,15 @@ public class FactorJpaEntity extends AuditedJpaEntity
     @Column(name = "required", nullable = false)
     private boolean required = true;
 
+    // DA-2 / BE-4 soft-deprecation: NULL = active. A referenced factor on an
+    // APPROVED version is soft-deprecated (excluded from new-evaluation factor
+    // lists) rather than hard-deleted, so historical evaluations still resolve it.
+    @Column(name = "deprecated_at")
+    private java.time.OffsetDateTime deprecatedAt;
+
+    @Column(name = "deprecated_by")
+    private UUID deprecatedBy;
+
     protected FactorJpaEntity() { }
 
     public FactorJpaEntity(UUID id, UUID tenantId, UUID methodologyVersionId, String code,
@@ -88,6 +97,9 @@ public class FactorJpaEntity extends AuditedJpaEntity
     public BigDecimal getMaxPoints() { return maxPoints; }
     public int getSortOrder() { return sortOrder; }
     public boolean isRequired() { return required; }
+    public java.time.OffsetDateTime getDeprecatedAt() { return deprecatedAt; }
+    public UUID getDeprecatedBy() { return deprecatedBy; }
+    public boolean isDeprecated() { return deprecatedAt != null; }
 
     public void setCode(String v) { this.code = v; }
     public void setNameI18n(Map<String, String> v) { this.nameI18n = nullSafe(v); }
@@ -96,6 +108,8 @@ public class FactorJpaEntity extends AuditedJpaEntity
     public void setMaxPoints(BigDecimal v) { this.maxPoints = v == null ? BigDecimal.ZERO : v; }
     public void setSortOrder(int v) { this.sortOrder = v; }
     public void setRequired(boolean v) { this.required = v; }
+    public void setDeprecatedAt(java.time.OffsetDateTime v) { this.deprecatedAt = v; }
+    public void setDeprecatedBy(UUID v) { this.deprecatedBy = v; }
 
     private static Map<String, String> nullSafe(Map<String, String> in) {
         return in == null ? new HashMap<>() : new HashMap<>(in);

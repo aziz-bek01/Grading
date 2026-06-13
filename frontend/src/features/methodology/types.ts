@@ -77,6 +77,15 @@ export interface FactorLevel {
   scale_value: number;
   label_i18n: LocalizedString;
   description_i18n?: LocalizedString;
+  /**
+   * Soft-deprecation metadata (snake_case on the wire). Set when a level on an
+   * APPROVED version is "removed" but is still referenced by existing
+   * evaluations — the backend keeps the row for historical reads and excludes
+   * it from new-evaluation lists. Absent/null = active.
+   */
+  deprecated_at?: string | null;
+  /** UUID — opaque; never displayed directly. */
+  deprecated_by?: string | null;
 }
 
 /**
@@ -106,6 +115,15 @@ export interface Factor {
    * this before any consumer sees a `Factor`, so the domain shape stays required.
    */
   levels: FactorLevel[];
+  /**
+   * Soft-deprecation metadata (snake_case on the wire). Set when a factor on an
+   * APPROVED version is "removed" but is still referenced by existing
+   * evaluations — the backend keeps the row for historical reads and excludes
+   * it from new-evaluation lists. Absent/null = active.
+   */
+  deprecated_at?: string | null;
+  /** UUID — opaque; never displayed directly. */
+  deprecated_by?: string | null;
 }
 
 export interface MethodologyVersion {

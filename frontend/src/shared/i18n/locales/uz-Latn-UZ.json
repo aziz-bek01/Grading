@@ -44,6 +44,7 @@
     "continue": "Davom etish",
     "completeness": "Toʻldirilganlik",
     "unknown_actor": "Nomaʼlum foydalanuvchi",
+    "dismiss": "Yopish",
     "loading": "Yuklanmoqda…"
   },
   "nav": {
@@ -790,6 +791,20 @@
     "create_new_version": "Yangi versiya yaratish",
     "confirm_remove_factor": "Ushbu faktorni oʻchirasizmi?",
     "confirm_remove_level": "Ushbu darajani oʻchirasizmi?",
+    "deprecated_badge": "Eskirgan",
+    "approved_edit": {
+      "banner_title": "Siz TASDIQLANGAN metodologiya versiyasini tahrirlamoqdasiz",
+      "banner_body": "Mavjud baholashlar oʻzgarishsiz saqlanadi. Sizning oʻzgartirishlaringiz faqat kelajakdagi baholashlarga taʼsir qiladi.",
+      "confirm_title": "Tasdiqlangan versiyani tahrirlaysizmi?",
+      "confirm_body": "Ushbu versiya tasdiqlangan. Mavjud baholashlar oʻzgarmaydi; oʻzgartirishlaringiz faqat kelajakdagi baholashlarga qoʻllaniladi. Davom etasizmi?",
+      "confirm_action": "Tushunarli, davom etish"
+    },
+    "deprecate": {
+      "factor_deprecated": "Faktor saqlandi va eskirgan deb belgilandi, chunki unga mavjud baholashlar bogʻliq. U yangi baholashlarda koʻrsatilmaydi, ammo tarix uchun saqlanadi.",
+      "factor_referenced": "Ushbu faktorni oʻchirib boʻlmaydi, chunki unga mavjud baholashlar bogʻliq. Oʻchirish oʻrniga u eskirgan deb belgilandi va yangi baholashlarda koʻrsatilmaydi.",
+      "level_deprecated": "Daraja saqlandi va eskirgan deb belgilandi, chunki unga mavjud baholashlar bogʻliq. U yangi baholashlarda koʻrsatilmaydi, ammo tarix uchun saqlanadi.",
+      "level_referenced": "Ushbu darajani oʻchirib boʻlmaydi, chunki unga mavjud baholashlar bogʻliq. Oʻchirish oʻrniga u eskirgan deb belgilandi va yangi baholashlarda koʻrsatilmaydi."
+    },
     "weight_sum_title": "Faktorlar ogʻirligi yigʻindisi",
     "weight_sum_label": "Hozir: {{current}} / Maqsad: {{target}}",
     "weight_sum_at_target": "Yigʻindi maqsadga mos.",

@@ -16,5 +16,11 @@ public interface EvaluationScoreRepository
     Optional<EvaluationScoreJpaEntity> findByTenantIdAndEvaluationIdAndFactorId(
             UUID tenantId, UUID evaluationId, UUID factorId);
 
+    /** BE-4 — any score row references this factor (tenant-scoped). */
+    boolean existsByTenantIdAndFactorId(UUID tenantId, UUID factorId);
+
+    /** BE-4 — any score row references this factor level (tenant-scoped). */
+    boolean existsByTenantIdAndFactorLevelId(UUID tenantId, UUID factorLevelId);
+
     void delete(EvaluationScoreJpaEntity entity);
 }

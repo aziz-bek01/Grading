@@ -1,0 +1,188 @@
+# DA-3 — GUC-gated APPROVED carve-out for the factor / factor_level
+# immutability triggers (most security-sensitive changeset).
+#
+# Background:
+#   011 declared prevent_locked_factor_changes() and
+#   prevent_locked_factor_level_changes(), which RAISE 23514 on
+#   INSERT/UPDATE/DELETE of factors / factor_levels whenever the parent
+#   methodology_version.status IN ('APPROVED','LOCKED','ARCHIVED'). That makes an
+#   APPROVED version fully immutable at the DB — which now blocks the approved
+#   PO feature that lets an audited SUPER_ADMIN edit scoring fields on an
+#   APPROVED version (preservation guaranteed by the DA-1 per-evaluation snapshot
+#   + DA-2 soft-deprecation).
+#
+# Fix (DA-3):
+#   CREATE OR REPLACE both functions (in THIS new changeset — 011's applied
+#   changeset is never edited) so the rule becomes status- and GUC-aware:
+#     - status IN ('LOCKED','ARCHIVED')  => ALWAYS RAISE  (hard immutable; the
+#       carve-out NEVER weakens these, regardless of any GUC).
+#     - status = 'APPROVED'              => RAISE UNLESS the transaction-local
+#       GUC app.methodology_approved_edit = 'on'.
+#     - status = 'DRAFT' (or version missing) => ALLOW  (unchanged).
+#
+# GUC name: app.methodology_approved_edit  (documented here, used identically in
+#   both functions). Chosen to mirror the existing app.* convention
+#   (app.tenant_id in RLS policies, app.calibration_in_progress in 017). The
+#   audited super-admin service path runs `SET LOCAL app.methodology_approved_edit
+#   = 'on'` on the active connection inside the same transaction as the edit; the
+#   LOCAL scope resets the flag at commit/rollback so it cannot leak across
+#   requests on a pooled connection. Read with current_setting(name, true) (the
+#   missing-ok form): an unset GUC yields NULL, which IS DISTINCT FROM 'on' and is
+#   therefore treated as BLOCKED — defence-in-depth against stray direct writes.
+#
+# Tenant-safety: triggers are row-level on already-RLS-protected tables; the
+#   carve-out adds NO cross-tenant surface. The GUC carries no tenant identity and
+#   does not influence which rows are visible — it only toggles whether an
+#   APPROVED-version write is permitted. tenant_id scoping is unchanged.
+#
+# SECURITY-ENGINEER REVIEW REQUIRED: this is a deliberate relaxation of an
+#   immutability guard. The only thing standing between a direct DB write and an
+#   APPROVED methodology mutation is the GUC; ensure ONLY the audited super-admin
+#   use case sets it (SET LOCAL, never SET SESSION / ALTER ROLE / ALTER DATABASE),
+#   and that the use case writes an audit record + relies on DA-1/DA-2 for
+#   preservation. LOCKED/ARCHIVED remain hard-immutable by design.
+#
+# Rollback: restores the ORIGINAL 011 function bodies verbatim (no GUC, APPROVED
+#   hard-blocked) so a down-migration fully re-seals APPROVED versions.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-042-factor-triggers-approved-edit-carveout
+      author: database-architect
+      context: mode-shared
+      labels: methodology-approved-edit,immutability,security-sensitive,da-3
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION prevent_locked_factor_changes()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_version_id UUID;
+                v_approved_edit TEXT;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_version_id := OLD.methodology_version_id;
+                ELSE
+                  v_version_id := NEW.methodology_version_id;
+                END IF;
+                SELECT status INTO v_status FROM methodology_versions WHERE id = v_version_id;
+
+                -- Transaction-local flag set by the audited super-admin edit path
+                -- via `SET LOCAL app.methodology_approved_edit = 'on'`. missing_ok =
+                -- true -> NULL when never set, which is treated as blocked.
+                v_approved_edit := current_setting('app.methodology_approved_edit', true);
+
+                -- LOCKED + ARCHIVED: hard immutable, regardless of any GUC.
+                IF v_status IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: cannot modify factors of methodology_version (id=%, status=%)', v_version_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+
+                -- APPROVED: blocked UNLESS the GUC is explicitly 'on'.
+                IF v_status = 'APPROVED' AND v_approved_edit IS DISTINCT FROM 'on' THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_APPROVED_PROTECTED: factors of APPROVED methodology_version (id=%) can only change via the audited approved-edit use case', v_version_id
+                    USING ERRCODE = '23514';
+                END IF;
+
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              CREATE OR REPLACE FUNCTION prevent_locked_factor_level_changes()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_factor_id UUID;
+                v_version_id UUID;
+                v_approved_edit TEXT;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_factor_id := OLD.factor_id;
+                ELSE
+                  v_factor_id := NEW.factor_id;
+                END IF;
+                SELECT methodology_version_id INTO v_version_id FROM factors WHERE id = v_factor_id;
+                IF v_version_id IS NULL THEN
+                  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                  RETURN NEW;
+                END IF;
+                SELECT status INTO v_status FROM methodology_versions WHERE id = v_version_id;
+
+                v_approved_edit := current_setting('app.methodology_approved_edit', true);
+
+                -- LOCKED + ARCHIVED: hard immutable, regardless of any GUC.
+                IF v_status IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: cannot modify factor_levels of methodology_version (id=%, status=%)', v_version_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+
+                -- APPROVED: blocked UNLESS the GUC is explicitly 'on'.
+                IF v_status = 'APPROVED' AND v_approved_edit IS DISTINCT FROM 'on' THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_APPROVED_PROTECTED: factor_levels of APPROVED methodology_version (id=%) can only change via the audited approved-edit use case', v_version_id
+                    USING ERRCODE = '23514';
+                END IF;
+
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Restore the ORIGINAL 011 bodies verbatim: APPROVED hard-blocked,
+              -- no GUC carve-out. Re-seals APPROVED methodology versions.
+              CREATE OR REPLACE FUNCTION prevent_locked_factor_changes()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_version_id UUID;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_version_id := OLD.methodology_version_id;
+                ELSE
+                  v_version_id := NEW.methodology_version_id;
+                END IF;
+                SELECT status INTO v_status FROM methodology_versions WHERE id = v_version_id;
+                IF v_status IN ('APPROVED','LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: cannot modify factors of methodology_version (id=%, status=%)', v_version_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+
+              CREATE OR REPLACE FUNCTION prevent_locked_factor_level_changes()
+              RETURNS trigger AS $$
+              DECLARE
+                v_status TEXT;
+                v_factor_id UUID;
+                v_version_id UUID;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_factor_id := OLD.factor_id;
+                ELSE
+                  v_factor_id := NEW.factor_id;
+                END IF;
+                SELECT methodology_version_id INTO v_version_id FROM factors WHERE id = v_factor_id;
+                IF v_version_id IS NULL THEN
+                  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                  RETURN NEW;
+                END IF;
+                SELECT status INTO v_status FROM methodology_versions WHERE id = v_version_id;
+                IF v_status IN ('APPROVED','LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'METHODOLOGY_VERSION_LOCKED: cannot modify factor_levels of methodology_version (id=%, status=%)', v_version_id, v_status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;

@@ -16,6 +16,16 @@ public interface FactorLevelRepository
                     UUID tenantId, UUID factorId);
 
     /**
+     * BE-4 — ACTIVE (non-deprecated) levels of a factor, for the "levels a NEW
+     * evaluation can pick" path. Excludes soft-deprecated rows; backed by the
+     * partial index {@code idx_factor_levels_active_factor}. Historical recompute
+     * keeps using the unfiltered finder above.
+     */
+    List<FactorLevelJpaEntity>
+            findAllByTenantIdAndFactorIdAndDeprecatedAtIsNullOrderByLevelOrderAsc(
+                    UUID tenantId, UUID factorId);
+
+    /**
      * Highest {@code level_order} currently assigned to this factor's levels
      * (tenant-scoped), or {@code null} when the factor has no levels yet. Used
      * by {@code FactorLevelService.add(...)} to compute a collision-free
@@ -35,4 +45,7 @@ public interface FactorLevelRepository
             UUID tenantId, UUID factorId, int levelOrder);
 
     void delete(FactorLevelJpaEntity entity);
+
+    /** Force pending SQL so an FK violation (23503) surfaces here, not at commit. */
+    void flush();
 }

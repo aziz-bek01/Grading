@@ -3,7 +3,9 @@ import { useSyncExternalStore } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
-import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
+import { renderWithProviders, signIn, signInWithPermissions, signOut } from '@/test/testUtils';
+import { PERMISSIONS } from '@/shared/types/permissions';
+import { ApiError } from '@/shared/api/apiError';
 import { MethodologyBuilderPage } from './MethodologyBuilderPage';
 import type { Methodology, MethodologyVersion, FactorLevel } from '../types';
 
@@ -85,7 +87,7 @@ vi.mock('../hooks/useMethodology', async () => {
     useMethodologyVersions: () => ({ data: [], isLoading: false }),
     useAddFactor: () => ({ mutateAsync: vi.fn() }),
     useUpdateFactor: () => ({ mutateAsync: vi.fn() }),
-    useRemoveFactor: () => ({ mutateAsync: vi.fn() }),
+    useRemoveFactor: () => ({ mutateAsync: removeFactorSpy }),
     useReorderFactors: () => ({ mutateAsync: vi.fn() }),
     // Persists the level into the store (like the real backend) so a refetch
     // would reveal it — the page must then re-derive editorFactor and show it.
@@ -130,6 +132,7 @@ vi.mock('../hooks/useMethodology', async () => {
 const reorderLevelSpy = vi.fn();
 const updateMethodologySpy = vi.fn();
 const updateVersionMetadataSpy = vi.fn();
+const removeFactorSpy = vi.fn();
 
 function renderPage() {
   return render(
@@ -152,6 +155,10 @@ describe('MethodologyBuilderPage', () => {
     reorderLevelSpy.mockReset();
     updateMethodologySpy.mockReset();
     updateVersionMetadataSpy.mockReset();
+    removeFactorSpy.mockReset();
+    removeFactorSpy.mockResolvedValue(undefined);
+    // window.confirm backs the legacy remove guard — auto-accept in tests.
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
   afterEach(() => {
     signOut();
@@ -172,6 +179,13 @@ describe('MethodologyBuilderPage', () => {
   });
 
   it('APPROVED shows LockedMethodologyHeader + read-only factor table', async () => {
+    // Read-only APPROVED requires a user WITHOUT METHODOLOGY_EDIT_APPROVED
+    // (super-admin now gets the FE-1 approved-edit affordance instead).
+    signInWithPermissions([
+      PERMISSIONS.METHODOLOGY_READ,
+      PERMISSIONS.METHODOLOGY_EDIT,
+      PERMISSIONS.METHODOLOGY_APPROVE,
+    ]);
     (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
     versionStore.version = {
       ...baseVersion,
@@ -298,10 +312,118 @@ describe('MethodologyBuilderPage', () => {
   });
 
   it('hides the Edit metadata affordance for non-DRAFT versions (readOnly path)', async () => {
+    // A non-super-admin (no METHODOLOGY_EDIT_APPROVED) keeps APPROVED read-only.
+    signInWithPermissions([
+      PERMISSIONS.METHODOLOGY_READ,
+      PERMISSIONS.METHODOLOGY_EDIT,
+    ]);
     (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
     versionStore.version = { ...baseVersion, status: 'APPROVED', approved_at: '2026-04-12T10:00:00Z' };
     renderPage();
     await waitFor(() => expect(screen.getByTestId('locked-methodology-header')).toBeInTheDocument());
     expect(screen.queryByTestId('action-edit-metadata')).toBeNull();
+  });
+
+  // ── FE-1 — approved-version edit affordance ────────────────────────────────
+
+  it('FE-1: super admin on APPROVED gets editable factor table + warning banner', async () => {
+    // super-admin is signed in by default (holds METHODOLOGY_EDIT_APPROVED).
+    (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
+    versionStore.version = { ...baseVersion, status: 'APPROVED', approved_at: '2026-04-12T10:00:00Z' };
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId('approved-edit-banner')).toBeInTheDocument());
+    // Factor edit controls are enabled (not the read-only label).
+    expect(screen.getByTestId('factor-A-edit')).toBeInTheDocument();
+    // The DRAFT-only lifecycle actions stay hidden on an APPROVED version.
+    expect(screen.queryByTestId('action-approve')).toBeNull();
+    expect(screen.queryByTestId('action-edit-metadata')).toBeNull();
+  });
+
+  it('FE-1: first edit on APPROVED is gated by a confirm dialog', async () => {
+    const user = userEvent.setup();
+    (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
+    versionStore.version = { ...baseVersion, status: 'APPROVED', approved_at: '2026-04-12T10:00:00Z' };
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId('approved-edit-banner')).toBeInTheDocument());
+
+    // Clicking edit does NOT open the editor immediately — a confirm intercepts.
+    await user.click(screen.getByTestId('factor-A-edit'));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    // The editor drawer is not open yet.
+    expect(screen.queryByTestId('factor-level-editor')).toBeNull();
+
+    // Acknowledge → the deferred edit action runs (the factor editor opens with
+    // its level-editor section).
+    await user.click(within(dialog).getByRole('button', { name: /understand|continue|продолж|давом/i }));
+    await waitFor(() => expect(screen.getByTestId('factor-level-editor')).toBeInTheDocument());
+  });
+
+  it('FE-1: non-super-admin (METHODOLOGY_EDIT only) on APPROVED is read-only', async () => {
+    signInWithPermissions([
+      PERMISSIONS.METHODOLOGY_READ,
+      PERMISSIONS.METHODOLOGY_EDIT,
+    ]);
+    (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
+    versionStore.version = { ...baseVersion, status: 'APPROVED', approved_at: '2026-04-12T10:00:00Z' };
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId('locked-methodology-header')).toBeInTheDocument());
+    expect(screen.queryByTestId('approved-edit-banner')).toBeNull();
+    expect(screen.queryByTestId('factor-A-edit')).toBeNull();
+  });
+
+  it('FE-1: LOCKED stays read-only even for a super admin (no carve-out)', async () => {
+    (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
+    versionStore.version = {
+      ...baseVersion,
+      status: 'LOCKED',
+      approved_at: '2026-04-12T10:00:00Z',
+      locked_at: '2026-04-12T10:00:00Z',
+    };
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('locked-methodology-header')).toBeInTheDocument());
+    expect(screen.queryByTestId('approved-edit-banner')).toBeNull();
+    expect(screen.queryByTestId('factor-A-edit')).toBeNull();
+  });
+
+  // ── FE-2 — delete → deprecate UX ───────────────────────────────────────────
+
+  it('FE-2: removing a referenced factor surfaces a non-alarming deprecate notice', async () => {
+    const user = userEvent.setup();
+    removeFactorSpy.mockRejectedValueOnce(
+      new ApiError(409, { code: 'FACTOR_REFERENCED_BY_EVALUATIONS', message: 'referenced' }),
+    );
+    (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
+    versionStore.version = { ...baseVersion, status: 'APPROVED', approved_at: '2026-04-12T10:00:00Z' };
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId('approved-edit-banner')).toBeInTheDocument());
+
+    // First action is gated; acknowledge the confirm, then remove.
+    await user.click(screen.getByTestId('factor-A-remove'));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /understand|continue|продолж|давом/i }));
+
+    await waitFor(() => expect(screen.getByTestId('deprecate-notice')).toBeInTheDocument());
+    expect(removeFactorSpy).toHaveBeenCalled();
+  });
+
+  it('FE-2: renders a deprecated badge on a soft-deprecated factor', async () => {
+    (globalThis as { __methodology?: Methodology }).__methodology = baseMethodology;
+    versionStore.version = {
+      ...baseVersion,
+      status: 'APPROVED',
+      approved_at: '2026-04-12T10:00:00Z',
+      factors: [
+        { ...baseVersion.factors[0], deprecated_at: '2026-05-10T10:00:00Z', deprecated_by: 'u-1' },
+      ],
+    };
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId('factor-row-A').getAttribute('data-deprecated')).toBe('true'),
+    );
   });
 });

@@ -47,8 +47,11 @@ public class PreviewEvaluationScoreUseCase {
             throw new ValidationException("methodologyVersionId is required");
         }
         MethodologyVersion version = loader.loadVersion(cmd.methodologyVersionId(), ctx.tenantId());
-        List<Factor> factors = loader.loadFactors(version.id(), ctx.tenantId());
-        Map<UUID, List<FactorLevel>> levelsByFactor = loader.loadLevels(factors, ctx.tenantId());
+        // BE-4 — preview is the "score a NEW evaluation" path: offer only ACTIVE
+        // (non-deprecated) factors/levels. Existing-evaluation recompute uses the
+        // unfiltered loader so historical deprecated rows still resolve.
+        List<Factor> factors = loader.loadActiveFactors(version.id(), ctx.tenantId());
+        Map<UUID, List<FactorLevel>> levelsByFactor = loader.loadActiveLevels(factors, ctx.tenantId());
 
         Map<UUID, UUID> selections = new LinkedHashMap<>();
         if (cmd.selections() != null) {

@@ -57,6 +57,16 @@ public final class PermissionCodes {
     public static final String METHODOLOGY_EDIT    = "METHODOLOGY_EDIT";
     public static final String METHODOLOGY_APPROVE = "METHODOLOGY_APPROVE";
     public static final String METHODOLOGY_LOCK    = "METHODOLOGY_LOCK";
+    /**
+     * Super-admin-only authority to edit scoring fields (factor / level weight,
+     * points, scale, etc.) on an APPROVED methodology version, in-place, without
+     * cutting a new version. Already-evaluated positions are preserved
+     * byte-for-byte via the per-evaluation {@code methodology_basis_snapshot}
+     * (DA-1) and soft-deprecation of referenced rows (DA-2). DRAFT edits remain
+     * the realm of {@link #METHODOLOGY_EDIT}; LOCKED / ARCHIVED stay immutable
+     * regardless. Granted to HRLAB_SUPER_ADMIN ONLY (seed 004 invariant guard).
+     */
+    public static final String METHODOLOGY_EDIT_APPROVED = "METHODOLOGY_EDIT_APPROVED";
 
     // Evaluation
     public static final String EVALUATION_READ    = "EVALUATION_READ";

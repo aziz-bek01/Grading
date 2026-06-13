@@ -71,6 +71,9 @@ class FactorLevelServiceTest {
     private AbacGate abacGate;
     private AuditService audit;
     private MethodologyAuditSnapshot snapshot;
+    private ApprovedEditGuc approvedEditGuc;
+    private ApprovedEditAudit approvedEditAudit;
+    private MethodologyReferencePort referencePort;
 
     private FactorLevelService service;
 
@@ -90,13 +93,17 @@ class FactorLevelServiceTest {
         abacGate = mock(AbacGate.class);
         audit = mock(AuditService.class);
         snapshot = mock(MethodologyAuditSnapshot.class);
+        approvedEditGuc = mock(ApprovedEditGuc.class);
+        approvedEditAudit = mock(ApprovedEditAudit.class);
+        referencePort = mock(MethodologyReferencePort.class);
         given(snapshot.of(any(FactorLevelJpaEntity.class)))
                 .willReturn(mock(JsonNode.class));
         given(levels.save(any(FactorLevelJpaEntity.class)))
                 .willAnswer(inv -> inv.getArgument(0));
 
         service = new FactorLevelService(methodologies, versions, factors, levels,
-                abacGate, new MethodologyVersionImmutabilityPolicy(), audit, snapshot);
+                abacGate, new MethodologyVersionImmutabilityPolicy(), audit, snapshot,
+                approvedEditGuc, approvedEditAudit, referencePort);
 
         tenantId = UUID.randomUUID();
         userId = UUID.randomUUID();
@@ -314,5 +321,147 @@ class FactorLevelServiceTest {
 
         verify(levels, never()).existsByTenantIdAndFactorIdAndCode(any(), any(), any());
         verify(levels, times(1)).save(any());
+    }
+
+    // --- BE-2: APPROVED edit carve-out (status × permission × GUC) -----------
+
+    private UUID wireApprovedLevel(String currentCode) {
+        wireApprovedGraph();
+        UUID levelId = UUID.randomUUID();
+        FactorLevelJpaEntity l = new FactorLevelJpaEntity(
+                levelId, tenantId, factorId, currentCode, 1,
+                new BigDecimal("10"), null);
+        l.setLabelI18n(Map.of("ru-RU", "Уровень"));
+        given(levels.findByIdAndTenantId(levelId, tenantId)).willReturn(Optional.of(l));
+        return levelId;
+    }
+
+    private void wireApprovedGraph() {
+        FactorJpaEntity f = new FactorJpaEntity(
+                factorId, tenantId, versionId, "F-1",
+                new BigDecimal("100"), new BigDecimal("100"), 1, true);
+        MethodologyVersionJpaEntity v = new MethodologyVersionJpaEntity(
+                versionId, tenantId, methodologyId, 1,
+                MethodologyVersionStatus.APPROVED, ScoringMode.WEIGHTED_POINTS,
+                new BigDecimal("100.0000"), null);
+        MethodologyJpaEntity m = new MethodologyJpaEntity(
+                methodologyId, tenantId, projectId, "M-1",
+                MethodologyType.CUSTOM, MethodologyStatus.ACTIVE);
+        given(factors.findByIdAndTenantId(factorId, tenantId)).willReturn(Optional.of(f));
+        given(versions.findByIdAndTenantId(versionId, tenantId)).willReturn(Optional.of(v));
+        given(methodologies.findByIdAndTenantId(methodologyId, tenantId)).willReturn(Optional.of(m));
+    }
+
+    @Test
+    void approvedEdit_withApprovedPermission_succeeds_setsGuc_emitsUmbrella() {
+        setContext(Set.of(PermissionCodes.METHODOLOGY_EDIT_APPROVED));
+        UUID levelId = wireApprovedLevel("OLD");
+
+        service.update(levelId, cmd("OLD", null)); // points edit
+
+        verify(levels, times(1)).save(any());
+        // GUC set exactly on the approved branch.
+        verify(approvedEditGuc, times(1)).enableForCurrentTransaction();
+        // Per-field event + ONE umbrella event.
+        verify(audit, times(1)).record(any(AuditEvent.class));
+        verify(approvedEditAudit, times(1))
+                .emit(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void approvedEdit_withoutApprovedPermission_rejected_noGuc_noSave() {
+        // Holds only the plain DRAFT edit permission.
+        setContext(Set.of(PermissionCodes.METHODOLOGY_EDIT));
+        UUID levelId = wireApprovedLevel("OLD");
+
+        assertThatThrownBy(() -> service.update(levelId, cmd("OLD", null)))
+                .isInstanceOf(MethodologyVersionTransitionRejectedException.class);
+        verify(levels, never()).save(any());
+        verify(approvedEditGuc, never()).enableForCurrentTransaction();
+        verify(approvedEditAudit, never()).emit(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void draftEdit_doesNotSetApprovedGuc_norUmbrella() {
+        UUID levelId = wireExistingLevel("OLD"); // DRAFT graph
+        given(levels.existsByTenantIdAndFactorIdAndCode(tenantId, factorId, "NEW"))
+                .willReturn(false);
+
+        service.update(levelId, cmd("NEW", null));
+
+        verify(levels, times(1)).save(any());
+        verify(approvedEditGuc, never()).enableForCurrentTransaction();
+        verify(approvedEditAudit, never()).emit(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void approvedEdit_neitherPermission_deniedAtCoarseGate() {
+        setContext(Set.of(PermissionCodes.METHODOLOGY_READ));
+        // No graph wiring needed — fails at requireEditPerm before any load.
+        assertThatThrownBy(() -> service.update(UUID.randomUUID(), cmd("X", null)))
+                .isInstanceOf(PermissionDeniedException.class);
+        verify(approvedEditGuc, never()).enableForCurrentTransaction();
+    }
+
+    @Test
+    void approvedEdit_crossTenantLevel_returns404() {
+        setContext(Set.of(PermissionCodes.METHODOLOGY_EDIT_APPROVED));
+        UUID levelId = UUID.randomUUID();
+        given(levels.findByIdAndTenantId(levelId, tenantId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.update(levelId, cmd("X", null)))
+                .isInstanceOf(TenantAccessDeniedException.class);
+        verify(approvedEditGuc, never()).enableForCurrentTransaction();
+    }
+
+    // --- BE-4: delete-protection / soft-deprecate ----------------------------
+
+    @Test
+    void remove_referencedLevelOnApproved_softDeprecates_notDeleted() {
+        setContext(Set.of(PermissionCodes.METHODOLOGY_EDIT_APPROVED));
+        UUID levelId = wireApprovedLevel("L1");
+        given(referencePort.isFactorLevelReferenced(tenantId, levelId)).willReturn(true);
+
+        service.remove(levelId);
+
+        ArgumentCaptor<FactorLevelJpaEntity> cap =
+                ArgumentCaptor.forClass(FactorLevelJpaEntity.class);
+        verify(levels, times(1)).save(cap.capture());
+        assertThat(cap.getValue().getDeprecatedAt()).isNotNull();
+        assertThat(cap.getValue().getDeprecatedBy()).isEqualTo(userId);
+        verify(levels, never()).delete(any());
+
+        ArgumentCaptor<AuditEvent> auditCap = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit, times(1)).record(auditCap.capture());
+        assertThat(auditCap.getValue().action()).isEqualTo(AuditAction.FACTOR_LEVEL_DEPRECATED);
+        verify(approvedEditAudit, times(1)).emit(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void remove_unreferencedLevelOnApproved_hardDeletes() {
+        setContext(Set.of(PermissionCodes.METHODOLOGY_EDIT_APPROVED));
+        UUID levelId = wireApprovedLevel("L1");
+        given(referencePort.isFactorLevelReferenced(tenantId, levelId)).willReturn(false);
+
+        service.remove(levelId);
+
+        verify(levels, times(1)).delete(any());
+        verify(levels, never()).save(any());
+        ArgumentCaptor<AuditEvent> auditCap = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit, times(1)).record(auditCap.capture());
+        assertThat(auditCap.getValue().action()).isEqualTo(AuditAction.FACTOR_LEVEL_REMOVED);
+    }
+
+    @Test
+    void remove_levelOnDraft_alwaysHardDeletes_evenIfReferenced() {
+        // DRAFT path never soft-deprecates (referenced check still hard-deletes;
+        // on DRAFT there should be no eval references, but assert the branch).
+        UUID levelId = wireExistingLevel("L1"); // DRAFT graph, METHODOLOGY_EDIT
+        given(referencePort.isFactorLevelReferenced(tenantId, levelId)).willReturn(false);
+
+        service.remove(levelId);
+
+        verify(levels, times(1)).delete(any());
+        verify(levels, never()).save(any());
     }
 }

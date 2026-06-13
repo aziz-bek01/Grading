@@ -1,0 +1,109 @@
+# BE-1 — METHODOLOGY_EDIT_APPROVED permission (super-admin-only).
+#
+# New catalogue code for the approved-methodology-edit feature: it authorises a
+# SUPER ADMIN to edit scoring fields (factor / level weight, points, scale,
+# required, etc.) on an APPROVED methodology version IN PLACE, while
+# already-evaluated positions are preserved byte-for-byte via the DA-1
+# per-evaluation methodology_basis_snapshot + DA-2 soft-deprecation.
+#
+# Forward-only (mirrors tenant-013-seed-methodology-create-permission): the
+# already-applied seeds/001 catalogue and seeds/004 grant block are NEVER edited
+# (that would break Liquibase checksums in migrated environments). Instead this
+# changeset:
+#   1. INSERTs the catalogue row (ON CONFLICT DO NOTHING).
+#   2. GRANTS it to HRLAB_SUPER_ADMIN ONLY (least privilege / separation of duty;
+#      the immutability of already-evaluated positions is the only thing keeping
+#      this safe, so it is the single most powerful methodology authority and is
+#      withheld from every other role).
+#   3. RAISEs an invariant if any NON-HRLAB_SUPER_ADMIN role ever holds it
+#      (mirrors the USER_ROLE_ASSIGN_HRLAB-only / AUDIT_READ invariants in
+#      seeds/004 ~515-584 and the carve-out invariants in seeds/005).
+#
+# Ordering: registered in db.changelog-master BEFORE seeds/005 so the existing
+# super-admin backfill (which grants every non-carve-out catalogue code) ALSO
+# picks this code up automatically — i.e. existing super admins get it, exactly
+# as required by the BE-1 "extend backfill" item. The explicit grant here makes
+# the result deterministic even if 005 is not re-run, and is idempotent.
+#
+# Source of truth: docs/mvp1/role-permissions-matrix.md (HRLAB_SUPER_ADMIN row).
+databaseChangeLog:
+
+  - changeSet:
+      id: seed-methodology-edit-approved-permission
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,methodology-approved-edit,be-1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'METHODOLOGY_EDIT_APPROVED', 'METHODOLOGY', 'EDIT_APPROVED',
+                 'Edit scoring fields on an APPROVED methodology version in place (super-admin only)')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions WHERE code = 'METHODOLOGY_EDIT_APPROVED';
+
+  - changeSet:
+      id: seed-methodology-edit-approved-role-permission
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,methodology-approved-edit,be-1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Granted to HRLAB_SUPER_ADMIN ONLY.
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM public.roles r
+                JOIN public.permissions p ON p.code = 'METHODOLOGY_EDIT_APPROVED'
+               WHERE r.code = 'HRLAB_SUPER_ADMIN'
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p
+                WHERE rp.permission_id = p.id
+                  AND p.code = 'METHODOLOGY_EDIT_APPROVED';
+
+  # ---------------------------------------------------------------------------
+  # Invariant: METHODOLOGY_EDIT_APPROVED may ONLY be held by HRLAB_SUPER_ADMIN.
+  # Own changeSet, splitStatements:false, dbms:postgresql — same dollar-quoted
+  # DO-block style as the seeds/004 and seeds/005 invariant guards.
+  # ---------------------------------------------------------------------------
+  - changeSet:
+      id: seed-methodology-edit-approved-invariant
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,methodology-approved-edit,be-1
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DO $$
+              DECLARE
+                non_sa_grants INT;
+              BEGIN
+                -- METHODOLOGY_EDIT_APPROVED must only be granted to HRLAB_SUPER_ADMIN.
+                SELECT COUNT(*) INTO non_sa_grants
+                  FROM public.role_permissions rp
+                  JOIN public.permissions p ON p.id = rp.permission_id
+                  JOIN public.roles r       ON r.id = rp.role_id
+                 WHERE p.code = 'METHODOLOGY_EDIT_APPROVED'
+                   AND r.code <> 'HRLAB_SUPER_ADMIN';
+                IF non_sa_grants <> 0 THEN
+                  RAISE EXCEPTION 'INVARIANT VIOLATED: METHODOLOGY_EDIT_APPROVED may only be granted to HRLAB_SUPER_ADMIN (found % extra grants)', non_sa_grants;
+                END IF;
+              END
+              $$;
+      rollback:
+        - sql:
+            sql: SELECT 1;

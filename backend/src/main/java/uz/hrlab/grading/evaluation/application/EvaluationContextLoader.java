@@ -57,9 +57,30 @@ public class EvaluationContextLoader {
         return v.toDomain();
     }
 
+    /**
+     * Load ALL factors of a version, INCLUDING soft-deprecated ones (BE-4). Used
+     * by {@link #load} (recompute of an EXISTING evaluation) so a deprecated
+     * factor a past evaluation already scored still resolves — historical
+     * preservation. For the "factors a NEW evaluation may score" path use
+     * {@link #loadActiveFactors} instead.
+     */
     public List<Factor> loadFactors(UUID versionId, UUID tenantId) {
-        List<FactorJpaEntity> rows = factors
-                .findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(tenantId, versionId);
+        return toDomain(factors
+                .findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(tenantId, versionId));
+    }
+
+    /**
+     * Load only ACTIVE (non-deprecated) factors of a version (BE-4) — the set a
+     * NEW evaluation may score. Excludes soft-deprecated rows via the partial
+     * index {@code idx_factors_active_version}.
+     */
+    public List<Factor> loadActiveFactors(UUID versionId, UUID tenantId) {
+        return toDomain(factors
+                .findAllByTenantIdAndMethodologyVersionIdAndDeprecatedAtIsNullOrderBySortOrderAsc(
+                        tenantId, versionId));
+    }
+
+    private List<Factor> toDomain(List<FactorJpaEntity> rows) {
         List<Factor> out = new ArrayList<>(rows.size());
         for (FactorJpaEntity f : rows) {
             out.add(f.toDomain());
@@ -67,10 +88,26 @@ public class EvaluationContextLoader {
         return out;
     }
 
+    /** Load ALL levels (incl. deprecated) for the given factors — recompute path. */
     public Map<UUID, List<FactorLevel>> loadLevels(List<Factor> factorList, UUID tenantId) {
         Map<UUID, List<FactorLevel>> out = new LinkedHashMap<>();
         for (Factor f : factorList) {
             var rows = levels.findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(tenantId, f.id());
+            List<FactorLevel> domain = new ArrayList<>(rows.size());
+            for (var row : rows) {
+                domain.add(row.toDomain());
+            }
+            out.put(f.id(), domain);
+        }
+        return out;
+    }
+
+    /** Load only ACTIVE levels for the given factors (BE-4) — new-evaluation path. */
+    public Map<UUID, List<FactorLevel>> loadActiveLevels(List<Factor> factorList, UUID tenantId) {
+        Map<UUID, List<FactorLevel>> out = new LinkedHashMap<>();
+        for (Factor f : factorList) {
+            var rows = levels.findAllByTenantIdAndFactorIdAndDeprecatedAtIsNullOrderByLevelOrderAsc(
+                    tenantId, f.id());
             List<FactorLevel> domain = new ArrayList<>(rows.size());
             for (var row : rows) {
                 domain.add(row.toDomain());

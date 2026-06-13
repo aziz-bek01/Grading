@@ -118,7 +118,7 @@ public class MethodologyVersionController {
     }
 
     @PostMapping("/{id}/factors")
-    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT') or hasAuthority('METHODOLOGY_EDIT_APPROVED')")
     public ResponseEntity<FactorResponse> addFactor(@PathVariable UUID id,
                                                     @Valid @RequestBody FactorRequest req) {
         FactorCommand cmd = new FactorCommand(req.code(), req.nameI18n(),
@@ -129,7 +129,7 @@ public class MethodologyVersionController {
     }
 
     @PostMapping("/{id}/factors/reorder")
-    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT') or hasAuthority('METHODOLOGY_EDIT_APPROVED')")
     public ResponseEntity<Void> reorderFactors(@PathVariable UUID id,
                                                @Valid @RequestBody ReorderRequest req) {
         factorService.reorder(id, req.orderedIds());

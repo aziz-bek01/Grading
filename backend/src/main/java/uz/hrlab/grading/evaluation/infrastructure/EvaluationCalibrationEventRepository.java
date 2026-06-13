@@ -16,4 +16,7 @@ public interface EvaluationCalibrationEventRepository
 
     List<EvaluationCalibrationEventJpaEntity>
             findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(UUID tenantId, UUID evaluationId);
+
+    /** BE-4 — any calibration event references this factor (tenant-scoped). */
+    boolean existsByTenantIdAndFactorId(UUID tenantId, UUID factorId);
 }

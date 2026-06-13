@@ -33,13 +33,16 @@ public class EvaluationRecomputeService {
     private final EvaluationScoreRepository scores;
     private final EvaluationScoringEngine engine;
     private final EvaluationCompletenessChecker completeness;
+    private final MethodologyBasisSnapshotFactory basisSnapshotFactory;
 
     public EvaluationRecomputeService(EvaluationScoreRepository scores,
                                       EvaluationScoringEngine engine,
-                                      EvaluationCompletenessChecker completeness) {
+                                      EvaluationCompletenessChecker completeness,
+                                      MethodologyBasisSnapshotFactory basisSnapshotFactory) {
         this.scores = scores;
         this.engine = engine;
         this.completeness = completeness;
+        this.basisSnapshotFactory = basisSnapshotFactory;
     }
 
     /**
@@ -97,6 +100,19 @@ public class EvaluationRecomputeService {
         e.setDisplayedTotalScore(displayed);
         if (newStatus != e.getStatus()) {
             e.setStatus(newStatus);
+        }
+
+        // BE-3 — the first time the evaluation has a complete scorable basis,
+        // freeze the methodology basis (factors + levels) onto the row. Captured
+        // from the loaded context (same factors used to score), in the exact
+        // changelog-040 shape. setMethodologyBasisSnapshotIfAbsent is idempotent:
+        // an existing snapshot (live or backfilled) is NEVER overwritten, so a
+        // later factor edit or a COMPLETE→...→COMPLETE re-transition leaves the
+        // frozen basis untouched.
+        if (newStatus == EvaluationStatus.COMPLETE) {
+            e.setMethodologyBasisSnapshotIfAbsent(
+                    basisSnapshotFactory.build(ctx.factors(), ctx.levelsByFactor()),
+                    java.time.OffsetDateTime.now());
         }
         return new ScoringResult(rawTotal, displayed, perFactor);
     }

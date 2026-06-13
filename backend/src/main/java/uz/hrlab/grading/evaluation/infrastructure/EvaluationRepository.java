@@ -38,6 +38,14 @@ public interface EvaluationRepository
             UUID tenantId, UUID positionId, UUID methodologyVersionId, EvaluationStatus excludedStatus);
 
     /**
+     * BE-5 — blast radius for the approved-edit umbrella audit: count of
+     * evaluations pinned to {@code methodologyVersionId} whose status is NOT the
+     * excluded one (caller passes {@code ARCHIVED}). Tenant-scoped.
+     */
+    long countByTenantIdAndMethodologyVersionIdAndStatusNot(
+            UUID tenantId, UUID methodologyVersionId, EvaluationStatus excludedStatus);
+
+    /**
      * MVP2 multi-evaluator — all per-evaluator sheets belonging to a panel.
      * Tenant-scoped (defense in depth). Drives the averaging input load
      * (ComputePanelAverageUseCase) and the completion watcher.

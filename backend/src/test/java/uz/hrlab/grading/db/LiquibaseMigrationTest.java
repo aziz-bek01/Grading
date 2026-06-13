@@ -67,6 +67,40 @@ class LiquibaseMigrationTest extends AbstractIntegrationTest {
         ).hasMessageContaining("chk_tenants_isolation_target");
     }
 
+    // --- BE-1: METHODOLOGY_EDIT_APPROVED catalogue + super-admin-only grant ---
+
+    @Test
+    void methodologyEditApprovedPermissionSeeded() {
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM public.permissions WHERE code = 'METHODOLOGY_EDIT_APPROVED'",
+                Long.class);
+        assertThat(count).isEqualTo(1L);
+    }
+
+    @Test
+    void methodologyEditApprovedHeldExactlyByHrlabSuperAdmin() {
+        // The only role holding METHODOLOGY_EDIT_APPROVED must be HRLAB_SUPER_ADMIN.
+        var holders = jdbc.queryForList(
+                "SELECT r.code FROM public.role_permissions rp "
+                        + "JOIN public.permissions p ON p.id = rp.permission_id "
+                        + "JOIN public.roles r ON r.id = rp.role_id "
+                        + "WHERE p.code = 'METHODOLOGY_EDIT_APPROVED' ORDER BY r.code",
+                String.class);
+        assertThat(holders).containsExactly("HRLAB_SUPER_ADMIN");
+    }
+
+    @Test
+    void noNonSuperAdminRoleHoldsMethodologyEditApproved() {
+        Long extra = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM public.role_permissions rp "
+                        + "JOIN public.permissions p ON p.id = rp.permission_id "
+                        + "JOIN public.roles r ON r.id = rp.role_id "
+                        + "WHERE p.code = 'METHODOLOGY_EDIT_APPROVED' "
+                        + "AND r.code <> 'HRLAB_SUPER_ADMIN'",
+                Long.class);
+        assertThat(extra).isZero();
+    }
+
     private boolean tableExists(String name) {
         Long count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables "

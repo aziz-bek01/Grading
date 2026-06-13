@@ -153,6 +153,17 @@ public final class AuditAction {
     public static final String FACTOR_LEVEL_UPDATED                  = "FACTOR_LEVEL_UPDATED";
     public static final String FACTOR_LEVEL_REMOVED                  = "FACTOR_LEVEL_REMOVED";
     public static final String FACTOR_LEVEL_REORDERED                = "FACTOR_LEVEL_REORDERED";
+    // Approved-methodology in-place edit (BE-4 / BE-5). DEPRECATED variants are
+    // emitted when a referenced factor/level on an APPROVED version is soft-
+    // deprecated (deprecated_at/by) instead of hard-deleted; the unreferenced
+    // case still emits FACTOR_REMOVED / FACTOR_LEVEL_REMOVED. METHODOLOGY_APPROVED_EDIT
+    // is the ONE umbrella event per approved-version edit transaction, stamped
+    // with the field delta + frozenEvaluationCount blast radius (BE-5); the
+    // per-field FACTOR_UPDATED / FACTOR_LEVEL_UPDATED / *_DEPRECATED events are
+    // ALSO emitted (no duplication — the umbrella adds the "approved edit" framing).
+    public static final String FACTOR_DEPRECATED                     = "FACTOR_DEPRECATED";
+    public static final String FACTOR_LEVEL_DEPRECATED               = "FACTOR_LEVEL_DEPRECATED";
+    public static final String METHODOLOGY_APPROVED_EDIT             = "METHODOLOGY_APPROVED_EDIT";
 
     // Methodology templates (Epic E — DB-backed tenant CUSTOM templates). A
     // template is a frozen deep copy of a version's factors/levels, "saved for

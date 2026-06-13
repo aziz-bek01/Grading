@@ -106,6 +106,24 @@ class FactorControllerSecurityTest {
     }
 
     @Test
+    void patchAcceptedWithMethodologyEditApprovedAuthority() throws Exception {
+        // BE-2 — the widened coarse @PreAuthorize lets METHODOLOGY_EDIT_APPROVED
+        // through (the fine status decision lives in the service). The service is
+        // mocked, so a non-403 (here 200) proves the gate admitted the request.
+        UUID id = UUID.randomUUID();
+        given(factorService.update(org.mockito.ArgumentMatchers.eq(id),
+                org.mockito.ArgumentMatchers.any()))
+                .willReturn(new Factor(id, UUID.randomUUID(), UUID.randomUUID(), "EDU",
+                        Map.of("ru-RU", "Образование"), Map.of(),
+                        new BigDecimal("100"), new BigDecimal("100"), 1, true));
+        mvc.perform(patch("/api/v1/factors/{id}", id)
+                        .with(jwt().authorities(() -> "METHODOLOGY_EDIT_APPROVED"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void getFactorWithReadReturns200() throws Exception {
         UUID id = UUID.randomUUID();
         given(queries.findFactorById(id)).willReturn(

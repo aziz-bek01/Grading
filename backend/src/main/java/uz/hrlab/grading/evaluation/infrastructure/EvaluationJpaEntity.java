@@ -6,6 +6,9 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import com.fasterxml.jackson.databind.JsonNode;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import uz.hrlab.grading.common.persistence.AuditedJpaEntity;
 import uz.hrlab.grading.evaluation.domain.Evaluation;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
@@ -87,6 +90,18 @@ public class EvaluationJpaEntity extends AuditedJpaEntity {
     @Column(name = "archived_by")
     private UUID archivedBy;
 
+    // DA-1 / BE-3 — frozen methodology basis (factors + levels) captured the
+    // first time this evaluation reaches a complete scorable basis. Preserves the
+    // grading basis byte-for-byte so a later in-place edit of an APPROVED
+    // methodology version cannot retroactively change an already-scored position.
+    // NEVER overwritten once set. Shape matches changelog 040 backfill exactly.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "methodology_basis_snapshot", columnDefinition = "jsonb")
+    private JsonNode methodologyBasisSnapshot;
+
+    @Column(name = "methodology_basis_snapshot_at")
+    private OffsetDateTime methodologyBasisSnapshotAt;
+
     protected EvaluationJpaEntity() { }
 
     public EvaluationJpaEntity(UUID id, UUID tenantId, UUID projectId, UUID positionId,
@@ -130,6 +145,19 @@ public class EvaluationJpaEntity extends AuditedJpaEntity {
     public UUID getArchivedBy() { return archivedBy; }
     public UUID getPanelId() { return panelId; }
     public uz.hrlab.grading.evaluation.domain.EvaluatorRole getEvaluatorRole() { return evaluatorRole; }
+    public JsonNode getMethodologyBasisSnapshot() { return methodologyBasisSnapshot; }
+    public OffsetDateTime getMethodologyBasisSnapshotAt() { return methodologyBasisSnapshotAt; }
+
+    /**
+     * BE-3 — set the frozen basis snapshot. NEVER overwrites an existing one
+     * (idempotent): a no-op when the snapshot is already present.
+     */
+    public void setMethodologyBasisSnapshotIfAbsent(JsonNode snapshot, OffsetDateTime at) {
+        if (this.methodologyBasisSnapshot == null) {
+            this.methodologyBasisSnapshot = snapshot;
+            this.methodologyBasisSnapshotAt = at;
+        }
+    }
 
     public void setEvaluatorUserId(UUID v) { this.evaluatorUserId = v; }
     public void setPanelId(UUID v) { this.panelId = v; }

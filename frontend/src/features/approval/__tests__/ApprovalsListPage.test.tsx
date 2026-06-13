@@ -109,12 +109,14 @@ describe('<ApprovalDetailsPage /> (real snake_case wire via MSW)', () => {
     expect(screen.queryByText(/Invalid Date/i)).toBeNull();
   });
 
-  it('a cross-tenant / unknown id surfaces as ErrorState, never a white-screen throw', async () => {
+  it('a cross-tenant / unknown id surfaces as NoAccessState, never a white-screen throw', async () => {
     renderDetailPage('does-not-exist');
     await waitFor(() => {
-      // ErrorState or EmptyState — the point is the page renders, no crash.
+      // 404 (BE TenantAccessDeniedException → 404) now renders the calm
+      // non-enumerating NoAccessState (consolidated detail-404 handling). The
+      // point of this test remains: the page renders gracefully, no crash.
       const ok =
-        screen.queryByText(/Retry|Повторить|Қайта|Qayta|empty|пусто/i) ??
+        screen.queryByText(/Нет доступа|No access|Рухсат йўқ|Ruxsat yo/i) ??
         screen.queryByTestId('approval-details-page');
       expect(ok).toBeTruthy();
     });

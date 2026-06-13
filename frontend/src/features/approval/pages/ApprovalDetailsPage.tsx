@@ -24,11 +24,14 @@ export function ApprovalDetailsPage() {
   if (approval.isLoading) return <LoadingState />;
   if (approval.error) {
     const err = approval.error;
-    // A genuine 403 means the decider cannot reach THIS request (e.g. another
-    // tenant / not an approver) — show a specific, non-enumerating no-access
-    // state instead of the generic "Хатолик юз берди" (FE-5). 404 / unknown id
-    // and any other error fall through to the retryable ErrorState.
-    if (err instanceof ApiError && err.isForbidden()) {
+    // A 403 (not an approver) OR a 404 means the decider cannot reach THIS
+    // request in the active company-client context — e.g. another tenant, or a
+    // stale inbox row clicked after a tenant/context change (the BE maps
+    // TenantAccessDeniedException → 404 by design, no existence reveal). Both
+    // surface the SAME specific, non-enumerating no-access state instead of the
+    // generic retryable crash card (FE-5). Genuinely unexpected errors (network
+    // status 0, 5xx) still fall through to the retryable ErrorState.
+    if (err instanceof ApiError && (err.isForbidden() || err.isNotFound())) {
       return <NoAccessState />;
     }
     const correlationId = err instanceof ApiError ? err.correlationId : undefined;

@@ -27,6 +27,10 @@ import uz.hrlab.grading.methodology.domain.FactorLevel;
 import uz.hrlab.grading.methodology.domain.MethodologyType;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionTransitionRejectedException;
 import uz.hrlab.grading.methodology.domain.ScoringMode;
+import uz.hrlab.grading.organization.domain.DepartmentStatus;
+import uz.hrlab.grading.organization.domain.DepartmentType;
+import uz.hrlab.grading.organization.infrastructure.DepartmentJpaEntity;
+import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
@@ -58,6 +62,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired ProjectRepository projects;
+    @Autowired DepartmentRepository departments;
     @Autowired PositionRepository positions;
     @Autowired CreateMethodologyFromScratchUseCase createUseCase;
     @Autowired FactorService factorService;
@@ -70,9 +75,14 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     private UUID tenant;
     private UUID actor;
     private ProjectJpaEntity proj;
+    /** Lazily created once per test (positions.department_id is NOT NULL). */
+    private UUID departmentId;
 
     @AfterEach
-    void cleanup() { TenantContextHolder.clear(); }
+    void cleanup() {
+        TenantContextHolder.clear();
+        departmentId = null;
+    }
 
     private void asSuperAdmin() {
         asSuperAdmin(actor, tenant, proj.getId());
@@ -119,11 +129,24 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     private record Fixture(UUID versionId, UUID factorId, UUID levelId1, UUID levelId2) { }
 
     private UUID newPosition() {
+        // positions.department_id is NOT NULL (FK to departments). Reuse the same
+        // newDept(...) shape as the other Phase 2/5 integration tests; create one
+        // department per test for the active tenant+project and thread its id in.
+        if (departmentId == null) {
+            departmentId = departments.save(newDept(tenant, proj.getId(),
+                    "DPT-AE-" + UUID.randomUUID().toString().substring(0, 8))).getId();
+        }
         PositionJpaEntity p = new PositionJpaEntity(
-                UUID.randomUUID(), tenant, proj.getId(), null,
+                UUID.randomUUID(), tenant, proj.getId(), departmentId,
                 "POS-" + UUID.randomUUID().toString().substring(0, 8),
                 Map.of("ru-RU", "Должность"), null, null, null, null, PositionStatus.ACTIVE);
         return positions.save(p).getId();
+    }
+
+    private DepartmentJpaEntity newDept(UUID tenantId, UUID projectId, String code) {
+        return new DepartmentJpaEntity(
+                UUID.randomUUID(), tenantId, projectId, null, code,
+                Map.of("ru-RU", code), DepartmentType.DEPARTMENT, DepartmentStatus.ACTIVE);
     }
 
     @Test
@@ -332,21 +355,26 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
 
-        // No GUC set: a raw UPDATE on an APPROVED factor must RAISE 23514.
+        // No GUC set: a raw UPDATE on an APPROVED factor must RAISE 23514 with the
+        // APPROVED-specific protected message (not the LOCKED message; APPROVED is
+        // protected-but-editable-via-the-audited-use-case per changelog 042).
         assertThatThrownBy(() -> txTemplate.executeWithoutResult(s ->
                 jdbcTemplate.update(
                         "UPDATE factors SET weight = ? WHERE id = ?",
                         new BigDecimal("999"), fx.factorId())))
                 .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("23514");
+                .hasMessageContaining("23514")
+                .hasMessageContaining("METHODOLOGY_VERSION_APPROVED_PROTECTED");
 
-        // Likewise a raw UPDATE on an APPROVED factor_level must RAISE 23514.
+        // Likewise a raw UPDATE on an APPROVED factor_level must RAISE 23514 with
+        // the same APPROVED-protected message.
         assertThatThrownBy(() -> txTemplate.executeWithoutResult(s ->
                 jdbcTemplate.update(
                         "UPDATE factor_levels SET points = ? WHERE id = ?",
                         new BigDecimal("999"), fx.levelId1())))
                 .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("23514");
+                .hasMessageContaining("23514")
+                .hasMessageContaining("METHODOLOGY_VERSION_APPROVED_PROTECTED");
 
         // Nothing changed (transactions rolled back on the RAISE).
         BigDecimal weight = jdbcTemplate.queryForObject(

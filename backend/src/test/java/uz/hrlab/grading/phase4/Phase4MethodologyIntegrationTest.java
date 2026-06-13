@@ -104,8 +104,10 @@ class Phase4MethodologyIntegrationTest extends AbstractIntegrationTest {
         versions.save(v);
 
         FactorLevelJpaEntity l = newLevel(tenant, f.getId(), "L-X", 1);
+        // The version is APPROVED (not LOCKED/ARCHIVED): changelog 042's carve-out
+        // raises the distinct APPROVED-protected message instead of the LOCKED one.
         assertThatThrownBy(() -> levels.save(l))
-                .hasMessageContaining("METHODOLOGY_VERSION_LOCKED");
+                .hasMessageContaining("METHODOLOGY_VERSION_APPROVED_PROTECTED");
     }
 
     @Test

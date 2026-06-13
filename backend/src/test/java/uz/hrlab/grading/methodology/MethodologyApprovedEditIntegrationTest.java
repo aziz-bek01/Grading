@@ -152,7 +152,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     @Test
     void superAdminCanEditFactorWeightOnApprovedVersion_dbTriggerAdmitsWrite() {
         tenant = newSeededTenantId();
-        actor = UUID.randomUUID();
+        actor = seedUser(UUID.randomUUID());
         proj = projects.save(newProject(tenant, "PRJ-AE-1"));
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
@@ -174,7 +174,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     @Test
     void plainEditorCannotEditApprovedVersion() {
         tenant = newSeededTenantId();
-        actor = UUID.randomUUID();
+        actor = seedUser(UUID.randomUUID());
         proj = projects.save(newProject(tenant, "PRJ-AE-2"));
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
@@ -188,7 +188,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     @Test
     void umbrellaFrozenCountMatchesPinnedEvaluations() {
         tenant = newSeededTenantId();
-        actor = UUID.randomUUID();
+        actor = seedUser(UUID.randomUUID());
         proj = projects.save(newProject(tenant, "PRJ-AE-3"));
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
@@ -214,7 +214,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     @Test
     void referencedLevelOnApprovedIsSoftDeprecated_scoreUntouched() {
         tenant = newSeededTenantId();
-        actor = UUID.randomUUID();
+        actor = seedUser(UUID.randomUUID());
         proj = projects.save(newProject(tenant, "PRJ-AE-4"));
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
@@ -250,7 +250,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     @Test
     void unreferencedLevelOnApprovedIsHardDeleted() {
         tenant = newSeededTenantId();
-        actor = UUID.randomUUID();
+        actor = seedUser(UUID.randomUUID());
         proj = projects.save(newProject(tenant, "PRJ-AE-5"));
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
@@ -274,7 +274,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     @Test
     void approvedEdit_preservesPreExistingEvaluationScoresByteForByte() {
         tenant = newSeededTenantId();
-        actor = UUID.randomUUID();
+        actor = seedUser(UUID.randomUUID());
         proj = projects.save(newProject(tenant, "PRJ-AE-QA1"));
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
@@ -350,30 +350,32 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     @Test
     void dbTrigger_blocksRawApprovedFactorWrite_whenGucNotSet() {
         tenant = newSeededTenantId();
-        actor = UUID.randomUUID();
+        actor = seedUser(UUID.randomUUID());
         proj = projects.save(newProject(tenant, "PRJ-AE-F3A"));
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
 
-        // No GUC set: a raw UPDATE on an APPROVED factor must RAISE 23514 with the
-        // APPROVED-specific protected message (not the LOCKED message; APPROVED is
+        // No GUC set: a raw UPDATE on an APPROVED factor must be rejected by the
+        // factors trigger (prevent_locked_factor_changes) with the APPROVED-specific
+        // protected RAISE token (not the LOCKED message; APPROVED is
         // protected-but-editable-via-the-audited-use-case per changelog 042).
+        // The PG errcode 23514 lands in the SQLState, not the exception MESSAGE, so
+        // we assert on the stable RAISE token that DOES appear in the message text.
         assertThatThrownBy(() -> txTemplate.executeWithoutResult(s ->
                 jdbcTemplate.update(
                         "UPDATE factors SET weight = ? WHERE id = ?",
                         new BigDecimal("999"), fx.factorId())))
                 .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("23514")
                 .hasMessageContaining("METHODOLOGY_VERSION_APPROVED_PROTECTED");
 
-        // Likewise a raw UPDATE on an APPROVED factor_level must RAISE 23514 with
-        // the same APPROVED-protected message.
+        // Likewise a raw UPDATE on an APPROVED factor_level must be rejected by the
+        // factor_levels trigger (prevent_locked_factor_level_changes) with the same
+        // APPROVED-protected RAISE token.
         assertThatThrownBy(() -> txTemplate.executeWithoutResult(s ->
                 jdbcTemplate.update(
                         "UPDATE factor_levels SET points = ? WHERE id = ?",
                         new BigDecimal("999"), fx.levelId1())))
                 .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("23514")
                 .hasMessageContaining("METHODOLOGY_VERSION_APPROVED_PROTECTED");
 
         // Nothing changed (transactions rolled back on the RAISE).
@@ -385,7 +387,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     @Test
     void dbTrigger_admitsRawApprovedFactorWrite_whenGucSetOn() {
         tenant = newSeededTenantId();
-        actor = UUID.randomUUID();
+        actor = seedUser(UUID.randomUUID());
         proj = projects.save(newProject(tenant, "PRJ-AE-F3B"));
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
@@ -420,13 +422,16 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     @Test
     void dbTrigger_blocksRawLockedAndArchivedWrites_evenWithGucOn() {
         tenant = newSeededTenantId();
-        actor = UUID.randomUUID();
+        actor = seedUser(UUID.randomUUID());
         proj = projects.save(newProject(tenant, "PRJ-AE-F3C"));
         asSuperAdmin();
         Fixture fx = buildApprovedMethodology();
 
-        // LOCKED: even with the GUC = 'on', the trigger RAISEs 23514
-        // (LOCKED is unconditionally immutable; the carve-out never weakens it).
+        // LOCKED: even with the GUC = 'on', the factors trigger
+        // (prevent_locked_factor_changes) RAISEs the LOCKED token — LOCKED is
+        // unconditionally immutable; the carve-out never weakens it. The 23514
+        // errcode is the SQLState, not the message; assert the RAISE token that
+        // DOES appear in the exception message.
         forceVersionStatus(fx.versionId(), "LOCKED");
         assertThatThrownBy(() -> txTemplate.executeWithoutResult(s -> {
             jdbcTemplate.execute("SET LOCAL app.methodology_approved_edit = 'on'");
@@ -434,9 +439,11 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
                     new BigDecimal("111"), fx.factorId());
         }))
                 .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("23514");
+                .hasMessageContaining("METHODOLOGY_VERSION_LOCKED");
 
-        // ARCHIVED: same — hard immutable regardless of GUC.
+        // ARCHIVED: same — hard immutable regardless of GUC. The factor_levels
+        // trigger (prevent_locked_factor_level_changes) RAISEs the same LOCKED token
+        // for the ARCHIVED branch (042 groups LOCKED+ARCHIVED under one message).
         forceVersionStatus(fx.versionId(), "ARCHIVED");
         assertThatThrownBy(() -> txTemplate.executeWithoutResult(s -> {
             jdbcTemplate.execute("SET LOCAL app.methodology_approved_edit = 'on'");
@@ -444,7 +451,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
                     new BigDecimal("111"), fx.levelId1());
         }))
                 .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("23514");
+                .hasMessageContaining("METHODOLOGY_VERSION_LOCKED");
     }
 
     /**
@@ -470,7 +477,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
     void superAdminInTenantA_cannotEditApprovedFactorOfTenantB() {
         // Tenant B owns the APPROVED methodology + factor + level.
         UUID tenantB = newSeededTenantId();
-        UUID actorB = UUID.randomUUID();
+        UUID actorB = seedUser(UUID.randomUUID());
         ProjectJpaEntity projB = projects.save(newProject(tenantB, "PRJ-AE-F4B"));
         asSuperAdmin(actorB, tenantB, projB.getId());
         // buildApprovedMethodology builds under the active context; point fixture
@@ -487,7 +494,7 @@ class MethodologyApprovedEditIntegrationTest extends AbstractIntegrationTest {
 
         // Now a DIFFERENT super admin, scoped to tenant A, attacks tenant B's ids.
         UUID tenantA = newSeededTenantId();
-        UUID actorA = UUID.randomUUID();
+        UUID actorA = seedUser(UUID.randomUUID());
         ProjectJpaEntity projA = projects.save(newProject(tenantA, "PRJ-AE-F4A"));
         asSuperAdmin(actorA, tenantA, projA.getId());
 

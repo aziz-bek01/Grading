@@ -41,12 +41,18 @@ const typeIcon: Record<DepartmentType, React.ReactNode> = {
   UNIT: <Users size={14} aria-hidden />,
 };
 
-/** Coverage counts for one department row (host-computed). */
+/** Coverage counts for one department row (host-supplied, BE-authoritative). */
 export interface DepartmentCoverage {
-  /** Candidate (non-archived) positions in the department. */
+  /** ACTIVE positions DIRECTLY in the department (server-authoritative — T4). */
   positionCount: number;
   /** Positions already covered by an active panel for the chosen version. */
   paneledCount: number;
+  /**
+   * T4 (PD-1) — self + all descendants. When it exceeds `positionCount` the row
+   * renders a secondary "↳ N" figure so a parent that only holds descendants is
+   * not mistaken for empty. Optional: omit to hide the subtree figure.
+   */
+  subtreeCount?: number;
 }
 
 interface DepartmentSingleSelectTreeProps {
@@ -235,6 +241,23 @@ function DepartmentNode({
                   count: coverage.positionCount,
                 })}
               </span>
+              {/* T4 (PD-1) — secondary subtree roll-up "↳ N" so a parent that
+                  only holds descendants reads correctly. Show only when the
+                  subtree adds positions beyond the direct count. */}
+              {coverage.subtreeCount != null &&
+              coverage.subtreeCount > coverage.positionCount ? (
+                <span
+                  className="text-text-muted tabular-nums"
+                  data-testid={`dept-subtree-${node.code}`}
+                  title={t('panel.wizard.dept.subtree_tooltip', {
+                    count: coverage.subtreeCount,
+                  })}
+                >
+                  {t('panel.wizard.dept.subtree_count', {
+                    count: coverage.subtreeCount,
+                  })}
+                </span>
+              ) : null}
               {coverage.paneledCount > 0 ? (
                 <span
                   className={cn(

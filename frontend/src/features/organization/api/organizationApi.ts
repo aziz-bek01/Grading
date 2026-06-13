@@ -9,7 +9,51 @@ import type {
 export const orgKeys = {
   all: ['organization'] as const,
   tree: (projectId: string) => ['organization', 'tree', projectId] as const,
+  positionCounts: (projectId: string) =>
+    ['organization', 'position-counts', projectId] as const,
 };
+
+/**
+ * T4 (Defect 1) — normalized per-department position counts.
+ *
+ * `directCount`  — ACTIVE positions directly in the department.
+ * `subtreeCount` — self + all descendants (a parent rolls up its children, and
+ *                  the figure is never truncated by a position page cap).
+ */
+export interface DepartmentPositionCount {
+  directCount: number;
+  subtreeCount: number;
+}
+
+/** GET /departments/position-counts wire row (snake_case — global Jackson strategy). */
+interface DepartmentPositionCountWire {
+  department_id: string;
+  direct_count: number;
+  subtree_count: number;
+}
+
+/**
+ * Server-authoritative per-department position counts (T4). Replaces the former
+ * FE 200-row count scan: the BE rolls up the subtree (parents are no longer 0)
+ * and is never page-capped. The snake_case wire is normalized at THIS boundary
+ * (like {@link flattenDepartmentTree}) so consumers read a typed camelCase map.
+ */
+export async function fetchDepartmentPositionCounts(
+  projectId: string,
+): Promise<Map<string, DepartmentPositionCount>> {
+  const res = await httpClient.get<DepartmentPositionCountWire[]>(
+    endpoints.departments.positionCounts,
+    { params: { projectId } },
+  );
+  const map = new Map<string, DepartmentPositionCount>();
+  for (const row of res.data ?? []) {
+    map.set(row.department_id, {
+      directCount: row.direct_count ?? 0,
+      subtreeCount: row.subtree_count ?? 0,
+    });
+  }
+  return map;
+}
 
 interface DepartmentListResponse {
   items: Department[];

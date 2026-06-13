@@ -36,6 +36,15 @@ export const endpoints = {
     list: '/departments',
     detail: (id: string) => `/departments/${id}`,
     archive: (id: string) => `/departments/${id}/archive`,
+    /**
+     * T4 (Defect 1) — server-authoritative per-department position counts.
+     * GET /departments/position-counts?projectId= (ORG_READ). Returns
+     * [{ department_id, direct_count, subtree_count }] (snake_case wire). The
+     * subtree figure rolls up descendants so a parent never shows 0, and the
+     * count is never truncated by a position page cap. SINGLE source for both
+     * the wizard coverage badges and the dept progress strip.
+     */
+    positionCounts: '/departments/position-counts',
   },
   positions: {
     list: '/positions',
@@ -107,6 +116,18 @@ export const endpoints = {
     evaluator: (id: string, userId: string) => `/panels/${id}/evaluators/${userId}`,
     lockRoster: (id: string) => `/panels/${id}/lock-roster`,
     submit: (id: string) => `/panels/${id}/submit`,
+    /**
+     * T3 (Defect 2) panel management (all EVALUATION_PANEL_MANAGE; cross-tenant
+     * → 404). Status-gated server-side — the FE mirrors the predicates so
+     * non-applicable actions are not even offered (no 403 round-trip):
+     *   delete  — DELETE /panels/{id} body { reason ≥ 5 }; only COLLECTING; 204.
+     *   archive — POST /panels/{id}/archive body { reason };
+     *             AWAITING_EVALUATIONS | AVERAGED | SUBMITTED.
+     *   reopen  — POST /panels/{id}/reopen (no body); SUBMITTED | AVERAGED.
+     */
+    delete: (id: string) => `/panels/${id}`,
+    archive: (id: string) => `/panels/${id}/archive`,
+    reopen: (id: string) => `/panels/${id}/reopen`,
   },
   /**
    * Users & Access (10 endpoints — MVP 1 prompt §6).

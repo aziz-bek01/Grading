@@ -39,6 +39,12 @@ export type PositionList = PageEnvelope<Position>;
 export interface PositionListParams {
   projectId: string;
   departmentId?: string | null;
+  /**
+   * T4 — when true, the BE expands `departmentId` to its whole subtree (closure
+   * call) and returns descendants too. Default false ⇒ direct positions only.
+   * No-op without a `departmentId`.
+   */
+  includeSubtree?: boolean;
   status?: PositionStatus | null;
   jobFamily?: string | null;
   page?: number;

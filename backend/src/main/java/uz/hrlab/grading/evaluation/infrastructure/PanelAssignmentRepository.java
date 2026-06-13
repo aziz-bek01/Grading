@@ -25,4 +25,15 @@ public interface PanelAssignmentRepository
     /** Lookup a seat by its linked evaluation — completion watcher entry point. */
     Optional<PanelAssignmentJpaEntity> findByTenantIdAndEvaluationId(
             UUID tenantId, UUID evaluationId);
+
+    /**
+     * Tenant-scoped bulk delete of a panel's roster seats (Defect-2 BE). Used by
+     * {@code DeletePanelUseCase} to remove dependent {@code panel_assignments}
+     * rows BEFORE the parent panel — keeping the delete deterministic at the app
+     * layer even though the {@code ON DELETE CASCADE} FK would also remove them.
+     * Mirrors how {@code DeleteEvaluationUseCase} clears dependent score rows
+     * first. The {@code tenant_id} predicate keeps the delete BOLA-safe. Returns
+     * the number of rows deleted.
+     */
+    long deleteAllByTenantIdAndPanelId(UUID tenantId, UUID panelId);
 }

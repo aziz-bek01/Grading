@@ -58,11 +58,15 @@ public class PositionController {
     public PageResponse<PositionResponse> list(
             @RequestParam UUID projectId,
             @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false, defaultValue = "false") boolean includeSubtree,
             @RequestParam(required = false) PositionStatus status,
             @RequestParam(required = false) String jobFamily,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Page<Position> result = findQuery.list(projectId, departmentId, status, jobFamily, page, size);
+        // T4 — includeSubtree expands departmentId to its subtree (one existing
+        // closure call) and reuses searchInDepartments; default false ⇒ unchanged.
+        Page<Position> result = findQuery.list(
+                projectId, departmentId, includeSubtree, status, jobFamily, page, size);
         return PageResponse.of(result, PositionResponse::from);
     }
 

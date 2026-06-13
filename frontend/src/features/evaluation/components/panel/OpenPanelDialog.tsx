@@ -1,14 +1,25 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, ArrowLeft, ArrowRight, Plus, Search, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
+import { routes } from '@/shared/config/routes';
 import {
   DepartmentSingleSelectTree,
   type DepartmentCoverage,
 } from '@/features/organization/components/DepartmentSingleSelectTree';
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
+import { useDepartmentPositionCounts } from '@/features/organization/hooks/useDepartmentPositionCounts';
 import { usePositions } from '@/features/positions/hooks/usePositions';
 import { useUsers } from '@/features/users-access/hooks/useUsers';
 import type { Methodology } from '@/features/methodology/types';
@@ -120,6 +131,9 @@ function OpenPanelDialogBody({
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [deptSearch, setDeptSearch] = useState('');
   const [posSearch, setPosSearch] = useState('');
+  // T4 — Step 2 subtree toggle: when ON the candidate list includes the selected
+  // unit's descendants (server expands via includeSubtree=true); OFF = direct.
+  const [includeSubtree, setIncludeSubtree] = useState(false);
   const [selectedPositions, setSelectedPositions] = useState<Set<string>>(
     new Set(),
   );
@@ -142,45 +156,52 @@ function OpenPanelDialogBody({
   const treeQuery = useDepartmentTree(projectId);
   const panelsQuery = usePanels({ projectId });
 
-  // Active panels keyed by `${position_id}|${methodology_version_id}` so an
-  // already-paneled position for the chosen version is marked (not hidden).
-  const paneledKeys = useMemo(() => {
-    const set = new Set<string>();
+  // Active panels keyed by `${position_id}|${methodology_version_id}` → panel_id
+  // so an already-paneled position for the chosen version is marked (not hidden)
+  // AND can be deep-linked to its panel detail (T3 — un-dead-end). REUSES the
+  // already-loaded panelsQuery; carries panel_id instead of just membership.
+  const paneledPanelIds = useMemo(() => {
+    const map = new Map<string, string>();
     for (const p of panelsQuery.data?.items ?? []) {
       if (p.status === 'ARCHIVED') continue;
-      set.add(`${p.position_id}|${p.methodology_version_id}`);
+      map.set(`${p.position_id}|${p.methodology_version_id}`, p.id);
     }
-    return set;
+    return map;
   }, [panelsQuery.data]);
 
-  // ----- Data: positions for the CHOSEN department only (server-filtered) -----
-  // No client-side scan of 600-1200 positions — the BE GET /positions accepts
-  // departmentId + status and returns just that department's cut.
-  const deptPositionsQuery = usePositions(
-    departmentId
-      ? { projectId, departmentId, status: 'ACTIVE', size: 200 }
-      : null,
-  );
-
   // ----- Data: per-department coverage counts (Step 1 badges) -----
-  // Counts come from the all-project positions list (loaded by the host) cross
-  // the all-project panel set. We fetch the project-wide positions once for the
-  // count map (department cut is fetched separately for Step 2).
-  const allPositionsQuery = usePositions({ projectId, size: 200 });
+  // T4 — server-authoritative counts (direct + subtree roll-up) from the ONE
+  // shared hook. Replaces the former FE 200-row count scan, so a parent rolls up
+  // its descendants (never 0) and the count is never page-capped.
+  const countsQuery = useDepartmentPositionCounts(projectId);
 
   const coverageOf = useCallback(
     (deptId: string): DepartmentCoverage | undefined => {
-      const items = allPositionsQuery.data?.items ?? [];
-      const inDept = items.filter(
-        (p) => p.department_id === deptId && p.status !== 'ARCHIVED',
-      );
-      if (inDept.length === 0) return { positionCount: 0, paneledCount: 0 };
-      const paneled = versionId
-        ? inDept.filter((p) => paneledKeys.has(`${p.id}|${versionId}`)).length
-        : 0;
-      return { positionCount: inDept.length, paneledCount: paneled };
+      const c = countsQuery.data?.get(deptId);
+      if (!c) return undefined;
+      // Position totals are server-authoritative (direct + subtree roll-up). The
+      // per-department PANELED coverage lives in the dedicated DepartmentPanelProgress
+      // strip (which has the position→department map); the Step-1 tree badge shows
+      // the authoritative position counts only (paneledCount=0 ⇒ no paneled chip),
+      // so there is no FE count scan here and no second count computation.
+      return {
+        positionCount: c.directCount,
+        paneledCount: 0,
+        subtreeCount: c.subtreeCount,
+      };
     },
-    [allPositionsQuery.data, paneledKeys, versionId],
+    [countsQuery.data],
+  );
+
+  // ----- Data: positions for the CHOSEN department (server-filtered) -----
+  // No client-side scan of 600-1200 positions — the BE GET /positions accepts
+  // departmentId + status and returns just that department's cut. T4 — when the
+  // subtree toggle is ON, includeSubtree=true expands departmentId to its whole
+  // subtree (BE closure call); OFF = direct positions only (current behaviour).
+  const deptPositionsQuery = usePositions(
+    departmentId
+      ? { projectId, departmentId, status: 'ACTIVE', size: 200, includeSubtree }
+      : null,
   );
 
   // ----- Step 2 candidate diff: department positions, paneled rows disabled -----
@@ -195,9 +216,15 @@ function OpenPanelDialogBody({
       });
   }, [deptPositionsQuery.data, posSearch, i18n.language]);
 
+  const panelIdFor = useCallback(
+    (p: Position): string | undefined =>
+      versionId ? paneledPanelIds.get(`${p.id}|${versionId}`) : undefined,
+    [versionId, paneledPanelIds],
+  );
+
   const isPaneled = useCallback(
-    (p: Position) => !!versionId && paneledKeys.has(`${p.id}|${versionId}`),
-    [versionId, paneledKeys],
+    (p: Position) => panelIdFor(p) != null,
+    [panelIdFor],
   );
 
   const selectablePositions = useMemo(
@@ -366,8 +393,20 @@ function OpenPanelDialogBody({
   const selectDepartment = (id: string) => {
     setDepartmentId(id);
     setSelectedPositions(new Set());
+    setIncludeSubtree(false);
     setResult(null);
   };
+
+  const toggleSubtree = (on: boolean) => {
+    setIncludeSubtree(on);
+    // The candidate set changes — drop any selection that may no longer be listed.
+    setSelectedPositions(new Set());
+    setResult(null);
+  };
+
+  /** Deep-link to a position's existing panel detail (T3 — un-dead-end). */
+  const panelDetailHref = (panelId: string) =>
+    routes.projectPanelDetail(projectId, panelId);
 
   const handleSubmit = async () => {
     setError(null);
@@ -585,6 +624,20 @@ function OpenPanelDialogBody({
               </label>
             </div>
 
+            {/* T4 — subtree toggle: list the unit's descendants too (server
+                expands via includeSubtree=true) so a parent department is not
+                limited to its direct positions. */}
+            <label className="shrink-0 inline-flex items-center gap-1.5 text-sm text-text-secondary">
+              <input
+                type="checkbox"
+                checked={includeSubtree}
+                onChange={(e) => toggleSubtree(e.target.checked)}
+                data-testid="wizard-include-subtree"
+                className="h-4 w-4 accent-primary-500"
+              />
+              {t('panel.wizard.positions.include_subtree')}
+            </label>
+
             <div
               className="flex-1 min-h-0 overflow-y-auto border border-border rounded-md divide-y divide-border"
               data-testid="wizard-position-list"
@@ -605,22 +658,34 @@ function OpenPanelDialogBody({
                   className="p-4 text-sm text-text-muted text-center space-y-2"
                   data-testid="wizard-positions-fully-paneled"
                 >
+                  {/* T3 — un-dead-end: keep the disabled rows for context but
+                      give each already-paneled position an "open existing panel"
+                      CTA that deep-links to its panel detail. panel_id resolved
+                      from the already-loaded panelsQuery (no new fetch). */}
                   <p>{t('panel.wizard.positions.fully_paneled')}</p>
-                  {candidates.map((p) => (
-                    <PositionRow
-                      key={p.id}
-                      position={p}
-                      checked={false}
-                      disabled
-                      onToggle={() => undefined}
-                      locale={i18n.language}
-                      paneledLabel={t('panel.wizard.positions.already_paneled')}
-                    />
-                  ))}
+                  {candidates.map((p) => {
+                    const existingPanelId = panelIdFor(p);
+                    return (
+                      <PositionRow
+                        key={p.id}
+                        position={p}
+                        checked={false}
+                        disabled
+                        onToggle={() => undefined}
+                        locale={i18n.language}
+                        paneledLabel={t('panel.wizard.positions.already_paneled')}
+                        openPanelHref={
+                          existingPanelId ? panelDetailHref(existingPanelId) : null
+                        }
+                        openPanelLabel={t('panel.wizard.positions.open_existing')}
+                      />
+                    );
+                  })}
                 </div>
               ) : (
                 candidates.map((p) => {
                   const paneled = isPaneled(p);
+                  const existingPanelId = panelIdFor(p);
                   return (
                     <PositionRow
                       key={p.id}
@@ -632,6 +697,12 @@ function OpenPanelDialogBody({
                       paneledLabel={
                         paneled ? t('panel.wizard.positions.already_paneled') : null
                       }
+                      openPanelHref={
+                        paneled && existingPanelId
+                          ? panelDetailHref(existingPanelId)
+                          : null
+                      }
+                      openPanelLabel={t('panel.wizard.positions.open_existing')}
                     />
                   );
                 })
@@ -855,6 +926,8 @@ function PositionRow({
   onToggle,
   locale,
   paneledLabel,
+  openPanelHref,
+  openPanelLabel,
 }: {
   position: Position;
   checked: boolean;
@@ -862,43 +935,63 @@ function PositionRow({
   onToggle: (on: boolean) => void;
   locale: string;
   paneledLabel: string | null;
+  /** T3 — deep-link to the existing panel (already-paneled rows only). */
+  openPanelHref?: string | null;
+  openPanelLabel?: string;
 }) {
   return (
-    <label
+    <div
       data-testid={`wizard-position-row-${position.code}`}
       className={cn(
         'flex items-start gap-2.5 px-3 py-2.5 text-sm transition-colors',
         disabled
-          ? 'opacity-60 cursor-not-allowed'
+          ? 'opacity-60'
           : checked
-            ? 'bg-primary-50/40 cursor-pointer'
-            : 'hover:bg-divider/40 cursor-pointer',
+            ? 'bg-primary-50/40'
+            : 'hover:bg-divider/40',
       )}
     >
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onToggle(e.target.checked)}
-        data-testid={`wizard-position-check-${position.code}`}
-        className="mt-0.5 h-4 w-4 accent-primary-500"
-      />
-      <span className="min-w-0 flex-1">
-        <span className="block font-medium text-text-primary">
-          {pickLocalized(position.title_i18n, locale)}
+      <label
+        className={cn(
+          'flex items-start gap-2.5 min-w-0 flex-1',
+          disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+        )}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onToggle(e.target.checked)}
+          data-testid={`wizard-position-check-${position.code}`}
+          className="mt-0.5 h-4 w-4 accent-primary-500"
+        />
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block font-medium text-text-primary">
+            {pickLocalized(position.title_i18n, locale)}
+          </span>
+          <span className="block text-xs text-text-muted">
+            <span className="font-mono">{position.code}</span>
+            {paneledLabel ? (
+              <span
+                className="ml-2 rounded-full bg-divider px-1.5 py-0.5 text-text-secondary"
+                data-testid={`wizard-position-paneled-${position.code}`}
+              >
+                {paneledLabel}
+              </span>
+            ) : null}
+          </span>
         </span>
-        <span className="block text-xs text-text-muted">
-          <span className="font-mono">{position.code}</span>
-          {paneledLabel ? (
-            <span
-              className="ml-2 rounded-full bg-divider px-1.5 py-0.5 text-text-secondary"
-              data-testid={`wizard-position-paneled-${position.code}`}
-            >
-              {paneledLabel}
-            </span>
-          ) : null}
-        </span>
-      </span>
-    </label>
+      </label>
+      {openPanelHref ? (
+        <Link
+          to={openPanelHref}
+          data-testid={`wizard-open-existing-${position.code}`}
+          className="shrink-0 inline-flex items-center gap-1 text-xs text-primary-600 hover:underline whitespace-nowrap mt-0.5"
+        >
+          <ExternalLink size={12} aria-hidden />
+          {openPanelLabel}
+        </Link>
+      ) : null}
+    </div>
   );
 }

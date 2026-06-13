@@ -8,16 +8,20 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api/apiError';
+import { orgKeys } from '@/features/organization/api/organizationApi';
 import {
+  archivePanel,
   assignEvaluator,
   bulkCreatePanels,
   createPanel,
+  deletePanel,
   fetchPanelDetail,
   fetchPanelResult,
   fetchPanels,
   fetchRosterSuggestions,
   lockPanelRoster,
   panelKeys,
+  reopenPanel,
   submitPanelToCeo,
   withdrawEvaluator,
   type PanelListFilters,
@@ -95,6 +99,11 @@ function invalidatePanel(
   id?: string,
 ) {
   qc.invalidateQueries({ queryKey: panelKeys.all });
+  // T4 — coverage badges + the per-department progress strip read the shared
+  // server-authoritative counts (orgKeys.positionCounts). Refresh them after a
+  // panel mutation so the "X paneled / Y positions" figures stay in lockstep.
+  // The projectId is not known here, so invalidate the whole counts prefix.
+  qc.invalidateQueries({ queryKey: orgKeys.all });
   if (id) {
     qc.invalidateQueries({ queryKey: panelKeys.detail(id) });
     qc.invalidateQueries({ queryKey: panelKeys.result(id) });
@@ -153,6 +162,44 @@ export function useSubmitPanelToCeo(panelId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => submitPanelToCeo(panelId),
+    onSuccess: () => invalidatePanel(qc, panelId),
+  });
+}
+
+// ---------- T3 (Defect 2): panel management mutations ----------
+// MIRROR `useDeleteEvaluation` / `useArchiveEvaluation`: reason arg, then
+// invalidate the panel detail + list (via panelKeys.all) AND the shared dept
+// counts query (orgKeys.all) on success — see {@link invalidatePanel}.
+
+/**
+ * Hard-delete a COLLECTING panel (BE guard rejects any other status). Reason
+ * ≥ 5 chars is enforced by the ConfirmDialog UI mirror AND the server.
+ */
+export function useDeletePanel(panelId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reason: string) => deletePanel(panelId, reason),
+    onSuccess: () => invalidatePanel(qc, panelId),
+  });
+}
+
+/**
+ * Soft-cancel (archive) a working panel (AWAITING_EVALUATIONS / AVERAGED /
+ * SUBMITTED). Preserves the audit trail and frees the active-panel slot.
+ */
+export function useArchivePanel(panelId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reason: string) => archivePanel(panelId, reason),
+    onSuccess: () => invalidatePanel(qc, panelId),
+  });
+}
+
+/** Manual reopen of a SUBMITTED / AVERAGED panel back to AWAITING_EVALUATIONS. */
+export function useReopenPanel(panelId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => reopenPanel(panelId),
     onSuccess: () => invalidatePanel(qc, panelId),
   });
 }

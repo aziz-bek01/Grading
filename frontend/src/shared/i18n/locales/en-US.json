@@ -638,13 +638,17 @@
         "no_match": "No departments match the search.",
         "load_error": "Could not load departments.",
         "position_count": "{{count}} pos.",
+        "subtree_count": "↳ {{count}}",
+        "subtree_tooltip": "Including sub-departments: {{count}} pos.",
         "paneled_count": "{{count}} paneled",
         "fully_paneled": "All paneled"
       },
       "positions": {
         "empty": "This department has no candidate positions.",
         "fully_paneled": "Every position in this department is already paneled for the selected version.",
-        "already_paneled": "Already paneled"
+        "already_paneled": "Already paneled",
+        "open_existing": "Open existing panel",
+        "include_subtree": "Include sub-departments"
       },
       "roster": {
         "dept_director_suggested": "Suggested",
@@ -664,8 +668,34 @@
     "dept_progress": {
       "title": "Department coverage",
       "coverage": "{{paneled}} of {{total}} paneled",
+      "subtree": "↳ {{count}}",
+      "subtree_tooltip": "Including sub-departments: {{count}} pos.",
       "show_all": "Show all {{count}} departments",
       "show_less": "Show fewer"
+    },
+    "list": {
+      "title": "Evaluation panels",
+      "col_evaluators": "Evaluators",
+      "evaluators_value": "{{completed}} of {{total}}",
+      "col_created": "Created",
+      "open": "Open",
+      "empty_title": "No panels yet",
+      "empty_body": "Open an evaluation panel to start collecting evaluations."
+    },
+    "detail": {
+      "subtitle": "View and manage the evaluation panel.",
+      "reopen": "Reopen",
+      "archive": "Archive",
+      "no_actions": "No management actions are available for this panel.",
+      "delete_title": "Delete panel?",
+      "delete_body": "The panel and its roster will be permanently deleted. This cannot be undone.",
+      "delete_reason_placeholder": "Give a reason for deletion (at least 5 characters)",
+      "archive_title": "Archive panel?",
+      "archive_body": "The panel will be archived. The audit trail is kept and the active-panel slot is freed.",
+      "archive_reason_placeholder": "Give a reason for archiving (at least 5 characters)",
+      "not_found_title": "Panel not found",
+      "not_found_body": "This panel was not found, or you do not have access to it.",
+      "back_to_list": "Back to panels"
     },
     "dialog": {
       "title": "Open evaluation panel",

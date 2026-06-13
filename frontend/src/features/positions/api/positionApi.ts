@@ -19,6 +19,9 @@ export async function fetchPositions(params: PositionListParams): Promise<Positi
     params: {
       projectId: params.projectId,
       departmentId: params.departmentId ?? undefined,
+      // T4 — only send the flag when expanding a department's subtree; omit
+      // otherwise so the default (direct positions) is unchanged.
+      includeSubtree: params.includeSubtree ? true : undefined,
       status: params.status ?? undefined,
       jobFamily: params.jobFamily ?? undefined,
       page: params.page ?? 0,

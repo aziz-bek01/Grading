@@ -1,16 +1,21 @@
 /**
  * Per-department panel coverage strip (FE-7).
  *
- * A DERIVED column only — no new endpoint. Coverage is computed from data the
- * EvaluationListPage already loads: the department tree (useDepartmentTree),
- * the project positions, and the project panels (GET /panels). For each
- * department it shows "X of Y positions paneled" where Y is the count of
- * non-archived positions in the department and X is the count of those covered
- * by at least one active (non-ARCHIVED) panel.
+ * Shows "X of Y positions paneled" per department, plus the rolled-up subtree
+ * figure. T4 (Defect 1): the POSITION TOTAL (Y) and the subtree roll-up now come
+ * from the ONE shared server-authoritative counts hook
+ * ({@link useDepartmentPositionCounts}) — NOT a FE bucketing of a page-capped
+ * position list. So a parent department rolls up its descendants (never 0) and
+ * the count is never truncated past the first 200 positions.
  *
- * ABAC: the GET /panels response is server-scoped, so a department director
- * sees only their own department's panels — this component never adds FE-only
- * hiding; it simply reflects what the server returned.
+ * The PANELED count (X) is still derived from the already-loaded, ABAC-scoped
+ * panels (GET /panels): each panel's position is mapped to its department via the
+ * project positions the host already loaded for its table — this is NOT a
+ * count scan (the counts come from the BE), only a position→department lookup so
+ * a panel can be attributed to a department.
+ *
+ * ABAC: the GET /panels response is server-scoped, so a department director sees
+ * only their own department's panels — this component never adds FE-only hiding.
  */
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -18,13 +23,20 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Card } from '@/shared/components/ui/Card';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
+import { useDepartmentPositionCounts } from '@/features/organization/hooks/useDepartmentPositionCounts';
 import type { Department } from '@/features/organization/types/organizationTypes';
 import type { Position } from '@/features/positions/types/positionTypes';
 import type { Panel } from '../../panelTypes';
 
 interface Props {
+  projectId: string;
   departments: Department[];
-  positions: Position[];
+  /**
+   * Project positions the host already loaded for its table — used ONLY to map a
+   * panel's `position_id` to its `department_id` (panel attribution), never to
+   * compute the position total (that comes from the BE counts hook).
+   */
+  positions?: Position[];
   panels: Panel[];
 }
 
@@ -33,46 +45,65 @@ interface DeptCoverage {
   code: string;
   name: string;
   total: number;
+  subtree: number;
   paneled: number;
 }
 
-export function DepartmentPanelProgress({ departments, positions, panels }: Props) {
+export function DepartmentPanelProgress({
+  projectId,
+  departments,
+  positions = [],
+  panels,
+}: Props) {
   const { t, i18n } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
-  // position_id -> covered by an active panel?
-  const paneledPositionIds = useMemo(() => {
-    const set = new Set<string>();
+  // T4 — server-authoritative per-department counts (direct + subtree roll-up).
+  const countsQuery = useDepartmentPositionCounts(projectId);
+  const counts = countsQuery.data;
+
+  // position_id -> department_id (panel attribution only — NOT a count source).
+  const positionDeptId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of positions) m.set(p.id, p.department_id);
+    return m;
+  }, [positions]);
+
+  // department_id -> count of positions covered by an active (non-ARCHIVED) panel.
+  const paneledByDept = useMemo(() => {
+    const m = new Map<string, number>();
+    const seen = new Set<string>();
     for (const p of panels) {
       if (p.status === 'ARCHIVED') continue;
-      set.add(p.position_id);
+      if (seen.has(p.position_id)) continue; // one position counts once
+      seen.add(p.position_id);
+      const deptId = positionDeptId.get(p.position_id);
+      if (!deptId) continue;
+      m.set(deptId, (m.get(deptId) ?? 0) + 1);
     }
-    return set;
-  }, [panels]);
+    return m;
+  }, [panels, positionDeptId]);
 
   const rows = useMemo<DeptCoverage[]>(() => {
-    const byDept = new Map<string, { total: number; paneled: number }>();
-    for (const pos of positions) {
-      if (pos.status === 'ARCHIVED') continue;
-      const acc = byDept.get(pos.department_id) ?? { total: 0, paneled: 0 };
-      acc.total += 1;
-      if (paneledPositionIds.has(pos.id)) acc.paneled += 1;
-      byDept.set(pos.department_id, acc);
-    }
+    if (!counts) return [];
     return departments
-      .filter((d) => d.status !== 'ARCHIVED' && byDept.has(d.id))
+      .filter((d) => d.status !== 'ARCHIVED')
       .map((d) => {
-        const acc = byDept.get(d.id)!;
+        const c = counts.get(d.id);
         return {
           id: d.id,
           code: d.code,
           name: pickLocalized(d.name_i18n, i18n.language),
-          total: acc.total,
-          paneled: acc.paneled,
+          total: c?.directCount ?? 0,
+          subtree: c?.subtreeCount ?? 0,
+          paneled: paneledByDept.get(d.id) ?? 0,
         };
       })
+      // Keep departments that have positions in their subtree (so parents that
+      // only hold descendants still appear) OR already have a paneled position.
+      .filter((r) => r.subtree > 0 || r.paneled > 0)
       .sort((a, b) => a.code.localeCompare(b.code));
-  }, [departments, positions, paneledPositionIds, i18n.language]);
+  }, [counts, departments, paneledByDept, i18n.language]);
 
   if (rows.length === 0) return null;
 
@@ -97,6 +128,9 @@ export function DepartmentPanelProgress({ departments, positions, panels }: Prop
         {visible.map((r) => {
           const pct = r.total > 0 ? Math.round((r.paneled / r.total) * 100) : 0;
           const full = r.total > 0 && r.paneled >= r.total;
+          // Show the subtree roll-up only when it adds positions beyond the
+          // direct count (a parent with descendants) — per PD-1 show BOTH.
+          const showSubtree = r.subtree > r.total;
           return (
             <li
               key={r.id}
@@ -117,13 +151,22 @@ export function DepartmentPanelProgress({ departments, positions, panels }: Prop
                 />
               </span>
               <span
-                className="w-28 shrink-0 text-right text-xs text-text-secondary tabular-nums"
+                className="w-32 shrink-0 text-right text-xs text-text-secondary tabular-nums"
                 data-testid={`dept-progress-count-${r.code}`}
               >
                 {t('panel.dept_progress.coverage', {
                   paneled: r.paneled,
                   total: r.total,
                 })}
+                {showSubtree ? (
+                  <span
+                    className="ml-1 text-text-muted"
+                    data-testid={`dept-progress-subtree-${r.code}`}
+                    title={t('panel.dept_progress.subtree_tooltip', { count: r.subtree })}
+                  >
+                    {t('panel.dept_progress.subtree', { count: r.subtree })}
+                  </span>
+                ) : null}
               </span>
             </li>
           );

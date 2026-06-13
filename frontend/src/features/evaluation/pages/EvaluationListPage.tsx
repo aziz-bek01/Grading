@@ -31,6 +31,7 @@ import { OpenPanelDialog, type RosterSeed } from '../components/panel/OpenPanelD
 import { EvaluationByFactorView } from '../components/byFactor/EvaluationByFactorView';
 import { useBulkCreatePanels, usePanels } from '../hooks/usePanels';
 import { DepartmentPanelProgress } from '../components/panel/DepartmentPanelProgress';
+import { PanelListSection } from '../components/panel/PanelListSection';
 import { isEvaluationDeletable } from '../types';
 import type { BulkCreatePanelsResult, PanelEvaluatorDraft } from '../panelTypes';
 import type { Evaluation, EvaluationStatus } from '../types';
@@ -422,9 +423,22 @@ export function EvaluationListPage() {
           BE GET /panels response is ABAC-scoped (no FE-only hiding). */}
       {mode === 'by-position' ? (
         <DepartmentPanelProgress
+          projectId={projectId}
           departments={treeQuery.data ?? []}
           positions={positionsQuery.data?.items ?? []}
           panels={panelsQuery.data?.items ?? []}
+        />
+      ) : null}
+
+      {/* T3 (Defect 2): evaluation-panels list — un-dead-ends a created panel by
+          giving it a viewable/manageable detail route. Reuses the already-loaded
+          `panelsQuery` + shared DataTable + PanelStatusBadge (no new fetch,
+          no bespoke table). Shown whenever there is at least one panel. */}
+      {mode === 'by-position' && (panelsQuery.data?.items.length ?? 0) > 0 ? (
+        <PanelListSection
+          projectId={projectId}
+          panels={panelsQuery.data?.items ?? []}
+          loading={panelsQuery.isLoading}
         />
       ) : null}
 

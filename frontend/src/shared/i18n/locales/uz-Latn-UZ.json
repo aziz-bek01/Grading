@@ -638,13 +638,17 @@
         "no_match": "So'rov bo'yicha bo'lim topilmadi.",
         "load_error": "Bo'limlarni yuklab bo'lmadi.",
         "position_count": "{{count}} lav.",
+        "subtree_count": "↳ {{count}}",
+        "subtree_tooltip": "Quyi bo'limlar bilan: {{count}} lav.",
         "paneled_count": "{{count}} panelda",
         "fully_paneled": "Barchasi panelda"
       },
       "positions": {
         "empty": "Bu bo'limda mos lavozimlar yo'q.",
         "fully_paneled": "Bu bo'limning barcha lavozimlari tanlangan versiya uchun allaqachon panelda.",
-        "already_paneled": "Allaqachon panelda"
+        "already_paneled": "Allaqachon panelda",
+        "open_existing": "Mavjud panelni ochish",
+        "include_subtree": "Quyi bo'limlarni ham hisobga olish"
       },
       "roster": {
         "dept_director_suggested": "Tavsiya etildi",
@@ -664,8 +668,34 @@
     "dept_progress": {
       "title": "Bo'limlar bo'yicha qamrov",
       "coverage": "{{total}} tadan {{paneled}} tasi panelda",
+      "subtree": "↳ {{count}}",
+      "subtree_tooltip": "Quyi bo'limlar bilan: {{count}} lav.",
       "show_all": "Barcha bo'limlarni ko'rsatish ({{count}})",
       "show_less": "Yig'ish"
+    },
+    "list": {
+      "title": "Baholash panellari",
+      "col_evaluators": "Ekspertlar",
+      "evaluators_value": "{{total}} tadan {{completed}} tasi",
+      "col_created": "Yaratildi",
+      "open": "Ochish",
+      "empty_title": "Hozircha panellar yo'q",
+      "empty_body": "Baholashni boshlash uchun baholash panelini oching."
+    },
+    "detail": {
+      "subtitle": "Baholash panelini ko'rish va boshqarish.",
+      "reopen": "Qayta ochish",
+      "archive": "Arxivlash",
+      "no_actions": "Bu panel uchun boshqaruv amallari mavjud emas.",
+      "delete_title": "Panel o'chirilsinmi?",
+      "delete_body": "Panel va uning tarkibi butunlay o'chiriladi. Bu amalni bekor qilib bo'lmaydi.",
+      "delete_reason_placeholder": "O'chirish sababini kiriting (kamida 5 ta belgi)",
+      "archive_title": "Panel arxivlansinmi?",
+      "archive_body": "Panel arxivga o'tkaziladi. Tarix saqlanadi, faol panel o'rni bo'shaydi.",
+      "archive_reason_placeholder": "Arxivlash sababini kiriting (kamida 5 ta belgi)",
+      "not_found_title": "Panel topilmadi",
+      "not_found_body": "Panel topilmadi yoki sizda unga ruxsat yo'q.",
+      "back_to_list": "Panellar ro'yxatiga"
     },
     "dialog": {
       "title": "Baholash panelini ochish",

@@ -204,6 +204,21 @@ public final class AuditAction {
     public static final String EVALUATION_PANEL_SUBMITTED_TO_CEO   = "EVALUATION_PANEL_SUBMITTED_TO_CEO";
     public static final String EVALUATION_PANEL_APPROVED           = "EVALUATION_PANEL_APPROVED";
     public static final String EVALUATION_PANEL_REOPENED          = "EVALUATION_PANEL_REOPENED";
+    /**
+     * Defect-2 BE — hard delete of a {@code COLLECTING}-only panel (mirrors
+     * {@link #EVALUATION_DELETED}). Roster assignments cascade-removed; entity_id
+     * carries the panel_id; before-snapshot only (afterJson null — row is gone).
+     * A non-COLLECTING panel keeps its history and uses
+     * {@link #EVALUATION_PANEL_ARCHIVED}.
+     */
+    public static final String EVALUATION_PANEL_DELETED            = "EVALUATION_PANEL_DELETED";
+    /**
+     * Defect-2 BE — soft cancel of a working panel ({@code AWAITING_EVALUATIONS} /
+     * {@code AVERAGED} / {@code SUBMITTED} → {@code ARCHIVED}; mirrors
+     * {@link #EVALUATION_ARCHIVED}). Preserves the audit trail and frees the
+     * active-panel uniqueness slot so a fresh panel can be created.
+     */
+    public static final String EVALUATION_PANEL_ARCHIVED           = "EVALUATION_PANEL_ARCHIVED";
 
     // Grade structure (Phase 6)
     public static final String GRADE_STRUCTURE_CREATED          = "GRADE_STRUCTURE_CREATED";

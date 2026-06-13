@@ -28,6 +28,7 @@ import { MethodologyBuilderPage } from '@/features/methodology/pages/Methodology
 import { MethodologyTranslationsPage } from '@/features/methodology/pages/MethodologyTranslationsPage';
 import { EvaluationListPage } from '@/features/evaluation/pages/EvaluationListPage';
 import { EvaluationDetailsPage } from '@/features/evaluation/pages/EvaluationDetailsPage';
+import { PanelDetailPage } from '@/features/evaluation/pages/PanelDetailPage';
 import { GradeStructureListPage } from '@/features/grade-structure/pages/GradeStructureListPage';
 import { GradeStructureBuilderPage } from '@/features/grade-structure/pages/GradeStructureBuilderPage';
 import { GradePyramidPage } from '@/features/grade-structure/pages/GradePyramidPage';
@@ -105,6 +106,12 @@ export function AppRouter() {
             </Route>
             <Route element={<RequirePermission permissions={PERMISSIONS.EVALUATION_READ} />}>
               <Route path="evaluation" element={<EvaluationListPage />} />
+              {/* T3 — panel detail. Static `panels` segment outranks the
+                  dynamic `:evaluationId` so the two never collide. */}
+              <Route
+                path="evaluation/panels/:panelId"
+                element={<PanelDetailPage />}
+              />
               <Route
                 path="evaluation/:evaluationId"
                 element={<EvaluationDetailsPage />}

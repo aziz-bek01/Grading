@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
 import { OpenPanelDialog } from './OpenPanelDialog';
+import type { DepartmentPositionCount } from '@/features/organization/hooks/useDepartmentPositionCounts';
 import type { Methodology } from '@/features/methodology/types';
 import type { Department } from '@/features/organization/types/organizationTypes';
 import type { Position } from '@/features/positions/types/positionTypes';
@@ -10,9 +11,13 @@ import type { Panel } from '../../panelTypes';
 // ----------------------------------------------------------------------------
 // The wizard fetches its own data through these hooks; we mock them so the
 // component tests are deterministic (mirrors the codebase's hook-mock pattern).
-// usePositions is called twice: once for the all-project count map (no
-// departmentId) and once for the department cut (with departmentId) — the mock
-// honours the departmentId param so we can assert the "narrowing" behaviour.
+//
+// T4 — the per-department coverage badges now read the ONE shared
+// `useDepartmentPositionCounts` hook (server-authoritative direct + subtree
+// counts), NOT a FE 200-row position scan. So `usePositions` is invoked ONLY for
+// the Step-2 department cut (with departmentId) — never project-wide for counts;
+// the mock honours departmentId + includeSubtree so we can assert narrowing +
+// the subtree toggle.
 // ----------------------------------------------------------------------------
 
 const departments: Department[] = [
@@ -43,11 +48,21 @@ const allPositions: Position[] = [
   { id: 'p-ops-3', project_id: 'proj-1', department_id: 'dep-ops', code: 'OPS-3', title_i18n: { 'en-US': 'Ops 3' }, status: 'ACTIVE' },
   { id: 'p-ops-4', project_id: 'proj-1', department_id: 'dep-ops', code: 'OPS-4', title_i18n: { 'en-US': 'Ops 4' }, status: 'ACTIVE' },
   { id: 'p-ops-5', project_id: 'proj-1', department_id: 'dep-ops', code: 'OPS-5', title_i18n: { 'en-US': 'Ops 5' }, status: 'ACTIVE' },
+  // OPS subtree — a descendant unit position, listed ONLY when includeSubtree is on.
+  { id: 'p-ops-sub-1', project_id: 'proj-1', department_id: 'dep-ops-sub', code: 'OPS-SUB-1', title_i18n: { 'en-US': 'Ops Sub 1' }, status: 'ACTIVE' },
   // HR — 3 positions.
   { id: 'p-hr-1', project_id: 'proj-1', department_id: 'dep-hr', code: 'HR-1', title_i18n: { 'en-US': 'HR 1' }, status: 'ACTIVE' },
   { id: 'p-hr-2', project_id: 'proj-1', department_id: 'dep-hr', code: 'HR-2', title_i18n: { 'en-US': 'HR 2' }, status: 'ACTIVE' },
   { id: 'p-hr-3', project_id: 'proj-1', department_id: 'dep-hr', code: 'HR-3', title_i18n: { 'en-US': 'HR 3' }, status: 'ACTIVE' },
 ];
+
+// T4 — server-authoritative counts the shared hook returns. OPS has 5 direct +
+// 1 descendant (subtree 6); HR has 3.
+const positionCounts = new Map<string, DepartmentPositionCount>([
+  ['dep-ops', { directCount: 5, subtreeCount: 6 }],
+  ['dep-ops-sub', { directCount: 1, subtreeCount: 1 }],
+  ['dep-hr', { directCount: 3, subtreeCount: 3 }],
+]);
 
 // p-ops-1 already has an active panel for v-1 → disabled + marked in Step 2.
 const panels: Panel[] = [
@@ -90,11 +105,27 @@ vi.mock('@/features/positions/hooks/usePositions', () => ({
     usePositionsCalls.push(params);
     if (!params) return { data: undefined, isLoading: false, isError: false };
     const deptId = params.departmentId as string | undefined;
+    const includeSubtree = params.includeSubtree === true;
+    // T4 — the dept cut. With includeSubtree the descendant unit's positions are
+    // also returned (server-expanded); otherwise only the direct department.
+    const subtreeIds = deptId === 'dep-ops' ? ['dep-ops', 'dep-ops-sub'] : [deptId];
     const items = deptId
-      ? allPositions.filter((p) => p.department_id === deptId)
+      ? allPositions.filter((p) =>
+          includeSubtree
+            ? subtreeIds.includes(p.department_id)
+            : p.department_id === deptId,
+        )
       : allPositions;
     return { data: { items }, isLoading: false, isError: false };
   },
+}));
+
+vi.mock('@/features/organization/hooks/useDepartmentPositionCounts', () => ({
+  useDepartmentPositionCounts: () => ({
+    data: positionCounts,
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 vi.mock('@/features/evaluation/hooks/usePanels', async (importOriginal) => {
@@ -191,12 +222,21 @@ describe('<OpenPanelDialog /> — dept-first wizard', () => {
     expect((screen.getByTestId('wizard-next') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('Step 1 shows per-department position count + already-paneled count badges', () => {
+  it('Step 1 shows per-department position count from the shared BE counts hook (direct + ↳ subtree)', () => {
     setup();
-    // OPS has 5 positions, 1 already paneled for v-1.
+    // T4 — OPS shows its server-authoritative DIRECT count (5) and a ↳ subtree
+    // figure (6) because its descendant unit rolls up. NOT a FE position scan.
     const opsCoverage = screen.getByTestId('dept-coverage-OPS');
     expect(opsCoverage).toHaveTextContent('5');
-    expect(screen.getByTestId('dept-paneled-OPS')).toBeInTheDocument();
+    expect(screen.getByTestId('dept-subtree-OPS')).toHaveTextContent('6');
+  });
+
+  it('Step 1 never invokes a project-wide usePositions count scan (counts come from the hook)', () => {
+    setup();
+    // On Step 1 the only usePositions call is the disabled dept cut (null,
+    // because no department is selected yet) — never a project-wide scan.
+    expect(usePositionsCalls.every((c) => c == null || c.departmentId != null)).toBe(true);
+    expect(usePositionsCalls.some((c) => c != null && c.departmentId == null)).toBe(false);
   });
 
   it('Step 2 fetches ONLY the chosen department positions (server-filtered, no full scan)', () => {
@@ -206,9 +246,27 @@ describe('<OpenPanelDialog /> — dept-first wizard', () => {
     expect(
       usePositionsCalls.some((c) => c?.departmentId === 'dep-ops'),
     ).toBe(true);
+    // No project-wide (departmentId-less) positions call was ever made for counts.
+    expect(usePositionsCalls.some((c) => c != null && c.departmentId == null)).toBe(false);
     // Only OPS rows render (HR rows absent).
     expect(screen.getByTestId('wizard-position-row-OPS-2')).toBeInTheDocument();
     expect(screen.queryByTestId('wizard-position-row-HR-1')).not.toBeInTheDocument();
+  });
+
+  it('Step 2 subtree toggle lists the descendant unit positions (includeSubtree=true)', () => {
+    setup();
+    gotoStep2('OPS');
+    // OFF — only direct OPS positions; the descendant unit position is absent.
+    expect(screen.queryByTestId('wizard-position-row-OPS-SUB-1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('wizard-include-subtree'));
+    // The dept cut was re-requested with includeSubtree=true.
+    expect(
+      usePositionsCalls.some(
+        (c) => c?.departmentId === 'dep-ops' && c?.includeSubtree === true,
+      ),
+    ).toBe(true);
+    // The descendant unit position now appears.
+    expect(screen.getByTestId('wizard-position-row-OPS-SUB-1')).toBeInTheDocument();
   });
 
   it('Step 2 DISABLES + marks already-paneled positions (visible, not hidden)', () => {
@@ -356,7 +414,7 @@ describe('<OpenPanelDialog /> — dept-first wizard', () => {
     expect((screen.getByTestId('open-panel-picker-1') as HTMLSelectElement).value).toBe('');
   });
 
-  it('shows a fully-paneled empty state for a department whose positions are all paneled', () => {
+  it('shows a fully-paneled state with an "open existing panel" CTA per position (T3 — no dead-end)', () => {
     // Panel every HR position for v-1.
     panels.push(
       { id: 'pn-hr-1', project_id: 'proj-1', position_id: 'p-hr-1', position_title_i18n: {}, methodology_version_id: 'v-1', status: 'COLLECTING', min_evaluators: 3, evaluator_count: 0, completed_count: 0, created_at: 'x' },
@@ -367,9 +425,28 @@ describe('<OpenPanelDialog /> — dept-first wizard', () => {
       setup();
       gotoStep2('HR');
       expect(screen.getByTestId('wizard-positions-fully-paneled')).toBeInTheDocument();
+      // Each already-paneled row deep-links to its panel detail (resolved from
+      // the already-loaded panelsQuery — no dead-end).
+      const cta = screen.getByTestId('wizard-open-existing-HR-1');
+      expect(cta).toBeInTheDocument();
+      expect(cta.getAttribute('href')).toBe(
+        '/app/projects/proj-1/evaluation/panels/pn-hr-1',
+      );
     } finally {
       panels.splice(1); // restore to just panel-existing
     }
+  });
+
+  it('an already-paneled row in a mixed department links to its existing panel (deep-link)', () => {
+    setup();
+    gotoStep2('OPS');
+    // p-ops-1 is paneled by `panel-existing`; its row offers the open-existing CTA.
+    const cta = screen.getByTestId('wizard-open-existing-OPS-1');
+    expect(cta.getAttribute('href')).toBe(
+      '/app/projects/proj-1/evaluation/panels/panel-existing',
+    );
+    // A NOT-paneled row offers no such CTA.
+    expect(screen.queryByTestId('wizard-open-existing-OPS-2')).not.toBeInTheDocument();
   });
 
   it('copy-roster keeps HR + externals, clears DEPT_DIRECTOR, and fires the copy callback', async () => {

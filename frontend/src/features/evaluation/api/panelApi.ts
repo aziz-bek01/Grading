@@ -184,3 +184,31 @@ export async function submitPanelToCeo(panelId: string): Promise<Panel> {
   const res = await httpClient.post<Panel>(endpoints.panels.submit(panelId), {});
   return res.data;
 }
+
+// ============================================================
+// T3 (Defect 2) — panel management (delete / archive / reopen)
+//
+// Mirrors the evaluation delete/archive fetchers: DELETE carries the reason in
+// the request BODY (axios `data`, exactly like {@link deleteEvaluation}), the
+// archive POST carries `{ reason }`, and reopen carries no body. The BE enforces
+// the status guard + EVALUATION_PANEL_MANAGE; a cross-tenant id 404s. We never
+// send tenant_id (JWT-derived).
+// ============================================================
+
+export async function deletePanel(panelId: string, reason: string): Promise<void> {
+  await httpClient.delete(endpoints.panels.delete(panelId), {
+    data: { reason },
+  });
+}
+
+export async function archivePanel(panelId: string, reason: string): Promise<Panel> {
+  const res = await httpClient.post<Panel>(endpoints.panels.archive(panelId), {
+    reason,
+  });
+  return res.data;
+}
+
+export async function reopenPanel(panelId: string): Promise<Panel> {
+  const res = await httpClient.post<Panel>(endpoints.panels.reopen(panelId), {});
+  return res.data;
+}

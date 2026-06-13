@@ -115,6 +115,36 @@ export function isRosterMutable(status: PanelStatus): boolean {
 }
 
 // ============================================================
+// T3 (Defect 2) — panel management gating predicates
+//
+// SINGLE source of truth for which management actions the FE may OFFER. They
+// MIRROR the BE PanelStatus guards 1:1 (DeletePanelUseCase / ArchivePanelUseCase
+// / ReopenPanelUseCase) so a non-applicable action is never even rendered — no
+// 403/400 round-trip — exactly as `isEvaluationDeletable` mirrors the evaluation
+// delete guard. The BE remains the source of truth (these only hide UI).
+// APPROVED / LOCKED / ARCHIVED → no management action.
+// ============================================================
+
+/** Hard-delete allowed ONLY while COLLECTING (BE PANEL_NOT_DELETABLE otherwise). */
+export function isPanelDeletable(status: PanelStatus): boolean {
+  return status === 'COLLECTING';
+}
+
+/** Soft-cancel (archive) allowed from a working panel (BE PANEL_NOT_ARCHIVABLE otherwise). */
+export function isPanelArchivable(status: PanelStatus): boolean {
+  return (
+    status === 'AWAITING_EVALUATIONS' ||
+    status === 'AVERAGED' ||
+    status === 'SUBMITTED'
+  );
+}
+
+/** Manual reopen back to AWAITING_EVALUATIONS — only from SUBMITTED | AVERAGED. */
+export function isPanelReopenable(status: PanelStatus): boolean {
+  return status === 'SUBMITTED' || status === 'AVERAGED';
+}
+
+// ============================================================
 // Wire shapes (snake_case — golden-file pinned)
 // ============================================================
 

@@ -50,4 +50,33 @@ public enum EvaluationPanelStatus {
     public boolean isCommitted() {
         return this == APPROVED || this == LOCKED || this == ARCHIVED;
     }
+
+    /**
+     * True when a hard delete is allowed in this status — ONLY {@code COLLECTING}.
+     * Mirrors {@link EvaluationStatus#isDeletable()}: a panel whose roster is still
+     * being built (no evaluator has started scoring) leaves no scored history, so it
+     * may be physically removed (and frees the active-panel uniqueness slot). Once
+     * the panel has moved past COLLECTING it keeps its history and uses the ARCHIVE
+     * path instead. Single source of truth for the {@code DeletePanelUseCase} guard
+     * and the FE "delete" action visibility — do NOT inline a status list elsewhere.
+     */
+    public boolean isDeletable() {
+        return this == COLLECTING;
+    }
+
+    /**
+     * True when an ARCHIVE (soft cancel) is allowed in this status — the working
+     * statuses {@code AWAITING_EVALUATIONS}, {@code AVERAGED}, {@code SUBMITTED}.
+     * Archiving sets {@code status = ARCHIVED}, preserving the audit trail while
+     * freeing the partial-unique active-panel slot (a fresh panel can then be
+     * created for the same position + methodology version). The terminal/committed
+     * statuses ({@code APPROVED}, {@code LOCKED}, {@code ARCHIVED}) are NOT
+     * archivable — a CEO-approved/locked panel is immutable. {@code COLLECTING}
+     * uses the hard {@link #isDeletable()} delete path instead. Single source of
+     * truth for the {@code ArchivePanelUseCase} guard and the FE "archive" action
+     * visibility — do NOT inline a status list elsewhere.
+     */
+    public boolean isArchivable() {
+        return this == AWAITING_EVALUATIONS || this == AVERAGED || this == SUBMITTED;
+    }
 }

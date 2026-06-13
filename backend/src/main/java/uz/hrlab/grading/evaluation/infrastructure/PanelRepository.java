@@ -39,4 +39,20 @@ public interface PanelRepository
 
     List<EvaluationPanelJpaEntity> findAllByTenantIdAndProjectIdAndStatus(
             UUID tenantId, UUID projectId, EvaluationPanelStatus status);
+
+    /**
+     * Tenant-scoped hard delete (Defect-2 BE). Mirrors
+     * {@code EvaluationRepository.deleteByIdAndTenantId}: {@link TenantAwareRepository}
+     * intentionally hides the BOLA-prone single-arg {@code deleteById(id)}; this
+     * derived deleter keeps the tenant filter in the predicate so a row from
+     * another tenant can never be removed. Returns the number of rows deleted so
+     * the caller can distinguish a no-op (0) — though the use case always loads +
+     * tenant-checks the row first via {@link uz.hrlab.grading.evaluation.application.PanelLoader}.
+     *
+     * <p>Caller MUST remove dependent {@code panel_assignments} rows first to keep
+     * the delete deterministic (the ON DELETE CASCADE FK also covers this, but the
+     * use case pre-deletes — mirroring how {@code DeleteEvaluationUseCase} removes
+     * dependent score rows before the parent).
+     */
+    long deleteByIdAndTenantId(UUID id, UUID tenantId);
 }

@@ -8,6 +8,7 @@ import uz.hrlab.grading.common.infrastructure.TenantAwareRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -74,4 +75,32 @@ public interface PositionRepository
                                                 @Param("jobFamily") String jobFamily,
                                                 @Param("scope") Collection<UUID> scopeDepartmentIds,
                                                 Pageable pageable);
+
+    /**
+     * Defect-1 BE — server-authoritative DIRECT position counts grouped by
+     * department. ONE grouped query (no N+1, no per-department round-trip) over
+     * every {@code ACTIVE} position in the tenant + project, returning one
+     * {@code (department_id, count)} row per department that has at least one
+     * active position. Departments with zero active positions are simply absent
+     * from the result (the caller defaults them to 0). The subtree roll-up is
+     * computed in Java by {@code FindDepartmentQuery.positionCounts} over the
+     * already-loaded department tree — this query supplies only the leaf-level
+     * direct counts, never a recursive descent.
+     */
+    @Query("""
+            SELECT p.departmentId AS departmentId, COUNT(p.id) AS count
+            FROM PositionJpaEntity p
+            WHERE p.tenantId = :tenantId
+              AND p.projectId = :projectId
+              AND p.status = uz.hrlab.grading.position.domain.PositionStatus.ACTIVE
+            GROUP BY p.departmentId
+            """)
+    List<DeptCountProjection> countActiveByDepartment(@Param("tenantId") UUID tenantId,
+                                                      @Param("projectId") UUID projectId);
+
+    /** Projection for {@link #countActiveByDepartment} — direct active count per department. */
+    interface DeptCountProjection {
+        UUID getDepartmentId();
+        long getCount();
+    }
 }

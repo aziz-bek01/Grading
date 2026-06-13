@@ -92,7 +92,7 @@ class PositionControllerSecurityTest {
     // ---------- 3) Correct authority → 2xx ----------
     @Test
     void getListWithPositionReadReturns200() throws Exception {
-        given(findQuery.list(any(), any(), any(), any(), anyInt(), anyInt()))
+        given(findQuery.list(any(), any(), anyBoolean(), any(), any(), anyInt(), anyInt()))
                 .willReturn(new PageImpl<>(List.<Position>of()));
         mvc.perform(get("/api/v1/positions")
                         .param("projectId", UUID.randomUUID().toString())
@@ -186,5 +186,9 @@ class PositionControllerSecurityTest {
 
     private static int anyInt() {
         return org.mockito.ArgumentMatchers.anyInt();
+    }
+
+    private static boolean anyBoolean() {
+        return org.mockito.ArgumentMatchers.anyBoolean();
     }
 }

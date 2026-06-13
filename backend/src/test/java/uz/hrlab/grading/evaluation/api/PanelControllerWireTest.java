@@ -18,11 +18,14 @@ import uz.hrlab.grading.common.api.GlobalExceptionHandler;
 import uz.hrlab.grading.common.api.WebMvcSecurityTestConfig;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.evaluation.application.ArchivePanelUseCase;
 import uz.hrlab.grading.evaluation.application.AssignEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.application.BulkCreatePanelsUseCase;
 import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
+import uz.hrlab.grading.evaluation.application.DeletePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
 import uz.hrlab.grading.evaluation.application.PanelQueries;
+import uz.hrlab.grading.evaluation.application.ReopenPanelUseCase;
 import uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCase;
 import uz.hrlab.grading.evaluation.application.WithdrawEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
@@ -74,6 +77,9 @@ class PanelControllerWireTest {
     @MockBean WithdrawEvaluatorUseCase withdrawUseCase;
     @MockBean LockRosterUseCase lockRosterUseCase;
     @MockBean SubmitPanelToCeoUseCase submitUseCase;
+    @MockBean DeletePanelUseCase deleteUseCase;
+    @MockBean ArchivePanelUseCase archiveUseCase;
+    @MockBean ReopenPanelUseCase reopenUseCase;
     @MockBean PanelQueries queries;
     @MockBean uz.hrlab.grading.audit.application.AuditService auditService;
 
@@ -151,6 +157,33 @@ class PanelControllerWireTest {
     void withdrawRequiresPanelManage() throws Exception {
         mvc.perform(delete("/api/v1/panels/{id}/evaluators/{userId}",
                         UUID.randomUUID(), UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    // ---------------------------------------------- Defect-2 BE: lifecycle gates
+
+    @Test
+    void deleteRequiresPanelManage() throws Exception {
+        mvc.perform(delete("/api/v1/panels/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reasonBody()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void archiveRequiresPanelManage() throws Exception {
+        mvc.perform(post("/api/v1/panels/{id}/archive", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reasonBody()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void reopenRequiresPanelManage() throws Exception {
+        mvc.perform(post("/api/v1/panels/{id}/reopen", UUID.randomUUID())
                         .with(jwt().authorities(() -> "EVALUATION_READ")))
                 .andExpect(status().isForbidden());
     }
@@ -345,6 +378,66 @@ class PanelControllerWireTest {
     }
 
     @Test
+    void deleteReturns204AndReachesDeleteUseCase() throws Exception {
+        UUID id = UUID.randomUUID();
+        mvc.perform(delete("/api/v1/panels/{id}", id)
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reasonBody()))
+                .andExpect(status().isNoContent());
+        org.mockito.Mockito.verify(deleteUseCase)
+                .delete(org.mockito.ArgumentMatchers.eq(id),
+                        org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deleteRejectsMissingReason() throws Exception {
+        mvc.perform(delete("/api/v1/panels/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void archiveReturnsSnakeCaseArchivedPanelShape() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(archiveUseCase.archive(any(), any()))
+                .willReturn(panel(id, EvaluationPanelStatus.ARCHIVED));
+        mvc.perform(post("/api/v1/panels/{id}/archive", id)
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reasonBody()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.status").value("ARCHIVED"));
+    }
+
+    @Test
+    void archiveRejectsMissingReason() throws Exception {
+        mvc.perform(post("/api/v1/panels/{id}/archive", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void reopenReachesTheSameReopenUseCaseBody() throws Exception {
+        // Proves the controller reaches the EXISTING ReopenPanelUseCase entrypoint
+        // (the single shared reopen body) — no duplicate reopen logic.
+        UUID id = UUID.randomUUID();
+        given(reopenUseCase.reopen(id))
+                .willReturn(panel(id, EvaluationPanelStatus.AWAITING_EVALUATIONS));
+        mvc.perform(post("/api/v1/panels/{id}/reopen", id)
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.status").value("AWAITING_EVALUATIONS"));
+        org.mockito.Mockito.verify(reopenUseCase).reopen(id);
+    }
+
+    @Test
     void listReturnsPageResponseWithItemsKey() throws Exception {
         given(queries.list(any(), any(), any()))
                 .willReturn(new PageImpl<>(List.of(
@@ -459,6 +552,12 @@ class PanelControllerWireTest {
                   "evaluator_user_id": "00000000-0000-0000-0000-000000000030",
                   "evaluator_role": "EXTERNAL_EXPERT"
                 }
+                """;
+    }
+
+    private String reasonBody() {
+        return """
+                {"reason": "cancelling this commission round"}
                 """;
     }
 

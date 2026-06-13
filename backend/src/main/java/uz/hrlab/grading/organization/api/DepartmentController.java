@@ -58,6 +58,21 @@ public class DepartmentController {
                 .toList();
     }
 
+    /**
+     * Defect-1 BE — server-authoritative position counts per department for a
+     * project. Returns {@code direct_count} (positions exactly in the department)
+     * and {@code subtree_count} (self + all descendants), so the FE no longer
+     * derives counts from a capped, exact-department position page (which rolled
+     * up no descendants and dropped anything past the page cap).
+     */
+    @GetMapping("/position-counts")
+    @PreAuthorize("hasAuthority('ORG_READ')")
+    public List<DepartmentPositionCountResponse> positionCounts(@RequestParam UUID projectId) {
+        return findQuery.positionCounts(projectId).stream()
+                .map(DepartmentPositionCountResponse::from)
+                .toList();
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('ORG_READ')")
     public DepartmentResponse getById(@PathVariable UUID id) {

@@ -16,13 +16,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uz.hrlab.grading.common.api.PageResponse;
+import uz.hrlab.grading.evaluation.application.ArchivePanelUseCase;
 import uz.hrlab.grading.evaluation.application.AssignEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.application.BulkCreatePanelsCommand;
 import uz.hrlab.grading.evaluation.application.BulkCreatePanelsUseCase;
 import uz.hrlab.grading.evaluation.application.CreatePanelCommand;
 import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
+import uz.hrlab.grading.evaluation.application.DeletePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
 import uz.hrlab.grading.evaluation.application.PanelQueries;
+import uz.hrlab.grading.evaluation.application.ReopenPanelUseCase;
 import uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCase;
 import uz.hrlab.grading.evaluation.application.WithdrawEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
@@ -52,6 +55,9 @@ public class PanelController {
     private final WithdrawEvaluatorUseCase withdrawUseCase;
     private final LockRosterUseCase lockRosterUseCase;
     private final SubmitPanelToCeoUseCase submitUseCase;
+    private final DeletePanelUseCase deleteUseCase;
+    private final ArchivePanelUseCase archiveUseCase;
+    private final ReopenPanelUseCase reopenUseCase;
     private final PanelQueries queries;
 
     public PanelController(CreatePanelUseCase createUseCase,
@@ -60,6 +66,9 @@ public class PanelController {
                           WithdrawEvaluatorUseCase withdrawUseCase,
                           LockRosterUseCase lockRosterUseCase,
                           SubmitPanelToCeoUseCase submitUseCase,
+                          DeletePanelUseCase deleteUseCase,
+                          ArchivePanelUseCase archiveUseCase,
+                          ReopenPanelUseCase reopenUseCase,
                           PanelQueries queries) {
         this.createUseCase = createUseCase;
         this.bulkCreateUseCase = bulkCreateUseCase;
@@ -67,6 +76,9 @@ public class PanelController {
         this.withdrawUseCase = withdrawUseCase;
         this.lockRosterUseCase = lockRosterUseCase;
         this.submitUseCase = submitUseCase;
+        this.deleteUseCase = deleteUseCase;
+        this.archiveUseCase = archiveUseCase;
+        this.reopenUseCase = reopenUseCase;
         this.queries = queries;
     }
 
@@ -142,6 +154,47 @@ public class PanelController {
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
     public PanelResponse submit(@PathVariable UUID id) {
         return PanelResponse.from(submitUseCase.submit(id), null, 0, 0);
+    }
+
+    /**
+     * Defect-2 BE — hard delete a {@code COLLECTING}-only panel (mirrors the
+     * evaluation delete). Frees the active-panel uniqueness slot so a fresh panel
+     * can be created for the unit's positions; roster seats cascade-removed.
+     * A non-COLLECTING panel is rejected with 400 {@code PANEL_NOT_DELETABLE}
+     * (use archive instead). Requires reason ≥ 5 chars; returns 204 No Content.
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id,
+                                       @Valid @RequestBody ReasonRequest req) {
+        deleteUseCase.delete(id, req.reason());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Defect-2 BE — soft cancel (archive) a working panel
+     * ({@code AWAITING_EVALUATIONS} / {@code AVERAGED} / {@code SUBMITTED} →
+     * {@code ARCHIVED}; mirrors the evaluation archive). Preserves the audit trail
+     * and frees the active-panel uniqueness slot. APPROVED / LOCKED / ARCHIVED are
+     * rejected with 400 {@code PANEL_NOT_ARCHIVABLE}. Requires reason ≥ 5 chars.
+     */
+    @PostMapping("/{id}/archive")
+    @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
+    public PanelResponse archive(@PathVariable UUID id,
+                                 @Valid @RequestBody ReasonRequest req) {
+        return PanelResponse.from(archiveUseCase.archive(id, req.reason()), null, 0, 0);
+    }
+
+    /**
+     * Defect-2 BE — manual reopen of a {@code SUBMITTED} / {@code AVERAGED} panel
+     * back to {@code AWAITING_EVALUATIONS}. Reaches the SAME
+     * {@link ReopenPanelUseCase} body invoked by the CEO CHANGES_REQUESTED
+     * coupling (no duplicate reopen logic). Other statuses are a no-op.
+     */
+    @PostMapping("/{id}/reopen")
+    @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
+    public PanelResponse reopen(@PathVariable UUID id) {
+        return PanelResponse.from(reopenUseCase.reopen(id), null, 0, 0);
     }
 
     @GetMapping

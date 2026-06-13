@@ -137,6 +137,35 @@ class DepartmentControllerSecurityTest {
                 .andExpect(status().isCreated());
     }
 
+    // ---------- Defect-1 BE: position-counts endpoint ----------
+    @Test
+    void positionCountsWithoutOrgReadReturns403() throws Exception {
+        mvc.perform(get("/api/v1/departments/position-counts")
+                        .param("projectId", UUID.randomUUID().toString())
+                        .with(jwt().authorities(() -> "POSITION_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void positionCountsWithOrgReadReturnsSnakeCaseShape() throws Exception {
+        UUID parent = UUID.randomUUID();
+        UUID child = UUID.randomUUID();
+        given(findQuery.positionCounts(any(UUID.class))).willReturn(java.util.List.of(
+                new uz.hrlab.grading.organization.application.DepartmentPositionCount(parent, 3, 13),
+                new uz.hrlab.grading.organization.application.DepartmentPositionCount(child, 10, 10)));
+
+        mvc.perform(get("/api/v1/departments/position-counts")
+                        .param("projectId", UUID.randomUUID().toString())
+                        .with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$[0].department_id").value(parent.toString()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$[0].direct_count").value(3))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$[0].subtree_count").value(13));
+    }
+
     // ---------- 5) Unknown ID → 404 (cross-tenant probing returns 404, not 403) ----------
     @Test
     void unknownIdReturns404() throws Exception {

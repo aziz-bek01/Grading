@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.DepartmentScopeFilter;
 import uz.hrlab.grading.access.application.RoleCodes;
+import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
@@ -29,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -49,6 +51,7 @@ import static org.mockito.Mockito.when;
 class FindPositionQueryScopeTest {
 
     @Mock PositionRepository positions;
+    @Mock DepartmentRepository departments;
     @Mock AbacGate abacGate;
 
     // Real filter — the role classification is what we are exercising.
@@ -62,7 +65,7 @@ class FindPositionQueryScopeTest {
 
     @BeforeEach
     void setUp() {
-        query = new FindPositionQuery(positions, abacGate, departmentScopeFilter);
+        query = new FindPositionQuery(positions, departments, abacGate, departmentScopeFilter);
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         d1 = UUID.randomUUID();
@@ -115,6 +118,65 @@ class FindPositionQueryScopeTest {
         verify(positions, never()).search(any(), any(), any(), any(), any(), any());
         verify(positions, never())
                 .searchInDepartments(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void includeSubtreeExpandsRequestedDepartmentViaOneClosureCall() {
+        // T4 — includeSubtree expands the requested dept to its subtree via the
+        // EXISTING findSubtreeIds (one call) and queries searchInDepartments with
+        // the subtree set (departmentId pinned to null so it is not re-confined).
+        setContext(Set.of(RoleCodes.CLIENT_HR_DIRECTOR), Set.of()); // unscoped bypass
+        UUID childA = UUID.randomUUID();
+        UUID childB = UUID.randomUUID();
+        when(departments.findSubtreeIds(List.of(d1), tenantId))
+                .thenReturn(List.of(d1, childA, childB));
+        when(positions.searchInDepartments(
+                eq(tenantId), eq(projectId), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(position(childA))));
+
+        query.list(projectId, d1, true, null, null, 0, 50);
+
+        verify(departments, times(1)).findSubtreeIds(List.of(d1), tenantId);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Collection<UUID>> scopeCaptor = ArgumentCaptor.forClass(Collection.class);
+        ArgumentCaptor<UUID> deptCaptor = ArgumentCaptor.forClass(UUID.class);
+        verify(positions).searchInDepartments(
+                eq(tenantId), eq(projectId), deptCaptor.capture(), any(), any(),
+                scopeCaptor.capture(), any());
+        assertThat(scopeCaptor.getValue()).containsExactlyInAnyOrder(d1, childA, childB);
+        assertThat(deptCaptor.getValue()).isNull(); // IN-set confines; no re-pin
+        verify(positions, never()).search(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void includeSubtreeFalseLeavesExactDepartmentBehaviourUnchanged() {
+        setContext(Set.of(RoleCodes.CLIENT_HR_DIRECTOR), Set.of());
+        when(positions.search(eq(tenantId), eq(projectId), eq(d1), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(position(d1))));
+
+        query.list(projectId, d1, false, null, null, 0, 50);
+
+        verify(positions).search(eq(tenantId), eq(projectId), eq(d1), any(), any(), any());
+        verify(departments, never()).findSubtreeIds(any(), any());
+        verify(positions, never())
+                .searchInDepartments(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void includeSubtreeIntersectsWithDepartmentScopeFailClosed() {
+        // Department-scoped caller requesting a subtree outside their scope → zero
+        // rows (intersection empty), never a widen.
+        UUID inScope = UUID.randomUUID();
+        setContext(Set.of(RoleCodes.DEPARTMENT_MANAGER), Set.of(inScope));
+        when(departments.findSubtreeIds(List.of(d1), tenantId))
+                .thenReturn(List.of(d1, UUID.randomUUID())); // none in scope
+
+        Page<?> result = query.list(projectId, d1, true, null, null, 0, 50);
+
+        assertThat(result.getTotalElements()).isZero();
+        verify(positions, never())
+                .searchInDepartments(any(), any(), any(), any(), any(), any(), any());
+        verify(positions, never()).search(any(), any(), any(), any(), any(), any());
     }
 
     private void setContext(Set<String> roles, Set<UUID> deptScope) {

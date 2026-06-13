@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { StatusBadge } from '@/shared/components/status/StatusBadge';
 import { LocalizedNameTabs } from '@/features/projects/components/LocalizedNameTabs';
 import type { LocalizedString } from '@/shared/types/common';
 import type { FactorLevel, ScoringMode } from '../types';
@@ -240,6 +241,14 @@ function ExistingLevelRow({
             />
           )}
           <span className="text-text-primary">{displayLabel}</span>
+          {level.deprecated_at ? (
+            <StatusBadge
+              tone="archived"
+              label={t('methodology.deprecated_badge')}
+              outline
+              className="text-[10px]"
+            />
+          ) : null}
         </div>
         {!readOnly ? (
           <div className="inline-flex items-center gap-1">

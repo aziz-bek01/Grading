@@ -98,10 +98,17 @@ export function EvaluationMatrix({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewKey, version.id]);
 
-  const factors = useMemo(
-    () => [...version.factors].sort((a, b) => a.sort_order - b.sort_order),
-    [version.factors],
-  );
+  // Exclude soft-deprecated factors from a NEW evaluation: the backend already
+  // drops them from new-evaluation lists, and the FE mirrors that so a deprecated
+  // factor never offers a fresh selection. A deprecated factor that an EXISTING
+  // (read-only / already-scored) evaluation still references stays visible for
+  // the historical read so the committee can audit the original choice.
+  const factors = useMemo(() => {
+    const selectedFactorIds = new Set(scores.map((s) => s.factor_id));
+    return [...version.factors]
+      .filter((f) => !f.deprecated_at || !editable || selectedFactorIds.has(f.id))
+      .sort((a, b) => a.sort_order - b.sort_order);
+  }, [version.factors, editable, scores]);
 
   const missingRequired = useMemo(
     () => factors.filter((f) => f.required && !selections.has(f.id)),
@@ -202,6 +209,13 @@ export function EvaluationMatrix({
                   data-testid={`levels-${f.code}`}
                 >
                   {[...f.levels]
+                    // Deprecated levels drop out of a new selection but stay
+                    // visible when they are the level an existing evaluation
+                    // already chose (historical read).
+                    .filter(
+                      (lvl) =>
+                        !lvl.deprecated_at || !editable || selectedLevelId === lvl.id,
+                    )
                     .sort((a, b) => a.level_order - b.level_order)
                     .map((lvl) => {
                       const selected = selectedLevelId === lvl.id;

@@ -44,6 +44,7 @@
     "continue": "Continue",
     "completeness": "Completeness",
     "unknown_actor": "Unknown user",
+    "dismiss": "Dismiss",
     "loading": "Loading…"
   },
   "nav": {
@@ -790,6 +791,20 @@
     "create_new_version": "Create new version",
     "confirm_remove_factor": "Remove this factor?",
     "confirm_remove_level": "Remove this level?",
+    "deprecated_badge": "Deprecated",
+    "approved_edit": {
+      "banner_title": "You are editing an APPROVED methodology version",
+      "banner_body": "Existing evaluations are preserved unchanged. Your edits affect only future evaluations.",
+      "confirm_title": "Edit an approved version?",
+      "confirm_body": "This version is approved. Existing evaluations stay exactly as they are; your changes apply only to future evaluations. Continue?",
+      "confirm_action": "I understand, continue"
+    },
+    "deprecate": {
+      "factor_deprecated": "The factor was kept and marked deprecated because existing evaluations reference it. It is hidden from new evaluations but preserved for history.",
+      "factor_referenced": "This factor cannot be deleted because existing evaluations reference it. It was marked deprecated instead and is hidden from new evaluations.",
+      "level_deprecated": "The level was kept and marked deprecated because existing evaluations reference it. It is hidden from new evaluations but preserved for history.",
+      "level_referenced": "This level cannot be deleted because existing evaluations reference it. It was marked deprecated instead and is hidden from new evaluations."
+    },
     "weight_sum_title": "Factor weight sum",
     "weight_sum_label": "Current: {{current}} / Target: {{target}}",
     "weight_sum_at_target": "Sum matches the target.",

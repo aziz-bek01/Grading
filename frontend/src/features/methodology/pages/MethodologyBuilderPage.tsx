@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Languages, Check, Archive, BookmarkPlus, Pencil } from 'lucide-react';
+import { Languages, Check, Archive, BookmarkPlus, Pencil, ShieldAlert } from 'lucide-react';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
@@ -11,7 +11,9 @@ import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog'
 import { ReasonRequiredDialog } from '@/shared/components/confirm-dialog/ReasonRequiredDialog';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { usePermission } from '@/features/auth/usePermission';
 import { useAuthStore } from '@/features/auth/authStore';
+import { ApiError } from '@/shared/api/apiError';
 import { FactorTable } from '../components/FactorTable';
 import { CommentThread } from '@/features/comment/components/CommentThread';
 import { FactorEditor } from '../components/FactorEditor';
@@ -57,6 +59,7 @@ export function MethodologyBuilderPage() {
     versionId: string;
   }>();
   const currentLocale = (useAuthStore((s) => s.user?.locale) ?? (i18n.language as Locale)) as Locale;
+  const { can } = usePermission();
 
   const methodologyQuery = useMethodology(methodologyId);
   const versionQuery = useMethodologyVersion(versionId);
@@ -87,6 +90,15 @@ export function MethodologyBuilderPage() {
   const [templateSuccess, setTemplateSuccess] = useState<string | null>(null);
   // Edit methodology/version metadata (name/description/type + scoring/target).
   const [metadataOpen, setMetadataOpen] = useState(false);
+  // FE-1 — approved-version edit (HRLAB_SUPER_ADMIN only). A confirm gates the
+  // FIRST edit action; once acknowledged for this page session, edits flow.
+  const [approvedEditConfirmOpen, setApprovedEditConfirmOpen] = useState(false);
+  const approvedEditAckRef = useRef(false);
+  // Pending edit action deferred behind the first-edit confirm gate.
+  const [pendingEditAction, setPendingEditAction] = useState<(() => void) | null>(null);
+  // FE-2 — inline notice when a referenced factor/level was soft-deprecated
+  // (kept for historical evaluations) instead of hard-deleted.
+  const [deprecateNotice, setDeprecateNotice] = useState<string | null>(null);
 
   const editorFactor = useMemo(
     () => factors.find((f) => f.id === editorFactorId) ?? null,
@@ -124,7 +136,41 @@ export function MethodologyBuilderPage() {
     return () => window.clearTimeout(id);
   }, [templateSuccess]);
 
-  const readOnly = !version || version.status !== 'DRAFT';
+  // Auto-dismiss the deprecate-outcome notice (FE-2) like a transient toast.
+  useEffect(() => {
+    if (!deprecateNotice) return;
+    const id = window.setTimeout(() => setDeprecateNotice(null), 8000);
+    return () => window.clearTimeout(id);
+  }, [deprecateNotice]);
+
+  // Approved-edit mode: HRLAB_SUPER_ADMIN editing an APPROVED version. The
+  // backend accepts METHODOLOGY_EDIT_APPROVED on the factor/level write
+  // endpoints for APPROVED versions and preserves existing evaluations
+  // byte-for-byte. LOCKED/ARCHIVED stay immutable for EVERYONE (no carve-out).
+  const approvedEditMode =
+    !!version &&
+    version.status === 'APPROVED' &&
+    can(PERMISSIONS.METHODOLOGY_EDIT_APPROVED);
+
+  const readOnly =
+    !version || (version.status !== 'DRAFT' && !approvedEditMode);
+
+  // First-edit confirm gate (FE-1): in approved-edit mode the first mutating
+  // action is intercepted and routed through a ConfirmDialog. After the user
+  // acknowledges, edits flow for the rest of the page session. DRAFT editing is
+  // unchanged (no gate). Returns true when the action was deferred.
+  //
+  // A ref mirrors the acknowledged flag so the DEFERRED action closure (created
+  // during the pre-ack render) sees the up-to-date value when the confirm runs
+  // it — otherwise the closure would re-defer against the stale `false`.
+  const guardApprovedEdit = (action: () => void): boolean => {
+    if (approvedEditMode && !approvedEditAckRef.current) {
+      setPendingEditAction(() => action);
+      setApprovedEditConfirmOpen(true);
+      return true;
+    }
+    return false;
+  };
 
   if (methodologyQuery.isLoading || versionQuery.isLoading) return <LoadingState />;
   if (methodologyQuery.error || versionQuery.error)
@@ -151,11 +197,13 @@ export function MethodologyBuilderPage() {
   };
 
   const handleEditFactor = (f: Factor) => {
+    if (guardApprovedEdit(() => handleEditFactor(f))) return;
     setEditorFactorId(f.id);
     setEditorOpen(true);
   };
 
   const handleNewFactor = () => {
+    if (guardApprovedEdit(() => handleNewFactor())) return;
     setEditorFactorId(null);
     setEditorOpen(true);
   };
@@ -192,11 +240,31 @@ export function MethodologyBuilderPage() {
 
   // removeFactorMut is bound to editorFactorId; point it at the row being
   // removed first so the right factor id is deleted.
+  //
+  // FE-2: on an APPROVED version a factor referenced by existing evaluations is
+  // SOFT-DEPRECATED by the backend (kept for historical reads), not deleted.
+  // The backend signals a refused hard-delete with the domain code
+  // FACTOR_REFERENCED_BY_EVALUATIONS; either way the user sees a clear,
+  // non-alarming explanation and the row stays (now with a "deprecated" badge
+  // after the version refetch).
   const handleRemoveFactor = async (f: Factor) => {
+    if (guardApprovedEdit(() => handleRemoveFactor(f))) return;
     if (!window.confirm(t('methodology.confirm_remove_factor'))) return;
     setEditorFactorId(f.id);
-    await removeFactorMut.mutateAsync();
-    setEditorFactorId(null);
+    try {
+      await removeFactorMut.mutateAsync();
+      if (approvedEditMode) {
+        setDeprecateNotice(t('methodology.deprecate.factor_deprecated'));
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'FACTOR_REFERENCED_BY_EVALUATIONS') {
+        setDeprecateNotice(t('methodology.deprecate.factor_referenced'));
+      } else {
+        throw e;
+      }
+    } finally {
+      setEditorFactorId(null);
+    }
   };
 
   const handleReorder = async (f: Factor, direction: 'up' | 'down') => {
@@ -226,7 +294,18 @@ export function MethodologyBuilderPage() {
 
   const handleRemoveLevel = async (lvl: FactorLevel) => {
     if (!window.confirm(t('methodology.confirm_remove_level'))) return;
-    await removeLevelMut.mutateAsync(lvl.id);
+    try {
+      await removeLevelMut.mutateAsync(lvl.id);
+      if (approvedEditMode) {
+        setDeprecateNotice(t('methodology.deprecate.level_deprecated'));
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'LEVEL_REFERENCED_BY_EVALUATIONS') {
+        setDeprecateNotice(t('methodology.deprecate.level_referenced'));
+      } else {
+        throw e;
+      }
+    }
   };
 
   // Level reorder (ISSUE 1a) — mirrors handleReorder for factors but on the OPEN
@@ -313,7 +392,11 @@ export function MethodologyBuilderPage() {
             </Button>
           </PermissionGate>
 
-          {!readOnly ? (
+          {/* Lifecycle actions (edit metadata / approve / archive) stay DRAFT-only.
+              Approved-edit mode (FE-1) deliberately exposes ONLY factor/level
+              scoring edits — scoring_mode/type metadata and the approve/archive
+              transitions remain DRAFT-bound (backend enforces the same). */}
+          {version.status === 'DRAFT' ? (
             <>
               <PermissionGate permission={PERMISSIONS.METHODOLOGY_EDIT}>
                 <Button
@@ -352,6 +435,42 @@ export function MethodologyBuilderPage() {
           ) : null}
         </div>
       </header>
+
+      {/* FE-1 — persistent warning banner: approved-edit mode is visually and
+          semantically distinct from normal DRAFT editing. Reuses the same inline
+          alert pattern as the template-success / missing-required notices. */}
+      {approvedEditMode ? (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-md border border-warning-500/40 bg-warning-50 px-4 py-3 text-sm text-warning-700"
+          data-testid="approved-edit-banner"
+        >
+          <ShieldAlert size={18} className="mt-0.5 shrink-0" aria-hidden />
+          <div>
+            <p className="font-medium">{t('methodology.approved_edit.banner_title')}</p>
+            <p className="text-warning-700/90">{t('methodology.approved_edit.banner_body')}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {/* FE-2 — non-alarming deprecate outcome notice. */}
+      {deprecateNotice ? (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-3 rounded-md border border-info-500/30 bg-info-50 px-4 py-3 text-sm text-info-600"
+          data-testid="deprecate-notice"
+        >
+          <span>{deprecateNotice}</span>
+          <button
+            type="button"
+            className="text-info-600/70 hover:text-info-600"
+            onClick={() => setDeprecateNotice(null)}
+            aria-label={t('common.dismiss')}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
 
       {templateSuccess ? (
         <div
@@ -454,6 +573,27 @@ export function MethodologyBuilderPage() {
         onConfirm={async (reason) => {
           setArchiveOpen(false);
           await archiveMut.mutateAsync({ reason });
+        }}
+      />
+
+      {/* FE-1 — first-edit confirm gate for approved-version edits. Reuses the
+          shared ConfirmDialog; once acknowledged, edits flow for the page
+          session. */}
+      <ConfirmDialog
+        open={approvedEditConfirmOpen}
+        title={t('methodology.approved_edit.confirm_title')}
+        body={t('methodology.approved_edit.confirm_body')}
+        confirmLabel={t('methodology.approved_edit.confirm_action')}
+        onCancel={() => {
+          setApprovedEditConfirmOpen(false);
+          setPendingEditAction(null);
+        }}
+        onConfirm={() => {
+          setApprovedEditConfirmOpen(false);
+          approvedEditAckRef.current = true;
+          const action = pendingEditAction;
+          setPendingEditAction(null);
+          action?.();
         }}
       />
 

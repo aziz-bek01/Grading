@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { StatusBadge } from '@/shared/components/status/StatusBadge';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { cn } from '@/shared/lib/cn';
@@ -84,17 +85,33 @@ export function FactorTable({
           ) : (
             sorted.map((f, idx) => {
               const name = f.name_i18n?.[currentLocale] ?? f.name_i18n?.['ru-RU'] ?? '—';
+              const deprecated = !!f.deprecated_at;
               return (
                 <tr
                   key={f.id}
-                  className={cn('border-t border-border', !readOnly && 'hover:bg-divider/40')}
+                  className={cn(
+                    'border-t border-border',
+                    !readOnly && 'hover:bg-divider/40',
+                    deprecated && 'opacity-60',
+                  )}
                   data-testid={`factor-row-${f.code}`}
+                  data-deprecated={deprecated ? 'true' : undefined}
                 >
                   <td className="px-3 py-3 text-text-secondary tabular-nums">{idx + 1}</td>
                   <td className="px-3 py-3 font-mono text-xs text-text-secondary">{f.code}</td>
                   <td className="px-3 py-3 text-text-primary">
                     <div className="flex flex-col gap-1">
-                      <span>{name}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>{name}</span>
+                        {deprecated ? (
+                          <StatusBadge
+                            tone="archived"
+                            label={t('methodology.deprecated_badge')}
+                            outline
+                            className="text-[10px]"
+                          />
+                        ) : null}
+                      </div>
                       <div className="inline-flex items-center gap-1.5" aria-label={t('common.completeness')}>
                         {SUPPORTED_LOCALES.map((loc) => {
                           const filled = !!f.name_i18n?.[loc] && f.name_i18n[loc]!.trim().length > 0;

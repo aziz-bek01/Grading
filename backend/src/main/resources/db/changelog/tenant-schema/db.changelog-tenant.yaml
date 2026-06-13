@@ -144,3 +144,29 @@ databaseChangeLog:
   - include:
       file: 038-seed-panel-permissions.yaml
       relativeToChangelogFile: true
+  # methodology-approved-edit (DA-1/2/3): let an audited SUPER_ADMIN edit scoring
+  # fields on an APPROVED methodology version while preserving already-evaluated
+  # positions byte-for-byte. Apply order 039 -> 042:
+  #   039 additive nullable methodology_basis_snapshot (JSONB) +
+  #       methodology_basis_snapshot_at (TIMESTAMPTZ) on evaluations (DA-1 part A)
+  #   040 set-based, idempotent, tenant-scoped backfill of that snapshot for every
+  #       non-archived evaluation from its version's CURRENT factors/levels — MUST
+  #       run before the approved-edit feature is enabled (DA-1 part B). Ordered
+  #       strictly AFTER 039 (the column must exist first).
+  #   041 additive nullable deprecated_at/deprecated_by + partial active-only
+  #       indexes on factors / factor_levels for soft "remove" (DA-2). Independent.
+  #   042 GUC-gated (app.methodology_approved_edit='on') APPROVED carve-out in the
+  #       factor / factor_level immutability triggers; LOCKED/ARCHIVED stay hard-
+  #       immutable (DA-3). CREATE OR REPLACE only — 011 untouched. Independent.
+  - include:
+      file: 039-evaluations-add-methodology-basis-snapshot.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 040-backfill-methodology-basis-snapshot.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 041-factors-levels-soft-deprecate.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 042-factor-triggers-approved-edit-carveout.yaml
+      relativeToChangelogFile: true

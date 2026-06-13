@@ -1,0 +1,43 @@
+# DA-1 (part A) — Per-evaluation methodology basis snapshot columns.
+#
+# Feature: SUPER_ADMIN may edit scoring fields (weight / max_points / points /
+# scale_value / required / sort_order) on an APPROVED methodology version. To
+# guarantee already-evaluated positions are preserved byte-for-byte, every
+# evaluation captures the factor + level definitions it was scored against in
+# an immutable per-evaluation JSONB snapshot. Reporting / re-grade logic reads
+# the snapshot, never the (now mutable) live factors/factor_levels.
+#
+# PO chose a column over a side table — one capture per evaluation, written
+# once at scoring/approval time and never mutated; a child table would add
+# joins + its own RLS surface for no benefit.
+#
+# ADDITIVE, online-safe, both columns NULLABLE:
+#   - methodology_basis_snapshot     JSONB        — the captured factor/level definitions
+#   - methodology_basis_snapshot_at  TIMESTAMPTZ  — when the snapshot was taken
+# Existing rows stay NULL until the 040 backfill populates them. New evaluations
+# are populated by the application at scoring time.
+#
+# Tenant-safety: `evaluations` already has FORCE RLS + tenant_isolation_evaluations
+# (030/031). New columns inherit the table's RLS policy automatically — no policy
+# change required (no new table). Column style mirrors the JSONB / TIMESTAMPTZ
+# columns already on this table (e.g. name_i18n JSONB, submitted_at TIMESTAMPTZ).
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-039-evaluations-add-methodology-basis-snapshot
+      author: database-architect
+      context: mode-shared
+      labels: methodology-approved-edit,preservation,da-1
+      changes:
+        - addColumn:
+            tableName: evaluations
+            columns:
+              - column: { name: methodology_basis_snapshot, type: JSONB }
+              - column: { name: methodology_basis_snapshot_at, type: TIMESTAMPTZ }
+      rollback:
+        - dropColumn:
+            tableName: evaluations
+            columnName: methodology_basis_snapshot_at
+        - dropColumn:
+            tableName: evaluations
+            columnName: methodology_basis_snapshot

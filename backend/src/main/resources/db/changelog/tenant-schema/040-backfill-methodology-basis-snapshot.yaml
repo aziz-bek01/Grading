@@ -1,0 +1,99 @@
+# DA-1 (part B) — Backfill methodology_basis_snapshot for legacy evaluations.
+#
+# For every existing NON-ARCHIVED evaluation that still has a NULL snapshot,
+# capture the CURRENT factor + level state of that evaluation's
+# methodology_version_id and stamp methodology_basis_snapshot_at = now().
+# This MUST run before the approved-edit feature is enabled, so that once
+# APPROVED methodology versions become mutable, every prior evaluation already
+# carries its own frozen basis and is preserved byte-for-byte.
+#
+# Set-based — NO loop. A single UPDATE ... FROM (sub-select with jsonb_agg)
+# computes one snapshot per evaluation. The sub-select aggregates levels per
+# factor (correlated jsonb_agg) then factors per version.
+#
+# JSON shape (per the DA-1 spec):
+#   [ { "id","code","weight","max_points","required","sort_order",
+#       "levels": [ { "id","code","points","scale_value" }, ... ] }, ... ]
+#
+# IDEMPOTENT: WHERE methodology_basis_snapshot IS NULL — a re-run only fills
+#   rows still missing a snapshot; already-captured rows are never overwritten.
+#
+# TENANT-SAFETY (correct in BOTH deployment modes):
+#   - mode-shared: all tenants share the public schema. The join is scoped by
+#     the evaluation's OWN tenant_id (f.tenant_id = e.tenant_id), NOT by a
+#     session GUC, so each evaluation is snapshotted strictly against factors of
+#     its own tenant + version. Factors/levels of another tenant can never be
+#     pulled in even though they live in the same table.
+#   - schema-per-tenant: this same YAML runs once per tenant schema against that
+#     schema's own factors/factor_levels/evaluations; the tenant_id join is
+#     redundant-but-correct there.
+#   - This DML runs as grading_migrator (BYPASSRLS), so RLS does not silently
+#     filter rows; correctness therefore relies on the explicit tenant_id join,
+#     which is present on every join below — never on the GUC.
+#
+# Factor/level ordering inside the JSON is deterministic (ORDER BY sort_order /
+# level_order) so the captured document is stable and diffable.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-040-backfill-methodology-basis-snapshot
+      author: database-architect
+      context: mode-shared
+      labels: methodology-approved-edit,preservation,data-migration,da-1
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              UPDATE evaluations e
+                 SET methodology_basis_snapshot    = basis.snapshot,
+                     methodology_basis_snapshot_at = now()
+              FROM (
+                SELECT
+                  f.tenant_id                AS tenant_id,
+                  f.methodology_version_id   AS methodology_version_id,
+                  jsonb_agg(
+                    jsonb_build_object(
+                      'id',         f.id,
+                      'code',       f.code,
+                      'weight',     f.weight,
+                      'max_points', f.max_points,
+                      'required',   f.required,
+                      'sort_order', f.sort_order,
+                      'levels',     COALESCE(lv.levels, '[]'::jsonb)
+                    )
+                    ORDER BY f.sort_order, f.id
+                  ) AS snapshot
+                FROM factors f
+                LEFT JOIN LATERAL (
+                  SELECT jsonb_agg(
+                           jsonb_build_object(
+                             'id',          l.id,
+                             'code',        l.code,
+                             'points',      l.points,
+                             'scale_value', l.scale_value
+                           )
+                           ORDER BY l.level_order, l.id
+                         ) AS levels
+                  FROM factor_levels l
+                  WHERE l.factor_id = f.id
+                    AND l.tenant_id = f.tenant_id
+                ) lv ON true
+                GROUP BY f.tenant_id, f.methodology_version_id
+              ) basis
+              WHERE e.methodology_basis_snapshot IS NULL
+                AND e.status <> 'ARCHIVED'
+                AND basis.tenant_id              = e.tenant_id
+                AND basis.methodology_version_id = e.methodology_version_id;
+      rollback:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Clear ONLY rows this backfill could have written. Safe because
+              -- the column is feature-new (DA-1); no other writer exists yet at
+              -- the time this migration is rolled back.
+              UPDATE evaluations
+                 SET methodology_basis_snapshot    = NULL,
+                     methodology_basis_snapshot_at = NULL
+              WHERE methodology_basis_snapshot IS NOT NULL;

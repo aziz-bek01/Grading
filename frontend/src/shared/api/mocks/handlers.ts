@@ -216,11 +216,68 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
   return null;
 }
 
+/**
+ * T4 — closure: a department's own id + all descendant ids (BFS over parent_id).
+ * Mirrors the BE closure used by position-counts + includeSubtree.
+ */
+function departmentSubtreeIds(projectId: string | null, rootId: string): Set<string> {
+  const scope = mockDb.departments.filter(
+    (d) => !projectId || d.project_id === projectId,
+  );
+  const childrenOf = new Map<string, string[]>();
+  for (const d of scope) {
+    if (d.parent_id) {
+      const arr = childrenOf.get(d.parent_id) ?? [];
+      arr.push(d.id);
+      childrenOf.set(d.parent_id, arr);
+    }
+  }
+  const out = new Set<string>([rootId]);
+  const stack = [rootId];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    for (const c of childrenOf.get(cur) ?? []) {
+      if (!out.has(c)) {
+        out.add(c);
+        stack.push(c);
+      }
+    }
+  }
+  return out;
+}
+
 function handleDepartments(method: string, path: string, query: URLSearchParams, config: AxiosRequestConfig): MatchResult | null {
   if (path === '/departments/tree' && method === 'GET') {
     const projectId = query.get('projectId');
     const list = projectId ? mockDb.departments.filter((d) => d.project_id === projectId) : mockDb.departments;
     return ok({ items: list });
+  }
+  // T4 (Defect 1) — GET /departments/position-counts?projectId= → snake_case rows
+  // { department_id, direct_count, subtree_count }. direct = ACTIVE positions in
+  // the dept; subtree = self + all descendants (rolled up via the closure).
+  if (path === '/departments/position-counts' && method === 'GET') {
+    const projectId = query.get('projectId');
+    const depts = mockDb.departments.filter(
+      (d) => !projectId || d.project_id === projectId,
+    );
+    const activePositions = mockDb.positions.filter(
+      (p) => (!projectId || p.project_id === projectId) && p.status === 'ACTIVE',
+    );
+    const directByDept = new Map<string, number>();
+    for (const p of activePositions) {
+      directByDept.set(p.department_id, (directByDept.get(p.department_id) ?? 0) + 1);
+    }
+    const rows = depts.map((d) => {
+      const subtree = departmentSubtreeIds(projectId, d.id);
+      let subtreeCount = 0;
+      for (const id of subtree) subtreeCount += directByDept.get(id) ?? 0;
+      return {
+        department_id: d.id,
+        direct_count: directByDept.get(d.id) ?? 0,
+        subtree_count: subtreeCount,
+      };
+    });
+    return ok(rows);
   }
   if (path === '/departments' && method === 'POST') {
     const raw = readBody<Partial<MockDepartment> & Record<string, unknown>>(config);
@@ -262,11 +319,20 @@ function handlePositions(method: string, path: string, query: URLSearchParams, c
   if (path === '/positions' && method === 'GET') {
     const projectId = query.get('projectId');
     const departmentId = query.get('departmentId');
+    const includeSubtree = query.get('includeSubtree') === 'true';
     const status = query.get('status');
     const page = parseInt(query.get('page') ?? '0', 10);
     const size = parseInt(query.get('size') ?? '20', 10);
     let list = projectId ? mockDb.positions.filter((p) => p.project_id === projectId) : mockDb.positions;
-    if (departmentId) list = list.filter((p) => p.department_id === departmentId);
+    if (departmentId) {
+      // T4 — includeSubtree expands the department to its whole subtree.
+      if (includeSubtree) {
+        const ids = departmentSubtreeIds(projectId, departmentId);
+        list = list.filter((p) => ids.has(p.department_id));
+      } else {
+        list = list.filter((p) => p.department_id === departmentId);
+      }
+    }
     if (status) list = list.filter((p) => p.status === status);
     return ok(paginate(list, page, size));
   }
@@ -3539,6 +3605,55 @@ function handlePanels(
     }
     panel.status = 'SUBMITTED';
     panel.submitted_at = new Date().toISOString();
+    return ok(panel);
+  }
+
+  // T3 (Defect 2) — DELETE /panels/:id  body { reason >= 5 }; COLLECTING only → 204
+  const del = /^\/panels\/([^/]+)$/.exec(path);
+  if (del && method === 'DELETE') {
+    const panel = panelById(del[1]);
+    if (!panel) return notFound();
+    const raw = readBody<{ reason?: string }>(config);
+    if (!raw?.reason || raw.reason.trim().length < 5) {
+      return { status: 400, body: { code: 'VALIDATION_FAILED', message: 'reason >= 5 chars required' } };
+    }
+    if (panel.status !== 'COLLECTING') {
+      return { status: 400, body: { code: 'PANEL_NOT_DELETABLE', message: `Cannot delete in ${panel.status}` } };
+    }
+    mockDb.panels = mockDb.panels.filter((p) => p.id !== panel.id);
+    mockDb.panelAssignments = mockDb.panelAssignments.filter((a) => a.panel_id !== panel.id);
+    return { status: 204, body: null };
+  }
+
+  // T3 (Defect 2) — POST /panels/:id/archive  body { reason }; AWAITING|AVERAGED|SUBMITTED
+  const archive = /^\/panels\/([^/]+)\/archive$/.exec(path);
+  if (archive && method === 'POST') {
+    const panel = panelById(archive[1]);
+    if (!panel) return notFound();
+    const raw = readBody<{ reason?: string }>(config);
+    if (!raw?.reason || raw.reason.trim().length < 5) {
+      return { status: 400, body: { code: 'VALIDATION_FAILED', message: 'reason >= 5 chars required' } };
+    }
+    if (
+      panel.status !== 'AWAITING_EVALUATIONS' &&
+      panel.status !== 'AVERAGED' &&
+      panel.status !== 'SUBMITTED'
+    ) {
+      return { status: 400, body: { code: 'PANEL_NOT_ARCHIVABLE', message: `Cannot archive in ${panel.status}` } };
+    }
+    panel.status = 'ARCHIVED';
+    return ok(panel);
+  }
+
+  // T3 (Defect 2) — POST /panels/:id/reopen → AWAITING_EVALUATIONS; SUBMITTED|AVERAGED
+  const reopen = /^\/panels\/([^/]+)\/reopen$/.exec(path);
+  if (reopen && method === 'POST') {
+    const panel = panelById(reopen[1]);
+    if (!panel) return notFound();
+    if (panel.status === 'SUBMITTED' || panel.status === 'AVERAGED') {
+      panel.status = 'AWAITING_EVALUATIONS';
+      panel.submitted_at = null;
+    }
     return ok(panel);
   }
 

@@ -35,6 +35,13 @@ export const routes = {
   projectEvaluation: (projectId: string) => `/app/projects/${projectId}/evaluation`,
   projectEvaluationDetail: (projectId: string, evaluationId: string) =>
     `/app/projects/${projectId}/evaluation/${evaluationId}`,
+  /**
+   * T3 (Defect 2) — evaluation-panel detail. A created panel was previously
+   * fetchable via API but had no UI surface; this route un-dead-ends both the
+   * panels list and the "already paneled" wizard rows (deep-link target).
+   */
+  projectPanelDetail: (projectId: string, panelId: string) =>
+    `/app/projects/${projectId}/evaluation/panels/${panelId}`,
   projectGrades: (projectId: string) => `/app/projects/${projectId}/grades`,
   projectGradeStructureEdit: (projectId: string, gradeStructureId: string) =>
     `/app/projects/${projectId}/grades/${gradeStructureId}/edit`,

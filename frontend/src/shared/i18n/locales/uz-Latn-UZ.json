@@ -696,7 +696,14 @@
       "archive_reason_placeholder": "Arxivlash sababini kiriting (kamida 5 ta belgi)",
       "not_found_title": "Panel topilmadi",
       "not_found_body": "Panel topilmadi yoki sizda unga ruxsat yo'q.",
-      "back_to_list": "Panellar ro'yxatiga"
+      "back_to_list": "Panellar ro'yxatiga",
+      "action_failed": "Amalni bajarib bo‘lmadi.",
+      "error_ref": "Kod: {{code}} · Ref: {{corr}}",
+      "error_not_deletable": "Bu panelni endi o‘chirib bo‘lmaydi — uning statusi o‘zgargan. Sahifani yangilang; agar u yig‘ish bosqichidan o‘tgan bo‘lsa, Arxivlashdan foydalaning.",
+      "error_not_archivable": "Bu panelni endi arxivlab bo‘lmaydi — uning statusi o‘zgargan. Sahifani yangilang.",
+      "error_forbidden": "Sizda bu panel bo‘limida bu amalni bajarishga ruxsat yo‘q.",
+      "error_not_found": "Bu panel endi mavjud emas yoki sizda kirish huquqi yo‘q. Sahifani yangilang.",
+      "error_network": "Serverga ulanib bo‘lmadi. Aloqani tekshirib, qayta urinib ko‘ring."
     },
     "dialog": {
       "title": "Baholash panelini ochish",

@@ -696,7 +696,14 @@
       "archive_reason_placeholder": "Give a reason for archiving (at least 5 characters)",
       "not_found_title": "Panel not found",
       "not_found_body": "This panel was not found, or you do not have access to it.",
-      "back_to_list": "Back to panels"
+      "back_to_list": "Back to panels",
+      "action_failed": "The action could not be completed.",
+      "error_ref": "Code: {{code}} · Ref: {{corr}}",
+      "error_not_deletable": "This panel can no longer be deleted — its status changed. Refresh the page; if it has moved past collecting, use Archive instead.",
+      "error_not_archivable": "This panel can no longer be archived — its status changed. Refresh the page.",
+      "error_forbidden": "You don’t have permission to perform this action in this panel’s department.",
+      "error_not_found": "This panel is no longer available, or you don’t have access. Refresh the page.",
+      "error_network": "Couldn’t reach the server. Check your connection and try again."
     },
     "dialog": {
       "title": "Open evaluation panel",

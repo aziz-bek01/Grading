@@ -7,6 +7,7 @@ import {
   signOut,
 } from '@/test/testUtils';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { ApiError } from '@/shared/api/apiError';
 import { PanelDetailPage } from './PanelDetailPage';
 import type { PanelDetail, PanelStatus } from '../panelTypes';
 
@@ -29,6 +30,11 @@ const detailState = { status: 'COLLECTING' as PanelStatus };
 const deletePanelSpy = vi.fn().mockResolvedValue(undefined);
 const archivePanelSpy = vi.fn().mockResolvedValue({});
 const reopenPanelSpy = vi.fn().mockResolvedValue({});
+
+// Mutable mutation-error state so a test can drive the "server rejected → the
+// FE must SHOW it" path (the prod delete-does-nothing regression guard).
+const deleteState = { isError: false, error: null as unknown };
+const reopenState = { isError: false, error: null as unknown };
 
 function makeDetail(status: PanelStatus): PanelDetail {
   return {
@@ -57,9 +63,26 @@ vi.mock('../hooks/usePanels', () => ({
     error: null,
     refetch: vi.fn(),
   }),
-  useDeletePanel: () => ({ mutateAsync: deletePanelSpy, isPending: false }),
-  useArchivePanel: () => ({ mutateAsync: archivePanelSpy, isPending: false }),
-  useReopenPanel: () => ({ mutate: reopenPanelSpy, isPending: false }),
+  useDeletePanel: () => ({
+    mutateAsync: deletePanelSpy,
+    isPending: false,
+    isError: deleteState.isError,
+    error: deleteState.error,
+    reset: vi.fn(),
+  }),
+  useArchivePanel: () => ({
+    mutateAsync: archivePanelSpy,
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  }),
+  useReopenPanel: () => ({
+    mutate: reopenPanelSpy,
+    isPending: false,
+    isError: reopenState.isError,
+    error: reopenState.error,
+  }),
 }));
 
 function renderPage(permissions: string[]) {
@@ -85,6 +108,10 @@ describe('<PanelDetailPage /> (T3 — panel management)', () => {
     deletePanelSpy.mockClear();
     archivePanelSpy.mockClear();
     reopenPanelSpy.mockClear();
+    deleteState.isError = false;
+    deleteState.error = null;
+    reopenState.isError = false;
+    reopenState.error = null;
   });
   afterEach(() => signOut());
 
@@ -168,5 +195,36 @@ describe('<PanelDetailPage /> (T3 — panel management)', () => {
     renderPage(MANAGE);
     fireEvent.click(screen.getByTestId('panel-reopen-action'));
     expect(reopenPanelSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression guard for the production "delete does nothing" report: when the
+  // server rejects the delete, the confirm dialog must STAY OPEN and SHOW the
+  // error (code + ref), never silently no-op.
+  it('Delete failure surfaces the server error and keeps the dialog open', () => {
+    detailState.status = 'COLLECTING';
+    deleteState.isError = true;
+    deleteState.error = new ApiError(400, {
+      code: 'PANEL_NOT_DELETABLE',
+      message: 'forced',
+      correlation_id: 'corr-xyz',
+    });
+    renderPage(MANAGE);
+    fireEvent.click(screen.getByTestId('panel-delete-action'));
+    const dialog = screen.getByRole('dialog');
+    const banner = within(dialog).getByTestId('confirm-dialog-error');
+    expect(banner).toBeInTheDocument();
+    // The stable code + correlation id are surfaced for diagnosis.
+    expect(banner).toHaveTextContent('PANEL_NOT_DELETABLE');
+    expect(banner).toHaveTextContent('corr-xyz');
+    // Dialog is NOT dismissed on failure.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('Reopen failure surfaces an inline error banner (no silent no-op)', () => {
+    detailState.status = 'SUBMITTED';
+    reopenState.isError = true;
+    reopenState.error = new ApiError(404, { code: 'NOT_FOUND', message: 'gone' });
+    renderPage(MANAGE);
+    expect(screen.getByTestId('panel-reopen-error')).toBeInTheDocument();
   });
 });

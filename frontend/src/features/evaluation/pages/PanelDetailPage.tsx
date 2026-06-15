@@ -70,6 +70,34 @@ export function PanelDetailPage() {
 
   const backToList = () => navigate(routes.projectEvaluation(projectId));
 
+  // Turn a failed management action into a VISIBLE, localized message instead of
+  // silently doing nothing (the prod symptom: confirm a delete → nothing
+  // happens). We surface the stable backend error code + correlation id so the
+  // real cause (e.g. PANEL_NOT_DELETABLE after a status change, an ABAC 404, or
+  // a 403) is diagnosable rather than swallowed. The BE stays the source of
+  // truth — this only reports what it returned.
+  const describeError = (err: unknown): string => {
+    if (!(err instanceof ApiError)) return t('panel.detail.action_failed');
+    if (err.status === 0) return t('panel.detail.error_network');
+    const ref = t('panel.detail.error_ref', {
+      code: err.code,
+      corr: err.correlationId ?? t('common.dash'),
+    });
+    let base: string;
+    if (err.code === 'PANEL_NOT_DELETABLE') base = t('panel.detail.error_not_deletable');
+    else if (err.code === 'PANEL_NOT_ARCHIVABLE') base = t('panel.detail.error_not_archivable');
+    else if (err.isForbidden()) base = t('panel.detail.error_forbidden');
+    else if (err.isNotFound()) base = t('panel.detail.error_not_found');
+    else base = t('panel.detail.action_failed');
+    return `${base} ${ref}`;
+  };
+
+  const closeDialog = () => {
+    deleteMutation.reset();
+    archiveMutation.reset();
+    setPending(null);
+  };
+
   if (!canRead) return <NoAccessState />;
   if (detailQuery.isLoading) return <LoadingState />;
   if (detailQuery.error) {
@@ -159,6 +187,18 @@ export function PanelDetailPage() {
         ) : null}
       </header>
 
+      {/* Reopen has no confirm dialog, so surface its failure as an inline
+          banner (instead of the previous silent no-op). */}
+      {reopenMutation.isError ? (
+        <div
+          role="alert"
+          data-testid="panel-reopen-error"
+          className="rounded-md border border-danger-500/30 bg-danger-50 text-danger-700 text-sm p-3"
+        >
+          {describeError(reopenMutation.error)}
+        </div>
+      ) : null}
+
       {/* Roster + blind-safe status (reused component). */}
       <PanelProgressView panelId={panel.id} />
 
@@ -181,42 +221,57 @@ export function PanelDetailPage() {
       ) : null}
 
       {/* Delete — reason-required confirm (≥ 5 chars), identical to the
-          evaluation delete confirm. On success return to the list. */}
+          evaluation delete confirm. On success return to the list; on failure
+          the dialog STAYS OPEN with the server error surfaced (no silent
+          no-op). */}
       <ConfirmDialog
         open={pending === 'delete'}
         destructive
         requireReason
         reasonMinLength={5}
+        busy={deleteMutation.isPending}
+        error={deleteMutation.isError ? describeError(deleteMutation.error) : null}
         title={t('panel.detail.delete_title')}
         body={t('panel.detail.delete_body')}
         confirmLabel={t('common.delete')}
         reasonLabel={t('common.reason_label')}
         reasonPlaceholder={t('panel.detail.delete_reason_placeholder')}
-        onCancel={() => setPending(null)}
+        onCancel={closeDialog}
         onConfirm={async (reason) => {
           if (!reason) return;
-          await deleteMutation.mutateAsync(reason);
-          setPending(null);
-          backToList();
+          try {
+            await deleteMutation.mutateAsync(reason);
+            setPending(null);
+            backToList();
+          } catch {
+            // Keep the dialog open; the error is shown via `error` above.
+          }
         }}
       />
 
       {/* Archive — reason-required confirm; stays on the page (status flips to
-          ARCHIVED, actions disappear). */}
+          ARCHIVED, actions disappear). On failure the dialog stays open with
+          the server error surfaced. */}
       <ConfirmDialog
         open={pending === 'archive'}
         requireReason
         reasonMinLength={5}
+        busy={archiveMutation.isPending}
+        error={archiveMutation.isError ? describeError(archiveMutation.error) : null}
         title={t('panel.detail.archive_title')}
         body={t('panel.detail.archive_body')}
         confirmLabel={t('panel.detail.archive')}
         reasonLabel={t('common.reason_label')}
         reasonPlaceholder={t('panel.detail.archive_reason_placeholder')}
-        onCancel={() => setPending(null)}
+        onCancel={closeDialog}
         onConfirm={async (reason) => {
           if (!reason) return;
-          await archiveMutation.mutateAsync(reason);
-          setPending(null);
+          try {
+            await archiveMutation.mutateAsync(reason);
+            setPending(null);
+          } catch {
+            // Keep the dialog open; the error is shown via `error` above.
+          }
         }}
       />
     </div>

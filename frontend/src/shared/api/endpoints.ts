@@ -88,6 +88,14 @@ export const endpoints = {
     myMentions: '/comments/my-mentions',
   },
   /**
+   * Evaluation sheet endpoints. `my` is the evaluator self-inbox
+   * (GET /evaluations/my, gated EVALUATION_READ) returning ONLY the caller's own
+   * sheets — tenant + evaluator are derived server-side from the JWT, never sent.
+   */
+  evaluations: {
+    my: '/evaluations/my',
+  },
+  /**
    * Multi-evaluator EVALUATION_PANEL endpoints (MVP 2). Base /panels.
    * Permissions: create/assign/withdraw/lock/submit → EVALUATION_PANEL_MANAGE;
    * list/detail → EVALUATION_READ; result → CAMPAIGN_RESULTS_VIEW (404 while
@@ -128,6 +136,14 @@ export const endpoints = {
     delete: (id: string) => `/panels/${id}`,
     archive: (id: string) => `/panels/${id}/archive`,
     reopen: (id: string) => `/panels/${id}/reopen`,
+    /**
+     * Feature 2 — reopen an APPROVED panel to add an ADDITIONAL expert
+     * (POST /panels/{id}/reopen-for-expert; EVALUATION_PANEL_MANAGE). Body
+     * (snake_case): { additional_evaluator_user_id, reason ≥ 5 }. Returns the
+     * updated PanelResponse with status AWAITING_EVALUATIONS. 400
+     * PANEL_NOT_APPROVED_FOR_REOPEN if the panel is not APPROVED.
+     */
+    reopenForExpert: (id: string) => `/panels/${id}/reopen-for-expert`,
   },
   /**
    * Users & Access (10 endpoints — MVP 1 prompt §6).

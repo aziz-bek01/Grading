@@ -59,6 +59,7 @@
     "job_profiles": "Job profiles",
     "methodology": "Methodology",
     "evaluation": "Evaluation",
+    "my_evaluations": "My evaluations",
     "grades": "Grades",
     "compensation": "Compensation",
     "reports": "Reports",
@@ -604,6 +605,13 @@
       "error_invalid_transition": "Action not available: the request status has already changed. Refresh the page."
     }
   },
+  "my_evaluations": {
+    "title": "My evaluations",
+    "subtitle": "Scoring sheets assigned to you. Open a sheet to enter scores.",
+    "empty_title": "No evaluations assigned to you yet",
+    "empty_body": "When you are assigned as an evaluator for a position, the scoring sheet will appear here.",
+    "select_project_hint": "Select a project at the top to open the scoring sheet."
+  },
   "panel": {
     "role": {
       "HR_DIRECTOR": "HR director",
@@ -764,6 +772,21 @@
       "title": "Add an evaluator after start?",
       "body": "The panel reopens to awaiting evaluations. This can delay the CEO step until the new evaluator completes.",
       "confirm": "Add evaluator"
+    },
+    "reopen_expert": {
+      "action": "Add expert",
+      "title": "Reopen for additional expert",
+      "consequence": "The approved result will be reopened. After the expert scores, the panel must be approved again.",
+      "evaluator_label": "Additional expert",
+      "evaluator_required": "Select an expert.",
+      "reason_placeholder": "Enter the reason for reopening (at least 5 characters)",
+      "reason_invalid": "Enter a reason (at least {{min}} characters).",
+      "confirm": "Reopen and add expert",
+      "error_not_approved": "This panel cannot be reopened — it is not in the Approved status. Refresh the page.",
+      "error_forbidden": "You do not have permission for this action in this panel's department.",
+      "error_not_found": "Panel unavailable or you do not have access. Refresh the page.",
+      "error_validation": "Check the selected expert and the reason.",
+      "error_generic": "Could not reopen the panel. Please try again."
     }
   },
   "comment": {

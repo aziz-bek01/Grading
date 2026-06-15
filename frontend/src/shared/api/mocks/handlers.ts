@@ -1623,6 +1623,40 @@ function handleEvaluations(
   query: URLSearchParams,
   config: AxiosRequestConfig,
 ): MatchResult | null {
+  // GET /evaluations/my — evaluator self-inbox (Feature 1). Returns a JSON
+  // ARRAY (NOT a PageResponse) of the caller's OWN sheets. The mock can't know
+  // the JWT actor, so it returns every evaluation that carries an
+  // evaluator_user_id (assigned sheets), shaped exactly like BE MyEvaluationRow
+  // (snake_case): localized position_title map + filled/total factor counts.
+  if (path === '/evaluations/my' && method === 'GET') {
+    const rows = mockDb.evaluations
+      .filter((e) => e.evaluator_user_id != null)
+      .map((ev) => {
+        const pos = mockDb.positions.find((p) => p.id === ev.position_id);
+        const version = mockDb.methodologyVersions.find(
+          (v) => v.id === ev.methodology_version_id,
+        );
+        const totalFactors = version?.factors.length ?? 0;
+        const filledFactors = mockDb.evaluationScores.filter(
+          (s) => s.evaluation_id === ev.id,
+        ).length;
+        const panel = mockDb.panelAssignments.find(
+          (a) => a.evaluation_id === ev.id,
+        );
+        return {
+          evaluation_id: ev.id,
+          panel_id: panel?.panel_id ?? null,
+          position_id: ev.position_id,
+          position_code: pos?.code ?? '',
+          position_title: pos?.title_i18n ?? {},
+          status: ev.status,
+          filled_factors_count: filledFactors,
+          total_factors_count: totalFactors,
+        };
+      });
+    return ok(rows);
+  }
+
   // POST /evaluations/preview-score — stateless preview
   if (path === '/evaluations/preview-score' && method === 'POST') {
     const raw = readBody<Record<string, unknown>>(config);
@@ -3697,6 +3731,55 @@ function handlePanels(
       panel.status = 'AWAITING_EVALUATIONS';
       panel.submitted_at = null;
     }
+    return ok(panel);
+  }
+
+  // Feature 2 — POST /panels/:id/reopen-for-expert  body { additional_evaluator_user_id, reason >= 5 }
+  // APPROVED → AWAITING_EVALUATIONS; adds the expert's DRAFT seat. 400
+  // PANEL_NOT_APPROVED_FOR_REOPEN when the panel is not APPROVED; 400 validation
+  // when the evaluator / reason is missing.
+  const reopenExpert = /^\/panels\/([^/]+)\/reopen-for-expert$/.exec(path);
+  if (reopenExpert && method === 'POST') {
+    const panel = panelById(reopenExpert[1]);
+    if (!panel) return notFound();
+    const raw = readBody<{ additional_evaluator_user_id?: string; reason?: string }>(
+      config,
+    );
+    if (!raw?.additional_evaluator_user_id) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'additional_evaluator_user_id required' },
+      };
+    }
+    if (!raw?.reason || raw.reason.trim().length < 5) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'reason >= 5 chars required' },
+      };
+    }
+    if (panel.status !== 'APPROVED') {
+      return {
+        status: 400,
+        body: {
+          code: 'PANEL_NOT_APPROVED_FOR_REOPEN',
+          message: `Cannot reopen for expert in ${panel.status}`,
+        },
+      };
+    }
+    panel.status = 'AWAITING_EVALUATIONS';
+    panel.approved_at = null;
+    panel.assigned_grade_number = null;
+    panel.grade_band_id = null;
+    // Add the expert as an ADDITIONAL assignment so the roster reflects the seat.
+    mockDb.panelAssignments.push({
+      id: `pa-expert-${panel.id}-${raw.additional_evaluator_user_id}`,
+      panel_id: panel.id,
+      evaluator_user_id: raw.additional_evaluator_user_id,
+      evaluator_role: 'ADDITIONAL',
+      assignment_status: 'ASSIGNED',
+      updated_at: new Date().toISOString(),
+    });
+    panel.evaluator_count = (panel.evaluator_count ?? 0) + 1;
     return ok(panel);
   }
 

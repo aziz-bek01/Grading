@@ -14,6 +14,13 @@ export const routes = {
   clientDetails: (tenantId: string) => `/app/clients/${tenantId}`,
   projects: '/app/projects',
   audit: '/app/audit',
+  /**
+   * Feature 1 — evaluator self-inbox ("My evaluations"). Global (NOT
+   * project-scoped) because GET /evaluations/my returns the caller's own sheets
+   * across projects. Each row deep-links to the project-scoped sheet route via
+   * {@link projectEvaluationDetail} using the active project id.
+   */
+  myEvaluations: '/app/my-evaluations',
   usersAccess: '/app/users',
   /** Legacy slug — kept for redirect; new code MUST use `usersAccess`. */
   usersAccessLegacy: '/app/users-access',

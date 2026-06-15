@@ -82,6 +82,9 @@ const EvaluationDetailsPage = lazy(() =>
 const PanelDetailPage = lazy(() =>
   import('@/features/evaluation/pages/PanelDetailPage').then((m) => ({ default: m.PanelDetailPage })),
 );
+const MyEvaluationsPage = lazy(() =>
+  import('@/features/evaluation/pages/MyEvaluationsPage').then((m) => ({ default: m.MyEvaluationsPage })),
+);
 const GradeStructureListPage = lazy(() =>
   import('@/features/grade-structure/pages/GradeStructureListPage').then((m) => ({ default: m.GradeStructureListPage })),
 );
@@ -289,6 +292,13 @@ export function AppRouter() {
           >
             <Route path="approvals" element={<ApprovalsInboxPage />} />
             <Route path="approvals/:approvalId" element={<ApprovalDetailsPage />} />
+          </Route>
+
+          {/* Feature 1 — evaluator self-inbox. Global (not project-scoped)
+              because GET /evaluations/my spans the caller's projects. Gated
+              EVALUATION_READ so an assigned evaluator can reach their sheets. */}
+          <Route element={<RequirePermission permissions={PERMISSIONS.EVALUATION_READ} />}>
+            <Route path="my-evaluations" element={<MyEvaluationsPage />} />
           </Route>
 
           <Route element={<RequireAuditPermission />}>

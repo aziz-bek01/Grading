@@ -30,11 +30,13 @@ const detailState = { status: 'COLLECTING' as PanelStatus };
 const deletePanelSpy = vi.fn().mockResolvedValue(undefined);
 const archivePanelSpy = vi.fn().mockResolvedValue({});
 const reopenPanelSpy = vi.fn().mockResolvedValue({});
+const reopenForExpertSpy = vi.fn().mockResolvedValue({});
 
 // Mutable mutation-error state so a test can drive the "server rejected → the
 // FE must SHOW it" path (the prod delete-does-nothing regression guard).
 const deleteState = { isError: false, error: null as unknown };
 const reopenState = { isError: false, error: null as unknown };
+const reopenExpertState = { isError: false, error: null as unknown };
 
 function makeDetail(status: PanelStatus): PanelDetail {
   return {
@@ -83,6 +85,23 @@ vi.mock('../hooks/usePanels', () => ({
     isError: reopenState.isError,
     error: reopenState.error,
   }),
+  useReopenPanelForExpert: () => ({
+    mutateAsync: reopenForExpertSpy,
+    isPending: false,
+    isError: reopenExpertState.isError,
+    error: reopenExpertState.error,
+    reset: vi.fn(),
+  }),
+}));
+
+// The reopen-for-expert dialog mounts EvaluatorPicker, which calls useUsers.
+// Stub a small ACTIVE roster so the manager can pick an expert.
+vi.mock('@/features/users-access/hooks/useUsers', () => ({
+  useUsers: () => ({
+    data: { items: [{ id: 'user-x', full_name: 'Expert X', status: 'ACTIVE' }] },
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 function renderPage(permissions: string[]) {
@@ -108,10 +127,13 @@ describe('<PanelDetailPage /> (T3 — panel management)', () => {
     deletePanelSpy.mockClear();
     archivePanelSpy.mockClear();
     reopenPanelSpy.mockClear();
+    reopenForExpertSpy.mockClear();
     deleteState.isError = false;
     deleteState.error = null;
     reopenState.isError = false;
     reopenState.error = null;
+    reopenExpertState.isError = false;
+    reopenExpertState.error = null;
   });
   afterEach(() => signOut());
 
@@ -155,11 +177,14 @@ describe('<PanelDetailPage /> (T3 — panel management)', () => {
     expect(screen.queryByTestId('panel-delete-action')).not.toBeInTheDocument();
   });
 
-  it('APPROVED → NO management actions (no action, no 403 round-trip)', () => {
+  it('APPROVED → only Reopen-for-expert (no delete/archive/reopen)', () => {
     detailState.status = 'APPROVED';
     renderPage(MANAGE);
-    expect(screen.queryByTestId('panel-detail-actions')).not.toBeInTheDocument();
-    expect(screen.getByTestId('panel-detail-no-actions')).toBeInTheDocument();
+    // Feature 2: APPROVED offers exactly the reopen-for-additional-expert action.
+    expect(screen.getByTestId('panel-reopen-for-expert-action')).toBeInTheDocument();
+    expect(screen.queryByTestId('panel-delete-action')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('panel-archive-action')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('panel-reopen-action')).not.toBeInTheDocument();
   });
 
   it('LOCKED → NO management actions', () => {
@@ -226,5 +251,66 @@ describe('<PanelDetailPage /> (T3 — panel management)', () => {
     reopenState.error = new ApiError(404, { code: 'NOT_FOUND', message: 'gone' });
     renderPage(MANAGE);
     expect(screen.getByTestId('panel-reopen-error')).toBeInTheDocument();
+  });
+
+  // ---------- Feature 2: reopen for additional expert ----------
+
+  it('reopen-for-expert action is NOT shown for a non-APPROVED panel', () => {
+    detailState.status = 'AVERAGED';
+    renderPage(MANAGE);
+    expect(
+      screen.queryByTestId('panel-reopen-for-expert-action'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('reopen-for-expert action IS shown for an APPROVED panel + MANAGE', () => {
+    detailState.status = 'APPROVED';
+    renderPage(MANAGE);
+    expect(screen.getByTestId('panel-reopen-for-expert-action')).toBeInTheDocument();
+  });
+
+  it('reopen-for-expert action is hidden for a read-only (no MANAGE) user', () => {
+    detailState.status = 'APPROVED';
+    renderPage([PERMISSIONS.EVALUATION_READ]);
+    expect(
+      screen.queryByTestId('panel-reopen-for-expert-action'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a valid reopen submits the camel payload the hook maps to snake_case', async () => {
+    detailState.status = 'APPROVED';
+    renderPage(MANAGE);
+    fireEvent.click(screen.getByTestId('panel-reopen-for-expert-action'));
+    // Empty form → confirm does nothing.
+    fireEvent.click(screen.getByTestId('reopen-for-expert-confirm'));
+    expect(reopenForExpertSpy).not.toHaveBeenCalled();
+    // Fill the picker + a valid reason.
+    fireEvent.change(screen.getByTestId('reopen-expert-user'), {
+      target: { value: 'user-x' },
+    });
+    fireEvent.change(screen.getByTestId('reopen-expert-reason'), {
+      target: { value: 'needs a second opinion' },
+    });
+    fireEvent.click(screen.getByTestId('reopen-for-expert-confirm'));
+    await waitFor(() =>
+      expect(reopenForExpertSpy).toHaveBeenCalledWith({
+        additionalEvaluatorUserId: 'user-x',
+        reason: 'needs a second opinion',
+      }),
+    );
+  });
+
+  it('PANEL_NOT_APPROVED_FOR_REOPEN renders its dedicated message in the dialog', () => {
+    detailState.status = 'APPROVED';
+    reopenExpertState.isError = true;
+    reopenExpertState.error = new ApiError(400, {
+      code: 'PANEL_NOT_APPROVED_FOR_REOPEN',
+      message: 'forced',
+    });
+    renderPage(MANAGE);
+    fireEvent.click(screen.getByTestId('panel-reopen-for-expert-action'));
+    const banner = screen.getByTestId('reopen-for-expert-error');
+    // The RU default locale message for the not-approved code.
+    expect(banner).toHaveTextContent(/не находится в статусе/i);
   });
 });

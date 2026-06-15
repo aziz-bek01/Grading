@@ -8,6 +8,7 @@ import {
   Network as Sitemap,
   Briefcase,
   ClipboardList,
+  ClipboardCheck,
   Scale,
   CheckSquare,
   Layers,
@@ -109,6 +110,15 @@ export function Sidebar({ className }: SidebarProps = {}) {
   }));
 
   const governanceItems: NavItem[] = [
+    {
+      // Feature 1 — evaluator self-inbox. Global route (no active project
+      // required), gated EVALUATION_READ so an assigned evaluator can reach
+      // their own scoring sheets.
+      to: routes.myEvaluations,
+      label: t('nav.my_evaluations'),
+      icon: <ClipboardCheck size={18} aria-hidden />,
+      permission: PERMISSIONS.EVALUATION_READ,
+    },
     {
       to: routes.approvalsInbox,
       label: t('nav.approvals'),

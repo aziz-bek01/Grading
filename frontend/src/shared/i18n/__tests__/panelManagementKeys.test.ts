@@ -51,6 +51,27 @@ const NEW_KEYS = [
   // T4 — progress strip subtree figure
   'panel.dept_progress.subtree',
   'panel.dept_progress.subtree_tooltip',
+  // Feature 1 — evaluator self-inbox
+  'nav.my_evaluations',
+  'my_evaluations.title',
+  'my_evaluations.subtitle',
+  'my_evaluations.empty_title',
+  'my_evaluations.empty_body',
+  'my_evaluations.select_project_hint',
+  // Feature 2 — reopen for additional expert
+  'panel.reopen_expert.action',
+  'panel.reopen_expert.title',
+  'panel.reopen_expert.consequence',
+  'panel.reopen_expert.evaluator_label',
+  'panel.reopen_expert.evaluator_required',
+  'panel.reopen_expert.reason_placeholder',
+  'panel.reopen_expert.reason_invalid',
+  'panel.reopen_expert.confirm',
+  'panel.reopen_expert.error_not_approved',
+  'panel.reopen_expert.error_forbidden',
+  'panel.reopen_expert.error_not_found',
+  'panel.reopen_expert.error_validation',
+  'panel.reopen_expert.error_generic',
 ] as const;
 
 function resolve(bundle: unknown, dotKey: string): unknown {

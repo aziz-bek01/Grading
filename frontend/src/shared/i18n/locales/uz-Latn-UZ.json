@@ -59,6 +59,7 @@
     "job_profiles": "Lavozim profillari",
     "methodology": "Metodologiya",
     "evaluation": "Baholash",
+    "my_evaluations": "Mening baholarim",
     "grades": "Greydlar",
     "compensation": "Kompensatsiya",
     "reports": "Hisobotlar",
@@ -604,6 +605,13 @@
       "error_invalid_transition": "Amal mumkin emas: soʻrov holati allaqachon oʻzgargan. Sahifani yangilang."
     }
   },
+  "my_evaluations": {
+    "title": "Mening baholarim",
+    "subtitle": "Sizga tayinlangan baholash varaqlari. Ballar qoʻyish uchun varaqni oching.",
+    "empty_title": "Sizga hali birorta baholash tayinlanmagan",
+    "empty_body": "Siz lavozim boʻyicha ekspert etib tayinlanganingizda, baholash varagʻi shu yerda paydo boʻladi.",
+    "select_project_hint": "Baholash varagʻini ochish uchun yuqoridan loyihani tanlang."
+  },
   "panel": {
     "role": {
       "HR_DIRECTOR": "HR direktor",
@@ -764,6 +772,21 @@
       "title": "Boshlangandan keyin ekspert qo'shilsinmi?",
       "body": "Panel baholashlar kutilmoqda holatiga qaytadi. Bu yangi ekspert yakunlaguncha CEO bosqichini kechiktirishi mumkin.",
       "confirm": "Ekspert qo'shish"
+    },
+    "reopen_expert": {
+      "action": "Ekspert qoʻshish",
+      "title": "Qoʻshimcha ekspert uchun qayta ochish",
+      "consequence": "Tasdiqlangan natija qayta ochiladi. Ekspert baholagandan soʻng panel qaytadan tasdiqlanishi kerak.",
+      "evaluator_label": "Qoʻshimcha ekspert",
+      "evaluator_required": "Ekspertni tanlang.",
+      "reason_placeholder": "Qayta ochish sababini kiriting (kamida 5 belgi)",
+      "reason_invalid": "Sabab kiriting (kamida {{min}} belgi).",
+      "confirm": "Qayta ochish va ekspert qoʻshish",
+      "error_not_approved": "Bu panelni qayta ochib boʻlmaydi — u «Tasdiqlangan» holatida emas. Sahifani yangilang.",
+      "error_forbidden": "Sizda ushbu panel boʻlimi boʻyicha bu amal uchun huquq yoʻq.",
+      "error_not_found": "Panel mavjud emas yoki sizda ruxsat yoʻq. Sahifani yangilang.",
+      "error_validation": "Tanlangan ekspert va sababni tekshiring.",
+      "error_generic": "Panelni qayta ochib boʻlmadi. Qayta urinib koʻring."
     }
   },
   "comment": {

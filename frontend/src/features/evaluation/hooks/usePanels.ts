@@ -22,9 +22,11 @@ import {
   lockPanelRoster,
   panelKeys,
   reopenPanel,
+  reopenPanelForExpert,
   submitPanelToCeo,
   withdrawEvaluator,
   type PanelListFilters,
+  type ReopenForExpertPayload,
 } from '../api/panelApi';
 import type {
   AssignEvaluatorPayload,
@@ -201,5 +203,26 @@ export function useReopenPanel(panelId: string) {
   return useMutation({
     mutationFn: () => reopenPanel(panelId),
     onSuccess: () => invalidatePanel(qc, panelId),
+  });
+}
+
+/**
+ * Feature 2 — reopen an APPROVED panel to add an ADDITIONAL expert
+ * (APPROVED → AWAITING_EVALUATIONS). On success invalidate the panel detail +
+ * panel list (via {@link invalidatePanel}) AND the evaluator self-inbox
+ * (a fresh DRAFT sheet now exists for the added expert). The caller maps the
+ * stable error codes (PANEL_NOT_APPROVED_FOR_REOPEN etc.) to localized text.
+ */
+export function useReopenPanelForExpert(panelId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ReopenForExpertPayload) =>
+      reopenPanelForExpert(panelId, payload),
+    onSuccess: () => {
+      invalidatePanel(qc, panelId);
+      // The added expert gets a fresh DRAFT sheet — refresh every evaluator's
+      // self-inbox (tenant-prefixed) so it appears without a manual reload.
+      qc.invalidateQueries({ queryKey: ['evaluations', 'my'] });
+    },
   });
 }

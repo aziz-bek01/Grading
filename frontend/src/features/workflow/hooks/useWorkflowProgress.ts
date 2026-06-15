@@ -17,6 +17,10 @@ export function useWorkflowProgress(projectId: string | undefined) {
     queryFn: () => fetchWorkflowProgress(projectId!),
     enabled: !!projectId,
     refetchInterval: 30_000,
+    // Pause the 30s poll while the tab is backgrounded (P1-T2) — no point
+    // refreshing the stepper the user can't see. A single refetch on
+    // window-focus brings it current the moment they return.
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   });
 }

@@ -46,23 +46,42 @@ export function ProjectWorkspacePage() {
   const activeStage: WorkflowStageKey =
     selectedStage ?? workflow.data?.currentStage ?? 'SETUP';
 
+  // Mirror the loaded project into the Zustand active-project context. The
+  // 30s workflow/approvals polls give `project.data` a fresh object identity on
+  // each tick; depending on the whole object here would re-write Zustand and
+  // re-render the entire app shell every poll. Gate on the stable primitives
+  // that actually feed the store instead (P1-T2).
+  const projectDataId = project.data?.id;
+  const projectCode = project.data?.code;
+  const projectStatus = project.data?.status;
+  const projectNameI18n = project.data?.name_i18n;
+  const activeTenantId = activeTenant?.id;
+  const projectTenantId = project.data?.tenant_id;
   useEffect(() => {
-    if (project.data) {
-      // Backend `ProjectResponse` never echoes `tenant_id` on the wire — derive
-      // it from the JWT-resolved active tenant (security blueprint API-13).
-      // Falls back to the legacy MSW shape during the Contract-A migration
-      // window where `tenant_id` may still appear on mock fixtures.
-      const tenantId = project.data.tenant_id ?? activeTenant?.id ?? '';
-      setActiveProject({
-        id: project.data.id,
-        slug: project.data.code,
-        name: pickLocalized(project.data.name_i18n, i18n.language),
-        tenant_id: tenantId,
-        status: project.data.status,
-        archived: project.data.status === 'ARCHIVED',
-      });
-    }
-  }, [project.data, i18n.language, setActiveProject, activeTenant]);
+    if (!projectDataId) return;
+    // Backend `ProjectResponse` never echoes `tenant_id` on the wire — derive
+    // it from the JWT-resolved active tenant (security blueprint API-13).
+    // Falls back to the legacy MSW shape during the Contract-A migration
+    // window where `tenant_id` may still appear on mock fixtures.
+    const tenantId = projectTenantId ?? activeTenantId ?? '';
+    setActiveProject({
+      id: projectDataId,
+      slug: projectCode ?? '',
+      name: pickLocalized(projectNameI18n, i18n.language),
+      tenant_id: tenantId,
+      status: projectStatus ?? 'ACTIVE',
+      archived: projectStatus === 'ARCHIVED',
+    });
+  }, [
+    projectDataId,
+    projectCode,
+    projectStatus,
+    projectNameI18n,
+    projectTenantId,
+    activeTenantId,
+    i18n.language,
+    setActiveProject,
+  ]);
 
   const stage = useMemo(() => {
     const stages = workflow.data?.stages ?? [];

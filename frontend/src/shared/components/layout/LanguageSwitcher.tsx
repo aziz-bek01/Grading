@@ -18,6 +18,10 @@ export function LanguageSwitcher() {
   const current = (i18n.language as SupportedLocale) ?? 'ru-RU';
 
   const change = (locale: SupportedLocale) => {
+    // Non-default locale bundles are code-split and fetched on demand (P1-T1):
+    // `changeLanguage` resolves only after i18next's lazy backend has loaded the
+    // target locale chunk, so the side effects run inside `.then` once strings
+    // are actually available.
     void i18n.changeLanguage(locale).then(() => {
       setHttpLocale(locale);
       document.documentElement.lang = locale;

@@ -34,6 +34,56 @@ export default defineConfig(({ mode }) => {
     define: {
       __ENABLE_MSW__: JSON.stringify(enableMsw),
     },
+    build: {
+      // Vite 8 / Rolldown splits each route-level `React.lazy` import into its
+      // own async chunk automatically. These `advancedChunks` groups peel the
+      // large, rarely-changing vendors out of the entry chunk so the initial
+      // download shrinks and the vendor chunks stay cached across deploys.
+      //
+      // NOTE: Rolldown takes `output.codeSplitting.groups` (each a
+      // `{ name, test }` matcher) — NOT Rollup's object-form `manualChunks`
+      // (that shape is rejected by the Rolldown types in Vite 8; the older
+      // `advancedChunks` alias is deprecated). Use `[\\/]` in the regexes to
+      // match the path separator portably.
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'react-vendor',
+                test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: 'i18n-vendor',
+                test: /node_modules[\\/](i18next|react-i18next|i18next-browser-languagedetector)[\\/]/,
+                priority: 20,
+              },
+              {
+                name: 'form-vendor',
+                test: /node_modules[\\/](react-hook-form|@hookform[\\/]resolvers|zod)[\\/]/,
+                priority: 20,
+              },
+              {
+                name: 'query-vendor',
+                test: /node_modules[\\/]@tanstack[\\/]/,
+                priority: 20,
+              },
+              {
+                name: 'auth-vendor',
+                test: /node_modules[\\/]oidc-client-ts[\\/]/,
+                priority: 20,
+              },
+              {
+                name: 'icons-vendor',
+                test: /node_modules[\\/]lucide-react[\\/]/,
+                priority: 20,
+              },
+            ],
+          },
+        },
+      },
+    },
     server: {
       port: 5173,
       proxy: {

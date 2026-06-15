@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import i18n from '@/shared/i18n';
 
@@ -7,5 +7,14 @@ afterEach(() => {
   cleanup();
 });
 
-// Make sure all tests start from a known locale
-void i18n.changeLanguage('ru-RU');
+// Make sure EVERY test starts from a known, fully-loaded locale.
+//
+// Non-default locale bundles are now code-split and resolved through an async
+// i18next backend (P1-T1). i18next's `changeLanguage` therefore sets the active
+// language only after the backend `read` resolves, so this must be AWAITED in a
+// `beforeEach` (a fire-and-forget `void` could leave a test rendering under the
+// jsdom-detected `navigator` locale, en-US). ru-RU is eagerly bundled, so this
+// resolves on a microtask without any network/dynamic-import round-trip.
+beforeEach(async () => {
+  await i18n.changeLanguage('ru-RU');
+});

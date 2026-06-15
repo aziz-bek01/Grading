@@ -2,6 +2,8 @@ package uz.hrlab.grading.integration.exports.application;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
@@ -66,7 +68,21 @@ public class RequestExportUseCase {
                         + " salary=" + job.isContainsSalaryData())
                 .build());
 
-        worker.generate(jobId, ctx.tenantId());
+        // PERF/CORRECTNESS (P1) — dispatch the @Async worker only AFTER commit so
+        // the ExportJob row is visible when the worker (its own tx) loads it;
+        // inline dispatch raced the commit and could silently drop the job. On
+        // rollback no dispatch occurs.
+        UUID tenantId = ctx.tenantId();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    worker.generate(jobId, tenantId);
+                }
+            });
+        } else {
+            worker.generate(jobId, tenantId);
+        }
         return jobId;
     }
 }

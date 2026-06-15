@@ -444,12 +444,36 @@ public class EvaluationQueries {
      * {@code ProjectMembershipPolicy} + {@code DepartmentScopePolicy}. A scoped
      * caller outside the subtree is denied with a 404 (no reveal) and an
      * {@code ACCESS_DENIED_BY_ABAC} audit row; bypass / in-scope callers pass.
+     *
+     * <p>SELF-OWNERSHIP CARVE-OUT (mirrors {@link #listMine()}): when the caller
+     * IS the evaluation's own {@code evaluator_user_id}, the DEPARTMENT-SCOPE
+     * dimension is short-circuited. An explicit panel assignment + ownership IS
+     * the authorization, so a committee member with an EMPTY department scope can
+     * still open and score their OWN sheet (the P0 fix). This relaxes ONLY the
+     * department-scope dimension and ONLY for the owner — the tenant filter
+     * (already matched via {@code findByIdAndTenantId}) and the owner-only
+     * {@code PanelBiasGuard} are untouched, and NON-owners (managers) still need
+     * the full subtree scope. For a non-owner the path is unchanged.
      */
     private void enforceReadScope(TenantContext ctx, EvaluationJpaEntity evaluation) {
+        if (isOwnSheet(ctx, evaluation)) {
+            return; // owner short-circuit: relax department scope only, for the owner only
+        }
         PositionJpaEntity position = positions
                 .findByIdAndTenantId(evaluation.getPositionId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         abacGate.enforceCanReadPosition(ctx, position.getId(), evaluation.getProjectId(),
                 position.getDepartmentId(), evaluation.getStatus());
+    }
+
+    /**
+     * True when the active caller owns this evaluation sheet (they are its
+     * {@code evaluator_user_id}). The evaluation has already been tenant-matched
+     * by the caller, so this never widens tenant scope — it only identifies the
+     * owner so the department-scope check can be relaxed for them.
+     */
+    private static boolean isOwnSheet(TenantContext ctx, EvaluationJpaEntity evaluation) {
+        return ctx.userId() != null
+                && ctx.userId().equals(evaluation.getEvaluatorUserId());
     }
 }

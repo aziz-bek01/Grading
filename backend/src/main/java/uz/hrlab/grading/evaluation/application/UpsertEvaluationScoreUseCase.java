@@ -95,11 +95,25 @@ public class UpsertEvaluationScoreUseCase {
         immutability.enforceCanEdit(evaluation.getStatus());
         // E4-S3 — project membership + department-subtree write gate, resolved
         // via the evaluation's position. Out-of-subtree scoped callers denied.
-        PositionJpaEntity position = positions
-                .findByIdAndTenantId(evaluation.getPositionId(), ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new);
-        abacGate.enforceCanWriteInDepartment(
-                ctx, evaluation.getProjectId(), position.getDepartmentId());
+        //
+        // SELF-OWNERSHIP CARVE-OUT (mirrors EvaluationQueries.listMine): when the
+        // caller IS this evaluation's own evaluator_user_id, the DEPARTMENT-SCOPE
+        // write gate is short-circuited so a committee member with an EMPTY
+        // department scope can score their OWN sheet (the P0 fix). This relaxes
+        // ONLY the department-scope dimension and ONLY for the owner: the tenant
+        // filter (already matched by loader.load) is untouched, every OTHER guard
+        // above and below stays in force (EVALUATION_EDIT permission, status
+        // immutability, methodology/factor-version validation, calibration reset),
+        // and a NON-owner (manager) still requires the full subtree scope.
+        boolean ownSheet = ctx.userId() != null
+                && ctx.userId().equals(evaluation.getEvaluatorUserId());
+        if (!ownSheet) {
+            PositionJpaEntity position = positions
+                    .findByIdAndTenantId(evaluation.getPositionId(), ctx.tenantId())
+                    .orElseThrow(TenantAccessDeniedException::new);
+            abacGate.enforceCanWriteInDepartment(
+                    ctx, evaluation.getProjectId(), position.getDepartmentId());
+        }
 
         Factor factor = findFactor(context.factors(), cmd.factorId());
         FactorLevel level = findLevel(context.levelsByFactor().get(factor.id()), cmd.factorLevelId());

@@ -9,6 +9,9 @@ import uz.hrlab.grading.evaluation.api.MyEvaluationRow;
 import uz.hrlab.grading.evaluation.application.CreateEvaluationCommand;
 import uz.hrlab.grading.evaluation.application.CreateEvaluationUseCase;
 import uz.hrlab.grading.evaluation.application.EvaluationQueries;
+import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreCommand;
+import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreUseCase;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
 import uz.hrlab.grading.methodology.application.ApproveMethodologyVersionUseCase;
 import uz.hrlab.grading.methodology.application.CreateMethodologyCommand;
 import uz.hrlab.grading.methodology.application.CreateMethodologyFromScratchUseCase;
@@ -24,6 +27,7 @@ import uz.hrlab.grading.organization.domain.DepartmentStatus;
 import uz.hrlab.grading.organization.domain.DepartmentType;
 import uz.hrlab.grading.organization.infrastructure.DepartmentJpaEntity;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
+import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.position.domain.PositionStatus;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
@@ -40,6 +44,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Feature 1 (Docker-gated) — the CORE bug-fix proof for
@@ -76,6 +81,8 @@ class MyEvaluationsScopeBypassIntegrationTest extends AbstractIntegrationTest {
     @Autowired ApproveMethodologyVersionUseCase approveMethodologyUseCase;
     @Autowired CreateEvaluationUseCase createEvaluationUseCase;
     @Autowired EvaluationQueries queries;
+    @Autowired UpsertEvaluationScoreUseCase upsertScore;
+    @Autowired EvaluationScoreRepository scoreRepository;
 
     @AfterEach
     void cleanup() {
@@ -123,6 +130,74 @@ class MyEvaluationsScopeBypassIntegrationTest extends AbstractIntegrationTest {
                 .isEmpty();
     }
 
+    /**
+     * P0 fix proof — the SAME empty-scope committee member who can {@code listMine()}
+     * their own sheet must ALSO be able to OPEN it ({@code findById} → 200, not 404)
+     * and SCORE it ({@code upsert} succeeds). The single-id read and the write paths
+     * previously enforced the department-scope ABAC gate, which DENIED (→ 404) an
+     * {@code EVALUATION_COMMITTEE_MEMBER} with no {@code user_department_scopes} row.
+     *
+     * <p>The carve-out is OWNER-ONLY and relaxes ONLY the department-scope dimension:
+     * the same member must STILL be unable to open or score a PEER's sheet in the
+     * same tenant (department-gated → {@code TenantAccessDeniedException} / 404) or
+     * reach ANOTHER tenant's sheet (tenant filter → 404). Tenant scope and
+     * PanelBiasGuard owner-only semantics remain intact.
+     */
+    @Test
+    void emptyScopeCommitteeMemberCanOpenAndScoreOwnSheetButNotPeersOrOtherTenants() {
+        Seed a = seed("MEC");
+        UUID me = seedUser(UUID.randomUUID());
+        UUID peer = seedUser(UUID.randomUUID());
+
+        UUID mineEval = createEvaluationAs(a, a.positionId, me);
+        UUID peerEval = createEvaluationAs(a, secondPosition(a), peer);
+
+        // Tenant B with its own evaluation owned by a different user.
+        Seed b = seed("MED");
+        UUID bUser = seedUser(UUID.randomUUID());
+        UUID bEval = createEvaluationAs(b, b.positionId, bUser);
+
+        // ---- committee member context in tenant A: dept-scoped role, EMPTY scope.
+        // EVALUATION_EDIT is held (the carve-out relaxes ONLY the department-scope
+        // ABAC dimension — never the permission gate).
+        TenantContextHolder.set(new TenantContext(
+                me, a.tenantId, Set.of(a.projectId),
+                Set.of("EVALUATION_COMMITTEE_MEMBER"),
+                Set.of("EVALUATION_READ", "EVALUATION_EDIT"),
+                Set.of(), false, "ru-RU"));
+
+        // (1) OWN sheet: findById now returns 200 (was 404 — the P0 bug).
+        var own = queries.findById(mineEval);
+        assertThat(own.getId()).isEqualTo(mineEval);
+
+        // (2) OWN sheet: upsert a factor score succeeds and is persisted.
+        upsertScore.upsert(new UpsertEvaluationScoreCommand(
+                mineEval, a.factorId, a.factorLevelId, null));
+        assertThat(scoreRepository
+                .findByTenantIdAndEvaluationIdAndFactorId(a.tenantId, mineEval, a.factorId))
+                .as("owner's score was persisted on their own sheet")
+                .isPresent();
+
+        // (3) PEER's sheet in SAME tenant: still department-gated → 404 (owner-only).
+        assertThatThrownBy(() -> queries.findById(peerEval))
+                .isInstanceOf(TenantAccessDeniedException.class);
+        assertThatThrownBy(() -> upsertScore.upsert(new UpsertEvaluationScoreCommand(
+                peerEval, a.factorId, a.factorLevelId, null)))
+                .isInstanceOf(TenantAccessDeniedException.class);
+        // No score leaked onto the peer's sheet.
+        assertThat(scoreRepository
+                .findByTenantIdAndEvaluationIdAndFactorId(a.tenantId, peerEval, a.factorId))
+                .as("no score written to a peer's sheet")
+                .isEmpty();
+
+        // (4) ANOTHER tenant's sheet: tenant filter denies regardless of ownership.
+        assertThatThrownBy(() -> queries.findById(bEval))
+                .isInstanceOf(TenantAccessDeniedException.class);
+        assertThatThrownBy(() -> upsertScore.upsert(new UpsertEvaluationScoreCommand(
+                bEval, a.factorId, a.factorLevelId, null)))
+                .isInstanceOf(TenantAccessDeniedException.class);
+    }
+
     // --------------------------------------------------------------- helpers
 
     private UUID createEvaluationAs(Seed s, UUID positionId, UUID evaluatorUserId) {
@@ -145,7 +220,8 @@ class MyEvaluationsScopeBypassIntegrationTest extends AbstractIntegrationTest {
     }
 
     private record Seed(UUID tenantId, UUID projectId, UUID departmentId, UUID positionId,
-                        UUID methodologyVersionId, UUID actorId) { }
+                        UUID methodologyVersionId, UUID actorId,
+                        UUID factorId, UUID factorLevelId) { }
 
     private Seed seed(String codePrefix) {
         UUID tenant = newSeededTenantId();
@@ -177,13 +253,14 @@ class MyEvaluationsScopeBypassIntegrationTest extends AbstractIntegrationTest {
                 new BigDecimal("500"), new BigDecimal("500"), 1, true));
         // Approval requires >= 2 levels per factor (ApproveMethodologyVersionUseCase),
         // mirroring the valid fixture in PanelReopenForExpertIntegrationTest.
-        factorLevelService.add(f1.id(), new FactorLevelCommand(
+        var l1 = factorLevelService.add(f1.id(), new FactorLevelCommand(
                 "L1", 1, new BigDecimal("100"), null, Map.of("ru-RU", "L1"), null));
         factorLevelService.add(f1.id(), new FactorLevelCommand(
                 "L2", 2, new BigDecimal("500"), null, Map.of("ru-RU", "L2"), null));
         approveMethodologyUseCase.approve(versionId);
 
         TenantContextHolder.clear();
-        return new Seed(tenant, proj.getId(), dpt.getId(), pos.getId(), versionId, actor);
+        return new Seed(tenant, proj.getId(), dpt.getId(), pos.getId(), versionId, actor,
+                f1.id(), l1.id());
     }
 }

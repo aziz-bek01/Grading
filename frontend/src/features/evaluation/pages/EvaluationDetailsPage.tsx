@@ -47,16 +47,20 @@ type Tab = 'matrix' | 'breakdown' | 'calibration' | 'comments' | 'audit';
  */
 export function EvaluationDetailsPage() {
   const { t, i18n } = useTranslation();
-  const { projectId = '', evaluation_id = '' } = useParams<{
+  // Param names MUST match router.tsx exactly: the route declares
+  // `evaluation/:evaluationId` (and `:projectId`). A mismatch here yields an
+  // undefined id -> '' -> disabled queries -> the page falls through to the
+  // EmptyState for everyone (regression guarded by EvaluationDetailsPage.test).
+  const { projectId = '', evaluationId = '' } = useParams<{
     projectId: string;
-    evaluation_id: string;
+    evaluationId: string;
   }>();
   const [tab, setTab] = useState<Tab>('matrix');
   const [calibrateOpen, setCalibrateOpen] = useState(false);
 
-  const evaluation = useEvaluation(evaluation_id);
-  const scores = useEvaluationScores(evaluation_id);
-  const calibration = useCalibrationHistory(evaluation_id);
+  const evaluation = useEvaluation(evaluationId);
+  const scores = useEvaluationScores(evaluationId);
+  const calibration = useCalibrationHistory(evaluationId);
   const version = useMethodologyVersion(
     evaluation.data?.methodology_version_id,
   );
@@ -76,13 +80,13 @@ export function EvaluationDetailsPage() {
     };
   }, [evaluation.data?.position_id, positions.data, i18n.language]);
 
-  const upsertMutation = useUpsertScore(evaluation_id);
-  const submitMutation = useSubmitEvaluation(evaluation_id);
-  const approveMutation = useApproveEvaluation(evaluation_id);
-  const requestChangesMutation = useRequestChanges(evaluation_id);
-  const lockMutation = useLockEvaluation(evaluation_id);
-  const archiveMutation = useArchiveEvaluation(evaluation_id);
-  const calibrateMutation = useCalibrateScore(evaluation_id);
+  const upsertMutation = useUpsertScore(evaluationId);
+  const submitMutation = useSubmitEvaluation(evaluationId);
+  const approveMutation = useApproveEvaluation(evaluationId);
+  const requestChangesMutation = useRequestChanges(evaluationId);
+  const lockMutation = useLockEvaluation(evaluationId);
+  const archiveMutation = useArchiveEvaluation(evaluationId);
+  const calibrateMutation = useCalibrateScore(evaluationId);
 
   const canSubmit = useMemo(() => {
     if (!evaluation.data || !version.data) return false;

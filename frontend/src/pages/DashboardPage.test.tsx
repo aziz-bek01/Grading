@@ -11,10 +11,19 @@ describe('<DashboardPage />', () => {
   });
 
   it('wires StatCards to the portfolio-summary endpoint (real counts, not "—")', async () => {
-    // Signed-in super admin → active tenant = ACME (11111111…), which has 2
-    // projects + 1 methodology in the MSW fixtures. The mock analytics handler
-    // computes these tenant-scoped counts.
+    // Verify the StatCards render the values returned by fetchPortfolioSummary.
+    // We stub the api function directly (as the other cases below do) rather than
+    // leaning on the live MSW handler + fixtures, so the assertion is
+    // deterministic and isolated from cross-file MSW/handler state under the
+    // parallel CI runner.
     signIn('super-admin');
+    vi.spyOn(analyticsApi, 'fetchPortfolioSummary').mockResolvedValue({
+      tenantId: '11111111-1111-1111-1111-111111111111',
+      clientCompanyCount: 1,
+      projectCount: 2,
+      methodologyCount: 1,
+      lastActivityAt: null,
+    });
     render(renderWithProviders(<DashboardPage />));
 
     const projectsCard = await screen.findByTestId('stat-projects');

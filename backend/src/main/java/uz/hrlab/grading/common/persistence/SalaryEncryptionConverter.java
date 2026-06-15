@@ -4,6 +4,7 @@ import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
@@ -79,6 +80,7 @@ public class SalaryEncryptionConverter implements AttributeConverter<BigDecimal,
     /** Warn-once latch so a stub key in prod logs a single warning, not one per write. */
     private final AtomicBoolean stubKeyWarned = new AtomicBoolean(false);
 
+    @Autowired
     public SalaryEncryptionConverter(
             @Value("${grading.security.salary-encryption.key-id:dev-stub}") String keyId,
             @Value("${grading.security.salary-encryption.key-version:1}") int keyVersion,

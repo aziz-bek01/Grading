@@ -31,6 +31,8 @@ import { AssignedGradeBadge } from '@/features/grade-structure/components/Assign
 import { CommentThread } from '@/features/comment/components/CommentThread';
 import { ApprovalStatusBadge } from '@/features/approval/components/ApprovalStatusBadge';
 import { useApprovalRequests } from '@/features/approval/hooks/useApprovals';
+import { usePositions } from '@/features/positions/hooks/usePositions';
+import { pickLocalized } from '@/shared/lib/localized';
 
 type Tab = 'matrix' | 'breakdown' | 'calibration' | 'comments' | 'audit';
 
@@ -44,8 +46,8 @@ type Tab = 'matrix' | 'breakdown' | 'calibration' | 'comments' | 'audit';
  *     disabled inputs). Calibration available only for APPROVED/LOCKED.
  */
 export function EvaluationDetailsPage() {
-  const { t } = useTranslation();
-  const { evaluation_id = '' } = useParams<{
+  const { t, i18n } = useTranslation();
+  const { projectId = '', evaluation_id = '' } = useParams<{
     projectId: string;
     evaluation_id: string;
   }>();
@@ -58,6 +60,21 @@ export function EvaluationDetailsPage() {
   const version = useMethodologyVersion(
     evaluation.data?.methodology_version_id,
   );
+  // T3: resolve position_id -> localized name + human code, mirroring the map
+  // EvaluationListPage builds from the same positions query. A raw UUID must
+  // never surface as the page heading; it only ever appears in a title=
+  // tooltip when the position is genuinely unresolved.
+  const positions = usePositions(projectId ? { projectId, size: 200 } : null);
+  const positionInfo = useMemo(() => {
+    const positionId = evaluation.data?.position_id;
+    if (!positionId) return null;
+    const match = (positions.data?.items ?? []).find((p) => p.id === positionId);
+    if (!match) return null;
+    return {
+      name: pickLocalized(match.title_i18n, i18n.language),
+      code: match.code,
+    };
+  }, [evaluation.data?.position_id, positions.data, i18n.language]);
 
   const upsertMutation = useUpsertScore(evaluation_id);
   const submitMutation = useSubmitEvaluation(evaluation_id);
@@ -95,8 +112,15 @@ export function EvaluationDetailsPage() {
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl text-text-primary">
-              {t('evaluation.details_title')}
+            <h1
+              className="text-2xl text-text-primary"
+              title={
+                positionInfo ? undefined : evaluation.data.position_id ?? undefined
+              }
+            >
+              {positionInfo?.name ||
+                positionInfo?.code ||
+                t('evaluation.details_title')}
             </h1>
             <EvaluationStatusBadge status={evaluation.data.status} />
             <EvaluationApprovalInline
@@ -115,8 +139,16 @@ export function EvaluationDetailsPage() {
             ) : null}
           </div>
           <p className="text-sm text-text-secondary mt-1">
-            {t('evaluation.position_id')}: {evaluation.data.position_id} ·{' '}
-            {t('evaluation.displayed_total')}:{' '}
+            {/* T3: show the human-readable position code as secondary text,
+                never the raw UUID. Fall back to a localized placeholder; the
+                UUID lives only in the title= tooltip for support. */}
+            {t('evaluation.position_id')}:{' '}
+            <span
+              title={positionInfo ? undefined : evaluation.data.position_id ?? undefined}
+            >
+              {positionInfo?.code || t('common.untitled')}
+            </span>{' '}
+            · {t('evaluation.displayed_total')}:{' '}
             <span data-testid="header-total" className="tabular-nums">
               {evaluation.data.displayed_total_score != null
                 ? Number(evaluation.data.displayed_total_score).toFixed(2)

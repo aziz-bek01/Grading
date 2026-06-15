@@ -44,6 +44,8 @@
     "continue": "Continue",
     "completeness": "Completeness",
     "unknown_actor": "Unknown user",
+    "unknown_user": "Unknown user",
+    "untitled": "Untitled",
     "dismiss": "Dismiss",
     "loading": "Loading…"
   },

@@ -142,7 +142,11 @@ export function PanelDetailPage() {
         <div>
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl text-text-primary">
-              {pickLocalized(panel.position_title_i18n, i18n.language)}
+              {pickLocalized(
+                panel.position_title_i18n,
+                i18n.language,
+                t('common.untitled'),
+              )}
             </h1>
             <PanelStatusBadge status={status} />
           </div>

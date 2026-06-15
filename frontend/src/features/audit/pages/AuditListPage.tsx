@@ -29,6 +29,7 @@ import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { useAuthStore } from '@/features/auth/authStore';
 import { usePermission } from '@/features/auth/usePermission';
+import { shortId } from '@/shared/lib/shortId';
 import { useAuditEvents } from '../hooks/useAuditEvents';
 import { AuditFilterBar } from '../components/AuditFilterBar';
 import { AuditDetailsDrawer } from '../components/AuditDetailsDrawer';
@@ -126,20 +127,40 @@ export function AuditListPage() {
       key: 'actor',
       header: t('audit.column.actor'),
       width: '200px',
-      render: (e) => (
-        <span className="text-text-primary text-sm">
-          {e.actorName ?? e.actorUserId ?? <em className="text-text-muted">{t('common.unknown_actor')}</em>}
-        </span>
-      ),
+      // T4: prefer the BE-resolved display name; otherwise degrade to a SHORT
+      // id (first UUID segment) — never the full 36-char UUID — then to a
+      // localized "unknown user" placeholder. Full UUID stays in the tooltip.
+      render: (e) =>
+        e.actorName ? (
+          <span className="text-text-primary text-sm">{e.actorName}</span>
+        ) : e.actorUserId ? (
+          <span
+            className="text-text-primary text-sm font-mono"
+            title={e.actorUserId}
+          >
+            {shortId(e.actorUserId)}
+          </span>
+        ) : (
+          <em className="text-text-muted text-sm">{t('common.unknown_user')}</em>
+        ),
     },
     {
       key: 'entity',
       header: t('audit.column.entity'),
+      // T4: localized entity-type label + SHORT id (not the 12-char fragment),
+      // with the full UUID only in the title= tooltip.
       render: (e) =>
         e.entityType ? (
-          <span className="font-mono text-xs text-text-secondary">
-            {e.entityType}
-            {e.entityId ? ` · ${e.entityId.slice(0, 12)}` : ''}
+          <span
+            className="text-xs text-text-secondary"
+            title={e.entityId ?? undefined}
+          >
+            {t(`audit.entity_type.${e.entityType}`, { defaultValue: e.entityType })}
+            {e.entityId ? (
+              <span className="font-mono text-text-muted"> · {shortId(e.entityId)}</span>
+            ) : (
+              ''
+            )}
           </span>
         ) : (
           <span className="text-text-muted">—</span>

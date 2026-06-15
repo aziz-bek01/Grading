@@ -21,10 +21,12 @@ interface Props {
  */
 export function PanelAssignmentStatusBadge({ status, className }: Props) {
   const { t } = useTranslation();
+  // Unknown status → neutral tone; the i18n key falls back to the raw status.
+  const label = t(`panel.assignment_status.${status}`, { defaultValue: String(status) });
   return (
     <StatusBadge
-      tone={TONE[status]}
-      label={t(`panel.assignment_status.${status}`)}
+      tone={TONE[status] ?? 'draft'}
+      label={label}
       className={className}
     />
   );

@@ -147,7 +147,14 @@
     "error_body": "Qayta urinib koʻring yoki qoʻllab-quvvatlash xizmatiga murojaat qiling.",
     "correlation_id": "Soʻrov ID",
     "no_access_title": "Ruxsat yoʻq",
-    "no_access_body": "Bu boʻlimga kirish uchun qoʻshimcha ruxsat talab qilinadi. Maʼmurga murojaat qiling."
+    "no_access_body": "Bu boʻlimga kirish uchun qoʻshimcha ruxsat talab qilinadi. Maʼmurga murojaat qiling.",
+    "not_found_title": "Sahifa topilmadi",
+    "not_found_body": "Bunday sahifa mavjud emas, koʻchirilgan yoki joriy kompaniya-mijoz va loyiha uchun mavjud emas.",
+    "not_found_back": "Orqaga",
+    "not_found_dashboard": "Boshqaruv paneliga",
+    "app_error_title": "Xatolik yuz berdi",
+    "app_error_body": "Ilovada kutilmagan xatolik yuz berdi. Odatda qayta yuklash yordam beradi.",
+    "app_error_reload": "Ilovani qayta yuklash"
   },
   "pages": {
     "login_title": "Xush kelibsiz",
@@ -1476,6 +1483,8 @@
       "METHODOLOGY_FACTORS_V1": "Metodologiya omillari, darajalari va vaznlari.",
       "GRADE_BANDS_V1": "Greyd shkalasi: min/max ballar."
     },
+    "template_not_supported": "Hozircha mavjud emas",
+    "template_not_supported_hint": "Bu shablon boʻyicha import hozircha mavjud emas — keyingi fazada qoʻshiladi.",
     "status": {
       "UPLOADED": "Yuklangan",
       "SCANNING": "Skanerlanmoqda",

@@ -29,6 +29,9 @@ const AuthCallbackPage = lazy(() =>
 const AccessDeniedPage = lazy(() =>
   import('@/pages/AccessDeniedPage').then((m) => ({ default: m.AccessDeniedPage })),
 );
+const NotFoundPage = lazy(() =>
+  import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
+);
 const DashboardPage = lazy(() =>
   import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 );
@@ -267,8 +270,26 @@ export function AppRouter() {
             </Route>
           </Route>
 
-          <Route path="approvals" element={<ApprovalsInboxPage />} />
-          <Route path="approvals/:approvalId" element={<ApprovalDetailsPage />} />
+          {/* Global approvals inbox + detail. BE GET /my-inbox and
+              GET /approval-requests/{id} gate on APPROVAL_REQUEST_DECIDE; we
+              accept the same "any approver" set as the project-scoped
+              variant and the sidebar entry so a non-decider gets the clean
+              NoAccessState instead of a raw error card. */}
+          <Route
+            element={
+              <RequirePermission
+                permissions={[
+                  PERMISSIONS.APPROVAL_REQUEST_CREATE,
+                  PERMISSIONS.APPROVAL_REQUEST_DECIDE,
+                  PERMISSIONS.APPROVAL_STEP_APPROVE,
+                ]}
+                mode="any"
+              />
+            }
+          >
+            <Route path="approvals" element={<ApprovalsInboxPage />} />
+            <Route path="approvals/:approvalId" element={<ApprovalDetailsPage />} />
+          </Route>
 
           <Route element={<RequireAuditPermission />}>
             <Route path="audit" element={<AuditListPage />} />
@@ -293,7 +314,10 @@ export function AppRouter() {
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to={routes.dashboard} replace />} />
+      {/* Unknown route — show a dedicated 404 with a clear "go back / go to
+          dashboard" affordance instead of silently bouncing to the dashboard.
+          The message is non-enumerating (security-safe). */}
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
     </Suspense>
   );

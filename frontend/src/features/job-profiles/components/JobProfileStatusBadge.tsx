@@ -18,5 +18,13 @@ const labelKey: Record<JobProfileStatus, string> = {
 
 export function JobProfileStatusBadge({ status, className }: { status: JobProfileStatus; className?: string }) {
   const { t } = useTranslation();
-  return <StatusBadge tone={tone[status]} label={t(labelKey[status])} className={className} />;
+  // Unknown status → neutral tone + raw code, never an empty/crashing badge.
+  const key = labelKey[status];
+  return (
+    <StatusBadge
+      tone={tone[status] ?? 'draft'}
+      label={key ? t(key) : String(status)}
+      className={className}
+    />
+  );
 }

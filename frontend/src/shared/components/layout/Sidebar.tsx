@@ -33,7 +33,15 @@ import { useMyApprovalInbox } from '@/features/approval/hooks/useApprovals';
 import { cn } from '@/shared/lib/cn';
 
 interface NavItem {
-  to: string;
+  /**
+   * Navigation target. Optional because some items are purely presentational
+   * (locked / "coming soon" stubs) and must NOT carry a real route — they
+   * render a non-navigational <div>, never a <NavLink>. Using a stable
+   * non-URL key for those avoids pointing at a route that does not exist.
+   */
+  to?: string;
+  /** Stable React key for items without a `to` (presentational stubs). */
+  key?: string;
   label: string;
   icon: ReactNode;
   permission?: PermissionCode | PermissionCode[];
@@ -140,6 +148,11 @@ export function Sidebar({ className }: SidebarProps = {}) {
   // Always rendered as locked stubs for MVP 1 (design-foundation §6.3).
   // PO-5: each item carries its own roadmap tooltip explaining which
   // release brings the feature.
+  // Files & AI Assist have NO backing route yet — render them as purely
+  // presentational locked stubs (no `to`, stable `key`) so they can never
+  // navigate to a dead URL (which the catch-all would 404). Compensation keeps
+  // its `to` because /app/projects/:id/compensation is a real (salary-gated)
+  // route, but LockedNavItem renders a <div> for all of them anyway.
   const lockedItems: NavItem[] = [
     {
       to: routes.projectCompensation(projectIdForRoutes),
@@ -149,14 +162,14 @@ export function Sidebar({ className }: SidebarProps = {}) {
       tooltip: t('sidebar.soonRoadmap.compensation'),
     },
     {
-      to: `/app/projects/${projectIdForRoutes}/files`,
+      key: 'locked-files',
       label: t('nav.files'),
       icon: <Folder size={18} aria-hidden />,
       locked: true,
       tooltip: t('sidebar.soonRoadmap.files'),
     },
     {
-      to: `/app/projects/${projectIdForRoutes}/ai`,
+      key: 'locked-ai-assist',
       label: t('nav.ai_assist'),
       icon: <Sparkles size={18} aria-hidden />,
       locked: true,
@@ -217,7 +230,7 @@ export function Sidebar({ className }: SidebarProps = {}) {
 
         <SidebarGroup label={t('nav.soon')} collapsed={collapsed}>
           {lockedItems.map((item) => (
-            <LockedNavItem key={item.to} item={item} collapsed={collapsed} />
+            <LockedNavItem key={item.key ?? item.to} item={item} collapsed={collapsed} />
           ))}
         </SidebarGroup>
       </nav>
@@ -282,10 +295,13 @@ function SidebarToggle({
 
 function SidebarLink({ item, collapsed }: { item: NavItem; collapsed?: boolean }) {
   const hasBadge = !!(item.badge && item.badge > 0);
+  // SidebarLink is only rendered for navigational items (all carry `to`); the
+  // `?? '#'` is a type-narrowing safety net so a misconfigured stub can never
+  // produce a <NavLink> pointing at `undefined`.
   return (
     <li>
       <NavLink
-        to={item.to}
+        to={item.to ?? '#'}
         title={collapsed ? item.label : undefined}
         className={({ isActive }) =>
           cn(

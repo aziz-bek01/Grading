@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { StatusBadge, type StatusTone } from '@/shared/components/status/StatusBadge';
+import { resolveStatusSpec } from '@/shared/components/status/statusSpec';
 import type { PositionStatus } from '../types/positionTypes';
 
 const map: Record<PositionStatus, { tone: StatusTone; key: string }> = {
@@ -10,6 +11,9 @@ const map: Record<PositionStatus, { tone: StatusTone; key: string }> = {
 
 export function PositionStatusBadge({ status }: { status: PositionStatus }) {
   const { t } = useTranslation();
-  const spec = map[status];
-  return <StatusBadge tone={spec.tone} label={t(spec.key)} />;
+  const entry = map[status];
+  const spec = entry
+    ? { tone: entry.tone, label: t(entry.key) }
+    : resolveStatusSpec({}, status);
+  return <StatusBadge tone={spec.tone} label={spec.label} />;
 }

@@ -147,7 +147,14 @@
     "error_body": "Please retry or contact support.",
     "correlation_id": "Request ID",
     "no_access_title": "No access",
-    "no_access_body": "This area requires additional access. Please contact your administrator."
+    "no_access_body": "This area requires additional access. Please contact your administrator.",
+    "not_found_title": "Page not found",
+    "not_found_body": "This page does not exist, has moved, or is not available for your current company-client and project.",
+    "not_found_back": "Go back",
+    "not_found_dashboard": "Go to dashboard",
+    "app_error_title": "Something went wrong",
+    "app_error_body": "The application ran into an unexpected error. Reloading usually fixes it.",
+    "app_error_reload": "Reload application"
   },
   "pages": {
     "login_title": "Welcome",
@@ -1476,6 +1483,8 @@
       "METHODOLOGY_FACTORS_V1": "Factors, levels and weights for a methodology version.",
       "GRADE_BANDS_V1": "Grade scale with min/max score per grade."
     },
+    "template_not_supported": "Not yet supported",
+    "template_not_supported_hint": "Commit for this template is not available yet — it ships in a later phase.",
     "status": {
       "UPLOADED": "Uploaded",
       "SCANNING": "Scanning",

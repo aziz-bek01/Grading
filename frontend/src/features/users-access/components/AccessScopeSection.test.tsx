@@ -64,6 +64,11 @@ function dropPermissions(...codes: PermissionCode[]) {
     ...state,
     user: {
       ...state.user!,
+      // Also strip the HRLAB_SUPER_ADMIN role: it short-circuits every
+      // permission gate by design (defense-in-depth), so a super admin can
+      // never have these actions hidden. To assert permission-LEVEL gating we
+      // must simulate a regular (non-super-admin) user.
+      roles: state.user!.roles.filter((r) => r !== 'HRLAB_SUPER_ADMIN'),
       permissions: state.user!.permissions.filter((p) => !codes.includes(p)),
     },
   });

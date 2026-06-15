@@ -152,6 +152,10 @@
     "login_subtitle": "Greyding loyihalaringiz bilan ishlashni davom ettirish uchun tizimga kiring.",
     "dashboard_title": "HRLab boshqaruv paneli",
     "dashboard_subtitle": "Faol mijoz-kompaniyalar va loyihalar boʻyicha umumiy maʼlumot.",
+    "dashboard_load_error": "Portfel xulosasini yuklab boʻlmadi.",
+    "dashboard_projects_empty_title": "Hozircha loyihalar yoʻq",
+    "dashboard_projects_empty_body": "Ish jarayonini boshlash uchun ushbu mijoz-kompaniya uchun birinchi greyding loyihasini yarating.",
+    "dashboard_projects_empty_cta": "Loyihalarga oʻtish",
     "clients_title": "Mijoz-kompaniyalar",
     "projects_title": "Loyihalar",
     "workspace_title": "Loyihaning ish maydoni",
@@ -528,6 +532,8 @@
     "project_list_empty_title": "Soʻrovlar yoʻq",
     "project_list_empty_body": "Tanlangan saralovchilar boʻyicha hech narsa topilmadi.",
     "filter_entity_type": "Obyekt turi",
+    "unknown_entity": "Nomsiz obyekt",
+    "unknown_user": "Noma'lum foydalanuvchi",
     "steps_title": "Tasdiqlash bosqichlari",
     "decisions_title": "Qarorlar tarixi",
     "decisions_empty": "Hali qarorlar yoʻq.",
@@ -559,8 +565,7 @@
       "METHODOLOGY_VERSION": "Metodologiya versiyasi",
       "EVALUATION": "Baholash",
       "EVALUATION_PANEL": "Baholash paneli",
-      "GRADE_STRUCTURE": "Greyd tuzilmasi",
-      "PROJECT": "Loyiha"
+      "GRADE_STRUCTURE": "Greyd tuzilmasi"
     },
     "step": {
       "order": "{{order}}-bosqich",

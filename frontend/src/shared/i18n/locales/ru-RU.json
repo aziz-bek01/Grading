@@ -152,6 +152,10 @@
     "login_subtitle": "Войдите, чтобы продолжить работу с проектами грейдирования.",
     "dashboard_title": "Дашборд HRLab",
     "dashboard_subtitle": "Сводка по активным компаниям-клиентам и проектам.",
+    "dashboard_load_error": "Не удалось загрузить сводку портфеля.",
+    "dashboard_projects_empty_title": "Проектов пока нет",
+    "dashboard_projects_empty_body": "Создайте первый проект грейдирования для этой компании-клиента, чтобы запустить рабочий процесс.",
+    "dashboard_projects_empty_cta": "Перейти к проектам",
     "clients_title": "Компании-клиенты",
     "projects_title": "Проекты",
     "workspace_title": "Рабочая область проекта",
@@ -528,6 +532,8 @@
     "project_list_empty_title": "Запросов нет",
     "project_list_empty_body": "По выбранным фильтрам ничего не найдено.",
     "filter_entity_type": "Тип сущности",
+    "unknown_entity": "Без названия",
+    "unknown_user": "Неизвестный пользователь",
     "steps_title": "Шаги согласования",
     "decisions_title": "История решений",
     "decisions_empty": "Решений ещё не было.",
@@ -559,8 +565,7 @@
       "METHODOLOGY_VERSION": "Версия методологии",
       "EVALUATION": "Оценка",
       "EVALUATION_PANEL": "Панель оценки",
-      "GRADE_STRUCTURE": "Структура грейдов",
-      "PROJECT": "Проект"
+      "GRADE_STRUCTURE": "Структура грейдов"
     },
     "step": {
       "order": "Шаг {{order}}",

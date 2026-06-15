@@ -5,18 +5,37 @@ export interface PermissionContext {
   user: CurrentUser | null;
 }
 
+/**
+ * The HRLAB_SUPER_ADMIN role is the platform-wide owner: the backend grants it
+ * every permission implicitly. Mirror that here as defense-in-depth so a super
+ * admin is NEVER locked out of nav/routes by an incomplete permission list (a
+ * partial /users/me, a backend that omits a freshly-added code, etc.). The
+ * backend remains the source of truth on every write — this only prevents the
+ * FE from hiding UI the user is in fact entitled to.
+ *
+ * NOTE: salary visibility (canViewSalary) is deliberately NOT short-circuited
+ * by this — it additionally requires the explicit `salary_data_permission`
+ * flag, which stays a hard gate even for a super admin.
+ */
+function isSuperAdmin(ctx: PermissionContext): boolean {
+  return ctx.user?.roles.includes('HRLAB_SUPER_ADMIN') ?? false;
+}
+
 export function can(ctx: PermissionContext, code: PermissionCode): boolean {
   if (!ctx.user) return false;
+  if (isSuperAdmin(ctx)) return true;
   return ctx.user.permissions.includes(code);
 }
 
 export function canAny(ctx: PermissionContext, codes: PermissionCode[]): boolean {
   if (!ctx.user) return false;
+  if (isSuperAdmin(ctx)) return true;
   return codes.some((c) => ctx.user!.permissions.includes(c));
 }
 
 export function canAll(ctx: PermissionContext, codes: PermissionCode[]): boolean {
   if (!ctx.user) return false;
+  if (isSuperAdmin(ctx)) return true;
   return codes.every((c) => ctx.user!.permissions.includes(c));
 }
 

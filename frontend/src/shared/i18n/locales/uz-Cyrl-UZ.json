@@ -152,6 +152,10 @@
     "login_subtitle": "Грейдинг лойиҳаларингиз билан ишлашни давом эттириш учун тизимга киринг.",
     "dashboard_title": "HRLab бошқарув панели",
     "dashboard_subtitle": "Фаол мижоз-компаниялар ва лойиҳалар бўйича умумий маълумот.",
+    "dashboard_load_error": "Портфель хулосасини юклаб бўлмади.",
+    "dashboard_projects_empty_title": "Лойиҳалар ҳали йўқ",
+    "dashboard_projects_empty_body": "Иш жараёнини бошлаш учун ушбу мижоз-компания учун биринчи грейдинг лойиҳасини яратинг.",
+    "dashboard_projects_empty_cta": "Лойиҳаларга ўтиш",
     "clients_title": "Мижоз-компаниялар",
     "projects_title": "Лойиҳалар",
     "workspace_title": "Лойиҳанинг иш майдони",
@@ -528,6 +532,8 @@
     "project_list_empty_title": "Сўровлар йўқ",
     "project_list_empty_body": "Танланган сараловчилар бўйича ҳеч нарса топилмади.",
     "filter_entity_type": "Объект тури",
+    "unknown_entity": "Номсиз объект",
+    "unknown_user": "Номаълум фойдаланувчи",
     "steps_title": "Тасдиқлаш босқичлари",
     "decisions_title": "Қарорлар тарихи",
     "decisions_empty": "Ҳали қарорлар йўқ.",
@@ -559,8 +565,7 @@
       "METHODOLOGY_VERSION": "Методология версияси",
       "EVALUATION": "Баҳолаш",
       "EVALUATION_PANEL": "Баҳолаш панели",
-      "GRADE_STRUCTURE": "Грейд тузилмаси",
-      "PROJECT": "Лойиҳа"
+      "GRADE_STRUCTURE": "Грейд тузилмаси"
     },
     "step": {
       "order": "{{order}}-босқич",

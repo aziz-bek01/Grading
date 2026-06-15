@@ -46,8 +46,11 @@ export function ApprovalDetailsPage() {
   const decisions = r.decisions ?? [];
   const currentStep = steps.find((s) => s.status === 'PENDING') ?? null;
   const entityLabelText = r.entityLabel ? pickLocalized(r.entityLabel, i18n.language) : '';
-  // Missing label degrades to a SHORT id, never a raw 36-char UUID header (FE-2).
-  const entityLabel = entityLabelText.length > 0 ? entityLabelText : shortId(r.entityId);
+  // When the label is genuinely unavailable the PRIMARY header is a neutral
+  // localized placeholder, never a raw hex fragment. The short id (and full UUID
+  // via `title`) remains in the subtitle below for traceability (FE-2).
+  const entityLabel =
+    entityLabelText.length > 0 ? entityLabelText : t('approval.unknown_entity');
 
   return (
     <div className="space-y-6" data-testid="approval-details-page">

@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import type { AxiosAdapter, AxiosRequestConfig, AxiosResponse } from 'axios';
+import { httpClient } from '@/shared/api/httpClient';
 import {
+  advanceWorkflow,
   normalizeWorkflowProgress,
   normalizeWorkflowStage,
 } from '../api/workflowApi';
@@ -81,5 +84,36 @@ describe('normalizeWorkflowProgress (wire → domain adapter)', () => {
     const w = normalizeWorkflowProgress({});
     expect(w.projectId).toBe('');
     expect(w.stages).toEqual([]);
+  });
+});
+
+describe('advanceWorkflow request body (SNAKE_CASE wire contract)', () => {
+  let captured: AxiosRequestConfig | null = null;
+  let original: AxiosAdapter | undefined;
+
+  beforeAll(() => {
+    original = httpClient.defaults.adapter as AxiosAdapter | undefined;
+    httpClient.defaults.adapter = (async (config: AxiosRequestConfig) => {
+      captured = config;
+      return {
+        data: {},
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: config as never,
+      } as AxiosResponse;
+    }) as AxiosAdapter;
+  });
+
+  afterAll(() => {
+    httpClient.defaults.adapter = original;
+  });
+
+  it('sends { target_stage } (snake_case), not { targetStage }', async () => {
+    await advanceWorkflow('proj-acme-2026', 'EVALUATION');
+    expect(captured).not.toBeNull();
+    const body = JSON.parse(captured!.data as string) as Record<string, unknown>;
+    expect(body).toEqual({ target_stage: 'EVALUATION' });
+    expect(body).not.toHaveProperty('targetStage');
   });
 });

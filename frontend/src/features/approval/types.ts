@@ -29,13 +29,15 @@ export type ApprovalRequestStatus =
 
 export type ApprovalStepStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED';
 
+// Mirrors backend ApprovalEntityType (approval/domain/ApprovalEntityType.java)
+// EXACTLY — the 5 canonical types. 'PROJECT' was never a backend value and the
+// backend rejects it as an `entity_type` filter with 400.
 export type ApprovalEntityType =
   | 'JOB_PROFILE'
   | 'METHODOLOGY_VERSION'
   | 'EVALUATION'
   | 'EVALUATION_PANEL'
-  | 'GRADE_STRUCTURE'
-  | 'PROJECT';
+  | 'GRADE_STRUCTURE';
 
 export interface ApprovalDecision {
   id: string;

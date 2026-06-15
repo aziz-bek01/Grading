@@ -29,10 +29,13 @@ const SUMMARY_NO_LABEL: ApprovalRequestSummary = {
 };
 
 describe('Approval short-id fallback (FE-2 / FE-3)', () => {
-  it('card shows a SHORT id (not a full UUID) when label + initiator name are absent', () => {
+  it('card title shows a neutral placeholder (not a hex fragment) when the label is absent; short id stays as a secondary detail', () => {
     render(renderWithProviders(<ApprovalRequestCard request={SUMMARY_NO_LABEL} />));
-    // Title link degrades to the first UUID segment.
-    expect(screen.getByText('40000000')).toBeInTheDocument();
+    // PRIMARY title is the localized placeholder (ru-RU default), never a raw
+    // hex fragment.
+    expect(screen.getByText('Без названия')).toBeInTheDocument();
+    // The short entity id is still surfaced (secondary, for traceability).
+    expect(screen.getByText(/40000000/)).toBeInTheDocument();
     // The full 36-char UUID must never appear as visible text.
     expect(screen.queryByText(FULL_ENTITY_ID)).toBeNull();
     expect(screen.queryByText(FULL_USER_ID)).toBeNull();

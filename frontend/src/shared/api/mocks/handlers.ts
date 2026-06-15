@@ -202,8 +202,11 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
   if (wfAdvance && method === 'POST') {
     const id = wfAdvance[1];
     const wf = mockDb.workflowProgress[id] ?? mockDb.workflowProgress['proj-acme-2026'];
-    const body = readBody<{ targetStage?: string }>(config);
-    if (body.targetStage) wf.current_stage = body.targetStage;
+    // Real backend reads SNAKE_CASE on the wire (target_stage); tolerate the
+    // legacy camelCase too so older callers still work.
+    const body = readBody<{ target_stage?: string; targetStage?: string }>(config);
+    const targetStage = body.target_stage ?? body.targetStage;
+    if (targetStage) wf.current_stage = targetStage;
     return ok({ ...wf, project_id: id });
   }
 
@@ -212,6 +215,46 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
     const id = wfRecompute[1];
     const wf = mockDb.workflowProgress[id] ?? mockDb.workflowProgress['proj-acme-2026'];
     return ok({ ...wf, project_id: id });
+  }
+  return null;
+}
+
+/**
+ * GET /analytics/portfolio-summary — tenant-scoped dashboard counters.
+ *
+ * Mirrors the real backend (AnalyticsController + PortfolioSummaryResponse):
+ * SNAKE_CASE wire, tenant derived from auth context (here the mock tenant
+ * header), NEVER from query/body. Counts are computed from the mock DB so the
+ * dashboard shows live numbers for the active tenant.
+ */
+function handleAnalytics(
+  method: string,
+  path: string,
+  _query: URLSearchParams,
+  config: AxiosRequestConfig,
+): MatchResult | null {
+  if (path === '/analytics/portfolio-summary' && method === 'GET') {
+    const tenantId = resolveMockTenantId(config);
+    const tenantProjects = mockDb.projects.filter((p) => p.tenant_id === tenantId);
+    const tenantProjectIds = new Set(tenantProjects.map((p) => p.id));
+    const methodologyCount = mockDb.methodologies.filter((m) =>
+      tenantProjectIds.has(m.project_id),
+    ).length;
+    // Latest project update stands in for "last activity" in the mock.
+    const lastActivityAt = tenantProjects
+      .map((p) => p.updated_at)
+      .filter((v): v is string => typeof v === 'string')
+      .sort()
+      .pop();
+    return ok({
+      tenant_id: tenantId,
+      // Single-company-per-tenant model: one client company per active tenant.
+      client_company_count: tenantProjects.length > 0 ? 1 : 0,
+      project_count: tenantProjects.length,
+      methodology_count: methodologyCount,
+      // NON_NULL on the real backend — omit when there is no activity yet.
+      ...(lastActivityAt ? { last_activity_at: lastActivityAt } : {}),
+    });
   }
   return null;
 }
@@ -4432,6 +4475,7 @@ export function tryHandle(config: AxiosRequestConfig): MatchResult | null {
   const { path, query } = parseUrl(url, config.params as Record<string, unknown> | undefined);
   return (
     handleProjects(method, path, query, config) ??
+    handleAnalytics(method, path, query, config) ??
     handleDepartments(method, path, query, config) ??
     handlePositions(method, path, query, config) ??
     handleJobProfiles(method, path, query, config) ??

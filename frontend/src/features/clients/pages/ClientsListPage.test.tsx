@@ -69,12 +69,16 @@ describe('<ClientsListPage />', () => {
   it('navigates to ClientDetailsPage on row click and hides archive button without TENANT_ARCHIVE', async () => {
     signIn('super-admin');
     // Manually drop TENANT_ARCHIVE from the active permission set to assert
-    // the PermissionGate suppresses the destructive action.
+    // the PermissionGate suppresses the destructive action. Also strip the
+    // HRLAB_SUPER_ADMIN role: it short-circuits every permission gate by design
+    // (defense-in-depth), so a super admin can never have the archive action
+    // hidden — to assert permission-LEVEL gating we simulate a regular user.
     const state = useAuthStore.getState();
     useAuthStore.setState({
       ...state,
       user: {
         ...state.user!,
+        roles: state.user!.roles.filter((r) => r !== 'HRLAB_SUPER_ADMIN'),
         permissions: state.user!.permissions.filter(
           (p) => p !== PERMISSIONS.TENANT_ARCHIVE,
         ),

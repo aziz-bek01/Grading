@@ -20,12 +20,14 @@ const STATUSES: ApprovalRequestStatus[] = [
   'CANCELLED',
 ];
 
+// The 5 backend ApprovalEntityType values only. 'PROJECT' is not a backend
+// enum value and was rejected as an entity_type filter with 400.
 const ENTITY_TYPES: ApprovalEntityType[] = [
   'JOB_PROFILE',
   'METHODOLOGY_VERSION',
   'EVALUATION',
+  'EVALUATION_PANEL',
   'GRADE_STRUCTURE',
-  'PROJECT',
 ];
 
 export function ApprovalsListPage() {

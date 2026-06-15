@@ -141,8 +141,12 @@ export function normalizeApprovalRequest(input: unknown): ApprovalRequest {
   const summary: ApprovalRequestSummary = {
     id,
     projectId: pick(raw, 'project_id', 'projectId') ?? '',
+    // Fall back to a REAL backend enum value ('JOB_PROFILE'), never the
+    // non-existent 'PROJECT' — a defaulted-to-PROJECT type echoed back into an
+    // entity_type filter would 400. In practice the backend always sends a
+    // value; this default only guards a malformed/partial payload.
     entityType: (pick(raw, 'entity_type', 'entityType') ??
-      'PROJECT') as ApprovalRequestSummary['entityType'],
+      'JOB_PROFILE') as ApprovalRequestSummary['entityType'],
     entityId: pick(raw, 'entity_id', 'entityId') ?? '',
     entityLabel: asI18n(raw['entity_label_i18n'] ?? raw['entityLabel']),
     status: (pick<ApprovalRequestStatus>(raw, 'current_status', 'status') ??

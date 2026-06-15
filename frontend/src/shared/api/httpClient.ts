@@ -153,9 +153,14 @@ httpClient.interceptors.request.use((req: InternalAxiosRequestConfig) => {
   // Real backend: forward the active company-client so the server can scope
   // data + permissions to the tenant the user selected in the TenantSelector.
   // Auth-context header (validated against memberships server-side), NOT a
-  // business tenant_id field. Sent in all non-mock environments whenever an
-  // active tenant is set; the mock adapter uses X-Mock-Tenant-Id instead.
-  if (!env.useMockApi && activeTenantId) {
+  // business tenant_id field. Attached WHENEVER an active tenant is set,
+  // independent of mock mode: gating this on `!env.useMockApi` meant a build
+  // with VITE_USE_MSW=true (demo/test runtime) never emitted the header, so the
+  // very first /users/me after an OIDC redirect went out header-less and a
+  // multi-membership super admin's shell locked out (empty permissions). The
+  // mock adapter additionally reads X-Mock-Tenant-Id (set above) to simulate
+  // JWT-derived tenancy; a real backend just ignores that extra header.
+  if (activeTenantId) {
     req.headers.set('X-Active-Tenant-Id', activeTenantId);
   }
   // Dev-only: when running against the REAL backend (MSW off), forward the

@@ -155,6 +155,23 @@ public class EvaluationController {
         return ResponseEntity.ok(PageResponse.of(page, e -> EvaluationResponse.from(e.toDomain())));
     }
 
+    /**
+     * Evaluator self "my evaluations" inbox — the sheets the caller themselves
+     * must score (their own per-evaluator Evaluation rows, created at roster lock).
+     * Self-scoped server-side ({@code tenant_id} + {@code evaluator_user_id} both
+     * pinned from the security context — never a client param), so it deliberately
+     * BYPASSES the department-scope fail-closed filter that the general {@code list}
+     * read applies: an assigned committee member with no department-scope row must
+     * still see their OWN sheets. Gated on {@code EVALUATION_READ} — the minimal
+     * scoring permission a committee member holds — and safe because the data is
+     * the caller's own by construction.
+     */
+    @GetMapping("/my")
+    @PreAuthorize("hasAuthority('EVALUATION_READ')")
+    public List<MyEvaluationRow> listMine() {
+        return queries.listMine();
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('EVALUATION_READ')")
     public EvaluationResponse getById(@PathVariable UUID id) {

@@ -175,8 +175,12 @@ class MyEvaluationsScopeBypassIntegrationTest extends AbstractIntegrationTest {
         Factor f1 = factorService.add(versionId, new FactorCommand(
                 codePrefix + "-F1", Map.of("ru-RU", "F1"), null,
                 new BigDecimal("500"), new BigDecimal("500"), 1, true));
+        // Approval requires >= 2 levels per factor (ApproveMethodologyVersionUseCase),
+        // mirroring the valid fixture in PanelReopenForExpertIntegrationTest.
         factorLevelService.add(f1.id(), new FactorLevelCommand(
                 "L1", 1, new BigDecimal("100"), null, Map.of("ru-RU", "L1"), null));
+        factorLevelService.add(f1.id(), new FactorLevelCommand(
+                "L2", 2, new BigDecimal("500"), null, Map.of("ru-RU", "L2"), null));
         approveMethodologyUseCase.approve(versionId);
 
         TenantContextHolder.clear();

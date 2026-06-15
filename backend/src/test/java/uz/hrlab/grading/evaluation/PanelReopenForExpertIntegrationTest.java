@@ -14,6 +14,7 @@ import uz.hrlab.grading.evaluation.application.CreatePanelCommand;
 import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
 import uz.hrlab.grading.evaluation.application.ReopenApprovedPanelForExpertUseCase;
+import uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCase;
 import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreCommand;
 import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
@@ -100,6 +101,7 @@ class PanelReopenForExpertIntegrationTest extends AbstractIntegrationTest {
     @Autowired AssignEvaluatorUseCase assignEvaluatorUseCase;
     @Autowired LockRosterUseCase lockRosterUseCase;
     @Autowired UpsertEvaluationScoreUseCase upsertUseCase;
+    @Autowired SubmitPanelToCeoUseCase submitPanelToCeoUseCase;
     @Autowired ApprovePanelUseCase approvePanelUseCase;
     @Autowired ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
 
@@ -260,6 +262,16 @@ class PanelReopenForExpertIntegrationTest extends AbstractIntegrationTest {
         EvaluationPanelJpaEntity averaged = panels.findByIdAndTenantId(panelId, fx.tenantId)
                 .orElseThrow();
         assertThat(averaged.getStatus()).isEqualTo(EvaluationPanelStatus.AVERAGED);
+
+        // Drive the panel to SUBMITTED first: ApprovePanelUseCase.onApproved is a
+        // SUBMITTED -> APPROVED transition (it fail-softs on any other status), so
+        // an AVERAGED panel would otherwise be left untouched and stay AVERAGED.
+        // This mirrors the production flow AVERAGED -> SUBMITTED (submit to CEO)
+        // -> APPROVED (approval decision -> PanelApprovalOutcomeListener -> onApproved).
+        submitPanelToCeoUseCase.submit(panelId);
+        EvaluationPanelJpaEntity submitted = panels.findByIdAndTenantId(panelId, fx.tenantId)
+                .orElseThrow();
+        assertThat(submitted.getStatus()).isEqualTo(EvaluationPanelStatus.SUBMITTED);
 
         // Approve the panel (system-internal transition; locks contributing sheets).
         approvePanelUseCase.onApproved(fx.tenantId, panelId, fx.actorId);

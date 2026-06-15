@@ -24,7 +24,9 @@ spring:
     # missing tx boundary surfaces in logs rather than silently exhausting the
     # pool. Safe for all profiles; tests override datasource URL, not pool knobs.
     hikari:
-      maximum-pool-size: 20
+      # Overridable per environment so a multi-replica deployment can stay within
+      # the Postgres max_connections budget (sum of all replicas + migrator + admin).
+      maximum-pool-size: ${GRADING_DB_POOL_MAX:20}
       minimum-idle: 5
       connection-timeout: 30000
       leak-detection-threshold: 30000
@@ -111,6 +113,11 @@ grading:
       # Stub key id/version for SalaryEncryptionConverter (MVP 3 ships real KMS).
       key-id: ${GRADING_SALARY_KEY_ID:dev-stub}
       key-version: ${GRADING_SALARY_KEY_VERSION:1}
+      # When true, a '-stub' key in a deployed profile HARD-FAILS salary writes.
+      # Default false: log a loud warning but keep writing (don't break a
+      # deployment still on the placeholder key). Set true once a real KMS key
+      # is provisioned to enforce the fail-closed guard.
+      fail-on-stub-key: ${GRADING_SALARY_FAIL_ON_STUB_KEY:false}
   idp:
     # IdP provisioning (decision doc 08, Option A — admin-set-password, NO SMTP).
     # FEATURE-FLAGGED: disabled by default so local/test/CI keep DB-only invites

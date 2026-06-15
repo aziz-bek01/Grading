@@ -2,6 +2,8 @@ package uz.hrlab.grading.common.persistence;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
@@ -11,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * JPA {@link AttributeConverter} skeleton for envelope-encrypted salary
@@ -59,32 +62,62 @@ public class SalaryEncryptionConverter implements AttributeConverter<BigDecimal,
      */
     private static final Set<String> STUB_WRITE_ALLOWED_PROFILES = Set.of("local", "test");
 
+    private static final Logger log = LoggerFactory.getLogger(SalaryEncryptionConverter.class);
+
     private final String keyId;
     private final int keyVersion;
+    /**
+     * When {@code true}, a stub key in a deployed profile HARD-FAILS the write
+     * (the strict security posture). Default {@code false} so a deploy that still
+     * runs on a placeholder key keeps salary writes working while logging a loud
+     * warning — flip {@code grading.security.salary-encryption.fail-on-stub-key=true}
+     * once a real KMS key is provisioned to re-enable the fail-closed guard.
+     */
+    private final boolean failOnStubKey;
     private final Environment environment;
     private final SecureRandom random = new SecureRandom();
+    /** Warn-once latch so a stub key in prod logs a single warning, not one per write. */
+    private final AtomicBoolean stubKeyWarned = new AtomicBoolean(false);
 
     public SalaryEncryptionConverter(
             @Value("${grading.security.salary-encryption.key-id:dev-stub}") String keyId,
             @Value("${grading.security.salary-encryption.key-version:1}") int keyVersion,
+            @Value("${grading.security.salary-encryption.fail-on-stub-key:false}") boolean failOnStubKey,
             Environment environment) {
         this.keyId = keyId;
         this.keyVersion = keyVersion;
+        this.failOnStubKey = failOnStubKey;
         this.environment = environment;
+    }
+
+    /** Test/convenience constructor — defaults {@code failOnStubKey} to {@code false}. */
+    SalaryEncryptionConverter(String keyId, int keyVersion, Environment environment) {
+        this(keyId, keyVersion, false, environment);
     }
 
     @Override
     public String convertToDatabaseColumn(BigDecimal attribute) {
         if (attribute == null) return null;
-        // P2-FIX (Task 3) — refuse to persist a reversible base64 "ciphertext"
-        // with a placeholder key in any non-local/test environment. MVP 3 KMS
-        // wiring (real key-id + AES-GCM) lifts this guard.
+        // P2-FIX (Task 3) — a reversible base64 "ciphertext" with a placeholder
+        // key in a non-local/test environment is a security risk. When
+        // fail-on-stub-key is enabled this fails closed; by default it logs a
+        // loud one-time warning and proceeds so an existing deployment running on
+        // a placeholder key is not broken by the upgrade. MVP 3 KMS wiring (real
+        // key-id + AES-GCM) makes this moot.
         if (usesStubKey() && !stubWritesAllowedInActiveProfile()) {
-            throw new IllegalStateException(
-                    "Salary encryption is a reversible base64 STUB (key-id='" + keyId
-                            + "') — refusing to persist salary data outside local/test profiles. "
-                            + "Provision a real (non '-stub') GRADING_SALARY_KEY_ID with MVP 3 KMS "
-                            + "wiring before storing salary in this environment.");
+            if (failOnStubKey) {
+                throw new IllegalStateException(
+                        "Salary encryption is a reversible base64 STUB (key-id='" + keyId
+                                + "') — refusing to persist salary data outside local/test profiles. "
+                                + "Provision a real (non '-stub') GRADING_SALARY_KEY_ID with MVP 3 KMS "
+                                + "wiring before storing salary in this environment.");
+            }
+            if (stubKeyWarned.compareAndSet(false, true)) {
+                log.warn("Salary encryption is running on a placeholder STUB key (key-id='{}') in a "
+                        + "deployed profile — stored salary is trivially reversible base64, NOT encryption. "
+                        + "Provision a real (non '-stub') GRADING_SALARY_KEY_ID with MVP 3 KMS wiring, then "
+                        + "set grading.security.salary-encryption.fail-on-stub-key=true to enforce.", keyId);
+            }
         }
         // Stub envelope: STUB_MAGIC | keyId | keyVersion | base64(plaintext)
         // Real implementation (MVP 3) replaces the base64 with AES-GCM(IV ⨁ ciphertext ⨁ tag).

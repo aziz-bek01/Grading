@@ -96,15 +96,27 @@ class SalaryEncryptionConverterTest {
     // --- P2-FIX (Task 3): stub-key write guard ---
 
     @Test
-    void refusesToPersistStubKeyInDeployedProfile() {
+    void refusesToPersistStubKeyInDeployedProfileWhenFailOnStubKeyEnabled() {
         SalaryEncryptionConverter converter =
-                new SalaryEncryptionConverter("prod-stub", 1, prodLikeProfile());
+                new SalaryEncryptionConverter("prod-stub", 1, true, prodLikeProfile());
 
         assertThatThrownBy(() ->
                 converter.convertToDatabaseColumn(new BigDecimal("100.00")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("STUB")
                 .hasMessageContaining("prod-stub");
+    }
+
+    @Test
+    void warnsButAllowsStubKeyInDeployedProfileByDefault() {
+        // Default posture (fail-on-stub-key=false): an existing deployment still
+        // on a placeholder key keeps working (a loud warning is logged) rather
+        // than breaking salary writes on upgrade.
+        SalaryEncryptionConverter converter =
+                new SalaryEncryptionConverter("prod-stub", 1, prodLikeProfile());
+
+        assertThat(converter.convertToDatabaseColumn(new BigDecimal("100.00")))
+                .startsWith("ENC0:prod-stub:");
     }
 
     @Test

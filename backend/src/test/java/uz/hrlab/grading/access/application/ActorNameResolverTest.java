@@ -88,7 +88,7 @@ class ActorNameResolverTest {
         UUID member = UUID.randomUUID();
         UUID foreigner = UUID.randomUUID(); // not a member of tenant A
 
-        given(memberships.findAllByTenantId(eq(tenantA))).willReturn(List.of(
+        given(memberships.findByTenantIdAndUserIdIn(eq(tenantA), any())).willReturn(List.of(
                 membership(member, tenantA, MembershipStatus.ACTIVE)));
 
         UserJpaEntity u = mock(UserJpaEntity.class);

@@ -14,6 +14,15 @@ public interface DepartmentRepository
 
     List<DepartmentJpaEntity> findByTenantIdAndProjectId(UUID tenantId, UUID projectId);
 
+    /**
+     * PERF (P1) — tenant-scoped batch lookup by id, for grid assembly that needs
+     * a page of departments (and their parents) at once instead of one
+     * {@code findByIdAndTenantId} per row (kills the N+1). {@code tenant_id} is
+     * always pinned, so any id from another tenant contributes no row — this is
+     * NOT the BOLA-prone {@code findAllById} and never widens scope.
+     */
+    List<DepartmentJpaEntity> findAllByTenantIdAndIdIn(UUID tenantId, Collection<UUID> ids);
+
     List<DepartmentJpaEntity> findByTenantIdAndProjectIdAndParentId(UUID tenantId, UUID projectId,
                                                                    UUID parentId);
 

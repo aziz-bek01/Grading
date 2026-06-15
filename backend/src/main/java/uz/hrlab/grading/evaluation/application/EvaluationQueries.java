@@ -251,19 +251,20 @@ public class EvaluationQueries {
             evalIds.add(e.getId());
         });
 
+        // PERF (P1) — batch-load positions for the whole page in ONE tenant-scoped
+        // query (was one findByIdAndTenantId per row → N+1).
         Map<UUID, PositionJpaEntity> positionById = new HashMap<>();
-        for (UUID pid : positionIds) {
-            positions.findByIdAndTenantId(pid, tenant).ifPresent(p -> positionById.put(pid, p));
-        }
+        positions.findAllByTenantIdAndIdIn(tenant, positionIds)
+                .forEach(p -> positionById.put(p.getId(), p));
         Set<UUID> departmentIds = new HashSet<>();
         positionById.values().forEach(p -> departmentIds.add(p.getDepartmentId()));
+        // PERF (P1) — batch-load departments in ONE tenant-scoped query.
         Map<UUID, DepartmentJpaEntity> departmentById = new HashMap<>();
-        for (UUID did : departmentIds) {
-            departments.findByIdAndTenantId(did, tenant).ifPresent(d -> departmentById.put(did, d));
-        }
+        departments.findAllByTenantIdAndIdIn(tenant, departmentIds)
+                .forEach(d -> departmentById.put(d.getId(), d));
         // BE-11 — resolve the PARENT department for each immediate department so
         // the K-sheet can show "department · unit" (unit = parent org node).
-        // Tenant-scoped lookup; root departments (no parent) yield no unit.
+        // Tenant-scoped batch lookup; root departments (no parent) yield no unit.
         Set<UUID> parentIds = new HashSet<>();
         departmentById.values().forEach(d -> {
             if (d.getParentId() != null) {
@@ -271,19 +272,22 @@ public class EvaluationQueries {
             }
         });
         Map<UUID, DepartmentJpaEntity> parentById = new HashMap<>();
-        for (UUID pid : parentIds) {
-            departments.findByIdAndTenantId(pid, tenant).ifPresent(d -> parentById.put(pid, d));
-        }
+        departments.findAllByTenantIdAndIdIn(tenant, parentIds)
+                .forEach(d -> parentById.put(d.getId(), d));
 
-        // Pre-fetch all per-evaluation factor scores for this single factor in one pass.
-        // Repository method finds (tenant, evaluation, factor) — we loop per evaluation
-        // (small page, MAX 200) which is acceptable; aggregating is unnecessary here.
+        // PERF (P1) — pre-fetch ALL scores for the page of evaluations in ONE
+        // tenant-scoped query (was TWO queries per evaluation → ~2N round-trips).
+        // From the single result we derive (a) the per-evaluation score for THIS
+        // factor and (b) the filled-score count, both grouped in memory. The
+        // grouped count query is also available, but the loaded rows already give
+        // us the count for free, so we keep a single round-trip.
         Map<UUID, EvaluationScoreJpaEntity> scoreByEval = new HashMap<>();
         Map<UUID, Integer> filledByEval = new HashMap<>();
-        for (UUID eid : evalIds) {
-            scores.findByTenantIdAndEvaluationIdAndFactorId(tenant, eid, factorId)
-                    .ifPresent(s -> scoreByEval.put(eid, s));
-            filledByEval.put(eid, scores.findAllByTenantIdAndEvaluationId(tenant, eid).size());
+        for (EvaluationScoreJpaEntity s : scores.findAllByTenantIdAndEvaluationIdIn(tenant, evalIds)) {
+            filledByEval.merge(s.getEvaluationId(), 1, Integer::sum);
+            if (factorId.equals(s.getFactorId())) {
+                scoreByEval.put(s.getEvaluationId(), s);
+            }
         }
 
         String locale = ctx.locale() == null ? "ru-RU" : ctx.locale();

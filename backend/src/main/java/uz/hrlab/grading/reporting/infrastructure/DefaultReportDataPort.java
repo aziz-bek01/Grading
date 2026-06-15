@@ -161,6 +161,37 @@ public class DefaultReportDataPort implements ReportDataPort {
             }
         }
 
+        // PERF (P1) — batch-load every score for the whole page of evaluations in
+        // ONE tenant-scoped query (was one findAllByTenantIdAndEvaluationId per
+        // evaluation → up to MAX_EVALUATIONS round-trips). Grouped by evaluation
+        // id in memory; ordering within an evaluation is irrelevant because the
+        // row map is keyed by factor code, matching the per-evaluation loop below.
+        Set<UUID> evaluationIds = new LinkedHashSet<>();
+        for (EvaluationJpaEntity ev : page.getContent()) {
+            evaluationIds.add(ev.getId());
+        }
+        Map<UUID, List<EvaluationScoreJpaEntity>> scoresByEval = new HashMap<>();
+        if (!evaluationIds.isEmpty()) {
+            for (EvaluationScoreJpaEntity s :
+                    evaluationScores.findAllByTenantIdAndEvaluationIdIn(tenantId, evaluationIds)) {
+                scoresByEval.computeIfAbsent(s.getEvaluationId(), k -> new ArrayList<>()).add(s);
+            }
+        }
+
+        // PERF (P1) — batch-load every referenced position in ONE tenant-scoped
+        // query (was one findByIdAndTenantId per evaluation row → N+1). Built into
+        // a map so positionLabel() resolves from memory; tenant_id stays pinned.
+        Set<UUID> positionIds = new LinkedHashSet<>();
+        for (EvaluationJpaEntity ev : page.getContent()) {
+            if (ev.getPositionId() != null) positionIds.add(ev.getPositionId());
+        }
+        Map<UUID, PositionJpaEntity> positionById = new HashMap<>();
+        if (!positionIds.isEmpty()) {
+            for (PositionJpaEntity p : positions.findAllByTenantIdAndIdIn(tenantId, positionIds)) {
+                positionById.put(p.getId(), p);
+            }
+        }
+
         int approved = 0;
         List<EvaluationRow> rows = new ArrayList<>(page.getNumberOfElements());
         for (EvaluationJpaEntity ev : page.getContent()) {
@@ -169,17 +200,16 @@ public class DefaultReportDataPort implements ReportDataPort {
                 approved++;
             }
             Map<String, String> scoresByCode = new LinkedHashMap<>();
-            List<EvaluationScoreJpaEntity> scores =
-                    evaluationScores.findAllByTenantIdAndEvaluationId(tenantId, ev.getId());
-            for (EvaluationScoreJpaEntity s : scores) {
+            for (EvaluationScoreJpaEntity s :
+                    scoresByEval.getOrDefault(ev.getId(), List.of())) {
                 String code = factorCodeById.get(s.getFactorId());
                 if (code == null) continue;
                 BigDecimal v = s.getRawFactorScore();
                 scoresByCode.put(code, v == null ? "" : v.toPlainString());
             }
 
-            // Position label — look up code+title (best-effort, tenant-scoped).
-            PositionRow label = positionLabel(tenantId, projectId, ev.getPositionId());
+            // Position label — resolve from the batch-loaded map (tenant-scoped).
+            PositionRow label = positionLabel(positionById, ev.getPositionId());
             String gradeCode = ev.getAssignedGradeNumber() == null
                     ? "" : "G" + ev.getAssignedGradeNumber();
             rows.add(new EvaluationRow(
@@ -267,11 +297,17 @@ public class DefaultReportDataPort implements ReportDataPort {
                 auditCount, recent);
     }
 
-    private PositionRow positionLabel(UUID tenantId, UUID projectId, UUID positionId) {
+    /**
+     * Resolve a position's label row from the page-level batch map (PERF P1 — no
+     * per-row DB hit). Output is byte-identical to the prior per-row lookup:
+     * null id ⇒ empty row; an id with no batch-loaded (tenant-scoped) position ⇒
+     * the id string as code with empty rest; otherwise the full code+title row.
+     */
+    private static PositionRow positionLabel(Map<UUID, PositionJpaEntity> positionById,
+                                             UUID positionId) {
         if (positionId == null) return new PositionRow("", "", "", "", "", "");
-        var hit = positions.findByIdAndTenantId(positionId, tenantId);
-        if (hit.isEmpty()) return new PositionRow(positionId.toString(), "", "", "", "", "");
-        PositionJpaEntity p = hit.get();
+        PositionJpaEntity p = positionById.get(positionId);
+        if (p == null) return new PositionRow(positionId.toString(), "", "", "", "", "");
         return new PositionRow(p.getCode(), titleFor(p), "", nz(p.getJobFamily()),
                 nz(p.getJobLevel()), p.getStatus() == null ? "" : p.getStatus().name());
     }

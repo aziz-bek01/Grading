@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,6 +29,17 @@ public interface UserTenantMembershipRepository
     List<UserTenantMembershipJpaEntity> findAllByUserId(UUID userId);
 
     List<UserTenantMembershipJpaEntity> findAllByTenantId(UUID tenantId);
+
+    /**
+     * PERF (P1) — tenant-scoped batch lookup of memberships for a known set of
+     * user ids (e.g. the few actor ids harvested from a page of approval rows by
+     * {@code ActorNameResolver}). Replaces {@code findAllByTenantId(..)} +
+     * in-memory filter, which loaded the WHOLE tenant membership table per
+     * request. {@code tenant_id} stays pinned in the predicate, so a user id from
+     * another tenant simply contributes no row — never widens scope.
+     */
+    List<UserTenantMembershipJpaEntity> findByTenantIdAndUserIdIn(
+            UUID tenantId, Collection<UUID> userIds);
 
     boolean existsByUserIdAndTenantId(UUID userId, UUID tenantId);
 

@@ -17,6 +17,17 @@ spring:
     name: grading
   profiles:
     default: local
+  datasource:
+    # PERF (P1) — explicit HikariCP sizing. max pool 20 keeps headroom under the
+    # Postgres max_connections=40 (room for migrations/admin sessions and a
+    # second app instance). leak-detection logs any connection held > 30s so a
+    # missing tx boundary surfaces in logs rather than silently exhausting the
+    # pool. Safe for all profiles; tests override datasource URL, not pool knobs.
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      leak-detection-threshold: 30000
   jpa:
     hibernate:
       ddl-auto: validate
@@ -25,6 +36,14 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+          # PERF (P1) — batch JDBC writes; order so same-table statements group
+          # into a single batch (cuts round-trips on bulk import/save paths).
+          batch_size: 32
+        # PERF (P1) — eager batch-fetch of lazy associations/collections in
+        # blocks of 16 (mitigates N+1 on traversal without forcing fetch joins).
+        default_batch_fetch_size: 16
+        order_inserts: true
+        order_updates: true
         format_sql: false
   liquibase:
     enabled: true
@@ -43,6 +62,13 @@ spring:
 server:
   port: 8080
   forward-headers-strategy: framework
+  # PERF (P1) — gzip JSON/text responses over 1 KiB. Grid/report/list payloads
+  # are large JSON; compression cuts wire bytes with negligible CPU. Small
+  # responses are left uncompressed (min-response-size) to avoid overhead.
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/plain,text/css,text/html,application/javascript
+    min-response-size: 1024
   error:
     include-stacktrace: never
     include-message: never

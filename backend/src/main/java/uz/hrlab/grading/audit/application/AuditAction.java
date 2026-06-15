@@ -216,6 +216,19 @@ public final class AuditAction {
     public static final String EVALUATION_PANEL_APPROVED           = "EVALUATION_PANEL_APPROVED";
     public static final String EVALUATION_PANEL_REOPENED          = "EVALUATION_PANEL_REOPENED";
     /**
+     * Feature 2 — reopen an APPROVED panel to add an ADDITIONAL expert
+     * ({@code APPROVED -> AWAITING_EVALUATIONS}). Distinct from the generic
+     * {@link #EVALUATION_PANEL_REOPENED} (which covers SUBMITTED/AVERAGED reopen +
+     * the CEO CHANGES_REQUESTED coupling) so SIEM can isolate the more sensitive
+     * post-approval un-lock path: it flips prior CEO-locked contributing sheets
+     * LOCKED->COMPLETE (editable in place — scores preserved, never deleted) under
+     * the GUC-gated 043 carve-out, and adds the new expert seat atomically.
+     * entity_id carries the panel_id; reason carries the added evaluator + the
+     * justification.
+     */
+    public static final String EVALUATION_PANEL_REOPENED_FOR_EXPERT
+            = "EVALUATION_PANEL_REOPENED_FOR_EXPERT";
+    /**
      * Defect-2 BE — hard delete of a {@code COLLECTING}-only panel (mirrors
      * {@link #EVALUATION_DELETED}). Roster assignments cascade-removed; entity_id
      * carries the panel_id; before-snapshot only (afterJson null — row is gone).

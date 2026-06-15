@@ -25,6 +25,7 @@ import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
 import uz.hrlab.grading.evaluation.application.DeletePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
 import uz.hrlab.grading.evaluation.application.PanelQueries;
+import uz.hrlab.grading.evaluation.application.ReopenApprovedPanelForExpertUseCase;
 import uz.hrlab.grading.evaluation.application.ReopenPanelUseCase;
 import uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCase;
 import uz.hrlab.grading.evaluation.application.WithdrawEvaluatorUseCase;
@@ -58,6 +59,7 @@ public class PanelController {
     private final DeletePanelUseCase deleteUseCase;
     private final ArchivePanelUseCase archiveUseCase;
     private final ReopenPanelUseCase reopenUseCase;
+    private final ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
     private final PanelQueries queries;
 
     public PanelController(CreatePanelUseCase createUseCase,
@@ -69,6 +71,7 @@ public class PanelController {
                           DeletePanelUseCase deleteUseCase,
                           ArchivePanelUseCase archiveUseCase,
                           ReopenPanelUseCase reopenUseCase,
+                          ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase,
                           PanelQueries queries) {
         this.createUseCase = createUseCase;
         this.bulkCreateUseCase = bulkCreateUseCase;
@@ -79,6 +82,7 @@ public class PanelController {
         this.deleteUseCase = deleteUseCase;
         this.archiveUseCase = archiveUseCase;
         this.reopenUseCase = reopenUseCase;
+        this.reopenForExpertUseCase = reopenForExpertUseCase;
         this.queries = queries;
     }
 
@@ -195,6 +199,26 @@ public class PanelController {
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
     public PanelResponse reopen(@PathVariable UUID id) {
         return PanelResponse.from(reopenUseCase.reopen(id), null, 0, 0);
+    }
+
+    /**
+     * Feature 2 — reopen an APPROVED panel to add an ADDITIONAL expert
+     * ({@code APPROVED -> AWAITING_EVALUATIONS}). Atomically un-freezes the prior
+     * contributing sheets (LOCKED -&gt; COMPLETE, scores PRESERVED — none deleted)
+     * under the GUC-gated 043 carve-out and adds the expert's DRAFT seat, so the
+     * panel stays OPEN until the expert finishes, then re-enters the normal
+     * submit/approval flow with the new expert included in the average. Gated on
+     * {@code EVALUATION_PANEL_MANAGE}; the use case re-checks permission + the ABAC
+     * department write-gate and requires a non-trivial reason. Returns the updated
+     * panel view.
+     */
+    @PostMapping("/{id}/reopen-for-expert")
+    @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
+    public PanelResponse reopenForExpert(@PathVariable UUID id,
+                                         @Valid @RequestBody ReopenForExpertRequest req) {
+        return PanelResponse.from(
+                reopenForExpertUseCase.reopen(id, req.additionalEvaluatorUserId(), req.reason()),
+                null, 0, 0);
     }
 
     @GetMapping

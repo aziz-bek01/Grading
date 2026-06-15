@@ -82,8 +82,15 @@ public class ApprovalController {
         var cmd = new CreateApprovalRequestCommand(
                 req.projectId(), req.entityType(), req.entityId(),
                 req.notesI18n(), steps);
+        // BE-3 — enrich the write response so the FE shows the resolved localized
+        // entity label (not a UUID) immediately after a decision/create. Reuses
+        // the SAME assembler/label-resolver path as the read endpoints. The use
+        // case runs FIRST so a tenant/permission denial surfaces from it (404),
+        // not from the enrichment context lookup.
+        var created = createUseCase.create(cmd);
+        UUID tenantId = TenantContextHolder.requireActive().tenantId();
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApprovalRequestResponse.from(createUseCase.create(cmd)));
+                .body(assembler.enrich(tenantId, created));
     }
 
     @GetMapping
@@ -133,7 +140,10 @@ public class ApprovalController {
                                            @PathVariable UUID stepId,
                                            @RequestBody(required = false) ApprovalDecisionRequest req) {
         String notes = req == null ? null : req.notes();
-        return ApprovalRequestResponse.from(approveUseCase.approve(id, stepId, notes));
+        // Use case runs FIRST (tenant/permission denial → 404) then enrich.
+        var decided = approveUseCase.approve(id, stepId, notes);
+        UUID tenantId = TenantContextHolder.requireActive().tenantId();
+        return assembler.enrich(tenantId, decided);
     }
 
     @PostMapping("/{id}/steps/{stepId}/reject")
@@ -141,8 +151,9 @@ public class ApprovalController {
     public ApprovalRequestResponse reject(@PathVariable UUID id,
                                           @PathVariable UUID stepId,
                                           @Valid @RequestBody ApprovalDecisionRequest req) {
-        return ApprovalRequestResponse.from(
-                rejectUseCase.reject(id, stepId, req.reason()));
+        var decided = rejectUseCase.reject(id, stepId, req.reason());
+        UUID tenantId = TenantContextHolder.requireActive().tenantId();
+        return assembler.enrich(tenantId, decided);
     }
 
     @PostMapping("/{id}/steps/{stepId}/request-changes")
@@ -150,13 +161,16 @@ public class ApprovalController {
     public ApprovalRequestResponse requestChanges(@PathVariable UUID id,
                                                   @PathVariable UUID stepId,
                                                   @Valid @RequestBody ApprovalDecisionRequest req) {
-        return ApprovalRequestResponse.from(
-                requestChangesUseCase.requestChanges(id, stepId, req.reason()));
+        var decided = requestChangesUseCase.requestChanges(id, stepId, req.reason());
+        UUID tenantId = TenantContextHolder.requireActive().tenantId();
+        return assembler.enrich(tenantId, decided);
     }
 
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasAuthority('APPROVAL_REQUEST_CANCEL')")
     public ApprovalRequestResponse cancel(@PathVariable UUID id) {
-        return ApprovalRequestResponse.from(cancelUseCase.cancel(id));
+        var cancelled = cancelUseCase.cancel(id);
+        UUID tenantId = TenantContextHolder.requireActive().tenantId();
+        return assembler.enrich(tenantId, cancelled);
     }
 }

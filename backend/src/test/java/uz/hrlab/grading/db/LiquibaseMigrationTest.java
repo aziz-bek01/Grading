@@ -101,6 +101,30 @@ class LiquibaseMigrationTest extends AbstractIntegrationTest {
         assertThat(extra).isZero();
     }
 
+    // --- TASK 2: lock in super-admin's workflow/approval grant ---
+
+    /**
+     * Regression guard for the reported "super adminga hamma narsa berkilib
+     * qolibdi" lockout. After ALL seeds run (seeds/005 last, see
+     * db.changelog-master.yaml), HRLAB_SUPER_ADMIN must hold the workflow +
+     * approval decision permissions. This pins them so a forward-only seed
+     * regression (or a botched carve-out list) is caught at migration time.
+     */
+    @Test
+    void superAdminHoldsWorkflowAndApprovalPermissions() {
+        var granted = jdbc.queryForList(
+                "SELECT p.code FROM public.role_permissions rp "
+                        + "JOIN public.permissions p ON p.id = rp.permission_id "
+                        + "JOIN public.roles r ON r.id = rp.role_id "
+                        + "WHERE r.code = 'HRLAB_SUPER_ADMIN' "
+                        + "AND p.code IN ('APPROVAL_REQUEST_DECIDE','APPROVAL_REQUEST_CREATE',"
+                        + "'APPROVAL_REQUEST_CANCEL','WORKFLOW_EDIT')",
+                String.class);
+        assertThat(granted).containsExactlyInAnyOrder(
+                "APPROVAL_REQUEST_DECIDE", "APPROVAL_REQUEST_CREATE",
+                "APPROVAL_REQUEST_CANCEL", "WORKFLOW_EDIT");
+    }
+
     private boolean tableExists(String name) {
         Long count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables "

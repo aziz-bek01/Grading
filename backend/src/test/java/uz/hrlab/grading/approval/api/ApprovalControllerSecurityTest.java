@@ -123,11 +123,58 @@ class ApprovalControllerSecurityTest {
         UUID id = UUID.randomUUID();
         UUID sid = UUID.randomUUID();
         given(approveUseCase.approve(any(), any(), any())).willReturn(stubRequest(id));
-        mvc.perform(post("/api/v1/approval-requests/{id}/steps/{sid}/approve", id, sid)
+        withTenant(() -> mvc.perform(post("/api/v1/approval-requests/{id}/steps/{sid}/approve", id, sid)
                         .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()));
+    }
+
+    // ---------------------------------------------------------------------
+    // BE-3 (2026-06-15) — WRITE-PATH ENRICHMENT. The create + decide responses
+    // must carry the resolved localized entity_label_i18n (and initiated_by_name)
+    // so the FE shows the position label, not a UUID, immediately after the
+    // action. These go through the SAME real assembler as the read paths; a
+    // regression that drops write-path enrichment breaks THIS test.
+    // ---------------------------------------------------------------------
+
+    @Test
+    void createResponseCarriesResolvedEntityLabel() throws Exception {
+        ApprovalRequest created = fullStub();
+        given(createUseCase.create(any())).willReturn(created);
+        stubEnrichment(created);
+
+        String body = "{\"project_id\":\"" + created.projectId() + "\",\"entity_type\":\"JOB_PROFILE\","
+                + "\"entity_id\":\"" + created.entityId() + "\",\"steps\":[{\"step_order\":1,"
+                + "\"required_permission\":\"JOB_PROFILE_APPROVE\"}]}";
+        withTenant(() -> mvc.perform(post("/api/v1/approval-requests")
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_CREATE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.entity_label_i18n").exists())
+                .andExpect(jsonPath("$.entity_label_i18n.['ru-RU']").value("Профиль RU"))
+                .andExpect(jsonPath("$.entity_label_i18n.['en-US']").value("Profile EN"))
+                .andExpect(jsonPath("$.initiated_by_name").value("Initiator User")));
+    }
+
+    @Test
+    void approveResponseCarriesResolvedEntityLabel() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID sid = UUID.randomUUID();
+        ApprovalRequest decided = fullStub();
+        given(approveUseCase.approve(any(), any(), any())).willReturn(decided);
+        stubEnrichment(decided);
+
+        withTenant(() -> mvc.perform(post("/api/v1/approval-requests/{id}/steps/{sid}/approve", id, sid)
+                        .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entity_label_i18n").exists())
+                .andExpect(jsonPath("$.entity_label_i18n.['ru-RU']").value("Профиль RU"))
+                .andExpect(jsonPath("$.entity_label_i18n.['en-US']").value("Profile EN"))
+                .andExpect(jsonPath("$.initiated_by_name").value("Initiator User")));
     }
 
     @Test
@@ -135,11 +182,13 @@ class ApprovalControllerSecurityTest {
         UUID id = UUID.randomUUID();
         UUID sid = UUID.randomUUID();
         given(rejectUseCase.reject(any(), any(), any())).willReturn(stubRequest(id));
-        mvc.perform(post("/api/v1/approval-requests/{id}/steps/{sid}/reject", id, sid)
+        // Reject is a write-path that now enriches the response (BE-3), so it
+        // resolves the active tenant from the context — set one for the 200 path.
+        withTenant(() -> mvc.perform(post("/api/v1/approval-requests/{id}/steps/{sid}/reject", id, sid)
                         .with(jwt().authorities(() -> "APPROVAL_REQUEST_DECIDE"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\":\"long enough reason yes truly here\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()));
     }
 
     @Test

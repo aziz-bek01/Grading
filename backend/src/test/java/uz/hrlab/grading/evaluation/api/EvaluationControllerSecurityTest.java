@@ -103,6 +103,41 @@ class EvaluationControllerSecurityTest {
                 .andExpect(status().isOk());
     }
 
+    // ---------- Feature 1: GET /api/v1/evaluations/my ----------
+
+    @Test
+    void myEvaluationsAnonymousIsUnauthorized() throws Exception {
+        mvc.perform(get("/api/v1/evaluations/my"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void myEvaluationsWithoutEvaluationReadIsForbidden() throws Exception {
+        // A principal that lacks EVALUATION_READ (the minimal scoring permission)
+        // must be 403 — the self-scoped inbox is still gated by @PreAuthorize.
+        mvc.perform(get("/api/v1/evaluations/my").with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void myEvaluationsWithEvaluationReadReturns200() throws Exception {
+        UUID evaluationId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID panelId = UUID.randomUUID();
+        UUID positionId = UUID.randomUUID();
+        given(queries.listMine()).willReturn(List.of(new MyEvaluationRow(
+                evaluationId, projectId, panelId, positionId, "P-001",
+                java.util.Map.of("ru-RU", "Кассир"), EvaluationStatus.DRAFT, 0, 8)));
+        mvc.perform(get("/api/v1/evaluations/my").with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].evaluation_id").value(evaluationId.toString()))
+                .andExpect(jsonPath("$[0].project_id").value(projectId.toString()))
+                .andExpect(jsonPath("$[0].panel_id").value(panelId.toString()))
+                .andExpect(jsonPath("$[0].status").value("DRAFT"))
+                .andExpect(jsonPath("$[0].filled_factors_count").value(0))
+                .andExpect(jsonPath("$[0].total_factors_count").value(8));
+    }
+
     @Test
     void createRequiresEvaluationEdit() throws Exception {
         mvc.perform(post("/api/v1/evaluations")

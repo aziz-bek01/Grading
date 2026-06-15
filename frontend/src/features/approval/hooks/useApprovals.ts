@@ -50,6 +50,9 @@ export function useMyApprovalInbox() {
     queryFn: fetchMyInbox,
     enabled: !!activeTenantId,
     refetchInterval: 30_000,
+    // Don't poll the inbox/badge while the tab is hidden (P1-T2) — resumes on
+    // return; window-focus refetch (global default) keeps the badge fresh.
+    refetchIntervalInBackground: false,
   });
 }
 

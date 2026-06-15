@@ -20,10 +20,12 @@ interface Props {
 /** Panel lifecycle badge — reuses the shared StatusBadge tone system. */
 export function PanelStatusBadge({ status, className }: Props) {
   const { t } = useTranslation();
+  // Unknown status → neutral tone; the i18n key falls back to the raw status.
+  const label = t(`panel.status.${status}`, { defaultValue: String(status) });
   return (
     <StatusBadge
-      tone={STATUS_TONE[status]}
-      label={t(`panel.status.${status}`)}
+      tone={STATUS_TONE[status] ?? 'draft'}
+      label={label}
       className={className}
     />
   );

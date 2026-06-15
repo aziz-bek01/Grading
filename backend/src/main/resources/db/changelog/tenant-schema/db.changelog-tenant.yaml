@@ -170,3 +170,21 @@ databaseChangeLog:
   - include:
       file: 042-factor-triggers-approved-edit-carveout.yaml
       relativeToChangelogFile: true
+  # panel-reopen-for-additional-expert (Feature 2): GUC-gated
+  # (app.panel_reopen_in_progress='on') controlled un-lock carve-out in the
+  # evaluation lock-immutability trigger — a LOCKED contributing sheet may go
+  # back to COMPLETE (editable) ONLY inside the audited
+  # ReopenApprovedPanelForExpertUseCase tx that set the flag. LOCKED->{anything
+  # else} and ARCHIVED/APPROVED no-regress stay hard-immutable. CREATE OR
+  # REPLACE only — 015 untouched. Mirrors the 042 GUC carve-out style; ordered
+  # strictly AFTER 042. Independent of 039-042.
+  - include:
+      file: 043-evaluation-reopen-unlock-carveout.yaml
+      relativeToChangelogFile: true
+
+  # Widen chk_approval_requests_entity_type to include EVALUATION_PANEL so a panel
+  # can be submitted to the CEO (and re-approved after reopen-for-expert) — 021's
+  # constraint predated the panel approval entity type.
+  - include:
+      file: 044-approval-requests-allow-evaluation-panel.yaml
+      relativeToChangelogFile: true

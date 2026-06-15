@@ -1,5 +1,7 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/shared/components/layout/AppShell';
+import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { RequireAuth } from './routing/RequireAuth';
 import { RequirePermission } from './routing/RequirePermission';
 import { RequireSalaryPermission } from './routing/RequireSalaryPermission';
@@ -7,48 +9,137 @@ import { RequireAuditPermission } from './routing/RequireAuditPermission';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { routes } from '@/shared/config/routes';
 
-import { LoginPage } from '@/pages/LoginPage';
-import { AuthCallbackPage } from '@/pages/AuthCallbackPage';
-import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
-import { DashboardPage } from '@/pages/DashboardPage';
+// Route-level code-splitting (P1-T1). Every routed page is loaded via
+// `React.lazy` so its feature module — plus that module's transitive deps —
+// lands in its own async chunk instead of the entry bundle. Vite/Rolldown
+// emits one chunk per dynamic import; combined with the vendor groups in
+// vite.config.ts this drops the entry chunk well below the former 1.4 MB
+// monolith. The shell, guards, routes table and the small shared
+// `UpcomingFeaturePage` stay eager because they are needed on first paint.
 import { UpcomingFeaturePage } from '@/shared/components/UpcomingFeaturePage';
 
-import { ClientsListPage } from '@/features/clients/pages/ClientsListPage';
-import { ClientDetailsPage } from '@/features/clients/pages/ClientDetailsPage';
+// `lazy` needs a module whose `default` export is the component. Each feature
+// page is a named export, so re-map it to `default` in the import() callback.
+const LoginPage = lazy(() =>
+  import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })),
+);
+const AuthCallbackPage = lazy(() =>
+  import('@/pages/AuthCallbackPage').then((m) => ({ default: m.AuthCallbackPage })),
+);
+const AccessDeniedPage = lazy(() =>
+  import('@/pages/AccessDeniedPage').then((m) => ({ default: m.AccessDeniedPage })),
+);
+const NotFoundPage = lazy(() =>
+  import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
+);
+const DashboardPage = lazy(() =>
+  import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+);
 
-import { ProjectListPage } from '@/features/projects/pages/ProjectListPage';
-import { ProjectWorkspacePage } from '@/features/projects/pages/ProjectWorkspacePage';
-import { OrganizationPage } from '@/features/organization/pages/OrganizationPage';
-import { PositionListPage } from '@/features/positions/pages/PositionListPage';
-import { PositionDetailsPage } from '@/features/positions/pages/PositionDetailsPage';
-import { JobProfileEditorPage } from '@/features/job-profiles/pages/JobProfileEditorPage';
-import { QuestionnairePage } from '@/features/job-analysis/pages/QuestionnairePage';
-import { MethodologyListPage } from '@/features/methodology/pages/MethodologyListPage';
-import { MethodologyBuilderPage } from '@/features/methodology/pages/MethodologyBuilderPage';
-import { MethodologyTranslationsPage } from '@/features/methodology/pages/MethodologyTranslationsPage';
-import { EvaluationListPage } from '@/features/evaluation/pages/EvaluationListPage';
-import { EvaluationDetailsPage } from '@/features/evaluation/pages/EvaluationDetailsPage';
-import { PanelDetailPage } from '@/features/evaluation/pages/PanelDetailPage';
-import { GradeStructureListPage } from '@/features/grade-structure/pages/GradeStructureListPage';
-import { GradeStructureBuilderPage } from '@/features/grade-structure/pages/GradeStructureBuilderPage';
-import { GradePyramidPage } from '@/features/grade-structure/pages/GradePyramidPage';
-import { ApprovalsInboxPage } from '@/features/approval/pages/ApprovalsInboxPage';
-import { ApprovalDetailsPage } from '@/features/approval/pages/ApprovalDetailsPage';
-import { ApprovalsListPage } from '@/features/approval/pages/ApprovalsListPage';
-import { ImportListPage } from '@/features/import/pages/ImportListPage';
-import { ImportWizardPage } from '@/features/import/pages/ImportWizardPage';
-import { ImportDetailsPage } from '@/features/import/pages/ImportDetailsPage';
-import { ExportCenterPage } from '@/features/export/pages/ExportCenterPage';
-import { ExportDetailsPage } from '@/features/export/pages/ExportDetailsPage';
-import { ReportsCenterPage } from '@/features/report/pages/ReportsCenterPage';
-import { UsersListPage } from '@/features/users-access/pages/UsersListPage';
-import { UserDetailsPage } from '@/features/users-access/pages/UserDetailsPage';
-import { RolesListPage } from '@/features/roles-access/pages/RolesListPage';
-import { RoleDetailPage } from '@/features/roles-access/pages/RoleDetailPage';
-import { AuditListPage } from '@/features/audit/pages/AuditListPage';
+const ClientsListPage = lazy(() =>
+  import('@/features/clients/pages/ClientsListPage').then((m) => ({ default: m.ClientsListPage })),
+);
+const ClientDetailsPage = lazy(() =>
+  import('@/features/clients/pages/ClientDetailsPage').then((m) => ({ default: m.ClientDetailsPage })),
+);
+
+const ProjectListPage = lazy(() =>
+  import('@/features/projects/pages/ProjectListPage').then((m) => ({ default: m.ProjectListPage })),
+);
+const ProjectWorkspacePage = lazy(() =>
+  import('@/features/projects/pages/ProjectWorkspacePage').then((m) => ({ default: m.ProjectWorkspacePage })),
+);
+const OrganizationPage = lazy(() =>
+  import('@/features/organization/pages/OrganizationPage').then((m) => ({ default: m.OrganizationPage })),
+);
+const PositionListPage = lazy(() =>
+  import('@/features/positions/pages/PositionListPage').then((m) => ({ default: m.PositionListPage })),
+);
+const PositionDetailsPage = lazy(() =>
+  import('@/features/positions/pages/PositionDetailsPage').then((m) => ({ default: m.PositionDetailsPage })),
+);
+const JobProfileEditorPage = lazy(() =>
+  import('@/features/job-profiles/pages/JobProfileEditorPage').then((m) => ({ default: m.JobProfileEditorPage })),
+);
+const QuestionnairePage = lazy(() =>
+  import('@/features/job-analysis/pages/QuestionnairePage').then((m) => ({ default: m.QuestionnairePage })),
+);
+const MethodologyListPage = lazy(() =>
+  import('@/features/methodology/pages/MethodologyListPage').then((m) => ({ default: m.MethodologyListPage })),
+);
+const MethodologyBuilderPage = lazy(() =>
+  import('@/features/methodology/pages/MethodologyBuilderPage').then((m) => ({ default: m.MethodologyBuilderPage })),
+);
+const MethodologyTranslationsPage = lazy(() =>
+  import('@/features/methodology/pages/MethodologyTranslationsPage').then((m) => ({ default: m.MethodologyTranslationsPage })),
+);
+const EvaluationListPage = lazy(() =>
+  import('@/features/evaluation/pages/EvaluationListPage').then((m) => ({ default: m.EvaluationListPage })),
+);
+const EvaluationDetailsPage = lazy(() =>
+  import('@/features/evaluation/pages/EvaluationDetailsPage').then((m) => ({ default: m.EvaluationDetailsPage })),
+);
+const PanelDetailPage = lazy(() =>
+  import('@/features/evaluation/pages/PanelDetailPage').then((m) => ({ default: m.PanelDetailPage })),
+);
+const MyEvaluationsPage = lazy(() =>
+  import('@/features/evaluation/pages/MyEvaluationsPage').then((m) => ({ default: m.MyEvaluationsPage })),
+);
+const GradeStructureListPage = lazy(() =>
+  import('@/features/grade-structure/pages/GradeStructureListPage').then((m) => ({ default: m.GradeStructureListPage })),
+);
+const GradeStructureBuilderPage = lazy(() =>
+  import('@/features/grade-structure/pages/GradeStructureBuilderPage').then((m) => ({ default: m.GradeStructureBuilderPage })),
+);
+const GradePyramidPage = lazy(() =>
+  import('@/features/grade-structure/pages/GradePyramidPage').then((m) => ({ default: m.GradePyramidPage })),
+);
+const ApprovalsInboxPage = lazy(() =>
+  import('@/features/approval/pages/ApprovalsInboxPage').then((m) => ({ default: m.ApprovalsInboxPage })),
+);
+const ApprovalDetailsPage = lazy(() =>
+  import('@/features/approval/pages/ApprovalDetailsPage').then((m) => ({ default: m.ApprovalDetailsPage })),
+);
+const ApprovalsListPage = lazy(() =>
+  import('@/features/approval/pages/ApprovalsListPage').then((m) => ({ default: m.ApprovalsListPage })),
+);
+const ImportListPage = lazy(() =>
+  import('@/features/import/pages/ImportListPage').then((m) => ({ default: m.ImportListPage })),
+);
+const ImportWizardPage = lazy(() =>
+  import('@/features/import/pages/ImportWizardPage').then((m) => ({ default: m.ImportWizardPage })),
+);
+const ImportDetailsPage = lazy(() =>
+  import('@/features/import/pages/ImportDetailsPage').then((m) => ({ default: m.ImportDetailsPage })),
+);
+const ExportCenterPage = lazy(() =>
+  import('@/features/export/pages/ExportCenterPage').then((m) => ({ default: m.ExportCenterPage })),
+);
+const ExportDetailsPage = lazy(() =>
+  import('@/features/export/pages/ExportDetailsPage').then((m) => ({ default: m.ExportDetailsPage })),
+);
+const ReportsCenterPage = lazy(() =>
+  import('@/features/report/pages/ReportsCenterPage').then((m) => ({ default: m.ReportsCenterPage })),
+);
+const UsersListPage = lazy(() =>
+  import('@/features/users-access/pages/UsersListPage').then((m) => ({ default: m.UsersListPage })),
+);
+const UserDetailsPage = lazy(() =>
+  import('@/features/users-access/pages/UserDetailsPage').then((m) => ({ default: m.UserDetailsPage })),
+);
+const RolesListPage = lazy(() =>
+  import('@/features/roles-access/pages/RolesListPage').then((m) => ({ default: m.RolesListPage })),
+);
+const RoleDetailPage = lazy(() =>
+  import('@/features/roles-access/pages/RoleDetailPage').then((m) => ({ default: m.RoleDetailPage })),
+);
+const AuditListPage = lazy(() =>
+  import('@/features/audit/pages/AuditListPage').then((m) => ({ default: m.AuditListPage })),
+);
 
 export function AppRouter() {
   return (
+    <Suspense fallback={<LoadingState />}>
     <Routes>
       <Route path={routes.login} element={<LoginPage />} />
       <Route path={routes.authCallback} element={<AuthCallbackPage />} />
@@ -182,8 +273,33 @@ export function AppRouter() {
             </Route>
           </Route>
 
-          <Route path="approvals" element={<ApprovalsInboxPage />} />
-          <Route path="approvals/:approvalId" element={<ApprovalDetailsPage />} />
+          {/* Global approvals inbox + detail. BE GET /my-inbox and
+              GET /approval-requests/{id} gate on APPROVAL_REQUEST_DECIDE; we
+              accept the same "any approver" set as the project-scoped
+              variant and the sidebar entry so a non-decider gets the clean
+              NoAccessState instead of a raw error card. */}
+          <Route
+            element={
+              <RequirePermission
+                permissions={[
+                  PERMISSIONS.APPROVAL_REQUEST_CREATE,
+                  PERMISSIONS.APPROVAL_REQUEST_DECIDE,
+                  PERMISSIONS.APPROVAL_STEP_APPROVE,
+                ]}
+                mode="any"
+              />
+            }
+          >
+            <Route path="approvals" element={<ApprovalsInboxPage />} />
+            <Route path="approvals/:approvalId" element={<ApprovalDetailsPage />} />
+          </Route>
+
+          {/* Feature 1 — evaluator self-inbox. Global (not project-scoped)
+              because GET /evaluations/my spans the caller's projects. Gated
+              EVALUATION_READ so an assigned evaluator can reach their sheets. */}
+          <Route element={<RequirePermission permissions={PERMISSIONS.EVALUATION_READ} />}>
+            <Route path="my-evaluations" element={<MyEvaluationsPage />} />
+          </Route>
 
           <Route element={<RequireAuditPermission />}>
             <Route path="audit" element={<AuditListPage />} />
@@ -208,7 +324,11 @@ export function AppRouter() {
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to={routes.dashboard} replace />} />
+      {/* Unknown route — show a dedicated 404 with a clear "go back / go to
+          dashboard" affordance instead of silently bouncing to the dashboard.
+          The message is non-enumerating (security-safe). */}
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </Suspense>
   );
 }

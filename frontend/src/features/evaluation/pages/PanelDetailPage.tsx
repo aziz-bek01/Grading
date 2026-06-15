@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Archive, RotateCcw, Trash2 } from 'lucide-react';
+import { Archive, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import { Card } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui/Button';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
@@ -20,6 +20,7 @@ import {
   useDeletePanel,
   usePanelDetail,
   useReopenPanel,
+  useReopenPanelForExpert,
 } from '../hooks/usePanels';
 import {
   isPanelArchivable,
@@ -30,6 +31,8 @@ import { PanelStatusBadge } from '../components/panel/PanelStatusBadge';
 import { PanelProgressView } from '../components/panel/PanelProgressView';
 import { PanelAveragedResult } from '../components/panel/PanelAveragedResult';
 import { PanelApprovalSummary } from '../components/panel/PanelApprovalSummary';
+import { ReopenForExpertDialog } from '../components/panel/ReopenForExpertDialog';
+import { describeReopenForExpertError } from '../components/panel/reopenForExpertError';
 
 /**
  * T3 (Defect 2) — evaluation-panel detail page.
@@ -65,10 +68,50 @@ export function PanelDetailPage() {
   const deleteMutation = useDeletePanel(panelId);
   const archiveMutation = useArchivePanel(panelId);
   const reopenMutation = useReopenPanel(panelId);
+  const reopenForExpertMutation = useReopenPanelForExpert(panelId);
 
   const [pending, setPending] = useState<Pending>(null);
+  const [reopenExpertOpen, setReopenExpertOpen] = useState(false);
+
+  // Evaluator user ids already on the roster — excluded from the picker so the
+  // manager cannot re-add an existing evaluator.
+  const rosterUserIds = useMemo(
+    () =>
+      (detailQuery.data?.roster ?? [])
+        .map((a) => a.evaluator_user_id)
+        .filter((id): id is string => !!id),
+    [detailQuery.data],
+  );
 
   const backToList = () => navigate(routes.projectEvaluation(projectId));
+
+  // Turn a failed management action into a VISIBLE, localized message instead of
+  // silently doing nothing (the prod symptom: confirm a delete → nothing
+  // happens). We surface the stable backend error code + correlation id so the
+  // real cause (e.g. PANEL_NOT_DELETABLE after a status change, an ABAC 404, or
+  // a 403) is diagnosable rather than swallowed. The BE stays the source of
+  // truth — this only reports what it returned.
+  const describeError = (err: unknown): string => {
+    if (!(err instanceof ApiError)) return t('panel.detail.action_failed');
+    if (err.status === 0) return t('panel.detail.error_network');
+    const ref = t('panel.detail.error_ref', {
+      code: err.code,
+      corr: err.correlationId ?? t('common.dash'),
+    });
+    let base: string;
+    if (err.code === 'PANEL_NOT_DELETABLE') base = t('panel.detail.error_not_deletable');
+    else if (err.code === 'PANEL_NOT_ARCHIVABLE') base = t('panel.detail.error_not_archivable');
+    else if (err.isForbidden()) base = t('panel.detail.error_forbidden');
+    else if (err.isNotFound()) base = t('panel.detail.error_not_found');
+    else base = t('panel.detail.action_failed');
+    return `${base} ${ref}`;
+  };
+
+  const closeDialog = () => {
+    deleteMutation.reset();
+    archiveMutation.reset();
+    setPending(null);
+  };
 
   if (!canRead) return <NoAccessState />;
   if (detailQuery.isLoading) return <LoadingState />;
@@ -105,7 +148,10 @@ export function PanelDetailPage() {
   const showDelete = canManage && isPanelDeletable(status);
   const showArchive = canManage && isPanelArchivable(status);
   const showReopen = canManage && isPanelReopenable(status);
-  const hasActions = showDelete || showArchive || showReopen;
+  // Feature 2 — only an APPROVED panel can be reopened to add an extra expert.
+  const showReopenForExpert = canManage && status === 'APPROVED';
+  const hasActions =
+    showDelete || showArchive || showReopen || showReopenForExpert;
 
   return (
     <div className="space-y-6" data-testid="panel-detail-page">
@@ -114,7 +160,11 @@ export function PanelDetailPage() {
         <div>
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl text-text-primary">
-              {pickLocalized(panel.position_title_i18n, i18n.language)}
+              {pickLocalized(
+                panel.position_title_i18n,
+                i18n.language,
+                t('common.untitled'),
+              )}
             </h1>
             <PanelStatusBadge status={status} />
           </div>
@@ -125,6 +175,16 @@ export function PanelDetailPage() {
 
         {hasActions ? (
           <div className="flex items-center gap-2" data-testid="panel-detail-actions">
+            {showReopenForExpert ? (
+              <Button
+                variant="secondary"
+                onClick={() => setReopenExpertOpen(true)}
+                disabled={reopenForExpertMutation.isPending}
+                data-testid="panel-reopen-for-expert-action"
+              >
+                <UserPlus size={14} aria-hidden /> {t('panel.reopen_expert.action')}
+              </Button>
+            ) : null}
             {showReopen ? (
               <Button
                 variant="secondary"
@@ -159,6 +219,18 @@ export function PanelDetailPage() {
         ) : null}
       </header>
 
+      {/* Reopen has no confirm dialog, so surface its failure as an inline
+          banner (instead of the previous silent no-op). */}
+      {reopenMutation.isError ? (
+        <div
+          role="alert"
+          data-testid="panel-reopen-error"
+          className="rounded-md border border-danger-500/30 bg-danger-50 text-danger-700 text-sm p-3"
+        >
+          {describeError(reopenMutation.error)}
+        </div>
+      ) : null}
+
       {/* Roster + blind-safe status (reused component). */}
       <PanelProgressView panelId={panel.id} />
 
@@ -181,42 +253,90 @@ export function PanelDetailPage() {
       ) : null}
 
       {/* Delete — reason-required confirm (≥ 5 chars), identical to the
-          evaluation delete confirm. On success return to the list. */}
+          evaluation delete confirm. On success return to the list; on failure
+          the dialog STAYS OPEN with the server error surfaced (no silent
+          no-op). */}
       <ConfirmDialog
         open={pending === 'delete'}
         destructive
         requireReason
         reasonMinLength={5}
+        busy={deleteMutation.isPending}
+        error={deleteMutation.isError ? describeError(deleteMutation.error) : null}
         title={t('panel.detail.delete_title')}
         body={t('panel.detail.delete_body')}
         confirmLabel={t('common.delete')}
         reasonLabel={t('common.reason_label')}
         reasonPlaceholder={t('panel.detail.delete_reason_placeholder')}
-        onCancel={() => setPending(null)}
+        onCancel={closeDialog}
         onConfirm={async (reason) => {
           if (!reason) return;
-          await deleteMutation.mutateAsync(reason);
-          setPending(null);
-          backToList();
+          try {
+            await deleteMutation.mutateAsync(reason);
+            setPending(null);
+            backToList();
+          } catch {
+            // Keep the dialog open; the error is shown via `error` above.
+          }
         }}
       />
 
       {/* Archive — reason-required confirm; stays on the page (status flips to
-          ARCHIVED, actions disappear). */}
+          ARCHIVED, actions disappear). On failure the dialog stays open with
+          the server error surfaced. */}
       <ConfirmDialog
         open={pending === 'archive'}
         requireReason
         reasonMinLength={5}
+        busy={archiveMutation.isPending}
+        error={archiveMutation.isError ? describeError(archiveMutation.error) : null}
         title={t('panel.detail.archive_title')}
         body={t('panel.detail.archive_body')}
         confirmLabel={t('panel.detail.archive')}
         reasonLabel={t('common.reason_label')}
         reasonPlaceholder={t('panel.detail.archive_reason_placeholder')}
-        onCancel={() => setPending(null)}
+        onCancel={closeDialog}
         onConfirm={async (reason) => {
           if (!reason) return;
-          await archiveMutation.mutateAsync(reason);
-          setPending(null);
+          try {
+            await archiveMutation.mutateAsync(reason);
+            setPending(null);
+          } catch {
+            // Keep the dialog open; the error is shown via `error` above.
+          }
+        }}
+      />
+
+      {/* Feature 2 — reopen an APPROVED panel to add an additional expert. The
+          dialog reuses the SAME EvaluatorPicker the COLLECTING add-evaluator
+          flow uses + a required reason (≥ 5). On success the panel flips to
+          AWAITING_EVALUATIONS (a fresh DRAFT sheet for the expert); on failure
+          the dialog STAYS OPEN with the mapped server error (esp.
+          PANEL_NOT_APPROVED_FOR_REOPEN). */}
+      <ReopenForExpertDialog
+        key={reopenExpertOpen ? 'reopen-expert-open' : 'reopen-expert-closed'}
+        open={reopenExpertOpen}
+        busy={reopenForExpertMutation.isPending}
+        error={
+          reopenForExpertMutation.isError
+            ? describeReopenForExpertError(reopenForExpertMutation.error, t)
+            : null
+        }
+        excludeUserIds={rosterUserIds}
+        onCancel={() => {
+          reopenForExpertMutation.reset();
+          setReopenExpertOpen(false);
+        }}
+        onConfirm={async (additionalEvaluatorUserId, reason) => {
+          try {
+            await reopenForExpertMutation.mutateAsync({
+              additionalEvaluatorUserId,
+              reason,
+            });
+            setReopenExpertOpen(false);
+          } catch {
+            // Keep the dialog open; the error is shown via `error` above.
+          }
         }}
       />
     </div>

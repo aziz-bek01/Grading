@@ -28,6 +28,18 @@ public interface EvaluationRepository
     Page<EvaluationJpaEntity> findAllByTenantIdAndEvaluatorUserId(
             UUID tenantId, UUID evaluatorUserId, Pageable pageable);
 
+    /**
+     * "My evaluations" inbox (self-scoped) — every sheet whose evaluator IS the
+     * caller, ordered newest-updated first. Tenant + evaluator are BOTH pinned in
+     * the predicate, so this can NEVER return another user's or another tenant's
+     * row. Explicit ownership of the {@code Evaluation} (evaluator_user_id) IS the
+     * authorization here, so this read deliberately does NOT route through the
+     * department-scope fail-closed filter (a committee member with no
+     * user_department_scopes row must still see their own assigned sheets).
+     */
+    List<EvaluationJpaEntity> findAllByTenantIdAndEvaluatorUserIdOrderByUpdatedAtDesc(
+            UUID tenantId, UUID evaluatorUserId);
+
     List<EvaluationJpaEntity> findAllByTenantIdAndPositionIdAndMethodologyVersionId(
             UUID tenantId, UUID positionId, UUID methodologyVersionId);
 

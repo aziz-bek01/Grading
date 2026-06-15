@@ -28,6 +28,18 @@ interface ConfirmDialogProps {
    */
   onConfirm: (reason?: string) => void;
   onCancel: () => void;
+  /**
+   * When set, an error banner is rendered above the buttons and the dialog
+   * stays open — so a failed confirm (e.g. the server rejected a delete) is
+   * VISIBLE instead of silently doing nothing. The caller owns the message
+   * (already localized).
+   */
+  error?: string | null;
+  /**
+   * Disables both buttons while the confirm action is in flight (the parent
+   * keeps the dialog open until its mutation settles).
+   */
+  busy?: boolean;
 }
 
 export function ConfirmDialog({
@@ -43,6 +55,8 @@ export function ConfirmDialog({
   reasonPlaceholder,
   onConfirm,
   onCancel,
+  error,
+  busy = false,
 }: ConfirmDialogProps) {
   const { t } = useTranslation();
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -124,14 +138,24 @@ export function ConfirmDialog({
           </div>
         ) : null}
 
+        {error ? (
+          <div
+            role="alert"
+            data-testid="confirm-dialog-error"
+            className="mt-4 rounded-md border border-danger-500/30 bg-danger-50 text-danger-700 text-sm p-3"
+          >
+            {error}
+          </div>
+        ) : null}
+
         <div className="flex justify-end gap-2 mt-6">
-          <Button variant="secondary" onClick={onCancel}>
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>
             {cancelLabel ?? t('common.cancel')}
           </Button>
           <Button
             ref={confirmRef}
             variant={destructive ? 'danger' : 'primary'}
-            disabled={!reasonValid}
+            disabled={!reasonValid || busy}
             onClick={() => onConfirm(requireReason ? reason.trim() : undefined)}
           >
             {confirmLabel ?? t('common.confirm')}

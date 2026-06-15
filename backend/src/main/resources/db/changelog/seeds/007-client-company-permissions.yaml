@@ -1,0 +1,81 @@
+# P2-FIX (Task 1) — CLIENT_* permission catalogue rows + role grants.
+#
+# DEFECT (grading.hrlab.uz): the CLIENT_LIST / CLIENT_VIEW / CLIENT_UPDATE codes
+# are defined in uz.hrlab.grading.access.application.PermissionCodes and gated by
+# @PreAuthorize on AdminClientCompanyController (list/details/patch), but NO
+# changeset ever inserted them into public.permissions and no role was granted
+# them. Because authority is the EXACT union of role_permissions codes (no
+# wildcard / bypass anywhere — see seeds/005 header), a CLIENT_COMPANY_ADMIN —
+# which does NOT hold TENANT_EDIT — was fail-closed out of PATCHing its OWN
+# client-company profile (legalName / brandName / industry / countryCode / taxId).
+#
+# FIX (forward-only, mirrors seeds/006 — never edit already-applied 001/004):
+#   1. INSERT the three catalogue rows (ON CONFLICT DO NOTHING), matching the
+#      column/format of the seeds/001 permission catalogue.
+#   2. GRANT CLIENT_LIST/VIEW/UPDATE to CLIENT_COMPANY_ADMIN (manages its own
+#      client profile without the heavier TENANT_EDIT platform permission), and
+#      CLIENT_LIST/VIEW to the HRLab roles that already manage clients via the
+#      admin surface (HRLAB_PROJECT_MANAGER — read-only oversight; super admin
+#      is covered automatically by the seeds/005 backfill).
+#
+# Ordering: registered in db.changelog-master BEFORE seeds/005 so the existing
+# HRLAB_SUPER_ADMIN wildcard-minus-carve-outs backfill ALSO picks the three new
+# non-carve-out codes up automatically, AND so seeds/005's positive-assertion
+# invariant (super admin holds every non-carve-out code) still holds.
+#
+# Source of truth: docs/mvp1/role-permissions-matrix.md + PermissionCodes.java.
+databaseChangeLog:
+
+  - changeSet:
+      id: seed-client-company-permissions-catalog
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,client-company-admin,p2-fix
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.permissions (id, code, resource, action, description) VALUES
+                (gen_random_uuid(), 'CLIENT_LIST',   'CLIENT_COMPANY', 'LIST',   'List client companies'),
+                (gen_random_uuid(), 'CLIENT_VIEW',   'CLIENT_COMPANY', 'VIEW',   'View a client company profile'),
+                (gen_random_uuid(), 'CLIENT_UPDATE', 'CLIENT_COMPANY', 'UPDATE', 'Edit own client company profile (legalName, brandName, industry, countryCode, taxId)')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.permissions WHERE code IN ('CLIENT_LIST','CLIENT_VIEW','CLIENT_UPDATE');
+
+  - changeSet:
+      id: seed-client-company-role-permissions
+      author: backend-engineer
+      context: seeds
+      labels: mvp2,client-company-admin,p2-fix
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- CLIENT_COMPANY_ADMIN — full management of its OWN client profile.
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM public.roles r
+                JOIN public.permissions p ON p.code IN ('CLIENT_LIST','CLIENT_VIEW','CLIENT_UPDATE')
+               WHERE r.code = 'CLIENT_COMPANY_ADMIN'
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+              -- HRLAB_PROJECT_MANAGER — read-only oversight of client companies
+              -- (matches its existing TENANT_READ-based admin surface access).
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM public.roles r
+                JOIN public.permissions p ON p.code IN ('CLIENT_LIST','CLIENT_VIEW')
+               WHERE r.code = 'HRLAB_PROJECT_MANAGER'
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.permissions p
+                WHERE rp.permission_id = p.id
+                  AND p.code IN ('CLIENT_LIST','CLIENT_VIEW','CLIENT_UPDATE');

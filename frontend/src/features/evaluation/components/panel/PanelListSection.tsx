@@ -35,7 +35,10 @@ export function PanelListSection({ projectId, panels, loading }: Props) {
       {
         key: 'position',
         header: t('evaluation.column.position'),
-        render: (row) => pickLocalized(row.position_title_i18n, i18n.language),
+        // T5: never render an empty cell — fall back to a localized "Untitled"
+        // placeholder when no locale value resolves.
+        render: (row) =>
+          pickLocalized(row.position_title_i18n, i18n.language, t('common.untitled')),
         sortable: true,
         sortAccessor: (row) => pickLocalized(row.position_title_i18n, i18n.language),
       },

@@ -8,15 +8,15 @@ import {
   canManageMethodology,
 } from './permissionUtils';
 import { PERMISSIONS } from '@/shared/types/permissions';
-import type { CurrentUser } from './authTypes';
+import type { CurrentUser, RoleCode } from './authTypes';
 
-function makeUser(perms: string[], salary = false): CurrentUser {
+function makeUser(perms: string[], salary = false, roles: RoleCode[] = []): CurrentUser {
   return {
     id: 'u1',
     email: 'u@example.com',
     name: 'User',
     locale: 'ru-RU',
-    roles: [],
+    roles,
     permissions: perms as CurrentUser['permissions'],
     salary_data_permission: salary,
     tenants: [],
@@ -65,5 +65,22 @@ describe('permissionUtils', () => {
   it('canManageMethodology() requires methodology-class permission', () => {
     expect(canManageMethodology({ user: makeUser([PERMISSIONS.METHODOLOGY_EDIT]) })).toBe(true);
     expect(canManageMethodology({ user: makeUser([PERMISSIONS.PROJECT_READ]) })).toBe(false);
+  });
+
+  it('HRLAB_SUPER_ADMIN short-circuits can/canAny/canAll even with no explicit permissions', () => {
+    const superAdmin = { user: makeUser([], false, ['HRLAB_SUPER_ADMIN']) };
+    // No permission codes granted, but the role implies all of them.
+    expect(can(superAdmin, PERMISSIONS.METHODOLOGY_EDIT)).toBe(true);
+    expect(canAny(superAdmin, [PERMISSIONS.AUDIT_READ, PERMISSIONS.PROJECT_READ])).toBe(true);
+    expect(canAll(superAdmin, [PERMISSIONS.PROJECT_READ, PERMISSIONS.ORG_READ])).toBe(true);
+    expect(canManageMethodology(superAdmin)).toBe(true);
+    expect(canViewAudit(superAdmin)).toBe(true);
+  });
+
+  it('the bypass does NOT relax salary gating — salary still needs the explicit flag', () => {
+    // Super admin without the salary flag must NOT see salary, even though the
+    // role short-circuits the SALARY_VIEW permission check.
+    expect(canViewSalary({ user: makeUser([], false, ['HRLAB_SUPER_ADMIN']) })).toBe(false);
+    expect(canViewSalary({ user: makeUser([], true, ['HRLAB_SUPER_ADMIN']) })).toBe(true);
   });
 });

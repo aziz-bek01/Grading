@@ -12,6 +12,7 @@
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
+import { shortId } from '@/shared/lib/shortId';
 import { ActionIcon } from './AuditEventRow';
 import { actionIconKind } from './auditActionIcon';
 import type { AuditEvent } from '../types/auditTypes';
@@ -72,12 +73,40 @@ export function AuditDetailsDrawer({ event, open, onClose }: AuditDetailsDrawerP
 
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <dt className="text-text-secondary">{t('audit.details.actor')}</dt>
+          {/* T4: prefer BE display name; else a SHORT id (full UUID kept in the
+              title= tooltip as a copy affordance); else a localized placeholder. */}
           <dd className="text-text-primary">
-            {event.actorName ?? event.actorUserId ?? t('common.unknown_actor')}
+            {event.actorName ? (
+              event.actorName
+            ) : event.actorUserId ? (
+              <span className="font-mono text-xs" title={event.actorUserId}>
+                {shortId(event.actorUserId)}
+              </span>
+            ) : (
+              t('common.unknown_user')
+            )}
           </dd>
           <dt className="text-text-secondary">{t('audit.details.entity')}</dt>
+          {/* T4: localized entity-type label + SHORT id; full UUID only in the
+              title= tooltip (copy affordance). */}
           <dd className="text-text-primary">
-            {event.entityType ? `${event.entityType}${event.entityId ? ` · ${event.entityId}` : ''}` : '—'}
+            {event.entityType ? (
+              <span title={event.entityId ?? undefined}>
+                {t(`audit.entity_type.${event.entityType}`, {
+                  defaultValue: event.entityType,
+                })}
+                {event.entityId ? (
+                  <span className="font-mono text-xs text-text-muted">
+                    {' '}
+                    · {shortId(event.entityId)}
+                  </span>
+                ) : (
+                  ''
+                )}
+              </span>
+            ) : (
+              '—'
+            )}
           </dd>
           <dt className="text-text-secondary">{t('audit.details.tenant')}</dt>
           <dd className="text-text-primary">{event.tenantId ?? '—'}</dd>

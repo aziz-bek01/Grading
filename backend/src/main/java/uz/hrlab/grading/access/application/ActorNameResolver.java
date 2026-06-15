@@ -95,7 +95,9 @@ public class ActorNameResolver {
         }
         // R3/R4 — keep only ids that hold an ACTIVE membership in this tenant, so
         // a stale / cross-tenant id can never resolve to a foreign name.
-        Set<UUID> memberIds = memberships.findAllByTenantId(tenantId).stream()
+        // PERF (P1) — query ONLY the harvested ids (tenant-scoped) instead of
+        // loading the whole tenant membership table and filtering in memory.
+        Set<UUID> memberIds = memberships.findByTenantIdAndUserIdIn(tenantId, distinct).stream()
                 .filter(m -> m.getStatus() == MembershipStatus.ACTIVE)
                 .map(m -> m.getUserId())
                 .filter(distinct::contains)

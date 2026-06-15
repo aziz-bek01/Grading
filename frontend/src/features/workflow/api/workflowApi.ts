@@ -75,7 +75,10 @@ export async function advanceWorkflow(
 ): Promise<WorkflowProgressResponse> {
   const res = await httpClient.post<unknown>(
     endpoints.workflow.advance(projectId),
-    { targetStage },
+    // Backend AdvanceStageRequest reads SNAKE_CASE on the wire (global Jackson
+    // strategy): `targetStage` deserialises from `target_stage`. Sending the
+    // camelCase key left the field null -> @NotNull violation -> 400.
+    { target_stage: targetStage },
   );
   return normalizeWorkflowProgress(res.data);
 }

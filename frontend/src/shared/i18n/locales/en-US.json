@@ -44,6 +44,8 @@
     "continue": "Continue",
     "completeness": "Completeness",
     "unknown_actor": "Unknown user",
+    "unknown_user": "Unknown user",
+    "untitled": "Untitled",
     "dismiss": "Dismiss",
     "loading": "Loading…"
   },
@@ -57,6 +59,7 @@
     "job_profiles": "Job profiles",
     "methodology": "Methodology",
     "evaluation": "Evaluation",
+    "my_evaluations": "My evaluations",
     "grades": "Grades",
     "compensation": "Compensation",
     "reports": "Reports",
@@ -145,13 +148,24 @@
     "error_body": "Please retry or contact support.",
     "correlation_id": "Request ID",
     "no_access_title": "No access",
-    "no_access_body": "This area requires additional access. Please contact your administrator."
+    "no_access_body": "This area requires additional access. Please contact your administrator.",
+    "not_found_title": "Page not found",
+    "not_found_body": "This page does not exist, has moved, or is not available for your current company-client and project.",
+    "not_found_back": "Go back",
+    "not_found_dashboard": "Go to dashboard",
+    "app_error_title": "Something went wrong",
+    "app_error_body": "The application ran into an unexpected error. Reloading usually fixes it.",
+    "app_error_reload": "Reload application"
   },
   "pages": {
     "login_title": "Welcome",
     "login_subtitle": "Sign in to continue your grading projects.",
     "dashboard_title": "HRLab Dashboard",
     "dashboard_subtitle": "Summary across active company-clients and projects.",
+    "dashboard_load_error": "Could not load the portfolio summary.",
+    "dashboard_projects_empty_title": "No projects yet",
+    "dashboard_projects_empty_body": "Create the first grading project for this company-client to start the workflow.",
+    "dashboard_projects_empty_cta": "Go to projects",
     "clients_title": "Company-clients",
     "projects_title": "Projects",
     "workspace_title": "Project workspace",
@@ -528,6 +542,8 @@
     "project_list_empty_title": "No approval requests",
     "project_list_empty_body": "Nothing matches the selected filters.",
     "filter_entity_type": "Entity type",
+    "unknown_entity": "Unnamed item",
+    "unknown_user": "Unknown user",
     "steps_title": "Approval steps",
     "decisions_title": "Decision history",
     "decisions_empty": "No decisions yet.",
@@ -559,8 +575,7 @@
       "METHODOLOGY_VERSION": "Methodology version",
       "EVALUATION": "Evaluation",
       "EVALUATION_PANEL": "Evaluation panel",
-      "GRADE_STRUCTURE": "Grade structure",
-      "PROJECT": "Project"
+      "GRADE_STRUCTURE": "Grade structure"
     },
     "step": {
       "order": "Step {{order}}",
@@ -589,6 +604,13 @@
       "error_reason_required": "A reason is required (at least 20 characters).",
       "error_invalid_transition": "Action not available: the request status has already changed. Refresh the page."
     }
+  },
+  "my_evaluations": {
+    "title": "My evaluations",
+    "subtitle": "Scoring sheets assigned to you. Open a sheet to enter scores.",
+    "empty_title": "No evaluations assigned to you yet",
+    "empty_body": "When you are assigned as an evaluator for a position, the scoring sheet will appear here.",
+    "select_project_hint": "Select a project at the top to open the scoring sheet."
   },
   "panel": {
     "role": {
@@ -696,7 +718,14 @@
       "archive_reason_placeholder": "Give a reason for archiving (at least 5 characters)",
       "not_found_title": "Panel not found",
       "not_found_body": "This panel was not found, or you do not have access to it.",
-      "back_to_list": "Back to panels"
+      "back_to_list": "Back to panels",
+      "action_failed": "The action could not be completed.",
+      "error_ref": "Code: {{code}} · Ref: {{corr}}",
+      "error_not_deletable": "This panel can no longer be deleted — its status changed. Refresh the page; if it has moved past collecting, use Archive instead.",
+      "error_not_archivable": "This panel can no longer be archived — its status changed. Refresh the page.",
+      "error_forbidden": "You don’t have permission to perform this action in this panel’s department.",
+      "error_not_found": "This panel is no longer available, or you don’t have access. Refresh the page.",
+      "error_network": "Couldn’t reach the server. Check your connection and try again."
     },
     "dialog": {
       "title": "Open evaluation panel",
@@ -743,6 +772,21 @@
       "title": "Add an evaluator after start?",
       "body": "The panel reopens to awaiting evaluations. This can delay the CEO step until the new evaluator completes.",
       "confirm": "Add evaluator"
+    },
+    "reopen_expert": {
+      "action": "Add expert",
+      "title": "Reopen for additional expert",
+      "consequence": "The approved result will be reopened. After the expert scores, the panel must be approved again.",
+      "evaluator_label": "Additional expert",
+      "evaluator_required": "Select an expert.",
+      "reason_placeholder": "Enter the reason for reopening (at least 5 characters)",
+      "reason_invalid": "Enter a reason (at least {{min}} characters).",
+      "confirm": "Reopen and add expert",
+      "error_not_approved": "This panel cannot be reopened — it is not in the Approved status. Refresh the page.",
+      "error_forbidden": "You do not have permission for this action in this panel's department.",
+      "error_not_found": "Panel unavailable or you do not have access. Refresh the page.",
+      "error_validation": "Check the selected expert and the reason.",
+      "error_generic": "Could not reopen the panel. Please try again."
     }
   },
   "comment": {
@@ -1462,6 +1506,8 @@
       "METHODOLOGY_FACTORS_V1": "Factors, levels and weights for a methodology version.",
       "GRADE_BANDS_V1": "Grade scale with min/max score per grade."
     },
+    "template_not_supported": "Not yet supported",
+    "template_not_supported_hint": "Commit for this template is not available yet — it ships in a later phase.",
     "status": {
       "UPLOADED": "Uploaded",
       "SCANNING": "Scanning",

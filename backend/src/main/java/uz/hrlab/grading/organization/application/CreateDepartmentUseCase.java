@@ -47,6 +47,14 @@ public class CreateDepartmentUseCase {
                 .orElseThrow(TenantAccessDeniedException::new);
         // F-202 — ABAC project-membership check on write.
         abacGate.enforceCanWriteInProject(ctx, cmd.projectId());
+        // P2-FIX (Task 2) — when a parent is supplied, ALSO enforce the
+        // department-subtree gate so a department-scoped writer cannot create a
+        // child under a parent outside their subtree. Root-department creation
+        // (no parent) stays gated on the project only. Mirrors the
+        // enforceCanWriteInDepartment guard in Update/Archive use cases.
+        if (cmd.parentId() != null) {
+            abacGate.enforceCanWriteInDepartment(ctx, cmd.projectId(), cmd.parentId());
+        }
         if (project.getStatus() == ProjectStatus.LOCKED
                 || project.getStatus() == ProjectStatus.ARCHIVED) {
             throw new ProjectLockedException();

@@ -17,6 +17,19 @@ spring:
     name: grading
   profiles:
     default: local
+  datasource:
+    # PERF (P1) — explicit HikariCP sizing. max pool 20 keeps headroom under the
+    # Postgres max_connections=40 (room for migrations/admin sessions and a
+    # second app instance). leak-detection logs any connection held > 30s so a
+    # missing tx boundary surfaces in logs rather than silently exhausting the
+    # pool. Safe for all profiles; tests override datasource URL, not pool knobs.
+    hikari:
+      # Overridable per environment so a multi-replica deployment can stay within
+      # the Postgres max_connections budget (sum of all replicas + migrator + admin).
+      maximum-pool-size: ${GRADING_DB_POOL_MAX:20}
+      minimum-idle: 5
+      connection-timeout: 30000
+      leak-detection-threshold: 30000
   jpa:
     hibernate:
       ddl-auto: validate
@@ -25,6 +38,14 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+          # PERF (P1) — batch JDBC writes; order so same-table statements group
+          # into a single batch (cuts round-trips on bulk import/save paths).
+          batch_size: 32
+        # PERF (P1) — eager batch-fetch of lazy associations/collections in
+        # blocks of 16 (mitigates N+1 on traversal without forcing fetch joins).
+        default_batch_fetch_size: 16
+        order_inserts: true
+        order_updates: true
         format_sql: false
   liquibase:
     enabled: true
@@ -43,6 +64,13 @@ spring:
 server:
   port: 8080
   forward-headers-strategy: framework
+  # PERF (P1) — gzip JSON/text responses over 1 KiB. Grid/report/list payloads
+  # are large JSON; compression cuts wire bytes with negligible CPU. Small
+  # responses are left uncompressed (min-response-size) to avoid overhead.
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/plain,text/css,text/html,application/javascript
+    min-response-size: 1024
   error:
     include-stacktrace: never
     include-message: never
@@ -85,6 +113,11 @@ grading:
       # Stub key id/version for SalaryEncryptionConverter (MVP 3 ships real KMS).
       key-id: ${GRADING_SALARY_KEY_ID:dev-stub}
       key-version: ${GRADING_SALARY_KEY_VERSION:1}
+      # When true, a '-stub' key in a deployed profile HARD-FAILS salary writes.
+      # Default false: log a loud warning but keep writing (don't break a
+      # deployment still on the placeholder key). Set true once a real KMS key
+      # is provisioned to enforce the fail-closed guard.
+      fail-on-stub-key: ${GRADING_SALARY_FAIL_ON_STUB_KEY:false}
   idp:
     # IdP provisioning (decision doc 08, Option A — admin-set-password, NO SMTP).
     # FEATURE-FLAGGED: disabled by default so local/test/CI keep DB-only invites

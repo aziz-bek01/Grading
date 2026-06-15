@@ -1,0 +1,37 @@
+# Allow EVALUATION_PANEL as an approval_requests.entity_type.
+#
+# 021 created chk_approval_requests_entity_type CHECK (entity_type IN
+# ('METHODOLOGY_VERSION','EVALUATION','JOB_PROFILE','GRADE_STRUCTURE')). The MVP2
+# multi-evaluator panel flow later added ApprovalEntityType.EVALUATION_PANEL and
+# SubmitPanelToCeoUseCase writes an approval request with that type for the CEO
+# sign-off — but the CHECK constraint was never widened, so submitting a panel
+# to the CEO (and therefore the reopen-for-expert re-approval step) fails at the
+# DB with a 23514 check violation. Widen the constraint to the full enum set.
+#
+# Superset of the old list (only adds EVALUATION_PANEL), so every existing row
+# stays valid — no data migration needed.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-044-approval-requests-allow-evaluation-panel
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,panel-approval
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE approval_requests DROP CONSTRAINT chk_approval_requests_entity_type;
+              ALTER TABLE approval_requests ADD CONSTRAINT chk_approval_requests_entity_type
+                CHECK (entity_type IN ('METHODOLOGY_VERSION','EVALUATION','JOB_PROFILE','GRADE_STRUCTURE','EVALUATION_PANEL'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE approval_requests DROP CONSTRAINT chk_approval_requests_entity_type;
+              ALTER TABLE approval_requests ADD CONSTRAINT chk_approval_requests_entity_type
+                CHECK (entity_type IN ('METHODOLOGY_VERSION','EVALUATION','JOB_PROFILE','GRADE_STRUCTURE'));

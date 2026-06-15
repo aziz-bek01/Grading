@@ -212,3 +212,35 @@ export async function reopenPanel(panelId: string): Promise<Panel> {
   const res = await httpClient.post<Panel>(endpoints.panels.reopen(panelId), {});
   return res.data;
 }
+
+/**
+ * Feature 2 — reopen an APPROVED panel to add an ADDITIONAL expert.
+ *
+ * Backend contract:
+ *   POST /panels/{panelId}/reopen-for-expert  (EVALUATION_PANEL_MANAGE)
+ *   Body (snake_case): { additional_evaluator_user_id, reason ≥ 5 }
+ *   Success: 200 with the updated PanelResponse (status AWAITING_EVALUATIONS).
+ *   Errors: 400 PANEL_NOT_APPROVED_FOR_REOPEN (not APPROVED), 400 validation,
+ *           403 (no permission), 404 (cross-tenant / out-of-subtree).
+ *
+ * The body is whitelisted to the two contract fields — no tenant_id / actor is
+ * ever sent (JWT-derived server-side).
+ */
+export interface ReopenForExpertPayload {
+  additionalEvaluatorUserId: string;
+  reason: string;
+}
+
+export async function reopenPanelForExpert(
+  panelId: string,
+  payload: ReopenForExpertPayload,
+): Promise<Panel> {
+  const res = await httpClient.post<Panel>(
+    endpoints.panels.reopenForExpert(panelId),
+    {
+      additional_evaluator_user_id: payload.additionalEvaluatorUserId,
+      reason: payload.reason,
+    },
+  );
+  return res.data;
+}

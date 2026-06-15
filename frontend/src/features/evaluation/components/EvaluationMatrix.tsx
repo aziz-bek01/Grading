@@ -184,7 +184,9 @@ export function EvaluationMatrix({
                     ) : null}
                   </div>
                   <h3 className="text-sm font-medium text-text-primary">
-                    {pickLocalized(f.name_i18n, i18n.language)}
+                    {/* T5: fall back to the factor code so a matrix-row heading
+                        is never blank when the localized name is missing. */}
+                    {pickLocalized(f.name_i18n, i18n.language, f.code)}
                   </h3>
                   <p className="text-xs text-text-muted">
                     {t('evaluation.matrix.weight')}: {f.weight} ·{' '}

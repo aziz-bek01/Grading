@@ -44,6 +44,8 @@
     "continue": "Davom etish",
     "completeness": "Toʻldirilganlik",
     "unknown_actor": "Nomaʼlum foydalanuvchi",
+    "unknown_user": "Nomaʼlum foydalanuvchi",
+    "untitled": "Nomsiz",
     "dismiss": "Yopish",
     "loading": "Yuklanmoqda…"
   },
@@ -57,6 +59,7 @@
     "job_profiles": "Lavozim profillari",
     "methodology": "Metodologiya",
     "evaluation": "Baholash",
+    "my_evaluations": "Mening baholarim",
     "grades": "Greydlar",
     "compensation": "Kompensatsiya",
     "reports": "Hisobotlar",
@@ -145,13 +148,24 @@
     "error_body": "Qayta urinib koʻring yoki qoʻllab-quvvatlash xizmatiga murojaat qiling.",
     "correlation_id": "Soʻrov ID",
     "no_access_title": "Ruxsat yoʻq",
-    "no_access_body": "Bu boʻlimga kirish uchun qoʻshimcha ruxsat talab qilinadi. Maʼmurga murojaat qiling."
+    "no_access_body": "Bu boʻlimga kirish uchun qoʻshimcha ruxsat talab qilinadi. Maʼmurga murojaat qiling.",
+    "not_found_title": "Sahifa topilmadi",
+    "not_found_body": "Bunday sahifa mavjud emas, koʻchirilgan yoki joriy kompaniya-mijoz va loyiha uchun mavjud emas.",
+    "not_found_back": "Orqaga",
+    "not_found_dashboard": "Boshqaruv paneliga",
+    "app_error_title": "Xatolik yuz berdi",
+    "app_error_body": "Ilovada kutilmagan xatolik yuz berdi. Odatda qayta yuklash yordam beradi.",
+    "app_error_reload": "Ilovani qayta yuklash"
   },
   "pages": {
     "login_title": "Xush kelibsiz",
     "login_subtitle": "Greyding loyihalaringiz bilan ishlashni davom ettirish uchun tizimga kiring.",
     "dashboard_title": "HRLab boshqaruv paneli",
     "dashboard_subtitle": "Faol mijoz-kompaniyalar va loyihalar boʻyicha umumiy maʼlumot.",
+    "dashboard_load_error": "Portfel xulosasini yuklab boʻlmadi.",
+    "dashboard_projects_empty_title": "Hozircha loyihalar yoʻq",
+    "dashboard_projects_empty_body": "Ish jarayonini boshlash uchun ushbu mijoz-kompaniya uchun birinchi greyding loyihasini yarating.",
+    "dashboard_projects_empty_cta": "Loyihalarga oʻtish",
     "clients_title": "Mijoz-kompaniyalar",
     "projects_title": "Loyihalar",
     "workspace_title": "Loyihaning ish maydoni",
@@ -528,6 +542,8 @@
     "project_list_empty_title": "Soʻrovlar yoʻq",
     "project_list_empty_body": "Tanlangan saralovchilar boʻyicha hech narsa topilmadi.",
     "filter_entity_type": "Obyekt turi",
+    "unknown_entity": "Nomsiz obyekt",
+    "unknown_user": "Noma'lum foydalanuvchi",
     "steps_title": "Tasdiqlash bosqichlari",
     "decisions_title": "Qarorlar tarixi",
     "decisions_empty": "Hali qarorlar yoʻq.",
@@ -559,8 +575,7 @@
       "METHODOLOGY_VERSION": "Metodologiya versiyasi",
       "EVALUATION": "Baholash",
       "EVALUATION_PANEL": "Baholash paneli",
-      "GRADE_STRUCTURE": "Greyd tuzilmasi",
-      "PROJECT": "Loyiha"
+      "GRADE_STRUCTURE": "Greyd tuzilmasi"
     },
     "step": {
       "order": "{{order}}-bosqich",
@@ -589,6 +604,13 @@
       "error_reason_required": "Sabab koʻrsatilishi shart (kamida 20 belgi).",
       "error_invalid_transition": "Amal mumkin emas: soʻrov holati allaqachon oʻzgargan. Sahifani yangilang."
     }
+  },
+  "my_evaluations": {
+    "title": "Mening baholarim",
+    "subtitle": "Sizga tayinlangan baholash varaqlari. Ballar qoʻyish uchun varaqni oching.",
+    "empty_title": "Sizga hali birorta baholash tayinlanmagan",
+    "empty_body": "Siz lavozim boʻyicha ekspert etib tayinlanganingizda, baholash varagʻi shu yerda paydo boʻladi.",
+    "select_project_hint": "Baholash varagʻini ochish uchun yuqoridan loyihani tanlang."
   },
   "panel": {
     "role": {
@@ -696,7 +718,14 @@
       "archive_reason_placeholder": "Arxivlash sababini kiriting (kamida 5 ta belgi)",
       "not_found_title": "Panel topilmadi",
       "not_found_body": "Panel topilmadi yoki sizda unga ruxsat yo'q.",
-      "back_to_list": "Panellar ro'yxatiga"
+      "back_to_list": "Panellar ro'yxatiga",
+      "action_failed": "Amalni bajarib bo‘lmadi.",
+      "error_ref": "Kod: {{code}} · Ref: {{corr}}",
+      "error_not_deletable": "Bu panelni endi o‘chirib bo‘lmaydi — uning statusi o‘zgargan. Sahifani yangilang; agar u yig‘ish bosqichidan o‘tgan bo‘lsa, Arxivlashdan foydalaning.",
+      "error_not_archivable": "Bu panelni endi arxivlab bo‘lmaydi — uning statusi o‘zgargan. Sahifani yangilang.",
+      "error_forbidden": "Sizda bu panel bo‘limida bu amalni bajarishga ruxsat yo‘q.",
+      "error_not_found": "Bu panel endi mavjud emas yoki sizda kirish huquqi yo‘q. Sahifani yangilang.",
+      "error_network": "Serverga ulanib bo‘lmadi. Aloqani tekshirib, qayta urinib ko‘ring."
     },
     "dialog": {
       "title": "Baholash panelini ochish",
@@ -743,6 +772,21 @@
       "title": "Boshlangandan keyin ekspert qo'shilsinmi?",
       "body": "Panel baholashlar kutilmoqda holatiga qaytadi. Bu yangi ekspert yakunlaguncha CEO bosqichini kechiktirishi mumkin.",
       "confirm": "Ekspert qo'shish"
+    },
+    "reopen_expert": {
+      "action": "Ekspert qoʻshish",
+      "title": "Qoʻshimcha ekspert uchun qayta ochish",
+      "consequence": "Tasdiqlangan natija qayta ochiladi. Ekspert baholagandan soʻng panel qaytadan tasdiqlanishi kerak.",
+      "evaluator_label": "Qoʻshimcha ekspert",
+      "evaluator_required": "Ekspertni tanlang.",
+      "reason_placeholder": "Qayta ochish sababini kiriting (kamida 5 belgi)",
+      "reason_invalid": "Sabab kiriting (kamida {{min}} belgi).",
+      "confirm": "Qayta ochish va ekspert qoʻshish",
+      "error_not_approved": "Bu panelni qayta ochib boʻlmaydi — u «Tasdiqlangan» holatida emas. Sahifani yangilang.",
+      "error_forbidden": "Sizda ushbu panel boʻlimi boʻyicha bu amal uchun huquq yoʻq.",
+      "error_not_found": "Panel mavjud emas yoki sizda ruxsat yoʻq. Sahifani yangilang.",
+      "error_validation": "Tanlangan ekspert va sababni tekshiring.",
+      "error_generic": "Panelni qayta ochib boʻlmadi. Qayta urinib koʻring."
     }
   },
   "comment": {
@@ -1462,6 +1506,8 @@
       "METHODOLOGY_FACTORS_V1": "Metodologiya omillari, darajalari va vaznlari.",
       "GRADE_BANDS_V1": "Greyd shkalasi: min/max ballar."
     },
+    "template_not_supported": "Hozircha mavjud emas",
+    "template_not_supported_hint": "Bu shablon boʻyicha import hozircha mavjud emas — keyingi fazada qoʻshiladi.",
     "status": {
       "UPLOADED": "Yuklangan",
       "SCANNING": "Skanerlanmoqda",

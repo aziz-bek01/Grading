@@ -31,14 +31,23 @@ import type { ImportTemplateCode } from '../types';
 interface TemplateRow {
   code: ImportTemplateCode;
   permission: PermissionCode;
+  /**
+   * Whether the backend can actually COMMIT this template. Only templates with
+   * a registered `ImportRowCommitter` (ORG_STRUCTURE_V1, POSITION_CATALOG_V1,
+   * JOB_PROFILE_V1, GRADE_BANDS_V1) can be committed; METHODOLOGY_FACTORS_V1
+   * has no committer and `CommitImportBatchUseCase` rejects it with
+   * `COMMIT_NOT_SUPPORTED`. We keep it visible (so users know it's coming) but
+   * non-selectable so nobody completes the whole wizard then hits a hard error.
+   */
+  commitSupported: boolean;
 }
 
 const TEMPLATES: TemplateRow[] = [
-  { code: 'ORG_STRUCTURE_V1', permission: PERMISSIONS.ORG_IMPORT },
-  { code: 'POSITION_CATALOG_V1', permission: PERMISSIONS.POSITION_IMPORT },
-  { code: 'JOB_PROFILE_V1', permission: PERMISSIONS.POSITION_IMPORT },
-  { code: 'METHODOLOGY_FACTORS_V1', permission: PERMISSIONS.METHODOLOGY_IMPORT },
-  { code: 'GRADE_BANDS_V1', permission: PERMISSIONS.GRADE_IMPORT },
+  { code: 'ORG_STRUCTURE_V1', permission: PERMISSIONS.ORG_IMPORT, commitSupported: true },
+  { code: 'POSITION_CATALOG_V1', permission: PERMISSIONS.POSITION_IMPORT, commitSupported: true },
+  { code: 'JOB_PROFILE_V1', permission: PERMISSIONS.POSITION_IMPORT, commitSupported: true },
+  { code: 'METHODOLOGY_FACTORS_V1', permission: PERMISSIONS.METHODOLOGY_IMPORT, commitSupported: false },
+  { code: 'GRADE_BANDS_V1', permission: PERMISSIONS.GRADE_IMPORT, commitSupported: true },
 ];
 
 type Step = 1 | 2 | 3 | 4;
@@ -219,23 +228,39 @@ function StepChooseTemplate({
             <div
               key={tpl.code}
               data-testid={`wizard-template-${tpl.code}`}
+              data-commit-supported={tpl.commitSupported}
               className={cn(
                 'p-4 rounded-md border-2 transition flex flex-col gap-3',
-                selected === tpl.code
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-border hover:border-primary-500',
+                !tpl.commitSupported
+                  ? 'border-border opacity-70'
+                  : selected === tpl.code
+                    ? 'border-primary-500 bg-primary-50'
+                    : 'border-border hover:border-primary-500',
               )}
             >
               <button
                 type="button"
                 onClick={() => onSelect(tpl.code)}
-                className="text-left"
+                disabled={!tpl.commitSupported}
+                aria-disabled={!tpl.commitSupported}
+                className="text-left disabled:cursor-not-allowed"
+                data-testid={`wizard-template-${tpl.code}-select`}
               >
-                <div className="font-medium text-text-primary">
+                <div className="font-medium text-text-primary flex items-center gap-2 flex-wrap">
                   {t(`import.template.${tpl.code}`)}
+                  {!tpl.commitSupported ? (
+                    <span
+                      className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-warning-50 text-warning-700 border border-warning-500/30"
+                      data-testid={`wizard-template-${tpl.code}-unsupported`}
+                    >
+                      {t('import.template_not_supported')}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="text-xs text-text-muted mt-1">
-                  {t(`import.template_desc.${tpl.code}`)}
+                  {tpl.commitSupported
+                    ? t(`import.template_desc.${tpl.code}`)
+                    : t('import.template_not_supported_hint')}
                 </div>
               </button>
               <div className="flex items-center gap-2 flex-wrap">

@@ -1,0 +1,110 @@
+# Panel reopen-for-additional-expert — GUC-gated controlled un-lock of the
+# prior contributing sheets (most security-sensitive changeset of this feature).
+#
+# Background:
+#   015 declared enforce_evaluation_lock_immutability(), which RAISEs 23514 on a
+#   LOCKED evaluation transitioning to anything other than ARCHIVED. That keeps a
+#   CEO-approved/locked sheet immutable at the DB. When an APPROVED panel is
+#   reopened to add an additional expert (product decision: in-place edit, prior
+#   scores preserved + re-averaged + re-approved), the prior evaluators' sheets
+#   were frozen to LOCKED by ApprovePanelUseCase and must be flipped back to
+#   COMPLETE (editable) — a transition the 015 trigger forbids.
+#
+# Fix (043):
+#   CREATE OR REPLACE enforce_evaluation_lock_immutability() (015's applied
+#   changeset is never edited) so a SINGLE additional transition becomes legal:
+#     - LOCKED -> COMPLETE   ALLOWED only when the transaction-local GUC
+#                            app.panel_reopen_in_progress = 'on' is set (the
+#                            audited, permission+ABAC-checked reopen use case sets
+#                            it on the same connection inside the same tx).
+#     - LOCKED -> {anything else}  unchanged (still ARCHIVED-only).
+#     - ARCHIVED terminal; APPROVED no-regress — BOTH unchanged (the carve-out
+#       NEVER weakens these, regardless of any GUC).
+#
+# The score-lock trigger (trg_evaluation_score_lock) already keys off
+# evaluations.status IN ('LOCKED','ARCHIVED'); once a sheet is back to COMPLETE,
+# UpsertEvaluationScore writes are re-enabled automatically — NO score-trigger
+# change is needed (verified). Panels carry no DB-level immutability trigger, so
+# the panel APPROVED -> AWAITING_EVALUATIONS reopen is purely app-enforced.
+#
+# GUC name: app.panel_reopen_in_progress (mirrors app.calibration_in_progress in
+#   017 / app.methodology_approved_edit in 042). SET LOCAL resets at
+#   commit/rollback so it cannot leak across requests sharing a pooled connection.
+#   Read with current_setting(name, true) (missing-ok): an unset GUC yields NULL,
+#   which IS DISTINCT FROM 'on', so the default (no carve-out) is fail-closed.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-043-evaluation-reopen-unlock-carveout
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,panel-reopen
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION enforce_evaluation_lock_immutability()
+              RETURNS trigger AS $$
+              BEGIN
+                IF OLD.status = NEW.status THEN
+                  RETURN NEW;
+                END IF;
+                IF OLD.status = 'ARCHIVED' THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: archived evaluation cannot be modified (id=%)', OLD.id
+                    USING ERRCODE = '23514';
+                END IF;
+                IF OLD.status = 'LOCKED' THEN
+                  -- Controlled reopen carve-out: a LOCKED sheet may go back to
+                  -- COMPLETE (editable) ONLY inside the audited panel-reopen tx
+                  -- that set app.panel_reopen_in_progress = 'on'. Everything else
+                  -- stays ARCHIVED-only (the prior 015 rule).
+                  IF NEW.status = 'COMPLETE'
+                     AND current_setting('app.panel_reopen_in_progress', true) = 'on' THEN
+                    RETURN NEW;
+                  END IF;
+                  IF NEW.status NOT IN ('ARCHIVED') THEN
+                    RAISE EXCEPTION 'EVALUATION_LOCKED: locked evaluation (id=%) can only transition to ARCHIVED, attempted=%',
+                      OLD.id, NEW.status
+                      USING ERRCODE = '23514';
+                  END IF;
+                END IF;
+                IF OLD.status = 'APPROVED' AND NEW.status NOT IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: approved evaluation (id=%) cannot regress to %',
+                    OLD.id, NEW.status
+                    USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: true
+            sql: |
+              -- Restore the 015 (pre-carve-out) function body.
+              CREATE OR REPLACE FUNCTION enforce_evaluation_lock_immutability()
+              RETURNS trigger AS $$
+              BEGIN
+                IF OLD.status = NEW.status THEN
+                  RETURN NEW;
+                END IF;
+                IF OLD.status = 'ARCHIVED' THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: archived evaluation cannot be modified (id=%)', OLD.id
+                    USING ERRCODE = '23514';
+                END IF;
+                IF OLD.status = 'LOCKED' AND NEW.status NOT IN ('ARCHIVED') THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: locked evaluation (id=%) can only transition to ARCHIVED, attempted=%',
+                    OLD.id, NEW.status
+                    USING ERRCODE = '23514';
+                END IF;
+                IF OLD.status = 'APPROVED' AND NEW.status NOT IN ('LOCKED','ARCHIVED') THEN
+                  RAISE EXCEPTION 'EVALUATION_LOCKED: approved evaluation (id=%) cannot regress to %',
+                    OLD.id, NEW.status
+                    USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+              END;
+              $$ LANGUAGE plpgsql;

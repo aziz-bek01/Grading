@@ -2,6 +2,7 @@ package uz.hrlab.grading.evaluation.application;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
@@ -12,6 +13,7 @@ import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.PanelFactorAverageRepository;
 import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
+import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -49,13 +51,19 @@ public class ReopenPanelUseCase {
     private final PanelRepository panels;
     private final PanelFactorAverageRepository averages;
     private final AuditService audit;
+    private final PanelLoader loader;
+    private final AbacGate abacGate;
 
     public ReopenPanelUseCase(PanelRepository panels,
                               PanelFactorAverageRepository averages,
-                              AuditService audit) {
+                              AuditService audit,
+                              PanelLoader loader,
+                              AbacGate abacGate) {
         this.panels = panels;
         this.averages = averages;
         this.audit = audit;
+        this.loader = loader;
+        this.abacGate = abacGate;
     }
 
     /**
@@ -77,6 +85,15 @@ public class ReopenPanelUseCase {
      * actor from the security context and re-checks {@code EVALUATION_PANEL_MANAGE}
      * (defense in depth), then runs the SAME reopen body as the approval coupling.
      * A cross-tenant / unknown id surfaces as a 404 (no existence reveal).
+     *
+     * <p>Like {@link DeletePanelUseCase} / {@link ArchivePanelUseCase}, this also
+     * enforces the ABAC department write-gate through the panel's position — a
+     * department/project-scoped {@code EVALUATION_PANEL_MANAGE} holder may only
+     * reopen panels inside their write-scope (previously missing here, so such a
+     * caller could reopen a panel OUTSIDE their department subtree). Tenant-wide
+     * roles bypass the department check exactly as for delete/archive. The
+     * approval-coupling entrypoint above is system-driven and is intentionally
+     * NOT gated.
      */
     @Transactional
     public EvaluationPanel reopen(UUID panelId) {
@@ -84,8 +101,10 @@ public class ReopenPanelUseCase {
         if (!ctx.hasPermission(PermissionCodes.EVALUATION_PANEL_MANAGE)) {
             throw new PermissionDeniedException();
         }
-        EvaluationPanelJpaEntity panel = panels.findByIdAndTenantId(panelId, ctx.tenantId())
-                .orElseThrow(uz.hrlab.grading.common.exception.TenantAccessDeniedException::new);
+        EvaluationPanelJpaEntity panel = loader.requirePanel(panelId, ctx.tenantId());
+        PositionJpaEntity position = loader.requirePosition(panel, ctx.tenantId());
+        abacGate.enforceCanWriteInDepartment(
+                ctx, panel.getProjectId(), position.getDepartmentId());
         return applyReopen(ctx.tenantId(), panel, ctx.userId());
     }
 

@@ -139,9 +139,8 @@ class EvaluationQueriesByFactorVersionScopeTest {
                 eq(tenantId), eq(projectId), eq(factorVersionId), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(sameVersionEval)));
         stubPosition();
-        when(scores.findByTenantIdAndEvaluationIdAndFactorId(eq(tenantId), any(), eq(factorId)))
-                .thenReturn(Optional.empty());
-        when(scores.findAllByTenantIdAndEvaluationId(eq(tenantId), any()))
+        // PERF (P1) — scores are now batch-loaded for the whole page in ONE call.
+        when(scores.findAllByTenantIdAndEvaluationIdIn(eq(tenantId), any()))
                 .thenReturn(List.of());
         when(factors.findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(
                 tenantId, factorVersionId)).thenReturn(List.of());
@@ -201,9 +200,13 @@ class EvaluationQueriesByFactorVersionScopeTest {
         PositionJpaEntity p = new PositionJpaEntity(
                 positionId, tenantId, projectId, departmentId, "P-001",
                 Map.of("ru-RU", "Position"), null, null, null, null, PositionStatus.ACTIVE);
-        when(positions.findByIdAndTenantId(positionId, tenantId)).thenReturn(Optional.of(p));
-        when(departments.findByIdAndTenantId(departmentId, tenantId))
-                .thenReturn(Optional.empty());
+        // PERF (P1) — positions/departments are now batch-loaded for the whole
+        // page in ONE tenant-scoped query each (findAllByTenantIdAndIdIn), not a
+        // per-row findByIdAndTenantId. Stub the batch finders accordingly.
+        when(positions.findAllByTenantIdAndIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(p));
+        when(departments.findAllByTenantIdAndIdIn(eq(tenantId), any()))
+                .thenReturn(List.of());
     }
 
     private void setBypassContext() {

@@ -18,9 +18,13 @@ export function ApprovalRequestCard({ request }: Props) {
   const entityLabelText = request.entityLabel
     ? pickLocalized(request.entityLabel, i18n.language)
     : '';
-  // Missing label degrades to a SHORT id (first UUID segment), never a raw
-  // 36-char UUID as a card title (FE-2).
-  const entityLabel = entityLabelText.length > 0 ? entityLabelText : shortId(request.entityId);
+  const hasEntityLabel = entityLabelText.length > 0;
+  // When the BE-resolved label is genuinely unavailable, the PRIMARY title is a
+  // neutral localized placeholder — not a raw hex fragment. The short id is kept
+  // as a secondary, muted detail (below) for traceability, and the full UUID
+  // stays in the link `title` attribute. Never a full 36-char UUID as a title.
+  const entityLabel = hasEntityLabel ? entityLabelText : t('approval.unknown_entity');
+  const entityShortId = shortId(request.entityId);
   // Prefer the BE-resolved initiator name; otherwise show a short id, not the
   // full requesting-user UUID (FE-3).
   const initiatedByDisplay = request.initiatedByName ?? shortId(request.initiatedByUserId);
@@ -36,7 +40,8 @@ export function ApprovalRequestCard({ request }: Props) {
             {entityLabel}
           </Link>
           <div className="text-xs text-text-muted mt-0.5">
-            {t(`approval.entityType.${request.entityType}`)} · {t('approval.steps_count', {
+            {t(`approval.entityType.${request.entityType}`)}
+            {!hasEntityLabel && entityShortId ? ` · ${entityShortId}` : ''} · {t('approval.steps_count', {
               total: request.totalSteps,
             })}
           </div>

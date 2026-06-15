@@ -25,6 +25,7 @@ import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
 import uz.hrlab.grading.evaluation.application.DeletePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
 import uz.hrlab.grading.evaluation.application.PanelQueries;
+import uz.hrlab.grading.evaluation.application.ReopenApprovedPanelForExpertUseCase;
 import uz.hrlab.grading.evaluation.application.ReopenPanelUseCase;
 import uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCase;
 import uz.hrlab.grading.evaluation.application.WithdrawEvaluatorUseCase;
@@ -80,6 +81,7 @@ class PanelControllerWireTest {
     @MockBean DeletePanelUseCase deleteUseCase;
     @MockBean ArchivePanelUseCase archiveUseCase;
     @MockBean ReopenPanelUseCase reopenUseCase;
+    @MockBean ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
     @MockBean PanelQueries queries;
     @MockBean uz.hrlab.grading.audit.application.AuditService auditService;
 
@@ -186,6 +188,86 @@ class PanelControllerWireTest {
         mvc.perform(post("/api/v1/panels/{id}/reopen", UUID.randomUUID())
                         .with(jwt().authorities(() -> "EVALUATION_READ")))
                 .andExpect(status().isForbidden());
+    }
+
+    // ------------------------------------------ Feature 2: reopen-for-expert
+
+    @Test
+    void reopenForExpertRequiresPanelManage() throws Exception {
+        mvc.perform(post("/api/v1/panels/{id}/reopen-for-expert", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reopenForExpertBody()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void reopenForExpertAcceptsSnakeCaseBodyAndReturnsAwaitingPanel() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(reopenForExpertUseCase.reopen(any(), any(), any()))
+                .willReturn(panel(id, EvaluationPanelStatus.AWAITING_EVALUATIONS));
+        mvc.perform(post("/api/v1/panels/{id}/reopen-for-expert", id)
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reopenForExpertBody()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.status").value("AWAITING_EVALUATIONS"));
+        org.mockito.Mockito.verify(reopenForExpertUseCase).reopen(
+                org.mockito.ArgumentMatchers.eq(id),
+                org.mockito.ArgumentMatchers.eq(
+                        UUID.fromString("00000000-0000-0000-0000-000000000030")),
+                org.mockito.ArgumentMatchers.eq("Adding an external SME after the first round"));
+    }
+
+    @Test
+    void reopenForExpertRejectsMissingEvaluator() throws Exception {
+        mvc.perform(post("/api/v1/panels/{id}/reopen-for-expert", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"reason": "valid enough reason"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void reopenForExpertRejectsBlankReason() throws Exception {
+        mvc.perform(post("/api/v1/panels/{id}/reopen-for-expert", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "additional_evaluator_user_id": "00000000-0000-0000-0000-000000000030",
+                                  "reason": "no"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void reopenForExpertNonApprovedReturns400WithStableCode() throws Exception {
+        given(reopenForExpertUseCase.reopen(any(), any(), any()))
+                .willThrow(new uz.hrlab.grading.common.exception.ValidationException(
+                        "PANEL_NOT_APPROVED_FOR_REOPEN",
+                        "Only an APPROVED panel can be reopened to add an additional expert"));
+        mvc.perform(post("/api/v1/panels/{id}/reopen-for-expert", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reopenForExpertBody()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PANEL_NOT_APPROVED_FOR_REOPEN"));
+    }
+
+    @Test
+    void reopenForExpertCrossTenantIdReturns404() throws Exception {
+        given(reopenForExpertUseCase.reopen(any(), any(), any()))
+                .willThrow(new TenantAccessDeniedException());
+        mvc.perform(post("/api/v1/panels/{id}/reopen-for-expert", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reopenForExpertBody()))
+                .andExpect(status().isNotFound());
     }
 
     // ----------------------------------------------------------- wire shapes
@@ -558,6 +640,15 @@ class PanelControllerWireTest {
     private String reasonBody() {
         return """
                 {"reason": "cancelling this commission round"}
+                """;
+    }
+
+    private String reopenForExpertBody() {
+        return """
+                {
+                  "additional_evaluator_user_id": "00000000-0000-0000-0000-000000000030",
+                  "reason": "Adding an external SME after the first round"
+                }
                 """;
     }
 

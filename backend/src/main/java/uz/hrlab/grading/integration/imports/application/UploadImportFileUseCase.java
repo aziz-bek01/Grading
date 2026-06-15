@@ -3,6 +3,8 @@ package uz.hrlab.grading.integration.imports.application;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
@@ -128,8 +130,24 @@ public class UploadImportFileUseCase {
                 .entityId(batchId)
                 .build());
 
-        // Dispatch async pipeline (in-process executor for MVP 2)
-        processor.process(batchId, ctx.tenantId());
+        // PERF/CORRECTNESS (P1) — dispatch the @Async pipeline only AFTER this
+        // transaction commits. Dispatching inline raced the commit: the worker
+        // (its own tx) could load the ImportBatch row before it was visible and
+        // find batch == null, silently dropping the job. Deferring to afterCommit
+        // guarantees the row is persisted before the worker reads it. If the tx
+        // rolls back, no dispatch happens (correct — there is nothing to process).
+        UUID tenantId = ctx.tenantId();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    processor.process(batchId, tenantId);
+                }
+            });
+        } else {
+            // No active transaction (defensive) — dispatch immediately.
+            processor.process(batchId, tenantId);
+        }
 
         return batchId;
     }

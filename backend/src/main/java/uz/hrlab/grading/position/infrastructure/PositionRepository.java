@@ -18,6 +18,15 @@ public interface PositionRepository
     boolean existsByTenantIdAndProjectIdAndCode(UUID tenantId, UUID projectId, String code);
 
     /**
+     * PERF (P1) — tenant-scoped batch lookup by id, for grid/report assembly
+     * that needs a page of positions at once (kills the per-row
+     * {@code findByIdAndTenantId} N+1). {@code tenant_id} is always pinned, so
+     * any id belonging to another tenant simply contributes no row — this is
+     * NOT the BOLA-prone {@code findAllById} and never widens scope.
+     */
+    List<PositionJpaEntity> findAllByTenantIdAndIdIn(UUID tenantId, Collection<UUID> ids);
+
+    /**
      * Tenant- + project-scoped lookup by external code (the {@code code}
      * column populated from the import {@code external_id}). Used by the
      * JOB_PROFILE_V1 importer to resolve {@code position_external_id} → a

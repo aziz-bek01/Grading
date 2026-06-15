@@ -202,8 +202,11 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
   if (wfAdvance && method === 'POST') {
     const id = wfAdvance[1];
     const wf = mockDb.workflowProgress[id] ?? mockDb.workflowProgress['proj-acme-2026'];
-    const body = readBody<{ targetStage?: string }>(config);
-    if (body.targetStage) wf.current_stage = body.targetStage;
+    // Real backend reads SNAKE_CASE on the wire (target_stage); tolerate the
+    // legacy camelCase too so older callers still work.
+    const body = readBody<{ target_stage?: string; targetStage?: string }>(config);
+    const targetStage = body.target_stage ?? body.targetStage;
+    if (targetStage) wf.current_stage = targetStage;
     return ok({ ...wf, project_id: id });
   }
 
@@ -212,6 +215,46 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
     const id = wfRecompute[1];
     const wf = mockDb.workflowProgress[id] ?? mockDb.workflowProgress['proj-acme-2026'];
     return ok({ ...wf, project_id: id });
+  }
+  return null;
+}
+
+/**
+ * GET /analytics/portfolio-summary — tenant-scoped dashboard counters.
+ *
+ * Mirrors the real backend (AnalyticsController + PortfolioSummaryResponse):
+ * SNAKE_CASE wire, tenant derived from auth context (here the mock tenant
+ * header), NEVER from query/body. Counts are computed from the mock DB so the
+ * dashboard shows live numbers for the active tenant.
+ */
+function handleAnalytics(
+  method: string,
+  path: string,
+  _query: URLSearchParams,
+  config: AxiosRequestConfig,
+): MatchResult | null {
+  if (path === '/analytics/portfolio-summary' && method === 'GET') {
+    const tenantId = resolveMockTenantId(config);
+    const tenantProjects = mockDb.projects.filter((p) => p.tenant_id === tenantId);
+    const tenantProjectIds = new Set(tenantProjects.map((p) => p.id));
+    const methodologyCount = mockDb.methodologies.filter((m) =>
+      tenantProjectIds.has(m.project_id),
+    ).length;
+    // Latest project update stands in for "last activity" in the mock.
+    const lastActivityAt = tenantProjects
+      .map((p) => p.updated_at)
+      .filter((v): v is string => typeof v === 'string')
+      .sort()
+      .pop();
+    return ok({
+      tenant_id: tenantId,
+      // Single-company-per-tenant model: one client company per active tenant.
+      client_company_count: tenantProjects.length > 0 ? 1 : 0,
+      project_count: tenantProjects.length,
+      methodology_count: methodologyCount,
+      // NON_NULL on the real backend — omit when there is no activity yet.
+      ...(lastActivityAt ? { last_activity_at: lastActivityAt } : {}),
+    });
   }
   return null;
 }
@@ -1580,6 +1623,43 @@ function handleEvaluations(
   query: URLSearchParams,
   config: AxiosRequestConfig,
 ): MatchResult | null {
+  // GET /evaluations/my — evaluator self-inbox (Feature 1). Returns a JSON
+  // ARRAY (NOT a PageResponse) of the caller's OWN sheets. The mock can't know
+  // the JWT actor, so it returns every evaluation that carries an
+  // evaluator_user_id (assigned sheets), shaped exactly like BE MyEvaluationRow
+  // (snake_case): localized position_title map + filled/total factor counts.
+  if (path === '/evaluations/my' && method === 'GET') {
+    const rows = mockDb.evaluations
+      .filter((e) => e.evaluator_user_id != null)
+      .map((ev) => {
+        const pos = mockDb.positions.find((p) => p.id === ev.position_id);
+        const version = mockDb.methodologyVersions.find(
+          (v) => v.id === ev.methodology_version_id,
+        );
+        const totalFactors = version?.factors.length ?? 0;
+        const filledFactors = mockDb.evaluationScores.filter(
+          (s) => s.evaluation_id === ev.id,
+        ).length;
+        const panel = mockDb.panelAssignments.find(
+          (a) => a.evaluation_id === ev.id,
+        );
+        return {
+          evaluation_id: ev.id,
+          // Each row carries its OWN project so the inbox deep-links to the
+          // project-scoped sheet route regardless of the active project.
+          project_id: ev.project_id ?? pos?.project_id ?? '',
+          panel_id: panel?.panel_id ?? null,
+          position_id: ev.position_id,
+          position_code: pos?.code ?? '',
+          position_title: pos?.title_i18n ?? {},
+          status: ev.status,
+          filled_factors_count: filledFactors,
+          total_factors_count: totalFactors,
+        };
+      });
+    return ok(rows);
+  }
+
   // POST /evaluations/preview-score — stateless preview
   if (path === '/evaluations/preview-score' && method === 'POST') {
     const raw = readBody<Record<string, unknown>>(config);
@@ -3657,6 +3737,55 @@ function handlePanels(
     return ok(panel);
   }
 
+  // Feature 2 — POST /panels/:id/reopen-for-expert  body { additional_evaluator_user_id, reason >= 5 }
+  // APPROVED → AWAITING_EVALUATIONS; adds the expert's DRAFT seat. 400
+  // PANEL_NOT_APPROVED_FOR_REOPEN when the panel is not APPROVED; 400 validation
+  // when the evaluator / reason is missing.
+  const reopenExpert = /^\/panels\/([^/]+)\/reopen-for-expert$/.exec(path);
+  if (reopenExpert && method === 'POST') {
+    const panel = panelById(reopenExpert[1]);
+    if (!panel) return notFound();
+    const raw = readBody<{ additional_evaluator_user_id?: string; reason?: string }>(
+      config,
+    );
+    if (!raw?.additional_evaluator_user_id) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'additional_evaluator_user_id required' },
+      };
+    }
+    if (!raw?.reason || raw.reason.trim().length < 5) {
+      return {
+        status: 400,
+        body: { code: 'VALIDATION_FAILED', message: 'reason >= 5 chars required' },
+      };
+    }
+    if (panel.status !== 'APPROVED') {
+      return {
+        status: 400,
+        body: {
+          code: 'PANEL_NOT_APPROVED_FOR_REOPEN',
+          message: `Cannot reopen for expert in ${panel.status}`,
+        },
+      };
+    }
+    panel.status = 'AWAITING_EVALUATIONS';
+    panel.approved_at = null;
+    panel.assigned_grade_number = null;
+    panel.grade_band_id = null;
+    // Add the expert as an ADDITIONAL assignment so the roster reflects the seat.
+    mockDb.panelAssignments.push({
+      id: `pa-expert-${panel.id}-${raw.additional_evaluator_user_id}`,
+      panel_id: panel.id,
+      evaluator_user_id: raw.additional_evaluator_user_id,
+      evaluator_role: 'ADDITIONAL',
+      assignment_status: 'ASSIGNED',
+      updated_at: new Date().toISOString(),
+    });
+    panel.evaluator_count = (panel.evaluator_count ?? 0) + 1;
+    return ok(panel);
+  }
+
   return null;
 }
 
@@ -4432,6 +4561,7 @@ export function tryHandle(config: AxiosRequestConfig): MatchResult | null {
   const { path, query } = parseUrl(url, config.params as Record<string, unknown> | undefined);
   return (
     handleProjects(method, path, query, config) ??
+    handleAnalytics(method, path, query, config) ??
     handleDepartments(method, path, query, config) ??
     handlePositions(method, path, query, config) ??
     handleJobProfiles(method, path, query, config) ??

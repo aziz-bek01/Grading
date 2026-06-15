@@ -11,6 +11,7 @@ import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.api.EvaluationByFactorRow;
+import uz.hrlab.grading.evaluation.api.MyEvaluationRow;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventRepository;
@@ -152,6 +153,89 @@ public class EvaluationQueries {
         return evaluations.findAllByTenantId(tenant, pageable);
     }
 
+    /**
+     * Evaluator self "my evaluations" inbox — the sheets the caller themselves
+     * must score, AFTER roster lock. Self-scoped: {@code tenant_id = ctx.tenant
+     * AND evaluator_user_id = ctx.userId}; ONLY the caller's own rows are returned.
+     *
+     * <p>This deliberately BYPASSES the department-scope fail-closed filter that
+     * {@link #list} applies: an {@code EVALUATION_COMMITTEE_MEMBER} with no
+     * {@code user_department_scopes} row would otherwise see ZERO of their OWN
+     * assigned sheets (the core bug). Explicit ownership of the Evaluation
+     * (its {@code evaluator_user_id}) IS the authorization here — and because the
+     * finder pins {@code evaluator_user_id = ctx.userId()} in the predicate, no
+     * cross-user / cross-tenant row can ever surface, so PanelBiasGuard's
+     * own-sheet-only semantics are preserved by construction (only own rows exist
+     * in the result). Permission: {@code EVALUATION_READ} — the minimal scoring
+     * permission a committee member holds (seed 004).
+     *
+     * <p>Progress counts reuse the batched {@code countByTenantIdAndEvaluationIdIn}
+     * finder (no per-row N+1); the per-version factor total denominator is cached
+     * per methodology version; position titles are batch-loaded tenant-scoped.
+     */
+    @Transactional(readOnly = true)
+    public List<MyEvaluationRow> listMine() {
+        TenantContext ctx = TenantContextHolder.requireActive();
+        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
+            throw new PermissionDeniedException();
+        }
+        UUID tenant = ctx.tenantId();
+        UUID me = ctx.userId();
+        if (me == null) {
+            // No authenticated user id ⇒ nothing is "mine" (fail-closed, but the
+            // security layer already rejects anon with 401 before reaching here).
+            return List.of();
+        }
+
+        List<EvaluationJpaEntity> mine = evaluations
+                .findAllByTenantIdAndEvaluatorUserIdOrderByUpdatedAtDesc(tenant, me);
+        if (mine.isEmpty()) {
+            return List.of();
+        }
+
+        Set<UUID> positionIds = new HashSet<>();
+        Set<UUID> evalIds = new HashSet<>();
+        mine.forEach(e -> {
+            positionIds.add(e.getPositionId());
+            evalIds.add(e.getId());
+        });
+
+        // Batch-load positions (ONE tenant-scoped query — no N+1).
+        Map<UUID, PositionJpaEntity> positionById = new HashMap<>();
+        positions.findAllByTenantIdAndIdIn(tenant, positionIds)
+                .forEach(p -> positionById.put(p.getId(), p));
+
+        // Batched filled-score count per evaluation (reuse the recently-added
+        // grouped finder — NOT one count query per row).
+        Map<UUID, Integer> filledByEval = new HashMap<>();
+        scores.countByTenantIdAndEvaluationIdIn(tenant, evalIds)
+                .forEach(c -> filledByEval.put(c.getEvaluationId(), (int) c.getCount()));
+
+        // Total factors per methodology version (the "filled / N" denominator),
+        // cached so all sheets sharing a version answer the same N once.
+        Map<UUID, Integer> totalsByVersion = new HashMap<>();
+
+        List<MyEvaluationRow> out = new java.util.ArrayList<>(mine.size());
+        for (EvaluationJpaEntity e : mine) {
+            PositionJpaEntity p = positionById.get(e.getPositionId());
+            int total = totalsByVersion.computeIfAbsent(e.getMethodologyVersionId(),
+                    vid -> factors
+                            .findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(tenant, vid)
+                            .size());
+            out.add(new MyEvaluationRow(
+                    e.getId(),
+                    e.getProjectId(),
+                    e.getPanelId(),
+                    e.getPositionId(),
+                    p == null ? null : p.getCode(),
+                    p == null ? null : p.getTitleI18n(),
+                    e.getStatus(),
+                    filledByEval.getOrDefault(e.getId(), 0),
+                    total));
+        }
+        return out;
+    }
+
     @Transactional(readOnly = true)
     public List<EvaluationScoreJpaEntity> findScoresByEvaluationId(UUID evaluationId) {
         TenantContext ctx = TenantContextHolder.requireActive();
@@ -251,19 +335,20 @@ public class EvaluationQueries {
             evalIds.add(e.getId());
         });
 
+        // PERF (P1) — batch-load positions for the whole page in ONE tenant-scoped
+        // query (was one findByIdAndTenantId per row → N+1).
         Map<UUID, PositionJpaEntity> positionById = new HashMap<>();
-        for (UUID pid : positionIds) {
-            positions.findByIdAndTenantId(pid, tenant).ifPresent(p -> positionById.put(pid, p));
-        }
+        positions.findAllByTenantIdAndIdIn(tenant, positionIds)
+                .forEach(p -> positionById.put(p.getId(), p));
         Set<UUID> departmentIds = new HashSet<>();
         positionById.values().forEach(p -> departmentIds.add(p.getDepartmentId()));
+        // PERF (P1) — batch-load departments in ONE tenant-scoped query.
         Map<UUID, DepartmentJpaEntity> departmentById = new HashMap<>();
-        for (UUID did : departmentIds) {
-            departments.findByIdAndTenantId(did, tenant).ifPresent(d -> departmentById.put(did, d));
-        }
+        departments.findAllByTenantIdAndIdIn(tenant, departmentIds)
+                .forEach(d -> departmentById.put(d.getId(), d));
         // BE-11 — resolve the PARENT department for each immediate department so
         // the K-sheet can show "department · unit" (unit = parent org node).
-        // Tenant-scoped lookup; root departments (no parent) yield no unit.
+        // Tenant-scoped batch lookup; root departments (no parent) yield no unit.
         Set<UUID> parentIds = new HashSet<>();
         departmentById.values().forEach(d -> {
             if (d.getParentId() != null) {
@@ -271,19 +356,22 @@ public class EvaluationQueries {
             }
         });
         Map<UUID, DepartmentJpaEntity> parentById = new HashMap<>();
-        for (UUID pid : parentIds) {
-            departments.findByIdAndTenantId(pid, tenant).ifPresent(d -> parentById.put(pid, d));
-        }
+        departments.findAllByTenantIdAndIdIn(tenant, parentIds)
+                .forEach(d -> parentById.put(d.getId(), d));
 
-        // Pre-fetch all per-evaluation factor scores for this single factor in one pass.
-        // Repository method finds (tenant, evaluation, factor) — we loop per evaluation
-        // (small page, MAX 200) which is acceptable; aggregating is unnecessary here.
+        // PERF (P1) — pre-fetch ALL scores for the page of evaluations in ONE
+        // tenant-scoped query (was TWO queries per evaluation → ~2N round-trips).
+        // From the single result we derive (a) the per-evaluation score for THIS
+        // factor and (b) the filled-score count, both grouped in memory. The
+        // grouped count query is also available, but the loaded rows already give
+        // us the count for free, so we keep a single round-trip.
         Map<UUID, EvaluationScoreJpaEntity> scoreByEval = new HashMap<>();
         Map<UUID, Integer> filledByEval = new HashMap<>();
-        for (UUID eid : evalIds) {
-            scores.findByTenantIdAndEvaluationIdAndFactorId(tenant, eid, factorId)
-                    .ifPresent(s -> scoreByEval.put(eid, s));
-            filledByEval.put(eid, scores.findAllByTenantIdAndEvaluationId(tenant, eid).size());
+        for (EvaluationScoreJpaEntity s : scores.findAllByTenantIdAndEvaluationIdIn(tenant, evalIds)) {
+            filledByEval.merge(s.getEvaluationId(), 1, Integer::sum);
+            if (factorId.equals(s.getFactorId())) {
+                scoreByEval.put(s.getEvaluationId(), s);
+            }
         }
 
         String locale = ctx.locale() == null ? "ru-RU" : ctx.locale();

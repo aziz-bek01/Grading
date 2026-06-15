@@ -53,5 +53,30 @@ describe('ImportWizardPage', () => {
     const next = screen.getByTestId('wizard-next-1') as HTMLButtonElement;
     expect(next.disabled).toBe(true);
   });
+
+  it('marks METHODOLOGY_FACTORS_V1 as not yet supported and blocks selection (no committer on BE)', () => {
+    render(
+      renderWithProviders(
+        <Routes>
+          <Route path="/app/projects/:projectId/imports/new" element={<ImportWizardPage />} />
+        </Routes>,
+        ['/app/projects/proj-acme-2026/imports/new'],
+      ),
+    );
+    // Visible (so users know it's coming) but flagged + non-selectable.
+    expect(
+      screen.getByTestId('wizard-template-METHODOLOGY_FACTORS_V1-unsupported'),
+    ).toBeInTheDocument();
+    const select = screen.getByTestId(
+      'wizard-template-METHODOLOGY_FACTORS_V1-select',
+    ) as HTMLButtonElement;
+    expect(select.disabled).toBe(true);
+
+    // Committable templates stay selectable.
+    const orgSelect = screen.getByTestId(
+      'wizard-template-ORG_STRUCTURE_V1-select',
+    ) as HTMLButtonElement;
+    expect(orgSelect.disabled).toBe(false);
+  });
 });
 

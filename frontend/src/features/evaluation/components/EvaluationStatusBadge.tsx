@@ -33,10 +33,12 @@ interface Props {
  */
 export function EvaluationStatusBadge({ status, className }: Props) {
   const { t } = useTranslation();
+  // Unknown status → neutral tone + raw code instead of an empty/crashing badge.
+  const key = STATUS_LABEL_KEY[status];
   return (
     <StatusBadge
-      tone={STATUS_TONE[status]}
-      label={t(STATUS_LABEL_KEY[status])}
+      tone={STATUS_TONE[status] ?? 'draft'}
+      label={key ? t(key) : String(status)}
       className={className}
     />
   );

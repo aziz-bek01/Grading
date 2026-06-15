@@ -49,14 +49,30 @@ export const httpClient: AxiosInstance = axios.create({
 // so `mocks/handlers.ts` (2977+ lines of fixtures) is NEVER emitted in
 // the production chunk graph.
 //
-// Top-level await deliberately blocks module initialisation until the mock
-// adapter is wired in. This avoids a race where consumers (TanStack Query
-// hooks, tests) fire requests before the mock is registered.
+// Wire in the dev mock adapter via a NON-BLOCKING dynamic import.
+//
+// A top-level `await import('./mocks/handlers')` here would DEADLOCK module
+// init: the handlers graph statically imports the auth store, which imports
+// THIS module back (httpClient → handlers → userHandlers → authStore →
+// httpClient). Under top-level-await semantics that cycle never settles — the
+// dynamic import waits for the handlers graph, the handlers graph waits for
+// httpClient's TLA, and nothing renders (a silent hang, no error).
+//
+// Instead we kick off the import without awaiting it and swap in a small
+// wrapper adapter that defers each request until the real mock adapter is
+// ready. This keeps the no-race guarantee (no request can run before the mock
+// is registered) WITHOUT a module-init top-level await.
 if (__ENABLE_MSW__ && env.useMockApi) {
   // eslint-disable-next-line no-console
   console.info('[api] mock adapter enabled (VITE_USE_MSW=true)');
-  const { createMockAdapter } = await import('./mocks/handlers');
-  httpClient.defaults.adapter = createMockAdapter(httpClient.defaults.adapter as never);
+  const realAdapter = httpClient.defaults.adapter as never;
+  const mockAdapterReady = import('./mocks/handlers').then((mod) =>
+    mod.createMockAdapter(realAdapter),
+  );
+  httpClient.defaults.adapter = (async (config) => {
+    const mockAdapter = await mockAdapterReady;
+    return mockAdapter(config);
+  }) as typeof httpClient.defaults.adapter;
 }
 
 /**
@@ -137,9 +153,14 @@ httpClient.interceptors.request.use((req: InternalAxiosRequestConfig) => {
   // Real backend: forward the active company-client so the server can scope
   // data + permissions to the tenant the user selected in the TenantSelector.
   // Auth-context header (validated against memberships server-side), NOT a
-  // business tenant_id field. Sent in all non-mock environments whenever an
-  // active tenant is set; the mock adapter uses X-Mock-Tenant-Id instead.
-  if (!env.useMockApi && activeTenantId) {
+  // business tenant_id field. Attached WHENEVER an active tenant is set,
+  // independent of mock mode: gating this on `!env.useMockApi` meant a build
+  // with VITE_USE_MSW=true (demo/test runtime) never emitted the header, so the
+  // very first /users/me after an OIDC redirect went out header-less and a
+  // multi-membership super admin's shell locked out (empty permissions). The
+  // mock adapter additionally reads X-Mock-Tenant-Id (set above) to simulate
+  // JWT-derived tenancy; a real backend just ignores that extra header.
+  if (activeTenantId) {
     req.headers.set('X-Active-Tenant-Id', activeTenantId);
   }
   // Dev-only: when running against the REAL backend (MSW off), forward the

@@ -174,13 +174,14 @@ public class GetCurrentUserUseCase {
         Map<UUID, TenantJpaEntity> tenantsById = tenantRepository.findAllById(tenantIds).stream()
                 .collect(Collectors.toMap(TenantJpaEntity::getId, t -> t));
 
-        // ClientCompanyRepository is tenant-aware (no findAllById that ignores
-        // tenant scope by design). We resolve client_company per tenant — the
-        // table carries UNIQUE(tenant_id) so this is O(N) without leakage risk.
-        Map<UUID, ClientCompanyJpaEntity> companiesByTenant = tenantIds.stream()
-                .map(tid -> clientCompanyRepository.findByTenantId(tid).orElse(null))
-                .filter(c -> c != null)
-                .collect(Collectors.toMap(ClientCompanyJpaEntity::getTenantId, c -> c));
+        // PERF (P1) — resolve client companies for ALL membership tenants in ONE
+        // tenant-scoped batch query (was one findByTenantId per membership →
+        // N+1), mirroring the already-batched tenantRepository.findAllById above.
+        // findAllByTenantIdIn keeps tenant_id pinned and the table carries
+        // UNIQUE(tenant_id), so the map collects one row per tenant without leakage.
+        Map<UUID, ClientCompanyJpaEntity> companiesByTenant =
+                clientCompanyRepository.findAllByTenantIdIn(tenantIds).stream()
+                        .collect(Collectors.toMap(ClientCompanyJpaEntity::getTenantId, c -> c));
 
         List<TenantMembershipSummary> out = new ArrayList<>(memberships.size());
         for (UserTenantMembershipJpaEntity m : memberships) {

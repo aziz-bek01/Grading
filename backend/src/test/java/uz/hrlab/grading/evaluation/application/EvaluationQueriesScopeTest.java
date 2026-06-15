@@ -263,12 +263,71 @@ class EvaluationQueriesScopeTest {
                 .findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(tenantId, evaluationId);
     }
 
+    // ===================================== SELF-OWNERSHIP CARVE-OUT (P0 fix)
+    // An EVALUATION_COMMITTEE_MEMBER with an EMPTY department scope must still be
+    // able to open/read their OWN sheet — the department-scope dimension is
+    // relaxed for the owner only (mirrors listMine). For a non-owner it stays
+    // fail-closed (covered by the *EmptyScope* / *OutOfSubtree* tests above).
+
+    @Test
+    void findByIdOwnerWithEmptyScopeIsAllowedAndSkipsDepartmentGate() {
+        UUID me = UUID.randomUUID();
+        setExpertContext(me, Set.of()); // dept-scoped role, NO assignment
+        EvaluationJpaEntity own = stubEvaluationOwnedBy(me);
+
+        assertThat(queries.findById(evaluationId)).isSameAs(own);
+        // Owner short-circuit: the position is never resolved for the dept gate.
+        verify(positions, never()).findByIdAndTenantId(any(), any());
+    }
+
+    @Test
+    void findScoresOwnerWithEmptyScopeIsAllowed() {
+        UUID me = UUID.randomUUID();
+        setExpertContext(me, Set.of());
+        stubEvaluationOwnedBy(me);
+        when(scores.findAllByTenantIdAndEvaluationId(tenantId, evaluationId))
+                .thenReturn(List.of());
+
+        assertThat(queries.findScoresByEvaluationId(evaluationId)).isEmpty();
+        verify(scores).findAllByTenantIdAndEvaluationId(tenantId, evaluationId);
+        verify(positions, never()).findByIdAndTenantId(any(), any());
+    }
+
+    @Test
+    void findCalibrationHistoryOwnerWithEmptyScopeIsAllowed() {
+        UUID me = UUID.randomUUID();
+        setExpertContext(me, Set.of());
+        stubEvaluationOwnedBy(me);
+        when(calibrationEvents.findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(
+                tenantId, evaluationId)).thenReturn(List.of());
+
+        assertThat(queries.findCalibrationHistory(evaluationId)).isEmpty();
+        verify(positions, never()).findByIdAndTenantId(any(), any());
+    }
+
+    @Test
+    void findByIdNonOwnerOutOfSubtreeStillDeniedDespiteCarveOut() {
+        // Carve-out is owner-only: a scoped member on a PEER's sheet is still
+        // department-gated (no scope hole).
+        setExpertContext(UUID.randomUUID(), Set.of(inScopeDept));
+        stubEvaluationOwnedBy(UUID.randomUUID()); // owned by someone else
+        stubPosition(outOfScopeDept);
+
+        assertThatThrownBy(() -> queries.findById(evaluationId))
+                .isInstanceOf(TenantAccessDeniedException.class);
+        assertDenialAudited();
+    }
+
     // --------------------------------------------------------------- helpers
 
     private EvaluationJpaEntity stubEvaluation() {
+        return stubEvaluationOwnedBy(UUID.randomUUID());
+    }
+
+    private EvaluationJpaEntity stubEvaluationOwnedBy(UUID evaluatorUserId) {
         EvaluationJpaEntity evaluation = new EvaluationJpaEntity(
                 evaluationId, tenantId, projectId, positionId, UUID.randomUUID(),
-                UUID.randomUUID(), EvaluationStatus.DRAFT);
+                evaluatorUserId, EvaluationStatus.DRAFT);
         when(evaluations.findByIdAndTenantId(evaluationId, tenantId))
                 .thenReturn(Optional.of(evaluation));
         return evaluation;
@@ -295,8 +354,12 @@ class EvaluationQueriesScopeTest {
     }
 
     private void setExpertContext(Set<UUID> deptScope) {
+        setExpertContext(UUID.randomUUID(), deptScope);
+    }
+
+    private void setExpertContext(UUID userId, Set<UUID> deptScope) {
         TenantContextHolder.set(new TenantContext(
-                UUID.randomUUID(), tenantId, Set.of(projectId),
+                userId, tenantId, Set.of(projectId),
                 Set.of(RoleCodes.EVALUATION_COMMITTEE_MEMBER),
                 Set.of("EVALUATION_READ"), deptScope, false, "ru-RU"));
     }

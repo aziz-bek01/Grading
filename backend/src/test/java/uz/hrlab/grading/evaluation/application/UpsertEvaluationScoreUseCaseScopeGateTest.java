@@ -101,9 +101,13 @@ class UpsertEvaluationScoreUseCaseScopeGateTest {
     @Test
     void scopedExpertDeniedScoringOutsideSubtreeBeforeAnyWrite() {
         setExpertContext(Set.of(inScopeDept));
+        // NON-owner evaluator: the caller (userId) is a department-scoped manager
+        // acting on someone ELSE's sheet, so the department write gate applies in
+        // full. (The owner carve-out is exercised separately in the integration
+        // test — it must NOT relax scope for a non-owner like this.)
         EvaluationJpaEntity evaluation = new EvaluationJpaEntity(
                 evaluationId, tenantId, projectId, positionId, UUID.randomUUID(),
-                userId, EvaluationStatus.DRAFT);
+                UUID.randomUUID(), EvaluationStatus.DRAFT);
         when(loader.load(evaluationId, tenantId))
                 .thenReturn(new EvaluationContext(evaluation, null, List.of(), Map.of()));
         stubPosition(outOfScopeDept);

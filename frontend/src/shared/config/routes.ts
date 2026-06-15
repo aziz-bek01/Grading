@@ -18,7 +18,8 @@ export const routes = {
    * Feature 1 — evaluator self-inbox ("My evaluations"). Global (NOT
    * project-scoped) because GET /evaluations/my returns the caller's own sheets
    * across projects. Each row deep-links to the project-scoped sheet route via
-   * {@link projectEvaluationDetail} using the active project id.
+   * {@link projectEvaluationDetail} using the row's own project_id (so it
+   * resolves correctly regardless of which project is currently active).
    */
   myEvaluations: '/app/my-evaluations',
   usersAccess: '/app/users',

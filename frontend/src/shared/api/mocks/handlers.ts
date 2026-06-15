@@ -1645,6 +1645,9 @@ function handleEvaluations(
         );
         return {
           evaluation_id: ev.id,
+          // Each row carries its OWN project so the inbox deep-links to the
+          // project-scoped sheet route regardless of the active project.
+          project_id: ev.project_id ?? pos?.project_id ?? '',
           panel_id: panel?.panel_id ?? null,
           position_id: ev.position_id,
           position_code: pos?.code ?? '',

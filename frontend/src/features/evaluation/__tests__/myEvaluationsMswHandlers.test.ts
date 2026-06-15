@@ -30,6 +30,7 @@ function req(
 
 interface MyRow {
   evaluation_id: string;
+  project_id: string;
   panel_id: string | null;
   position_id: string;
   position_code: string;
@@ -52,6 +53,9 @@ describe('MSW GET /evaluations/my (Feature 1)', () => {
     expect(rows.length).toBeGreaterThan(0);
     const row = rows[0];
     expect(row).toHaveProperty('evaluation_id');
+    // Each row carries its OWN owning project so the inbox can deep-link to the
+    // project-scoped scoring sheet without relying on the active project.
+    expect(row).toHaveProperty('project_id');
     expect(row).toHaveProperty('position_code');
     expect(row).toHaveProperty('position_title');
     expect(row).toHaveProperty('status');
@@ -61,6 +65,8 @@ describe('MSW GET /evaluations/my (Feature 1)', () => {
     expect(typeof row.position_title).toBe('object');
     expect(typeof row.filled_factors_count).toBe('number');
     expect(typeof row.total_factors_count).toBe('number');
+    // project_id is a non-empty string for every assigned sheet.
+    expect(rows.every((r) => typeof r.project_id === 'string' && r.project_id.length > 0)).toBe(true);
   });
 
   it('only returns sheets that have an evaluator assigned (caller-owned proxy)', () => {

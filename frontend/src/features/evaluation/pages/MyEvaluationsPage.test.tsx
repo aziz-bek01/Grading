@@ -31,6 +31,9 @@ vi.mock('../hooks/useMyEvaluations', () => ({
 function row(over: Partial<MyEvaluationRow> = {}): MyEvaluationRow {
   return {
     evaluationId: 'eval-1',
+    // Each row carries its OWN owning project — the deep-link is built from
+    // this, NOT from the active project (the inbox is project-agnostic).
+    projectId: 'proj-1',
     panelId: 'panel-1',
     positionId: 'pos-1',
     positionCode: 'FIN-AN',
@@ -49,10 +52,11 @@ function setActiveProject(id: string | null) {
   );
 }
 
-function renderPage(projectId: string | null = 'proj-1') {
-  // signIn resets activeProject, so set it AFTER establishing the session.
+function renderPage(activeProjectId: string | null = null) {
+  // The deep-link no longer depends on the active project — leave it unset by
+  // default. Tests that want to prove independence set it to a DIFFERENT id.
   signInWithPermissions([PERMISSIONS.EVALUATION_READ]);
-  setActiveProject(projectId);
+  setActiveProject(activeProjectId);
   return render(
     renderWithProviders(
       <Routes>
@@ -91,13 +95,31 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
     expect(screen.getByText('3/8')).toBeInTheDocument();
   });
 
-  it('links each row to the project-scoped scoring sheet', () => {
-    queryState.data = [row({ evaluationId: 'eval-42' })];
-    renderPage();
+  it("links each row to the project-scoped sheet built from the row's OWN project", () => {
+    queryState.data = [row({ evaluationId: 'eval-42', projectId: 'proj-77' })];
+    // A DIFFERENT project is active — the link must still use the row's project,
+    // proving the deep-link is independent of which project is active.
+    renderPage('proj-other');
     const link = screen.getByTestId('open-my-evaluation-eval-42');
     expect(link).toHaveAttribute(
       'href',
-      '/app/projects/proj-1/evaluation/eval-42',
+      '/app/projects/proj-77/evaluation/eval-42',
+    );
+  });
+
+  it('links every row regardless of the active project (no project active)', () => {
+    queryState.data = [
+      row({ evaluationId: 'eval-a', projectId: 'proj-a' }),
+      row({ evaluationId: 'eval-b', projectId: 'proj-b' }),
+    ];
+    renderPage(null);
+    expect(screen.getByTestId('open-my-evaluation-eval-a')).toHaveAttribute(
+      'href',
+      '/app/projects/proj-a/evaluation/eval-a',
+    );
+    expect(screen.getByTestId('open-my-evaluation-eval-b')).toHaveAttribute(
+      'href',
+      '/app/projects/proj-b/evaluation/eval-b',
     );
   });
 
@@ -117,12 +139,15 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('renders the row without a link and a hint when no project is active', () => {
-    queryState.data = [row({ evaluationId: 'eval-7' })];
-    renderPage(null);
+  it('renders a non-linkable guard row when projectId is unexpectedly missing', () => {
+    // projectId is non-optional in the domain type, but the BE could omit it;
+    // the page degrades gracefully to a non-linkable row instead of a broken URL.
+    queryState.data = [
+      row({ evaluationId: 'eval-7', projectId: undefined as unknown as string }),
+    ];
+    renderPage();
     expect(screen.queryByTestId('open-my-evaluation-eval-7')).not.toBeInTheDocument();
     expect(screen.getByTestId('my-evaluation-row-eval-7')).toBeInTheDocument();
-    expect(screen.getByTestId('my-evaluations-no-project-hint')).toBeInTheDocument();
   });
 
   it('shows NoAccessState without EVALUATION_READ', () => {

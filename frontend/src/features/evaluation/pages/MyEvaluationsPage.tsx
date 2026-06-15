@@ -8,7 +8,6 @@ import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { NoAccessState } from '@/shared/components/feedback/NoAccessState';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { usePermission } from '@/features/auth/usePermission';
-import { useAuthStore } from '@/features/auth/authStore';
 import { ApiError } from '@/shared/api/apiError';
 import { routes } from '@/shared/config/routes';
 import { useMyEvaluations } from '../hooks/useMyEvaluations';
@@ -25,15 +24,16 @@ import { ProgressChip } from '../components/byFactor/ProgressChip';
  * the evaluation list opens ({@link EvaluationDetailsPage} → EvaluationMatrix).
  *
  * The inbox is project-agnostic on the wire, but the sheet route is
- * project-scoped — we resolve the deep-link via the ACTIVE project id. When no
- * project is active the row is shown but not yet linkable (a hint asks the
- * evaluator to pick a project first), so the page never produces a broken URL.
+ * project-scoped — each row carries its OWN project id, so we deep-link via
+ * {@link routes.projectEvaluationDetail} using `row.projectId`. EVERY row is
+ * therefore linkable regardless of which project is active; a row is only shown
+ * non-linkable as a graceful guard if `projectId` is unexpectedly missing, so
+ * the page never produces a broken URL.
  */
 export function MyEvaluationsPage() {
   const { t } = useTranslation();
   const { can } = usePermission();
   const canRead = can(PERMISSIONS.EVALUATION_READ);
-  const activeProjectId = useAuthStore((s) => s.activeProject?.id ?? null);
 
   const query = useMyEvaluations();
   const rows = useMemo(() => query.data ?? [], [query.data]);
@@ -49,16 +49,6 @@ export function MyEvaluationsPage() {
           {t('my_evaluations.subtitle')}
         </p>
       </header>
-
-      {activeProjectId === null && !query.isLoading && rows.length > 0 ? (
-        <div
-          role="note"
-          data-testid="my-evaluations-no-project-hint"
-          className="rounded-md border border-warning-500/30 bg-warning-50 text-warning-700 text-sm p-3"
-        >
-          {t('my_evaluations.select_project_hint')}
-        </div>
-      ) : null}
 
       <Card>
         {query.isLoading ? (
@@ -98,10 +88,10 @@ export function MyEvaluationsPage() {
 
               return (
                 <li key={row.evaluationId}>
-                  {activeProjectId ? (
+                  {row.projectId ? (
                     <Link
                       to={routes.projectEvaluationDetail(
-                        activeProjectId,
+                        row.projectId,
                         row.evaluationId,
                       )}
                       data-testid={`open-my-evaluation-${row.evaluationId}`}
@@ -114,7 +104,6 @@ export function MyEvaluationsPage() {
                       data-testid={`my-evaluation-row-${row.evaluationId}`}
                       className="flex items-center gap-4 px-1 py-3 text-text-muted"
                       aria-disabled
-                      title={t('my_evaluations.select_project_hint')}
                     >
                       {inner}
                     </div>

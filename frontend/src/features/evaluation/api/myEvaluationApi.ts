@@ -31,6 +31,12 @@ export const myEvaluationKeys = {
 /** Raw GET /evaluations/my row (snake_case, mirrors BE MyEvaluationRow). */
 interface MyEvaluationRowWire {
   evaluation_id: string;
+  /**
+   * Owning project of the sheet. The inbox is project-agnostic, but the sheet
+   * route is project-scoped, so each row carries its OWN project so it can
+   * deep-link precisely regardless of which project is active.
+   */
+  project_id: string;
   panel_id: string | null;
   position_id: string;
   position_code: string;
@@ -43,6 +49,8 @@ interface MyEvaluationRowWire {
 /** camelCase domain row consumed by the inbox page. */
 export interface MyEvaluationRow {
   evaluationId: string;
+  /** Owning project id — used to build the project-scoped scoring-sheet link. */
+  projectId: string;
   panelId: string | null;
   positionId: string;
   positionCode: string;
@@ -57,6 +65,7 @@ export interface MyEvaluationRow {
 function adaptRow(row: MyEvaluationRowWire, locale: string): MyEvaluationRow {
   return {
     evaluationId: row.evaluation_id,
+    projectId: row.project_id,
     panelId: row.panel_id,
     positionId: row.position_id,
     positionCode: row.position_code,

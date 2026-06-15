@@ -21,4 +21,7 @@ public interface MethodologyRepository
 
     Page<MethodologyJpaEntity> findAllByTenantIdAndProjectIdAndStatusNot(
             UUID tenantId, UUID projectId, MethodologyStatus excluded, Pageable pageable);
+
+    /** Count of methodologies in a tenant — used by the portfolio summary. */
+    long countByTenantId(UUID tenantId);
 }

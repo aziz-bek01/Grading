@@ -28,6 +28,9 @@ public interface ClientCompanyRepository
 
     boolean existsByTenantId(UUID tenantId);
 
+    /** Count of client companies in a tenant — used by the portfolio summary. */
+    long countByTenantId(UUID tenantId);
+
     /**
      * Cross-tenant catalog used by {@code GET /api/v1/admin/clients}. Only
      * HRLAB_SUPER_ADMIN reaches this — other roles are routed through

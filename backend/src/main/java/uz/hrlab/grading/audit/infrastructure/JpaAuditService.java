@@ -43,9 +43,22 @@ public class JpaAuditService implements AuditService {
                 .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
     }
 
+    /**
+     * Sentinel advisory-lock key for the null-tenant (control-plane / platform)
+     * audit chain, so all platform-scoped appends serialize on one slot just as
+     * each tenant's appends do.
+     */
+    private static final String CONTROL_PLANE_LOCK_KEY = "__control_plane_audit_chain__";
+
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(AuditEvent event) {
+        // P2-FIX (Task 4) — serialize hash-chain appends within this tenant
+        // chain via a transaction-scoped advisory lock taken BEFORE the
+        // read-then-write so two concurrent audited actions cannot read the same
+        // prevHash and fork the chain. Auto-releases on commit/rollback.
+        repository.acquireTenantAuditChainLock(lockKey(event.tenantId()));
+
         UUID id = UUID.randomUUID();
         OffsetDateTime createdAt = OffsetDateTime.now();
         String beforeJson = serialize(event.beforeJson());
@@ -73,6 +86,11 @@ public class JpaAuditService implements AuditService {
                 currentHash
         );
         repository.save(row);
+    }
+
+    /** Advisory-lock key for a tenant chain — null tenant maps to a fixed sentinel. */
+    private String lockKey(UUID tenantId) {
+        return tenantId == null ? CONTROL_PLANE_LOCK_KEY : tenantId.toString();
     }
 
     private String serialize(JsonNode node) {

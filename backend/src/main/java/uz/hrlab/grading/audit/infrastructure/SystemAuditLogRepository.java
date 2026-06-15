@@ -57,6 +57,25 @@ public interface SystemAuditLogRepository extends Repository<SystemAuditLogJpaEn
     Optional<String> findLastHash(@Param("tenantId") UUID tenantId);
 
     /**
+     * P2-FIX (Task 4) — serialize hash-chain appends WITHIN a tenant.
+     *
+     * <p>The append is read-then-write ({@code findLastHash} → compute
+     * {@code hash_current} → {@code save}). Two concurrent audited actions in the
+     * same tenant could otherwise read the same {@code prevHash} and both chain
+     * off it, forking/corrupting the chain. Taking a per-tenant PostgreSQL
+     * transaction-scoped advisory lock at the START of the REQUIRES_NEW audit
+     * transaction makes appends serialize per tenant; the lock auto-releases on
+     * commit/rollback. Different tenants hash to different keys and never block
+     * each other. No schema change and no impact on append-only behavior.
+     *
+     * <p>{@code :lockKey} is the tenant id text (or a fixed sentinel for the
+     * null-tenant control-plane chain) so the same chain always maps to the same
+     * advisory-lock slot. {@code hashtext} yields the required {@code int4} key.
+     */
+    @Query(value = "SELECT pg_advisory_xact_lock(hashtext(:lockKey))", nativeQuery = true)
+    void acquireTenantAuditChainLock(@Param("lockKey") String lockKey);
+
+    /**
      * D-1 — page-able cross-axis filter for the Audit Reader API
      * (GET /api/v1/audit). Every filter parameter is optional; null skips
      * that predicate. The tenant scope check happens in the application

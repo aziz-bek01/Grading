@@ -224,6 +224,7 @@ public class EvaluationQueries {
                             .size());
             out.add(new MyEvaluationRow(
                     e.getId(),
+                    e.getProjectId(),
                     e.getPanelId(),
                     e.getPositionId(),
                     p == null ? null : p.getCode(),

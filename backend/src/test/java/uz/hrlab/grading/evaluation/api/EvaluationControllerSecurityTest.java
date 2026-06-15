@@ -122,14 +122,16 @@ class EvaluationControllerSecurityTest {
     @Test
     void myEvaluationsWithEvaluationReadReturns200() throws Exception {
         UUID evaluationId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
         UUID panelId = UUID.randomUUID();
         UUID positionId = UUID.randomUUID();
         given(queries.listMine()).willReturn(List.of(new MyEvaluationRow(
-                evaluationId, panelId, positionId, "P-001",
+                evaluationId, projectId, panelId, positionId, "P-001",
                 java.util.Map.of("ru-RU", "Кассир"), EvaluationStatus.DRAFT, 0, 8)));
         mvc.perform(get("/api/v1/evaluations/my").with(jwt().authorities(() -> "EVALUATION_READ")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].evaluation_id").value(evaluationId.toString()))
+                .andExpect(jsonPath("$[0].project_id").value(projectId.toString()))
                 .andExpect(jsonPath("$[0].panel_id").value(panelId.toString()))
                 .andExpect(jsonPath("$[0].status").value("DRAFT"))
                 .andExpect(jsonPath("$[0].filled_factors_count").value(0))

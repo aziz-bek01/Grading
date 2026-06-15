@@ -11,7 +11,9 @@ import java.util.UUID;
  * caller (its {@code evaluator_user_id} = the authenticated user).
  *
  * <p>Carries exactly what a list UI needs to open a sheet: the evaluation id, the
- * panel it belongs to (null for a legacy panelless sheet), the localized position
+ * project that owns the (project-scoped) scoring-sheet route so a cross-project
+ * inbox can deep-link precisely, the panel it belongs to (null for a legacy
+ * panelless sheet), the localized position
  * title (the full 4-locale map, same source the K-sheet grid resolves), the
  * evaluation status, and a filled / total factor progress count. tenant_id /
  * evaluator_user_id are NEVER echoed (sourced server-side from the security
@@ -19,6 +21,7 @@ import java.util.UUID;
  */
 public record MyEvaluationRow(
         UUID evaluationId,
+        UUID projectId,
         UUID panelId,
         UUID positionId,
         String positionCode,

@@ -63,6 +63,16 @@ databaseChangeLog:
       file: seeds/006-methodology-edit-approved-permission.yaml
       relativeToChangelogFile: true
 
+  # P2-FIX (Task 1) — CLIENT_* catalogue codes + grants (CLIENT_COMPANY_ADMIN
+  # can edit its own client profile; HRLAB_PROJECT_MANAGER read-only oversight).
+  # Registered BEFORE seeds/005 so the super-admin wildcard-minus-carve-outs
+  # backfill ALSO picks the three new non-carve-out codes up automatically, and
+  # so seeds/005's positive-assertion invariant (super admin holds every
+  # non-carve-out code) still holds.
+  - include:
+      file: seeds/007-client-company-permissions.yaml
+      relativeToChangelogFile: true
+
   # Corrective, forward-only HRLAB_SUPER_ADMIN permission backfill (hotfix:
   # "super adminga hamma narsa berkilib qolibdi"). MUST run AFTER seeds/004 AND
   # after the tenant-schema bundle above, because that bundle inserts the newer

@@ -181,3 +181,10 @@ databaseChangeLog:
   - include:
       file: 043-evaluation-reopen-unlock-carveout.yaml
       relativeToChangelogFile: true
+
+  # Widen chk_approval_requests_entity_type to include EVALUATION_PANEL so a panel
+  # can be submitted to the CEO (and re-approved after reopen-for-expert) — 021's
+  # constraint predated the panel approval entity type.
+  - include:
+      file: 044-approval-requests-allow-evaluation-panel.yaml
+      relativeToChangelogFile: true

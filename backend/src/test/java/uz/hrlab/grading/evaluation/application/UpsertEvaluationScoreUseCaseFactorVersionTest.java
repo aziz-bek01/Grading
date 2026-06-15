@@ -34,6 +34,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -168,6 +169,9 @@ class UpsertEvaluationScoreUseCaseFactorVersionTest {
         PositionJpaEntity p = new PositionJpaEntity(
                 positionId, tenantId, projectId, departmentId, "P-001",
                 Map.of("ru-RU", "Position"), null, null, null, null, PositionStatus.ACTIVE);
-        when(positions.findByIdAndTenantId(positionId, tenantId)).thenReturn(Optional.of(p));
+        // lenient: the actor here owns the sheet, so the own-sheet carve-out skips
+        // the department-scope position lookup — this stub is used only on the
+        // non-owner path (kept so the test stays valid if ownership changes).
+        lenient().when(positions.findByIdAndTenantId(positionId, tenantId)).thenReturn(Optional.of(p));
     }
 }

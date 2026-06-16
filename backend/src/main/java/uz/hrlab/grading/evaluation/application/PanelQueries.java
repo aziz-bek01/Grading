@@ -194,10 +194,32 @@ public class PanelQueries {
             }
         }
 
+        // P0-B display-integrity — for a panel that is NO LONGER collecting
+        // (AVERAGED / SUBMITTED / APPROVED / LOCKED), the "experts" count the CEO
+        // sees MUST reflect the sheets that CONTRIBUTED to the average, not the
+        // currently-active assignment seats. The materialized
+        // panel_factor_averages.evaluator_count is exactly that denominator (the
+        // COMPLETED sheets that fed the mean). Batch-loaded for the whole page in
+        // ONE tenant-scoped query. Collecting panels keep the live roster count.
+        Map<UUID, Integer> contributingByPanel = new HashMap<>();
+        averages.findEvaluatorCountsByPanelIds(tenant, panelIds)
+                .forEach(v -> contributingByPanel.put(v.getPanelId(), v.getEvaluatorCount()));
+
         return page.map(p -> {
             int[] c = rosterCounts.getOrDefault(p.getId(), EMPTY_COUNTS);
+            int active = c[0];
+            int completed = c[1];
+            // Non-collecting panel with a materialized average → show the
+            // contributing denominator (preserves the api field name/shape).
+            if (!p.getStatus().isCollecting()) {
+                Integer contributing = contributingByPanel.get(p.getId());
+                if (contributing != null) {
+                    active = contributing;
+                    completed = contributing;
+                }
+            }
             return PanelResponse.from(p.toDomain(),
-                    titleByPosition.get(p.getPositionId()), c[0], c[1]);
+                    titleByPosition.get(p.getPositionId()), active, completed);
         });
     }
 
@@ -233,9 +255,28 @@ public class PanelQueries {
             rosterDto.add(PanelAssignmentResponse.from(a.toDomain(),
                     names.getOrDefault(a.getEvaluatorUserId(), null)));
         }
+
+        // P0-B display-integrity (mirror of the list surface) — once the panel is
+        // no longer collecting, the summary "experts" count must reflect the sheets
+        // that contributed to the average (the materialized denominator), not the
+        // current active-seat count. The detail roster itself still lists every
+        // active seat; only the SUMMARY counts are corrected so the CEO header
+        // ("N из M") is honest. Collecting panels keep the live roster count.
+        int summaryEvaluators = roster.size();
+        int summaryCompleted = completed;
+        if (!panel.getStatus().isCollecting()) {
+            Integer contributing = averages.findAllByTenantIdAndPanelId(tenant, panelId).stream()
+                    .map(PanelFactorAverageJpaEntity::getEvaluatorCount)
+                    .max(Integer::compareTo)
+                    .orElse(null);
+            if (contributing != null) {
+                summaryEvaluators = contributing;
+                summaryCompleted = contributing;
+            }
+        }
         PanelResponse summary = PanelResponse.from(
-                panel.toDomain(), position.getTitleI18n(), roster.size(), completed);
-        return new PanelDetailResponse(summary, rosterDto, completed, roster.size());
+                panel.toDomain(), position.getTitleI18n(), summaryEvaluators, summaryCompleted);
+        return new PanelDetailResponse(summary, rosterDto, summaryCompleted, summaryEvaluators);
     }
 
     /**

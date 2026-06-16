@@ -525,7 +525,7 @@
     "advisory_label": "AI suggestion — human approval required",
     "panel_title": "AI suggestion",
     "disclaimer": "Accepting an AI suggestion does not approve the entity. A human must still approve.",
-    "coming_soon": "AI assistant is in preview. Full integration ships in MVP 2.",
+    "coming_soon": "AI suggestions ship in MVP 4. Recommendations remain advisory; final approval is human.",
     "accept": "Accept",
     "reject": "Reject"
   },
@@ -708,6 +708,7 @@
       "coverage": "{{paneled}} of {{total}} paneled",
       "subtree": "↳ {{count}}",
       "subtree_tooltip": "Including sub-departments: {{count}} pos.",
+      "no_direct_in_subtree": "no direct positions · {{count}} in sub-departments",
       "show_all": "Show all {{count}} departments",
       "show_less": "Show fewer"
     },
@@ -983,6 +984,7 @@
     "open_evaluation": "Open evaluation",
     "position_id": "Position",
     "displayed_total": "Total score",
+    "total_not_calculated": "Total score is not calculated yet — the backend computes it when the evaluation is approved.",
     "empty_title": "No evaluations yet",
     "empty_body": "Start evaluating positions against an approved methodology.",
     "empty_for_position_title": "No evaluation yet",
@@ -998,6 +1000,11 @@
     "mode_hint": {
       "by_position": "\"By position\" — per-position drill-down.",
       "by_factor": "\"By factor\" — bulk K-sheet for the selected factor."
+    },
+    "cta": {
+      "helper": "\"Open evaluation panel\" — an expert commission (several evaluators). \"Add positions\" — individual single-evaluator scoring sheets per position.",
+      "panel_tooltip": "Create a multi-evaluator expert commission to score positions together.",
+      "add_positions_tooltip": "Create individual single-evaluator scoring sheets for the selected positions."
     },
     "add_positions": {
       "cta": "+ Add positions",
@@ -1043,7 +1050,8 @@
       "max_points": "Max points",
       "required_indicator": "Required",
       "missing_required": "{{count}} required factor(s) not yet scored.",
-      "factor_raw": "Raw",
+      "factor_raw": "Raw score",
+      "factor_raw_tooltip": "The raw score for this factor at the selected level — not the factor's weight or max. The official total is computed by the backend.",
       "comment_label": "Comment",
       "comment_aria": "Comment for factor {{factor}}",
       "comment_placeholder": "Optional notes on this level selection..."

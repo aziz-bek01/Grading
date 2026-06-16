@@ -283,7 +283,8 @@ class ReopenApprovedPanelForExpertUseCaseTest {
 
     private Evaluation draftEvaluation(UUID id) {
         return new Evaluation(id, tenantId, projectId, positionId, versionId,
-                expertId, EvaluationStatus.DRAFT, BigDecimal.ZERO, BigDecimal.ZERO,
+                expertId, null, null, EvaluationStatus.DRAFT,
+                BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, null, null, null, null, null, null, null);
     }
 

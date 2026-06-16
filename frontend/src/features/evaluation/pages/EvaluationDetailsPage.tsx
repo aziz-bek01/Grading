@@ -22,6 +22,8 @@ import {
   useUpsertScore,
 } from '../hooks/useEvaluation';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
+import { PanelBlindBanner } from '../components/panel/PanelBlindBanner';
+import { PanelRoleChip } from '../components/panel/PanelRoleChip';
 import { EvaluationMatrix } from '../components/EvaluationMatrix';
 import { EvaluationActionsBar } from '../components/EvaluationActionsBar';
 import { EvaluationScoreBreakdown } from '../components/EvaluationScoreBreakdown';
@@ -127,6 +129,15 @@ export function EvaluationDetailsPage() {
                 t('evaluation.details_title')}
             </h1>
             <EvaluationStatusBadge status={evaluation.data.status} />
+            {/* PD-6: when this single sheet belongs to a panel commission, a
+                panel-seat evaluator who opens it via this route sees their own
+                seat role ("Вы: <роль>") — mirrors how EvaluationByFactorView
+                renders the self chip. Nothing extra for a legacy single sheet. */}
+            {evaluation.data.panelId && evaluation.data.evaluatorRole ? (
+              <span data-testid="evaluation-self-role">
+                <PanelRoleChip role={evaluation.data.evaluatorRole} self />
+              </span>
+            ) : null}
             <EvaluationApprovalInline
               evaluation_id={evaluation.data.id}
               status={evaluation.data.status}
@@ -154,9 +165,24 @@ export function EvaluationDetailsPage() {
             </span>{' '}
             · {t('evaluation.displayed_total')}:{' '}
             <span data-testid="header-total" className="tabular-nums">
-              {evaluation.data.displayed_total_score != null
-                ? Number(evaluation.data.displayed_total_score).toFixed(2)
-                : '—'}
+              {/* P1.1: a fresh DRAFT carries displayed_total_score 0.00 which
+                  reads as a real result. The header total is only a GENUINE
+                  outcome once the evaluation is APPROVED/LOCKED (backend has
+                  computed + frozen it); before that we show "—" with a
+                  "not yet calculated" tooltip so 0.00 is never mistaken for a
+                  score. The live preview total still appears in the matrix. */}
+              {(evaluation.data.status === 'APPROVED' ||
+                evaluation.data.status === 'LOCKED') &&
+              evaluation.data.displayed_total_score != null ? (
+                Number(evaluation.data.displayed_total_score).toFixed(2)
+              ) : (
+                <span
+                  className="text-text-muted"
+                  title={t('evaluation.total_not_calculated')}
+                >
+                  —
+                </span>
+              )}
             </span>
           </p>
         </div>
@@ -211,6 +237,18 @@ export function EvaluationDetailsPage() {
           </button>
         ))}
       </div>
+
+      {/* PD-6: panel blind notice — shown while a panel sheet has not yet been
+          finalized (other evaluators' scores hidden until completion). The real
+          isolation is the BE read guard; this is a UX affordance only. Lifts at
+          APPROVED/LOCKED/ARCHIVED when the panel result is frozen. */}
+      {tab === 'matrix' &&
+      evaluation.data.panelId &&
+      evaluation.data.status !== 'APPROVED' &&
+      evaluation.data.status !== 'LOCKED' &&
+      evaluation.data.status !== 'ARCHIVED' ? (
+        <PanelBlindBanner />
+      ) : null}
 
       {tab === 'matrix' ? (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-4">

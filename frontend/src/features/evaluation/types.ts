@@ -9,6 +9,8 @@
  * the active tenant from the JWT (security blueprint API-13).
  */
 
+import type { EvaluatorRole } from './panelTypes';
+
 export type EvaluationStatus =
   | 'DRAFT'
   | 'INCOMPLETE'
@@ -59,6 +61,21 @@ export interface Evaluation {
   locked_by?: string | null;
   archived_at?: string | null;
   archived_by?: string | null;
+  /**
+   * Owning panel id when this sheet is a per-seat sheet of an EVALUATION_PANEL
+   * commission; `null`/absent for a legacy single-evaluator sheet. Adapted from
+   * the BE wire field `panel_id` (snake_case) by {@link fetchEvaluation} — the
+   * camelCase name marks it as a FE-derived convenience field (the rest of this
+   * type is raw snake_case wire). The single-sheet detail page uses its presence
+   * to show the panel blind banner + the evaluator's role chip.
+   */
+  panelId?: string | null;
+  /**
+   * The current viewer's seat role on the owning panel (mirrors the BE wire
+   * field `evaluator_role`). `null`/absent for non-panel sheets. Only meaningful
+   * when {@link panelId} is present.
+   */
+  evaluatorRole?: EvaluatorRole | null;
 }
 
 export interface EvaluationScore {

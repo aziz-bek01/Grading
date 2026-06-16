@@ -48,14 +48,23 @@ export function AIRecommendationPanel({
         {placeholderBody ?? t('aiAssist.coming_soon')}
       </p>
 
-      <footer className="flex items-center justify-end gap-2 pt-2 border-t border-ai-suggestion/20">
-        <Button variant="secondary" size="sm" onClick={onReject} disabled={disabled}>
-          {t('aiAssist.reject')}
-        </Button>
-        <Button variant="primary" size="sm" onClick={onAccept} disabled={disabled}>
-          {t('aiAssist.accept')}
-        </Button>
-      </footer>
+      {/*
+        Dead-affordance guard: while there is no live AI integration (no
+        onAccept/onReject wired) the accept/reject controls would imply a
+        function that does not exist. We render the action footer ONLY once a
+        real handler is provided (MVP 4 wiring); the placeholder panel collapses
+        to its disclaimer + "coming later" note instead of two inert buttons.
+      */}
+      {onAccept || onReject ? (
+        <footer className="flex items-center justify-end gap-2 pt-2 border-t border-ai-suggestion/20">
+          <Button variant="secondary" size="sm" onClick={onReject} disabled={disabled}>
+            {t('aiAssist.reject')}
+          </Button>
+          <Button variant="primary" size="sm" onClick={onAccept} disabled={disabled}>
+            {t('aiAssist.accept')}
+          </Button>
+        </footer>
+      ) : null}
     </section>
   );
 }

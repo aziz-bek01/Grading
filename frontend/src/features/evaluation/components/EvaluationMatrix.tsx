@@ -271,7 +271,14 @@ export function EvaluationMatrix({
                   className="text-right space-y-1"
                   data-testid={`factor-score-${f.code}`}
                 >
-                  <span className="block text-xs text-text-muted uppercase">
+                  {/* PD-5: the column shows the RAW per-factor score, not the
+                      factor's point worth. A bare "Балл" reads to a committee
+                      member as "points this factor is worth", so the header is
+                      qualified ("raw") and carries an explanatory tooltip. */}
+                  <span
+                    className="block text-xs text-text-muted uppercase cursor-help"
+                    title={t('evaluation.matrix.factor_raw_tooltip')}
+                  >
                     {t('evaluation.matrix.factor_raw')}
                   </span>
                   <span className="block text-sm font-semibold tabular-nums">

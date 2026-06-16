@@ -123,9 +123,33 @@ export async function fetchEvaluations(
   return res.data;
 }
 
+/**
+ * Raw single-sheet wire shape: the EvaluationResponse plus the two panel
+ * context fields the BE now adds in snake_case (`panel_id` / `evaluator_role`).
+ * `@JsonInclude(NON_NULL)` means both are OMITTED for a legacy single-evaluator
+ * sheet, so they are optional here.
+ */
+type EvaluationWire = Evaluation & {
+  panel_id?: string | null;
+  evaluator_role?: Evaluation['evaluatorRole'];
+};
+
+/**
+ * Fetch one evaluation sheet and adapt the BE's snake_case panel-context fields
+ * (`panel_id` / `evaluator_role`) into the FE-derived camelCase convenience
+ * fields (`panelId` / `evaluatorRole`) the detail page reads. All other fields
+ * pass through unchanged (the rest of {@link Evaluation} is raw snake_case wire).
+ * For a legacy single-evaluator sheet both fields are absent → mapped to `null`,
+ * so the detail page renders no extra panel chrome.
+ */
 export async function fetchEvaluation(id: string): Promise<Evaluation> {
-  const res = await httpClient.get<Evaluation>(`${base}/${id}`);
-  return res.data;
+  const res = await httpClient.get<EvaluationWire>(`${base}/${id}`);
+  const { panel_id, evaluator_role, ...rest } = res.data;
+  return {
+    ...rest,
+    panelId: panel_id ?? null,
+    evaluatorRole: evaluator_role ?? null,
+  };
 }
 
 export async function fetchEvaluationScores(

@@ -30,6 +30,10 @@ import type { MethodologyVersion } from '@/features/methodology/types';
 // route param actually reached the data layer (not '').
 const evaluationIdSpy = vi.fn<(id: string | undefined) => void>();
 
+// Per-test overrides for the mocked evaluation (status / total / panel context).
+// Reset in beforeEach so each test starts from the DRAFT baseline.
+let evalOverride: Partial<Evaluation> = {};
+
 function makeEvaluation(id: string): Evaluation {
   return {
     id,
@@ -41,6 +45,7 @@ function makeEvaluation(id: string): Evaluation {
     displayed_total_score: null,
     grade_band_id: null,
     assigned_grade_number: null,
+    ...evalOverride,
   } as Evaluation;
 }
 
@@ -119,6 +124,7 @@ function renderPage(entry: string) {
 describe('<EvaluationDetailsPage /> route-param contract', () => {
   beforeEach(() => {
     evaluationIdSpy.mockClear();
+    evalOverride = {};
   });
   afterEach(() => signOut());
 
@@ -139,5 +145,43 @@ describe('<EvaluationDetailsPage /> route-param contract', () => {
   it('a different concrete id flows through unchanged (param not hardcoded)', () => {
     renderPage('/app/projects/proj-a/evaluation/eval-deep-link');
     expect(evaluationIdSpy).toHaveBeenCalledWith('eval-deep-link');
+  });
+
+  // P1.1 — a fresh DRAFT carries displayed_total_score 0.00, which reads as a
+  // real result in the header. The header total must show "—" until the score
+  // is a GENUINE computed outcome (APPROVED/LOCKED), never a bare "0.00".
+  it('shows "—" for the header total of a DRAFT with a 0 total (not "0.00")', () => {
+    evalOverride = { status: 'DRAFT', displayed_total_score: 0 };
+    renderPage('/app/projects/proj-77/evaluation/eval-42');
+    const total = screen.getByTestId('header-total');
+    expect(total).toHaveTextContent('—');
+    expect(total).not.toHaveTextContent('0.00');
+  });
+
+  it('shows the real computed total once APPROVED', () => {
+    evalOverride = { status: 'APPROVED', displayed_total_score: 742.5 };
+    renderPage('/app/projects/proj-77/evaluation/eval-42');
+    expect(screen.getByTestId('header-total')).toHaveTextContent('742.50');
+  });
+
+  // PD-6 — a panel-seat evaluator who opens their sheet via this single-sheet
+  // route sees their seat-role chip + the blind notice. A legacy single sheet
+  // (panelId null) renders neither.
+  it('renders the self-role chip + blind banner for a panel sheet', () => {
+    evalOverride = {
+      status: 'DRAFT',
+      panelId: 'panel-1',
+      evaluatorRole: 'HR_DIRECTOR',
+    };
+    renderPage('/app/projects/proj-77/evaluation/eval-42');
+    expect(screen.getByTestId('evaluation-self-role')).toBeInTheDocument();
+    expect(screen.getByTestId('panel-blind-banner')).toBeInTheDocument();
+  });
+
+  it('renders no panel chrome for a legacy single sheet (panelId null)', () => {
+    evalOverride = { status: 'DRAFT', panelId: null, evaluatorRole: null };
+    renderPage('/app/projects/proj-77/evaluation/eval-42');
+    expect(screen.queryByTestId('evaluation-self-role')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('panel-blind-banner')).not.toBeInTheDocument();
   });
 });

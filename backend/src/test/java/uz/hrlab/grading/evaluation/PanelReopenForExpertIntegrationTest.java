@@ -13,6 +13,7 @@ import uz.hrlab.grading.evaluation.application.AssignEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.application.CreatePanelCommand;
 import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
+import uz.hrlab.grading.evaluation.application.PanelQueries;
 import uz.hrlab.grading.evaluation.application.ReopenApprovedPanelForExpertUseCase;
 import uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCase;
 import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreCommand;
@@ -104,6 +105,7 @@ class PanelReopenForExpertIntegrationTest extends AbstractIntegrationTest {
     @Autowired SubmitPanelToCeoUseCase submitPanelToCeoUseCase;
     @Autowired ApprovePanelUseCase approvePanelUseCase;
     @Autowired ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
+    @Autowired PanelQueries panelQueries;
 
     @Autowired PanelRepository panels;
     @Autowired PanelAssignmentRepository assignments;
@@ -233,6 +235,45 @@ class PanelReopenForExpertIntegrationTest extends AbstractIntegrationTest {
         assertThat(completed)
                 .as("the new expert is included in the re-average (denominator 3 -> 4)")
                 .isEqualTo(4);
+    }
+
+    /**
+     * P0-B display-integrity (end-to-end against PostgreSQL) — a non-collecting
+     * (APPROVED) panel that averaged over the mandatory trio reports the
+     * CONTRIBUTING denominator on BOTH the list and the detail surfaces. This also
+     * exercises the new {@code PanelFactorAverageRepository.findEvaluatorCountsByPanelIds}
+     * JPQL against the real DB (it is mocked in the unit test). There is no min-3
+     * bypass: the panel could only reach APPROVED by averaging the 3 mandatory
+     * evaluators, and that 3 is exactly what the CEO header now shows.
+     */
+    @Test
+    void approvedPanelReportsContributingDenominatorOnListAndDetail() {
+        Fixture fx = seedApprovedMethodology("RFX3");
+        setManagerContext(fx);
+        UUID panelId = buildApprovedPanel(fx);
+
+        EvaluationPanelJpaEntity approved = panels.findByIdAndTenantId(panelId, fx.tenantId)
+                .orElseThrow();
+        assertThat(approved.getStatus()).isEqualTo(EvaluationPanelStatus.APPROVED);
+
+        // LIST surface — the "experts" count = the 3 contributing sheets (the
+        // materialized average denominator), not just the currently-active seats.
+        var listRow = panelQueries.list(fx.projectId, fx.positionId, PageRequest.of(0, 20))
+                .getContent().stream()
+                .filter(r -> r.id().equals(panelId))
+                .findFirst()
+                .orElseThrow();
+        assertThat(listRow.status()).isEqualTo(EvaluationPanelStatus.APPROVED);
+        assertThat(listRow.evaluatorCount())
+                .as("approved panel shows the contributing denominator (3), not '1 из 1'")
+                .isEqualTo(3);
+        assertThat(listRow.completedCount()).isEqualTo(3);
+
+        // DETAIL surface — the summary header N/M reflects the same denominator.
+        var detail = panelQueries.getPanelDetail(panelId);
+        assertThat(detail.totalCount()).isEqualTo(3);
+        assertThat(detail.completedCount()).isEqualTo(3);
+        assertThat(detail.panel().evaluatorCount()).isEqualTo(3);
     }
 
     // --------------------------------------------------------------- helpers

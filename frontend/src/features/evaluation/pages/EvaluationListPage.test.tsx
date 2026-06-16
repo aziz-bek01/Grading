@@ -458,4 +458,17 @@ describe('EvaluationListPage — Item 1 (department / add / delete)', () => {
     // No tenant_id is ever assembled into the payload.
     expect(payload).not.toHaveProperty('tenant_id');
   });
+
+  // PD-4 — the two header CTAs (expert-commission panel vs. single-position
+  // sheets) carry a one-line helper + per-button tooltips so they are not
+  // confused.
+  it('PD-4: renders a CTA helper line and per-button tooltips distinguishing the two flows', async () => {
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText('Финансовый аналитик')).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('evaluation-cta-helper')).toBeInTheDocument();
+    expect(screen.getByTestId('open-panel-cta')).toHaveAttribute('title');
+    expect(screen.getByTestId('add-positions-open')).toHaveAttribute('title');
+  });
 });

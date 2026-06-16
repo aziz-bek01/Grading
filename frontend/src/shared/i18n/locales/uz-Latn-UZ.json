@@ -525,7 +525,7 @@
     "advisory_label": "AI tavsiya — inson tasdigʻi talab qilinadi",
     "panel_title": "AI tavsiyasi",
     "disclaimer": "Tavsiyani qabul qilish subʼektni tasdiqlamaydi. Yakuniy qarorni inson qabul qiladi.",
-    "coming_soon": "AI-yordamchi ko'rib chiqish rejimida. To'liq integratsiya MVP 2'da.",
+    "coming_soon": "AI takliflari MVP 4da taqdim etiladi. Tavsiyalar maslahat sifatida; yakuniy qarorni inson qabul qiladi.",
     "accept": "Qabul qilish",
     "reject": "Rad etish"
   },
@@ -708,6 +708,7 @@
       "coverage": "{{total}} tadan {{paneled}} tasi panelda",
       "subtree": "↳ {{count}}",
       "subtree_tooltip": "Quyi bo'limlar bilan: {{count}} lav.",
+      "no_direct_in_subtree": "to'g'ridan-to'g'ri lavozimlar yo'q · quyi bo'limlarda {{count}} ta",
       "show_all": "Barcha bo'limlarni ko'rsatish ({{count}})",
       "show_less": "Yig'ish"
     },
@@ -983,6 +984,7 @@
     "open_evaluation": "Baholashni ochish",
     "position_id": "Lavozim",
     "displayed_total": "Yakuniy ball",
+    "total_not_calculated": "Yakuniy ball hali hisoblanmagan — u baholash tasdiqlanganda backend tomonidan hisoblanadi.",
     "empty_title": "Hozircha baholashlar yo'q",
     "empty_body": "Tasdiqlangan metodologiya bo'yicha lavozimlarni baholashni boshlang.",
     "empty_for_position_title": "Baholash mavjud emas",
@@ -998,6 +1000,11 @@
     "mode_hint": {
       "by_position": "«Lavozim boʻyicha» — har bir lavozim boʻyicha batafsil koʻrinish.",
       "by_factor": "«Faktor boʻyicha» — tanlangan faktor boʻyicha ommaviy K-varaq."
+    },
+    "cta": {
+      "helper": "«Baholash panelini ochish» — ekspertlar komissiyasi (bir necha baholovchi). «Lavozim qoʻshish» — lavozimlar boʻyicha alohida baholash varaqlari.",
+      "panel_tooltip": "Lavozimlarni birgalikda baholash uchun bir necha baholovchidan iborat ekspertlar komissiyasini yaratish.",
+      "add_positions_tooltip": "Tanlangan lavozimlar uchun alohida baholash varaqlari yaratish (bir baholovchi)."
     },
     "add_positions": {
       "cta": "+ Lavozim qoʻshish",
@@ -1043,7 +1050,8 @@
       "max_points": "Maks. ball",
       "required_indicator": "Majburiy",
       "missing_required": "{{count}} ta majburiy faktorga daraja tanlanmagan.",
-      "factor_raw": "Ball",
+      "factor_raw": "Ball (xom)",
+      "factor_raw_tooltip": "Tanlangan daraja boʻyicha ushbu faktor xom balli — faktor vazni yoki maksimumi emas. Yakuniy ball backend tomonidan hisoblanadi.",
       "comment_label": "Izoh",
       "comment_aria": "{{factor}} omili uchun izoh",
       "comment_placeholder": "Tanlov bo'yicha ixtiyoriy izoh..."

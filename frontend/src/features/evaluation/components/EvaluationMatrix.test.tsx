@@ -130,4 +130,26 @@ describe('EvaluationMatrix', () => {
     );
     expect(screen.getByTestId('preview-only-disclaimer')).toBeInTheDocument();
   });
+
+  // PD-5 — the per-factor value column is the RAW score, not the factor's point
+  // worth. The header is qualified ("raw") and carries an explanatory tooltip so
+  // a committee member never reads it as "points this factor is worth".
+  it('labels the per-factor value column as a RAW score with an explanatory tooltip', () => {
+    render(
+      renderWithProviders(
+        <EvaluationMatrix
+          version={version}
+          scores={[]}
+          status="DRAFT"
+          onSelectLevel={() => {}}
+        />,
+      ),
+    );
+    const scoreCell = screen.getByTestId('factor-score-F1');
+    const header = scoreCell.querySelector('span[title]') as HTMLElement;
+    // Qualified header (default locale ru-RU: "Балл (сырой)").
+    expect(header.textContent).toMatch(/сыр|raw|xom|хом/i);
+    // Tooltip clarifies it is not the weight/max.
+    expect(header.getAttribute('title')).toBeTruthy();
+  });
 });

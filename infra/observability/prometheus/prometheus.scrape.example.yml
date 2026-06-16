@@ -1,0 +1,98 @@
+# =============================================================================
+# grading.hrlab.uz — Prometheus scrape config EXAMPLE (Batch 7)
+# =============================================================================
+# A standalone Prometheus config showing how to scrape the grading-api's
+# NON-PUBLIC metrics endpoint and load the Batch-6 alert rules. This is an
+# EXAMPLE — merge the relevant pieces into your real prometheus.yml. Every
+# credential/host below is a PLACEHOLDER (<...>); never commit real secrets.
+#
+# WHY THIS NEEDS AUTH:
+#   GET /actuator/prometheus is deliberately NOT on the anonymous allowlist
+#   (only /actuator/health/** and /actuator/info are public — see
+#   infra/observability/README.md). Metrics can leak operational/tenant-count
+#   data, so the scraper must authenticate (bearer/basic) AND/OR reach the
+#   endpoint over a private path the public internet cannot.
+#
+# WHERE THE TARGET LIVES (single-VPS Docker-Compose prod):
+#   grading-api binds ONLY to 127.0.0.1:18080 on the VPS (loopback). It is NOT
+#   internet-exposed. Options to scrape it:
+#     A. Run Prometheus ON the VPS  -> target 127.0.0.1:18080 (loopback).
+#     B. Attach Prometheus to the `grading-prod` docker network
+#                                   -> target grading-api:8080 (container DNS).
+#     C. Scrape over an SSH tunnel / private overlay from an off-box Prometheus.
+#   In all cases STILL send the bearer/basic credential — auth is defence in
+#   depth, not a substitute for the private path.
+#
+# Validate this file:
+#   promtool check config prometheus.scrape.example.yml
+#   (or: python -c "import yaml; yaml.safe_load(open('prometheus.scrape.example.yml'))")
+# =============================================================================
+
+global:
+  scrape_interval: 30s          # matches the dashboard refresh / alert windows
+  scrape_timeout: 10s
+  evaluation_interval: 30s      # how often the alert rules below are evaluated
+  external_labels:
+    env: production
+    service: grading
+
+# -----------------------------------------------------------------------------
+# Alert rules — load the Batch-6 rule groups (relative path from this file's
+# directory; adjust to an absolute path in your real deployment).
+# -----------------------------------------------------------------------------
+rule_files:
+  - "../alerts/grading-alerts.yml"
+
+# -----------------------------------------------------------------------------
+# Wire to Alertmanager (see infra/observability/alertmanager/alertmanager.yml).
+# Replace <ALERTMANAGER_HOST>:9093 with your Alertmanager address.
+# -----------------------------------------------------------------------------
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "<ALERTMANAGER_HOST>:9093"
+
+scrape_configs:
+  # ---------------------------------------------------------------------------
+  # grading-api — the job name MUST be `grading-api` so up{job="grading-api"}
+  # matches the GradingApiDown rule. metrics_path is the non-public actuator
+  # endpoint. Pick ONE auth block (bearer OR basic) and ONE target option.
+  # ---------------------------------------------------------------------------
+  - job_name: "grading-api"
+    metrics_path: /actuator/prometheus
+    scheme: http                 # set to https if scraping through an internal TLS hop
+    honor_labels: false
+
+    # --- AUTH (choose one; placeholders only — use *_file in real configs) ---
+    #
+    # Option 1 — Bearer token (recommended; an actuator-scoped token, NOT a JWT
+    # that grants tenant access). Prefer the file form so the secret is not in
+    # the config text:
+    authorization:
+      type: Bearer
+      credentials_file: "/etc/prometheus/secrets/grading-actuator.token"
+      # credentials: "<ACTUATOR_BEARER_TOKEN_PLACEHOLDER>"   # inline alt (avoid)
+    #
+    # Option 2 — Basic auth (uncomment and remove the `authorization:` block):
+    # basic_auth:
+    #   username: "<ACTUATOR_SCRAPE_USER>"
+    #   password_file: "/etc/prometheus/secrets/grading-actuator.pass"
+
+    # --- TARGET (choose ONE; see the WHERE block in the header) ---------------
+    static_configs:
+      # A. Prometheus running on the VPS, hitting the loopback bind:
+      - targets: ["127.0.0.1:18080"]
+        labels:
+          team: hrlab-grading
+      # B. Prometheus attached to the grading-prod docker network (container DNS).
+      #    Comment out A above and use this instead:
+      # - targets: ["grading-api:8080"]
+      #   labels:
+      #     team: hrlab-grading
+
+    # If scraping over a self-signed internal TLS hop (scheme: https), point at
+    # the CA instead of disabling verification:
+    # tls_config:
+    #   ca_file: "/etc/prometheus/secrets/internal-ca.crt"
+    #   insecure_skip_verify: false

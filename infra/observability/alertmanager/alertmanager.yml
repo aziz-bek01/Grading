@@ -1,0 +1,135 @@
+# =============================================================================
+# grading.hrlab.uz — Alertmanager routing + receivers (Batch 7 skeleton)
+# =============================================================================
+# Wires the Batch-6 Prometheus alert rules (infra/observability/alerts/
+# grading-alerts.yml) to receivers. Every endpoint below is a PLACEHOLDER —
+# replace the <...> tokens with your real targets ON the host/secret store,
+# NEVER commit real URLs/tokens. The rules tag everything with
+# `team: hrlab-grading` and a `severity` of `critical` or `warning`; this config
+# routes on those two labels.
+#
+# How the operator fills this in (do this where Alertmanager runs, NOT in git):
+#   1. Replace <PAGER_WEBHOOK_URL> with your paging webhook (PagerDuty Events v2 /
+#      Opsgenie / a generic webhook bridge). For PagerDuty/Opsgenie prefer the
+#      native integration instead of webhook_configs.
+#   2. Replace the email block (<smarthost>, <from>, <oncall-email>, auth creds).
+#      Keep SMTP credentials in a secret/file, not inline, where supported.
+#   3. (optional) Replace <CHAT_WEBHOOK_URL> for an internal chat channel.
+#   4. Validate: `amtool check-config alertmanager.yml`
+#      (or `python -c "import yaml,sys; yaml.safe_load(open('alertmanager.yml'))"`).
+#
+# Severity policy (matches the runbook severity matrix):
+#   critical -> page on-call immediately (GradingApiDown, GradingWorkerDeadLetterPresent)
+#   warning  -> email/chat, batched (the rate/failure/latency/error-log alerts)
+# =============================================================================
+
+global:
+  # How long to wait before declaring an alert resolved once it stops firing.
+  resolve_timeout: 5m
+  # SMTP smarthost for the warning email receiver. PLACEHOLDERS — replace on host.
+  smtp_smarthost: "<SMTP_HOST>:587"
+  smtp_from: "<alertmanager-from@example.invalid>"
+  smtp_auth_username: "<SMTP_USERNAME>"
+  # Prefer a *_file form or a secret mount; literal here is a placeholder only.
+  smtp_auth_password: "<SMTP_PASSWORD_PLACEHOLDER>"
+  smtp_require_tls: true
+
+# Reusable notification templates (titles/bodies). Point at your template files.
+templates:
+  - "/etc/alertmanager/templates/*.tmpl"
+
+# -----------------------------------------------------------------------------
+# Routing tree. The root catches everything for this team, groups sensibly, then
+# splits by severity. `continue: false` (default) on the severity children means
+# the first matching child wins.
+# -----------------------------------------------------------------------------
+route:
+  receiver: default-warning            # fallback receiver
+  # Group related alerts so a burst becomes one notification.
+  group_by: ["alertname", "team", "type"]
+  group_wait: 30s                      # collect an initial burst before first send
+  group_interval: 5m                   # wait between sending updates for a group
+  repeat_interval: 4h                  # re-notify an unresolved group every 4h
+  routes:
+    # --- Only handle this app's alerts here -----------------------------------
+    - matchers:
+        - 'team = "hrlab-grading"'
+      receiver: default-warning
+      group_by: ["alertname", "type"]
+      routes:
+        # --- CRITICAL -> page immediately, tight cadence ----------------------
+        # GradingApiDown, GradingWorkerDeadLetterPresent.
+        - matchers:
+            - 'severity = "critical"'
+          receiver: pager-critical
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 30m         # keep nagging until acked/resolved
+          # Also mirror criticals to chat for team visibility.
+          routes:
+            - matchers:
+                - 'severity = "critical"'
+              receiver: chat-critical
+              continue: true           # fall through so pager-critical ALSO fires
+
+        # --- WARNING -> email/chat, batched -----------------------------------
+        # GradingWorkerDeadLetterRate, GradingWorkerFailureRateHigh,
+        # GradingWorkerGenerationSlow, GradingErrorLogSpike.
+        - matchers:
+            - 'severity = "warning"'
+          receiver: default-warning
+          group_wait: 1m
+          group_interval: 10m
+          repeat_interval: 6h
+
+# -----------------------------------------------------------------------------
+# Inhibition — suppress noise when a bigger problem explains the smaller ones.
+# If the API is DOWN, its worker pipelines necessarily stop emitting/processing,
+# so the worker warnings are noise; suppress them while GradingApiDown fires for
+# the same team. (Equal label = team, so a down api in this team mutes its own
+# worker warnings.)
+# -----------------------------------------------------------------------------
+inhibit_rules:
+  - source_matchers:
+      - 'alertname = "GradingApiDown"'
+      - 'severity = "critical"'
+    target_matchers:
+      - 'team = "hrlab-grading"'
+      - 'severity = "warning"'
+    equal: ["team"]
+  # A present dead-letter (critical) supersedes the lower-severity "new
+  # dead-letter rate" warning for the same worker type — keep the page, drop the
+  # duplicate warning.
+  - source_matchers:
+      - 'alertname = "GradingWorkerDeadLetterPresent"'
+    target_matchers:
+      - 'alertname = "GradingWorkerDeadLetterRate"'
+    equal: ["team"]
+
+# -----------------------------------------------------------------------------
+# Receivers — ALL endpoints are PLACEHOLDERS. Replace on the host/secret store.
+# -----------------------------------------------------------------------------
+receivers:
+  # Default / warning sink: email the on-call alias. Swap/extend with chat.
+  - name: default-warning
+    email_configs:
+      - to: "<oncall-email@example.invalid>"
+        send_resolved: true
+
+  # Critical paging. Use the NATIVE PagerDuty/Opsgenie integration in production
+  # (pagerduty_configs / opsgenie_configs); a generic webhook is shown as the
+  # vendor-neutral placeholder.
+  - name: pager-critical
+    webhook_configs:
+      - url: "<PAGER_WEBHOOK_URL>"
+        send_resolved: true
+        # http_config:
+        #   authorization:
+        #     type: Bearer
+        #     credentials: "<PAGER_TOKEN_PLACEHOLDER>"   # use *_file in prod
+
+  # Critical mirror to an internal chat channel.
+  - name: chat-critical
+    webhook_configs:
+      - url: "<CHAT_WEBHOOK_URL>"
+        send_resolved: true

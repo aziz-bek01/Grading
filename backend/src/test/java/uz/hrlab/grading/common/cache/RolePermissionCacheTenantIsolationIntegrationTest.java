@@ -104,11 +104,11 @@ class RolePermissionCacheTenantIsolationIntegrationTest extends AbstractIntegrat
     }
 
     /**
-     * Key canonicalisation: order/duplicates in the role-id list must not change
-     * the cached value (the {@link RolePermissionKeyGenerator} sorts + dedups).
-     * Two tenants that happen to reference the SAME global role legitimately
-     * share the value — that is correct (identical global data), and is the only
-     * way a key is ever shared.
+     * Order- and duplicate-independence — repeats or a different ordering in the
+     * role-id list must not change the cached value (the
+     * {@link RolePermissionKeyGenerator} sorts + dedups). Two tenants that happen
+     * to reference the SAME global role legitimately share the value — that is
+     * correct (identical global data), and is the only way a key is ever shared.
      */
     @Test
     void keyIsOrderAndDuplicateIndependent() {

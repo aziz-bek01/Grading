@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useMemo, useState } from 'react';
 import {
   Link,
   useParams,
@@ -27,14 +27,31 @@ import {
 } from '../hooks/useEvaluation';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { AddPositionsDialog } from '../components/AddPositionsDialog';
-import { OpenPanelDialog, type RosterSeed } from '../components/panel/OpenPanelDialog';
-import { EvaluationByFactorView } from '../components/byFactor/EvaluationByFactorView';
+import type { RosterSeed } from '../components/panel/OpenPanelDialog';
 import { useBulkCreatePanels, usePanels } from '../hooks/usePanels';
 import { DepartmentPanelProgress } from '../components/panel/DepartmentPanelProgress';
 import { PanelListSection } from '../components/panel/PanelListSection';
 import { isEvaluationDeletable } from '../types';
 import type { BulkCreatePanelsResult, PanelEvaluatorDraft } from '../panelTypes';
 import type { Evaluation, EvaluationStatus } from '../types';
+
+// Perf: the by-factor K-sheet (with its bulk dialogs + level pickers) and the
+// 3-step panel-commission wizard are the two heaviest sub-trees on this page,
+// yet each is shown only on demand — the K-sheet only in `mode === 'by-factor'`
+// and the wizard only once the user opens it. `React.lazy` peels both into their
+// own async chunks so the by-position landing view (the default) no longer pays
+// to download/parse them up front. Behaviour is identical: same components, same
+// props, just deferred until first needed.
+const EvaluationByFactorView = lazy(() =>
+  import('../components/byFactor/EvaluationByFactorView').then((m) => ({
+    default: m.EvaluationByFactorView,
+  })),
+);
+const OpenPanelDialog = lazy(() =>
+  import('../components/panel/OpenPanelDialog').then((m) => ({
+    default: m.OpenPanelDialog,
+  })),
+);
 
 type ViewMode = 'by-position' | 'by-factor';
 
@@ -448,13 +465,15 @@ export function EvaluationListPage() {
       ) : null}
 
       {mode === 'by-factor' ? (
-        <EvaluationByFactorView
-          projectId={projectId}
-          factorIdFromUrl={factorParam}
-          onFactorChange={setFactorInUrl}
-          methodologyIdFromUrl={methodologyParam}
-          onMethodologyChange={setMethodologyInUrl}
-        />
+        <Suspense fallback={<LoadingState />}>
+          <EvaluationByFactorView
+            projectId={projectId}
+            factorIdFromUrl={factorParam}
+            onFactorChange={setFactorInUrl}
+            methodologyIdFromUrl={methodologyParam}
+            onMethodologyChange={setMethodologyInUrl}
+          />
+        </Suspense>
       ) : null}
 
       {mode === 'by-position' ? (
@@ -533,25 +552,32 @@ export function EvaluationListPage() {
           single-position dialog). Step 1 department → Step 2 server-filtered
           positions → Step 3 shared roster, then ONE bulk-create. Gated behind
           EVALUATION_PANEL_MANAGE. */}
-      <OpenPanelDialog
-        open={openingPanel}
-        projectId={projectId}
-        methodologies={methodologiesQuery.data?.items ?? []}
-        defaultVersionId={selectedVersionId}
-        rosterSeed={rosterSeed}
-        onConfirm={handleBulkOpenPanels}
-        onCopyRosterToNext={(seed) => {
-          // FE-6: keep HR + externals (dept director already cleared by the
-          // wizard), reopen at Step 1 for the next department.
-          setRosterSeed(seed);
-          setOpeningPanel(false);
-          setTimeout(() => setOpeningPanel(true), 0);
-        }}
-        onClose={() => {
-          setOpeningPanel(false);
-          setRosterSeed(null);
-        }}
-      />
+      {/* Mounted only while open so its lazy chunk is fetched on first use, not
+          on page load. The wizard already renders nothing when closed, so
+          gating the mount is behaviour-preserving. */}
+      {openingPanel ? (
+        <Suspense fallback={null}>
+          <OpenPanelDialog
+            open={openingPanel}
+            projectId={projectId}
+            methodologies={methodologiesQuery.data?.items ?? []}
+            defaultVersionId={selectedVersionId}
+            rosterSeed={rosterSeed}
+            onConfirm={handleBulkOpenPanels}
+            onCopyRosterToNext={(seed) => {
+              // FE-6: keep HR + externals (dept director already cleared by the
+              // wizard), reopen at Step 1 for the next department.
+              setRosterSeed(seed);
+              setOpeningPanel(false);
+              setTimeout(() => setOpeningPanel(true), 0);
+            }}
+            onClose={() => {
+              setOpeningPanel(false);
+              setRosterSeed(null);
+            }}
+          />
+        </Suspense>
+      ) : null}
 
       {/* FE-3: delete confirmation for pre-submission rows — reuses ConfirmDialog
           with the optional required-reason field (>=5 chars, matching BE ReasonRequest). */}

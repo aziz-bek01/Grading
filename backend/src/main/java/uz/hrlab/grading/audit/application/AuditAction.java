@@ -337,6 +337,10 @@ public final class AuditAction {
     public static final String IMPORT_PARTIALLY_COMMITTED = "IMPORT_PARTIALLY_COMMITTED";
     public static final String IMPORT_FAILED            = "IMPORT_FAILED";
     public static final String IMPORT_CANCELLED         = "IMPORT_CANCELLED";
+    /** Batch-4: a batch's transient failures exhausted the bounded retry budget. Terminal. */
+    public static final String IMPORT_DEAD_LETTER       = "IMPORT_DEAD_LETTER";
+    /** Batch-4: re-queuer re-dispatched a retryable batch (one per re-dispatch). */
+    public static final String IMPORT_RETRY_DISPATCHED  = "IMPORT_RETRY_DISPATCHED";
 
     // Integration — exports (MVP 2 Phase 2)
     public static final String EXPORT_REQUESTED   = "EXPORT_REQUESTED";
@@ -346,6 +350,10 @@ public final class AuditAction {
     public static final String EXPORT_EXPIRED     = "EXPORT_EXPIRED";
     public static final String EXPORT_FAILED      = "EXPORT_FAILED";
     public static final String EXPORT_CANCELLED   = "EXPORT_CANCELLED";
+    /** Batch-4: an export job's transient failures exhausted the bounded retry budget. Terminal. */
+    public static final String EXPORT_DEAD_LETTER = "EXPORT_DEAD_LETTER";
+    /** Batch-4: re-queuer re-dispatched a retryable export job (one per re-dispatch). */
+    public static final String EXPORT_RETRY_DISPATCHED = "EXPORT_RETRY_DISPATCHED";
 
     // Generic file lifecycle (MVP 2 Phase 2)
     public static final String FILE_UPLOADED   = "FILE_UPLOADED";
@@ -358,6 +366,10 @@ public final class AuditAction {
     public static final String REPORT_GENERATING = "REPORT_GENERATING";
     public static final String REPORT_GENERATED  = "REPORT_GENERATED";
     public static final String REPORT_FAILED     = "REPORT_FAILED";
+    /** Batch-4: a report's transient failures exhausted the bounded retry budget. Terminal. */
+    public static final String REPORT_DEAD_LETTER = "REPORT_DEAD_LETTER";
+    /** Batch-4: re-queuer re-dispatched a retryable report (one per re-dispatch). */
+    public static final String REPORT_RETRY_DISPATCHED = "REPORT_RETRY_DISPATCHED";
     public static final String REPORT_DOWNLOADED = "REPORT_DOWNLOADED";
     public static final String REPORT_EXPIRED    = "REPORT_EXPIRED";
     public static final String REPORT_CANCELLED  = "REPORT_CANCELLED";

@@ -93,6 +93,10 @@ public class ReportJpaEntity extends AuditedJpaEntity {
     @Column(name = "failure_reason", length = 512)
     private String failureReason;
 
+    /** Batch-4: earliest time the re-queuer may re-dispatch this row (backoff). */
+    @Column(name = "next_attempt_at")
+    private OffsetDateTime nextAttemptAt;
+
     @Column(name = "trace_id", length = 64)
     private String traceId;
 
@@ -141,6 +145,7 @@ public class ReportJpaEntity extends AuditedJpaEntity {
     public boolean isContainsPersonalData() { return containsPersonalData; }
     public int getAttemptCount() { return attemptCount; }
     public String getFailureReason() { return failureReason; }
+    public OffsetDateTime getNextAttemptAt() { return nextAttemptAt; }
     public String getTraceId() { return traceId; }
 
     public void setStatus(ReportStatus v) { this.status = v; }
@@ -152,5 +157,6 @@ public class ReportJpaEntity extends AuditedJpaEntity {
     public void setFileChecksum(String v) { this.fileChecksum = v; }
     public void incrementAttempt() { this.attemptCount++; }
     public void setFailureReason(String v) { this.failureReason = v; }
+    public void setNextAttemptAt(OffsetDateTime v) { this.nextAttemptAt = v; }
     public void setTraceId(String v) { this.traceId = v; }
 }

@@ -93,8 +93,40 @@ class ImportBatchStatusTransitionPolicyTest {
     }
 
     @Test
-    void allThirteenStatusesExist() {
-        assertThat(ImportBatchStatus.values()).hasSize(14); // includes ARCHIVED — brief lists 13 + ARCHIVED retention
+    void allFifteenStatusesExist() {
+        // 13 blueprint + ARCHIVED retention + Batch-4 DEAD_LETTER.
+        assertThat(ImportBatchStatus.values()).hasSize(15);
+    }
+
+    // --- Batch-4 bounded-retry + dead-letter FSM ---
+
+    @Test
+    void failedIsRetryableBackToScanningOrDeadLetter() {
+        // Transient processing failure rests in FAILED; the re-queuer restarts
+        // the pipeline (FAILED -> SCANNING) or, when exhausted, dead-letters.
+        assertThat(ImportBatchStatusTransitionPolicy.isAllowed(
+                ImportBatchStatus.FAILED, ImportBatchStatus.SCANNING)).isTrue();
+        assertThat(ImportBatchStatusTransitionPolicy.isAllowed(
+                ImportBatchStatus.FAILED, ImportBatchStatus.DEAD_LETTER)).isTrue();
+        assertThat(ImportBatchStatusTransitionPolicy.isAllowed(
+                ImportBatchStatus.FAILED, ImportBatchStatus.ARCHIVED)).isTrue();
+    }
+
+    @Test
+    void validationFailedIsNotAutoRetried() {
+        // VALIDATION_FAILED is a deterministic user-data outcome — it must NOT
+        // be able to restart the pipeline (no FAILED/SCANNING/DEAD_LETTER edge).
+        assertThat(ImportBatchStatusTransitionPolicy.isAllowed(
+                ImportBatchStatus.VALIDATION_FAILED, ImportBatchStatus.SCANNING)).isFalse();
+        assertThat(ImportBatchStatusTransitionPolicy.isAllowed(
+                ImportBatchStatus.VALIDATION_FAILED, ImportBatchStatus.FAILED)).isFalse();
+        assertThat(ImportBatchStatusTransitionPolicy.isAllowed(
+                ImportBatchStatus.VALIDATION_FAILED, ImportBatchStatus.DEAD_LETTER)).isFalse();
+    }
+
+    @Test
+    void deadLetterIsNeverReDispatched() {
+        assertThat(ImportBatchStatusTransitionPolicy.allowedTargets(ImportBatchStatus.DEAD_LETTER)).isEmpty();
     }
 
     @Test

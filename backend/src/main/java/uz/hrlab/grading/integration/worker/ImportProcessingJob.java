@@ -23,6 +23,7 @@ import uz.hrlab.grading.integration.validation.ImportValidator;
 import uz.hrlab.grading.integration.validation.ValidationError;
 import uz.hrlab.grading.integration.validation.ValidationResult;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -82,21 +83,37 @@ public class ImportProcessingJob {
             log.warn("ImportProcessingJob: batch {} not found for tenant {}", importBatchId, tenantId);
             return;
         }
+        // Batch-4 idempotency claim guard: a terminal or budget-exhausted batch
+        // must NOT be re-processed even if a stale dispatch arrives. Only a fresh
+        // UPLOADED or a retryable FAILED (under the bound) may proceed.
+        ImportBatchStatus entryStatus = batch.getStatus();
+        boolean isRetry = entryStatus == ImportBatchStatus.FAILED;
+        if (entryStatus == ImportBatchStatus.DEAD_LETTER
+                || (entryStatus != ImportBatchStatus.UPLOADED && !isRetry)
+                || !WorkerRetryPolicy.canRetry(batch.getAttemptCount())) {
+            log.warn("ImportProcessingJob: batch {} not processable (status={}, attempts={}), skipping",
+                    importBatchId, entryStatus, batch.getAttemptCount());
+            return;
+        }
         UUID projectId = batch.getProjectId();
         String templateCode = batch.getTemplateCode();
         String storageKey = batch.getFileStorageKey();
         String traceId = batch.getTraceId();
 
+        // Count this attempt up-front (mirrors the export/report workers).
+        batch.incrementAttempt();
+
         ImportTemplateDefinition def = templates.find(templateCode).orElse(null);
         if (def == null) {
-            transition(batch, ImportBatchStatus.FAILED);
+            // Deterministic config error — retrying cannot help. Dead-letter now.
             recordError(tenantId, batch.getId(), "TEMPLATE_NOT_FOUND",
                     "Unknown template code: " + templateCode, traceId);
-            audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_FAILED, batch.getId()));
+            deadLetter(batch, tenantId, projectId, isRetry, "TEMPLATE_NOT_FOUND");
             return;
         }
 
-        // SCANNING (malware scan is a stub — call point exists for MVP 2 Phase 3 ClamAV)
+        // SCANNING (malware scan is a stub — call point exists for MVP 2 Phase 3 ClamAV).
+        // From a fresh UPLOADED or a retryable FAILED (both -> SCANNING are allowed).
         transition(batch, ImportBatchStatus.SCANNING);
         audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_SCAN_STARTED, batch.getId()));
 
@@ -104,8 +121,8 @@ public class ImportProcessingJob {
         try {
             bytes = storage.retrieve(storageKey);
         } catch (RuntimeException e) {
-            transition(batch, ImportBatchStatus.SCAN_FAILED);
-            audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_SCAN_FAILED, batch.getId()));
+            // Object-store retrieval is TRANSIENT (network/availability) — retryable.
+            handleTransientFailure(batch, tenantId, projectId, "STORAGE_RETRIEVE_ERROR", e);
             return;
         }
 
@@ -115,10 +132,7 @@ public class ImportProcessingJob {
         try {
             sheet = parser.parse(bytes);
         } catch (RuntimeException e) {
-            transition(batch, ImportBatchStatus.FAILED);
-            recordError(tenantId, batch.getId(), "PARSE_ERROR",
-                    "Failed to parse workbook: " + safeMessage(e), traceId);
-            audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_FAILED, batch.getId()));
+            handleTransientFailure(batch, tenantId, projectId, "PARSE_ERROR", e);
             return;
         }
         batch.setTotalRowCount(sheet.rows().size());
@@ -143,6 +157,10 @@ public class ImportProcessingJob {
         batch.setErrorRowCount((int) validation.countByLevel(ImportErrorLevel.ERROR));
         batch.setWarningRowCount((int) validation.countByLevel(ImportErrorLevel.WARNING));
 
+        // Pipeline ran to completion — clear retry bookkeeping so the re-queuer
+        // never re-selects this batch (both outcomes are deterministic).
+        batch.setNextAttemptAt(null);
+        batch.setFailureReason(null);
         if (validation.hasBlockers()) {
             transition(batch, ImportBatchStatus.VALIDATION_FAILED);
             audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_VALIDATION_FAILED, batch.getId()));
@@ -151,6 +169,54 @@ public class ImportProcessingJob {
             audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_VALIDATED, batch.getId()));
         }
         batches.save(batch);
+    }
+
+    /**
+     * Bounded-retry decision for a TRANSIENT processing failure (Batch-4).
+     * attempt_count was already incremented on entry. Under the bound → retryable
+     * FAILED + exponential backoff; at/over the bound → terminal DEAD_LETTER.
+     * Exactly ONE IMPORT_FAILED audit per attempt; dead-letter emits an
+     * additional terminal event. The batch may be mid-pipeline (SCANNING/PARSING)
+     * — both transition to FAILED legally.
+     */
+    private void handleTransientFailure(ImportBatchJpaEntity batch, UUID tenantId, UUID projectId,
+                                        String code, RuntimeException e) {
+        recordError(tenantId, batch.getId(), code, code + ": " + safeMessage(e), batch.getTraceId());
+        batch.setFailureReason(code + ": " + safeMessage(e));
+        audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_FAILED, batch.getId()));
+
+        if (WorkerRetryPolicy.canRetry(batch.getAttemptCount())) {
+            batch.setNextAttemptAt(WorkerRetryPolicy.nextAttemptAt(OffsetDateTime.now(), batch.getAttemptCount()));
+            transition(batch, ImportBatchStatus.FAILED);
+            log.warn("ImportProcessingJob: batch {} failed attempt {} ({}), retry due at {}",
+                    batch.getId(), batch.getAttemptCount(), code, batch.getNextAttemptAt());
+        } else {
+            batch.setNextAttemptAt(null);
+            transition(batch, ImportBatchStatus.FAILED);
+            transition(batch, ImportBatchStatus.DEAD_LETTER);
+            audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_DEAD_LETTER, batch.getId()));
+            log.error("ImportProcessingJob: batch {} DEAD_LETTER after {} attempts ({})",
+                    batch.getId(), batch.getAttemptCount(), code);
+        }
+    }
+
+    /**
+     * Deterministic (non-transient) failure — retrying cannot help, so go terminal
+     * immediately. The route depends on entry status: a fresh UPLOADED must pass
+     * through FAILED first (UPLOADED -> DEAD_LETTER is not a legal edge), a retry
+     * (already FAILED) goes straight to DEAD_LETTER.
+     */
+    private void deadLetter(ImportBatchJpaEntity batch, UUID tenantId, UUID projectId,
+                            boolean isRetry, String code) {
+        batch.setFailureReason(code);
+        batch.setNextAttemptAt(null);
+        audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_FAILED, batch.getId()));
+        if (!isRetry) {
+            transition(batch, ImportBatchStatus.FAILED);
+        }
+        transition(batch, ImportBatchStatus.DEAD_LETTER);
+        audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_DEAD_LETTER, batch.getId()));
+        log.error("ImportProcessingJob: batch {} DEAD_LETTER (non-transient: {})", batch.getId(), code);
     }
 
     private void transition(ImportBatchJpaEntity batch, ImportBatchStatus to) {

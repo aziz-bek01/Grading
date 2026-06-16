@@ -23,13 +23,19 @@ public final class ReportStatusTransitionPolicy {
         ALLOWED.put(ReportStatus.QUEUED,
                 EnumSet.of(ReportStatus.GENERATING, ReportStatus.CANCELLED, ReportStatus.FAILED));
         ALLOWED.put(ReportStatus.GENERATING,
-                EnumSet.of(ReportStatus.GENERATED, ReportStatus.FAILED, ReportStatus.CANCELLED));
+                // Batch-4: the failing last attempt can land directly in DEAD_LETTER.
+                EnumSet.of(ReportStatus.GENERATED, ReportStatus.FAILED,
+                        ReportStatus.DEAD_LETTER, ReportStatus.CANCELLED));
         ALLOWED.put(ReportStatus.GENERATED,
                 EnumSet.of(ReportStatus.DOWNLOADED, ReportStatus.EXPIRED));
         ALLOWED.put(ReportStatus.DOWNLOADED, EnumSet.of(ReportStatus.EXPIRED));
-        ALLOWED.put(ReportStatus.FAILED,    EnumSet.noneOf(ReportStatus.class));
+        // Batch-4: FAILED is a RETRYABLE resting state — re-queuer → QUEUED, or
+        // → terminal DEAD_LETTER once retries are exhausted.
+        ALLOWED.put(ReportStatus.FAILED,
+                EnumSet.of(ReportStatus.QUEUED, ReportStatus.DEAD_LETTER));
         ALLOWED.put(ReportStatus.CANCELLED, EnumSet.noneOf(ReportStatus.class));
         ALLOWED.put(ReportStatus.EXPIRED,   EnumSet.noneOf(ReportStatus.class));
+        ALLOWED.put(ReportStatus.DEAD_LETTER, EnumSet.noneOf(ReportStatus.class));
     }
 
     private ReportStatusTransitionPolicy() { }

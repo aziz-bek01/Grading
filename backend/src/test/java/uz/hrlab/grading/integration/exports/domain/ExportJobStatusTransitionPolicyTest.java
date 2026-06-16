@@ -44,12 +44,39 @@ class ExportJobStatusTransitionPolicyTest {
     }
 
     @Test
-    void failedAndCancelledAndExpiredAreTerminal() {
+    void cancelledExpiredAndDeadLetterAreTerminal() {
+        // Batch-4: FAILED is no longer terminal — it is the retryable resting state.
         for (ExportJobStatus to : ExportJobStatus.values()) {
-            assertThat(ExportJobStatusTransitionPolicy.isAllowed(ExportJobStatus.FAILED, to)).isFalse();
             assertThat(ExportJobStatusTransitionPolicy.isAllowed(ExportJobStatus.CANCELLED, to)).isFalse();
             assertThat(ExportJobStatusTransitionPolicy.isAllowed(ExportJobStatus.EXPIRED, to)).isFalse();
+            assertThat(ExportJobStatusTransitionPolicy.isAllowed(ExportJobStatus.DEAD_LETTER, to)).isFalse();
         }
+    }
+
+    // --- Batch-4 bounded-retry + dead-letter FSM ---
+
+    @Test
+    void failedIsRetryableToQueuedOrDeadLetter() {
+        assertThat(ExportJobStatusTransitionPolicy.isAllowed(
+                ExportJobStatus.FAILED, ExportJobStatus.QUEUED)).isTrue();
+        assertThat(ExportJobStatusTransitionPolicy.isAllowed(
+                ExportJobStatus.FAILED, ExportJobStatus.DEAD_LETTER)).isTrue();
+        // No other targets from FAILED.
+        assertThat(ExportJobStatusTransitionPolicy.isAllowed(
+                ExportJobStatus.FAILED, ExportJobStatus.GENERATING)).isFalse();
+        assertThat(ExportJobStatusTransitionPolicy.isAllowed(
+                ExportJobStatus.FAILED, ExportJobStatus.GENERATED)).isFalse();
+    }
+
+    @Test
+    void generatingMayDeadLetterDirectlyOnLastAttempt() {
+        assertThat(ExportJobStatusTransitionPolicy.isAllowed(
+                ExportJobStatus.GENERATING, ExportJobStatus.DEAD_LETTER)).isTrue();
+    }
+
+    @Test
+    void deadLetterIsNeverReDispatched() {
+        assertThat(ExportJobStatusTransitionPolicy.allowedTargets(ExportJobStatus.DEAD_LETTER)).isEmpty();
     }
 
     @Test
@@ -60,7 +87,8 @@ class ExportJobStatusTransitionPolicyTest {
     }
 
     @Test
-    void allEightStatusesExist() {
-        assertThat(ExportJobStatus.values()).hasSize(8);
+    void allNineStatusesExist() {
+        // Batch-4 added DEAD_LETTER (8 -> 9).
+        assertThat(ExportJobStatus.values()).hasSize(9);
     }
 }

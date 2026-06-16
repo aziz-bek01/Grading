@@ -10,6 +10,7 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.integration.storage.ObjectStorageAdapter;
 import uz.hrlab.grading.integration.storage.ObjectStoragePath;
+import uz.hrlab.grading.integration.worker.WorkerRetryPolicy;
 import uz.hrlab.grading.reporting.application.template.ReportGenerationContext;
 import uz.hrlab.grading.reporting.application.template.ReportTemplate;
 import uz.hrlab.grading.reporting.application.template.ReportTemplateRegistry;
@@ -32,15 +33,21 @@ import java.util.UUID;
  * {@link ReportTemplate}, renders to a byte buffer, stores it under the
  * canonical tenant/project namespace, and persists fingerprint + expiry.
  *
- * <p>Failure path increments {@code attempt_count}, writes
- * {@code REPORT_FAILED} audit, and stops at attempt 3 (retry policy lives in
- * a scheduled re-queuer, not the worker itself — keeps the worker idempotent).
+ * <p>Batch-4: failure path increments {@code attempt_count}, writes
+ * {@code REPORT_FAILED} audit, and applies the shared {@link WorkerRetryPolicy}
+ * — under the bound it rests in retryable {@link ReportStatus#FAILED} with an
+ * exponential {@code next_attempt_at}; at the bound it lands in the terminal
+ * {@link ReportStatus#DEAD_LETTER} (never re-dispatched). The scheduled
+ * {@code WorkerReQueuer} re-dispatches retryable rows; the worker is the
+ * idempotent claim point (FAILED → QUEUED → GENERATING under one tx +
+ * optimistic {@code @Version}). The output object key is deterministic in the
+ * report id, so a retry overwrites its own file — no orphans, no duplicates.
  */
 @Component
 public class ReportGenerationJob {
 
     private static final Logger log = LoggerFactory.getLogger(ReportGenerationJob.class);
-    private static final int MAX_ATTEMPTS = 3;
+    private static final int MAX_ATTEMPTS = WorkerRetryPolicy.MAX_ATTEMPTS;
 
     private final ReportRepository reports;
     private final ObjectStorageAdapter storage;
@@ -69,9 +76,12 @@ public class ReportGenerationJob {
             log.warn("ReportGenerationJob: report {} not found for tenant {}", reportId, tenantId);
             return;
         }
-        if (report.getAttemptCount() >= MAX_ATTEMPTS) {
-            log.warn("ReportGenerationJob: report {} exceeded MAX_ATTEMPTS={}, leaving as-is",
-                    reportId, MAX_ATTEMPTS);
+        // Defence-in-depth idempotency guard: a terminal or budget-exhausted row
+        // must NOT be re-processed even if a stale dispatch arrives.
+        if (report.getStatus() == ReportStatus.DEAD_LETTER
+                || !WorkerRetryPolicy.canRetry(report.getAttemptCount())) {
+            log.warn("ReportGenerationJob: report {} not retryable (status={}, attempts={}), skipping",
+                    reportId, report.getStatus(), report.getAttemptCount());
             return;
         }
         UUID projectId = report.getProjectId();
@@ -124,6 +134,9 @@ public class ReportGenerationJob {
             report.setFileChecksum(checksum);
             report.setGeneratedAt(OffsetDateTime.now());
             report.setExpiresAt(OffsetDateTime.now().plusHours(24));
+            // Success clears retry bookkeeping so the re-queuer never re-selects it.
+            report.setNextAttemptAt(null);
+            report.setFailureReason(null);
             transition(report, ReportStatus.GENERATED);
             audit.record(AuditEvent.builder()
                     .tenantId(tenantId).projectId(projectId)
@@ -131,16 +144,41 @@ public class ReportGenerationJob {
                     .entityType("Report").entityId(report.getId())
                     .reason("size=" + bytes.length).build());
         } catch (RuntimeException e) {
-            transition(report, ReportStatus.FAILED);
-            report.setFailureReason(safeReason(e));
-            audit.record(AuditEvent.builder()
-                    .tenantId(tenantId).projectId(projectId)
-                    .action(AuditAction.REPORT_FAILED)
-                    .entityType("Report").entityId(report.getId())
-                    .reason("exc=" + e.getClass().getSimpleName()).build());
-            log.warn("ReportGenerationJob: report {} failed: {}", reportId, e.getClass().getSimpleName());
+            handleFailure(report, tenantId, projectId, e);
         }
         reports.save(report);
+    }
+
+    /**
+     * Bounded-retry decision (Batch-4). attempt_count was already incremented on
+     * entry. Under the bound → retryable FAILED + exponential backoff; at/over
+     * the bound → terminal DEAD_LETTER. Exactly ONE REPORT_FAILED audit per
+     * attempt; the dead-letter transition emits an additional terminal event.
+     */
+    private void handleFailure(ReportJpaEntity report, UUID tenantId, UUID projectId, RuntimeException e) {
+        report.setFailureReason(safeReason(e));
+        audit.record(AuditEvent.builder()
+                .tenantId(tenantId).projectId(projectId)
+                .action(AuditAction.REPORT_FAILED)
+                .entityType("Report").entityId(report.getId())
+                .reason("exc=" + e.getClass().getSimpleName() + " attempt=" + report.getAttemptCount()).build());
+
+        if (WorkerRetryPolicy.canRetry(report.getAttemptCount())) {
+            report.setNextAttemptAt(WorkerRetryPolicy.nextAttemptAt(OffsetDateTime.now(), report.getAttemptCount()));
+            transition(report, ReportStatus.FAILED);
+            log.warn("ReportGenerationJob: report {} failed attempt {} — retry due at {}",
+                    report.getId(), report.getAttemptCount(), report.getNextAttemptAt());
+        } else {
+            report.setNextAttemptAt(null);
+            transition(report, ReportStatus.DEAD_LETTER);
+            audit.record(AuditEvent.builder()
+                    .tenantId(tenantId).projectId(projectId)
+                    .action(AuditAction.REPORT_DEAD_LETTER)
+                    .entityType("Report").entityId(report.getId())
+                    .reason("attempts=" + report.getAttemptCount() + " max=" + MAX_ATTEMPTS).build());
+            log.error("ReportGenerationJob: report {} DEAD_LETTER after {} attempts",
+                    report.getId(), report.getAttemptCount());
+        }
     }
 
     private void transition(ReportJpaEntity report, ReportStatus to) {

@@ -3,6 +3,7 @@ package uz.hrlab.grading.integration.worker;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import uz.hrlab.grading.tenancy.application.ContextPropagatingTaskDecorator;
 
@@ -23,9 +24,13 @@ import java.util.concurrent.Executor;
  * {@code TenantContextHolder.get()} is null on the worker, the RLS aspect cannot
  * set {@code app.tenant_id}, and forced RLS hides every row — which silently
  * stalled the import/export workers.
+ *
+ * <p>Batch-4: {@code @EnableScheduling} activates the {@link WorkerReQueuer}
+ * {@code @Scheduled} re-dispatcher (D6 — in-process retry, no broker).
  */
 @Configuration
 @EnableAsync
+@EnableScheduling
 public class IntegrationWorkerConfig {
 
     @Bean(name = "importWorkerExecutor")

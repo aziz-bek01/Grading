@@ -173,6 +173,53 @@ class LiquibaseMigrationTest extends AbstractIntegrationTest {
         assertThat(indexExists("idx_panel_assignments_evaluator")).isTrue();
     }
 
+    // --- Batch-4: worker bounded-retry + dead-letter migration (045) ---
+
+    @Test
+    void workerRetryColumnsExist() {
+        // export_jobs gained all three; reports gained next_attempt_at; import_batches gained all three.
+        assertThat(columnExists("export_jobs", "attempt_count")).isTrue();
+        assertThat(columnExists("export_jobs", "failure_reason")).isTrue();
+        assertThat(columnExists("export_jobs", "next_attempt_at")).isTrue();
+        assertThat(columnExists("reports", "next_attempt_at")).isTrue();
+        assertThat(columnExists("import_batches", "attempt_count")).isTrue();
+        assertThat(columnExists("import_batches", "failure_reason")).isTrue();
+        assertThat(columnExists("import_batches", "next_attempt_at")).isTrue();
+    }
+
+    @Test
+    void retryDueIndexesExist() {
+        assertThat(indexExists("idx_export_jobs_retry_due")).isTrue();
+        assertThat(indexExists("idx_reports_retry_due")).isTrue();
+        assertThat(indexExists("idx_import_batches_retry_due")).isTrue();
+    }
+
+    @Test
+    void widenedStatusChecksAdmitDeadLetter() {
+        // The widened CHECK constraints must list DEAD_LETTER (045) yet keep all
+        // prior values (superset). Assert against the live constraint definition.
+        assertThat(constraintDef("chk_export_jobs_status")).contains("DEAD_LETTER");
+        assertThat(constraintDef("chk_reports_status")).contains("DEAD_LETTER");
+        assertThat(constraintDef("chk_import_batches_status")).contains("DEAD_LETTER");
+        // Superset guard — a representative prior value still present.
+        assertThat(constraintDef("chk_export_jobs_status")).contains("GENERATED");
+        assertThat(constraintDef("chk_import_batches_status")).contains("VALIDATION_FAILED");
+    }
+
+    private String constraintDef(String constraintName) {
+        return jdbc.queryForObject(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = ?",
+                String.class, constraintName);
+    }
+
+    private boolean columnExists(String table, String column) {
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns "
+                        + "WHERE table_schema='public' AND table_name=? AND column_name=?",
+                Long.class, table, column);
+        return count != null && count == 1L;
+    }
+
     private boolean indexExists(String name) {
         Long count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM pg_indexes "

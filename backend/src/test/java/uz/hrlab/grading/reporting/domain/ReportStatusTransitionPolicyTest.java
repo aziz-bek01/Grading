@@ -55,11 +55,35 @@ class ReportStatusTransitionPolicyTest {
 
     @Test
     void terminalStatesAreTerminal() {
+        // Batch-4: FAILED is no longer terminal (retryable); DEAD_LETTER is.
         for (ReportStatus to : ReportStatus.values()) {
-            assertThat(ReportStatusTransitionPolicy.isAllowed(ReportStatus.FAILED, to)).isFalse();
             assertThat(ReportStatusTransitionPolicy.isAllowed(ReportStatus.CANCELLED, to)).isFalse();
             assertThat(ReportStatusTransitionPolicy.isAllowed(ReportStatus.EXPIRED, to)).isFalse();
+            assertThat(ReportStatusTransitionPolicy.isAllowed(ReportStatus.DEAD_LETTER, to)).isFalse();
         }
+    }
+
+    // --- Batch-4 bounded-retry + dead-letter FSM ---
+
+    @Test
+    void failedIsRetryableToQueuedOrDeadLetter() {
+        assertThat(ReportStatusTransitionPolicy.isAllowed(
+                ReportStatus.FAILED, ReportStatus.QUEUED)).isTrue();
+        assertThat(ReportStatusTransitionPolicy.isAllowed(
+                ReportStatus.FAILED, ReportStatus.DEAD_LETTER)).isTrue();
+        assertThat(ReportStatusTransitionPolicy.isAllowed(
+                ReportStatus.FAILED, ReportStatus.GENERATED)).isFalse();
+    }
+
+    @Test
+    void generatingMayDeadLetterDirectlyOnLastAttempt() {
+        assertThat(ReportStatusTransitionPolicy.isAllowed(
+                ReportStatus.GENERATING, ReportStatus.DEAD_LETTER)).isTrue();
+    }
+
+    @Test
+    void deadLetterIsNeverReDispatched() {
+        assertThat(ReportStatusTransitionPolicy.allowedTargets(ReportStatus.DEAD_LETTER)).isEmpty();
     }
 
     @Test
@@ -76,7 +100,8 @@ class ReportStatusTransitionPolicyTest {
     }
 
     @Test
-    void allEightStatusesExist() {
-        assertThat(ReportStatus.values()).hasSize(8);
+    void allNineStatusesExist() {
+        // Batch-4 added DEAD_LETTER (8 -> 9).
+        assertThat(ReportStatus.values()).hasSize(9);
     }
 }

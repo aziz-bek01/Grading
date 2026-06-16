@@ -2,6 +2,7 @@ package uz.hrlab.grading.integration.worker;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import uz.hrlab.grading.audit.application.AuditAction;
@@ -55,7 +56,11 @@ import java.util.UUID;
  *       retry overwrites its own file (no orphan partials, no duplicates).</li>
  * </ol>
  */
+// Excluded from the one-shot `migrate` profile: as the only @Scheduled bean it
+// would otherwise start a non-daemon scheduler thread that keeps the Liquibase
+// migrator JVM alive forever, hanging the deploy. The migrator only runs DDL.
 @Component
+@Profile("!migrate")
 public class WorkerReQueuer {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerReQueuer.class);

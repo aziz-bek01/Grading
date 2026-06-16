@@ -122,6 +122,20 @@ springdoc:
 
 # grading-specific knobs
 grading:
+  storage:
+    # Object-storage backend selector. Default stays LOCAL so dev/test/CI and the
+    # one-shot `migrate` profile never need a MinIO endpoint. Production sets
+    # GRADING_STORAGE_TYPE=minio (devops-sre owns the env + bucket/KMS/lifecycle).
+    type: ${GRADING_STORAGE_TYPE:local}
+    minio:
+      # Kebab-case keys so Spring relaxed binding maps the env vars below.
+      # These are LOCAL/DEV defaults only — production secrets come from the
+      # environment (Vault-sourced), never from this file.
+      endpoint: ${GRADING_STORAGE_MINIO_ENDPOINT:http://localhost:9000}
+      access-key: ${GRADING_STORAGE_MINIO_ACCESS_KEY:grading_minio}
+      secret-key: ${GRADING_STORAGE_MINIO_SECRET_KEY:grading_minio_pwd}
+      bucket: ${GRADING_STORAGE_MINIO_BUCKET:grading}
+      region: ${GRADING_STORAGE_MINIO_REGION:us-east-1}
   tenancy:
     # MVP 1 default: shared schema (tenant_id column scopes rows). Production
     # target is schema-per-tenant (see TenantSchemaProvisioner + database-

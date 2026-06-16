@@ -5,6 +5,16 @@ replicaCount: 3
 env:
   SPRING_PROFILES_ACTIVE: "prod"
   JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/grading"
+  # --- Object storage (MinIO) — NOTE-ONLY for the Helm/K8s path ---
+  # The REAL production today is the VPS docker-compose path
+  # (docker-compose.prod.yml); the MinIO opt-in is wired there. This Helm chart
+  # is not the active prod deploy. When K8s becomes prod, mirror the toggle here:
+  #   GRADING_STORAGE_TYPE selects local|minio (default local).
+  #   GRADING_STORAGE_MINIO_* (endpoint/bucket/region) go in env; the
+  #   access/secret key MUST come from a Kubernetes Secret (see existingSecrets:
+  #   add `grading-api-s3` — already listed below) and a managed/HA S3 service,
+  #   NOT a single-replica in-cluster MinIO. Defaulting to local keeps this safe.
+  GRADING_STORAGE_TYPE: "local"
 
 resources:
   requests:

@@ -365,24 +365,37 @@ export function EvaluationListPage() {
             {t('evaluation.list_subtitle')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <PermissionGate permission={PERMISSIONS.EVALUATION_PANEL_MANAGE}>
-            <Button
-              variant="secondary"
-              onClick={() => setOpeningPanel(true)}
-              data-testid="open-panel-cta"
-            >
-              {t('panel.dialog.title')}
-            </Button>
-          </PermissionGate>
-          <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
-            <Button
-              onClick={() => setAdding(true)}
-              data-testid="add-positions-open"
-            >
-              {t('evaluation.add_positions.cta')}
-            </Button>
-          </PermissionGate>
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-2">
+            <PermissionGate permission={PERMISSIONS.EVALUATION_PANEL_MANAGE}>
+              <Button
+                variant="secondary"
+                onClick={() => setOpeningPanel(true)}
+                data-testid="open-panel-cta"
+                title={t('evaluation.cta.panel_tooltip')}
+              >
+                {t('panel.dialog.title')}
+              </Button>
+            </PermissionGate>
+            <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
+              <Button
+                onClick={() => setAdding(true)}
+                data-testid="add-positions-open"
+                title={t('evaluation.cta.add_positions_tooltip')}
+              >
+                {t('evaluation.add_positions.cta')}
+              </Button>
+            </PermissionGate>
+          </div>
+          {/* PD-4: one-line guidance distinguishing the two header CTAs — the
+              expert-commission (multi-evaluator panel) flow vs. opening
+              single-position evaluation sheets — so they are not confused. */}
+          <p
+            className="text-xs text-text-muted max-w-md text-right"
+            data-testid="evaluation-cta-helper"
+          >
+            {t('evaluation.cta.helper')}
+          </p>
         </div>
       </header>
 

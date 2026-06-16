@@ -151,22 +151,37 @@ export function DepartmentPanelProgress({
                 />
               </span>
               <span
-                className="w-32 shrink-0 text-right text-xs text-text-secondary tabular-nums"
+                className="w-44 shrink-0 text-right text-xs text-text-secondary tabular-nums"
                 data-testid={`dept-progress-count-${r.code}`}
               >
-                {t('panel.dept_progress.coverage', {
-                  paneled: r.paneled,
-                  total: r.total,
-                })}
-                {showSubtree ? (
+                {r.total === 0 && r.subtree > 0 ? (
+                  // PD-3: a parent unit with NO direct positions but a non-zero
+                  // subtree. "0 of 0 ↳N" reads as "empty"; instead spell out that
+                  // there are no direct positions here and N live one level down.
                   <span
-                    className="ml-1 text-text-muted"
-                    data-testid={`dept-progress-subtree-${r.code}`}
+                    className="text-text-muted"
+                    data-testid={`dept-progress-subtree-only-${r.code}`}
                     title={t('panel.dept_progress.subtree_tooltip', { count: r.subtree })}
                   >
-                    {t('panel.dept_progress.subtree', { count: r.subtree })}
+                    {t('panel.dept_progress.no_direct_in_subtree', { count: r.subtree })}
                   </span>
-                ) : null}
+                ) : (
+                  <>
+                    {t('panel.dept_progress.coverage', {
+                      paneled: r.paneled,
+                      total: r.total,
+                    })}
+                    {showSubtree ? (
+                      <span
+                        className="ml-1 text-text-muted"
+                        data-testid={`dept-progress-subtree-${r.code}`}
+                        title={t('panel.dept_progress.subtree_tooltip', { count: r.subtree })}
+                      >
+                        {t('panel.dept_progress.subtree', { count: r.subtree })}
+                      </span>
+                    ) : null}
+                  </>
+                )}
               </span>
             </li>
           );

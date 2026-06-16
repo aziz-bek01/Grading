@@ -20,4 +20,19 @@ describe('AIRecommendationPanel', () => {
     // Sky/cyan accent border per design-foundation §12.
     expect(panel.className).toMatch(/border-l-ai-suggestion/);
   });
+
+  // P1.2 — the placeholder panel (no live AI integration, no handlers) must NOT
+  // render the accept/reject controls: inert buttons imply a function that does
+  // not exist. They appear only once a real handler is wired (MVP 4).
+  it('hides accept/reject when no handlers are wired (placeholder only)', () => {
+    render(renderWithProviders(<AIRecommendationPanel />));
+    expect(screen.queryByText(/Принять|Accept|Қабул|Qabul/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Отклонить|Reject|Рад этиш|Rad etish/)).not.toBeInTheDocument();
+  });
+
+  it('renders accept/reject once a handler is provided (MVP 4 wiring)', () => {
+    render(renderWithProviders(<AIRecommendationPanel onAccept={() => {}} />));
+    expect(screen.getByText(/Принять|Accept|Қабул|Qabul/)).toBeInTheDocument();
+    expect(screen.getByText(/Отклонить|Reject|Рад этиш|Rad etish/)).toBeInTheDocument();
+  });
 });

@@ -80,7 +80,7 @@ describe('<DepartmentPanelProgress /> (FE-7 + T4)', () => {
     expect(hr).toHaveTextContent('2');
   });
 
-  it('rolls up the subtree for a parent with no direct positions (R001 ↳ 5, not 0)', () => {
+  it('rolls up the subtree for a parent with no direct positions (R001 ↳ 5, not "0 of 0")', () => {
     render(
       renderWithProviders(
         <DepartmentPanelProgress
@@ -91,9 +91,40 @@ describe('<DepartmentPanelProgress /> (FE-7 + T4)', () => {
         />,
       ),
     );
-    // The parent R001 appears (subtree > 0) and shows the ↳ subtree figure of 5.
+    // PD-3: a parent with 0 direct positions but subtree > 0 must NOT read as
+    // "0 of 0 ↳5" (which looks empty). It renders the dedicated subtree-only
+    // label carrying the 5 and explicitly NOT the bare coverage line.
     const root = screen.getByTestId('dept-progress-R001');
-    expect(within(root).getByTestId('dept-progress-subtree-R001')).toHaveTextContent('5');
+    const cell = within(root).getByTestId('dept-progress-count-R001');
+    expect(within(cell).getByTestId('dept-progress-subtree-only-R001')).toHaveTextContent('5');
+    // The bare "X of Y" subtree chip is reserved for units WITH direct positions.
+    expect(within(root).queryByTestId('dept-progress-subtree-R001')).toBeNull();
+  });
+
+  it('keeps the "X of Y ↳N" coverage + subtree chip for a unit WITH direct positions', () => {
+    // OPS has direct positions AND extra descendants → the normal coverage line
+    // plus the ↳ subtree chip (NOT the subtree-only label).
+    countsState.data = new Map<string, DepartmentPositionCount>([
+      ['d-ops', { directCount: 3, subtreeCount: 7 }],
+    ]);
+    render(
+      renderWithProviders(
+        <DepartmentPanelProgress
+          projectId="p1"
+          departments={departments}
+          positions={positions}
+          panels={[panel('pn1', 'o1')]}
+        />,
+      ),
+    );
+    const cell = screen.getByTestId('dept-progress-count-OPS');
+    // Coverage figures present (1 of 3) ...
+    expect(cell).toHaveTextContent('1');
+    expect(cell).toHaveTextContent('3');
+    // ... plus the subtree roll-up chip carrying 7 ...
+    expect(within(cell).getByTestId('dept-progress-subtree-OPS')).toHaveTextContent('7');
+    // ... and NOT the subtree-only label (that is reserved for 0 direct).
+    expect(within(cell).queryByTestId('dept-progress-subtree-only-OPS')).toBeNull();
   });
 
   it('ignores ARCHIVED panels in the coverage count', () => {

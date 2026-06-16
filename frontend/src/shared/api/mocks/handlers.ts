@@ -1940,7 +1940,19 @@ function handleEvaluations(
   if (detail && method === 'GET') {
     const e = evaluationById(detail[1]);
     if (!e) return notFound();
-    return ok(e);
+    // PD-6: the BE now adds panel context (panel_id + evaluator_role) to the
+    // single-sheet EvaluationResponse so a panel-seat evaluator opening their
+    // sheet via this route sees the blind banner + role chip. Resolve it from
+    // the panel assignment that owns this evaluation; absent → legacy single
+    // sheet (NON_NULL omits the keys → adapter maps to null → no extra chrome).
+    const assignment = mockDb.panelAssignments.find(
+      (a) => a.evaluation_id === e.id,
+    );
+    return ok({
+      ...e,
+      panel_id: assignment?.panel_id ?? null,
+      evaluator_role: assignment?.evaluator_role ?? null,
+    });
   }
 
   // DELETE /evaluations/:id — hard delete a PRE-SUBMISSION evaluation (Item 1).

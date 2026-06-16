@@ -39,6 +39,20 @@ export async function seedSalaryPermittedSession(
   await expect(page.getByTestId('app-sidebar')).toBeVisible();
 }
 
+/**
+ * Seed a plain role session through the E2E store handle (persisted to the
+ * sessionStorage mirror, so it survives the subsequent full `page.goto`). Use
+ * this instead of {@link loginAs} when the spec then hard-navigates to a deep
+ * route — the in-memory auth store is otherwise dropped on a full load.
+ */
+export async function seedRoleSession(page: Page, role: DevRole = 'super-admin'): Promise<void> {
+  await page.goto('/login');
+  await waitForE2EHandle(page);
+  await page.evaluate((r) => {
+    window.__E2E__?.seedSession({ role: r as DevRole });
+  }, role);
+}
+
 /** Resolve once the dev/mock-only `window.__E2E__` handle is installed. */
 export async function waitForE2EHandle(page: Page): Promise<void> {
   await page.waitForFunction(() => Boolean(window.__E2E__), undefined, { timeout: 10_000 });

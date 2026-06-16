@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'playwright-report', 'test-results']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -31,6 +31,19 @@ export default defineConfig([
           ignoreRestSiblings: true,
         },
       ],
+    },
+  },
+  {
+    // Playwright E2E specs/fixtures are not React. A fixture's `use()` callback
+    // (`async ({ page }, use) => { await use(page) }`) is misread by the
+    // react-hooks plugin as the React `use` hook, so disable that rule here;
+    // these files also run under node (process.env for the E2E_BASE_URL switch).
+    files: ['e2e/**/*.ts'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
     },
   },
 ])

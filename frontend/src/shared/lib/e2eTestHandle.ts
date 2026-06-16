@@ -65,13 +65,41 @@ export function installE2ETestHandle(): void {
     };
   };
 
+  // E2E-only session mirror. The auth store is IN-MEMORY, so a hard navigation
+  // (`page.goto`) would drop a seeded session; we mirror it into sessionStorage
+  // and rehydrate at bootstrap so a seeded session survives full page loads.
+  // sessionStorage (not localStorage) so it never outlives the browser context.
+  const E2E_SESSION_KEY = '__E2E_SESSION__';
+
+  const persistSession = (user: CurrentUser, token: { value: string; expiresAt: number }) => {
+    try {
+      window.sessionStorage.setItem(E2E_SESSION_KEY, JSON.stringify({ user, token }));
+    } catch {
+      /* private mode / quota — ignore, the in-memory session still works */
+    }
+  };
+
   const seedSession: E2ETestHandle['seedSession'] = (opts) => {
     const user = buildUser(opts);
-    useAuthStore.getState().setSession(user, {
-      value: 'e2e-token',
-      expiresAt: Date.now() + 60 * 60 * 1000,
-    });
+    const token = { value: 'e2e-token', expiresAt: Date.now() + 60 * 60 * 1000 };
+    useAuthStore.getState().setSession(user, token);
+    persistSession(user, token);
   };
+
+  // Rehydrate a previously-seeded session BEFORE React renders, so a spec can
+  // seed once and then navigate (full load) to any route still authenticated.
+  try {
+    const raw = window.sessionStorage.getItem(E2E_SESSION_KEY);
+    if (raw) {
+      const { user, token } = JSON.parse(raw) as {
+        user: CurrentUser;
+        token: { value: string; expiresAt: number };
+      };
+      if (user && token) useAuthStore.getState().setSession(user, token);
+    }
+  } catch {
+    /* malformed mirror — ignore, start unauthenticated */
+  }
 
   window.__E2E__ = {
     seedSession,
@@ -81,6 +109,13 @@ export function installE2ETestHandle(): void {
         extraPermissions: [PERMISSIONS.SALARY_VIEW],
         salaryDataPermission: true,
       }),
-    clearSession: () => useAuthStore.getState().clearSession(),
+    clearSession: () => {
+      useAuthStore.getState().clearSession();
+      try {
+        window.sessionStorage.removeItem(E2E_SESSION_KEY);
+      } catch {
+        /* ignore */
+      }
+    },
   };
 }

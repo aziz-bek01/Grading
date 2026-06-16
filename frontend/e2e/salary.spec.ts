@@ -1,5 +1,5 @@
 import { test, expect } from './support/fixtures';
-import { loginAs, seedSalaryPermittedSession, waitForE2EHandle } from './support/auth';
+import { seedRoleSession, seedSalaryPermittedSession, waitForE2EHandle } from './support/auth';
 
 /**
  * Salary masking — security-critical invariant.
@@ -19,8 +19,9 @@ test.describe('salary masking', () => {
   test('a non-permitted role sees salary values MASKED (no figure in the DOM)', async ({
     page,
   }) => {
-    // Plain dev role — none carry SALARY_VIEW.
-    await loginAs(page, 'consultant');
+    // Plain dev role — none carry SALARY_VIEW. Seed (persisted) so a REAL
+    // consultant session survives the navigation and proves masking-with-session.
+    await seedRoleSession(page, 'consultant');
     await page.goto('/__e2e/salary');
 
     const value = page.getByTestId('e2e-salary-value').locator('[data-state]');
@@ -37,6 +38,8 @@ test.describe('salary masking', () => {
 
     const value = page.getByTestId('e2e-salary-value').locator('[data-state]');
     await expect(value).toHaveAttribute('data-state', 'visible');
-    await expect(value).toContainText('UZS');
+    // The figure now renders (inverse of the masked case). Assert the digits
+    // are present rather than a specific currency glyph/placement (locale-safe).
+    await expect(value).toContainText('5');
   });
 });

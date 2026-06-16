@@ -1,5 +1,5 @@
 import { test, expect } from './support/fixtures';
-import { loginAs } from './support/auth';
+import { seedRoleSession } from './support/auth';
 
 /**
  * Core happy path — Export Center renders its primary content.
@@ -11,7 +11,9 @@ import { loginAs } from './support/auth';
  */
 test.describe('export center', () => {
   test('renders its primary content for an authorised role', async ({ page }) => {
-    await loginAs(page, 'super-admin');
+    // Seed (persisted) rather than click-login, so the session survives the
+    // hard navigation to the deep project route below.
+    await seedRoleSession(page, 'super-admin');
 
     // Project-scoped route; the page reads :projectId from the URL and renders
     // its shell immediately (list loads independently).

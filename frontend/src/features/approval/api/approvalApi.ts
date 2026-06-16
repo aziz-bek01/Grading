@@ -1,5 +1,6 @@
 import { httpClient } from '@/shared/api/httpClient';
 import { endpoints } from '@/shared/api/endpoints';
+import { pick, type Raw } from '@/shared/api/wireAdapter';
 import i18n from '@/shared/i18n';
 import { pickLocalized } from '@/shared/lib/localized';
 import type { LocalizedString } from '@/shared/types/common';
@@ -42,10 +43,13 @@ export const approvalKeys = {
  * `initiatedAt`, `status`, `steps[].stepOrder` are all `undefined` → "Invalid
  * Date" / `toneMap[undefined]` crash → the global "Хатолик юз берди" screen.
  *
- * This mirrors the proven `normalizeAuditEvent` pattern (auditApi.ts:70-92):
- * read snake_case FIRST with a camelCase fallback `(raw[snake] ?? raw[camel])`
- * so the in-process MSW mock and the real backend both deserialise. This is the
- * ONLY place case-translation happens — no per-component duplication.
+ * The shared `pick` primitive (wireAdapter.ts, same pattern as the proven
+ * `normalizeAuditEvent` in auditApi.ts) reads snake_case FIRST with a camelCase
+ * fallback `(raw[snake] ?? raw[camel])` so the in-process MSW mock and the real
+ * backend both deserialise. This is the ONLY place case-translation happens —
+ * no per-component duplication. The i18n-aware helpers below
+ * (`asI18n` / `localized`) and the derived/synthesized fields stay local: they
+ * are approval-specific and would leak into the shared layer.
  *
  * Display-only fields the BE does NOT send in this hotfix are derived HERE:
  *   totalSteps         = steps.length
@@ -55,13 +59,6 @@ export const approvalKeys = {
  *   decisions[]        = synthesized from decided steps
  *   step.reason        = localized(reason_i18n) for the active locale
  * ------------------------------------------------------------------ */
-
-type Raw = Record<string, unknown>;
-
-/** `(raw[snake] ?? raw[camel]) ?? null` — snake_case first, camelCase fallback. */
-function pick<T = string>(raw: Raw, snake: string, camel: string): T | null {
-  return ((raw[snake] ?? raw[camel]) as T | undefined) ?? null;
-}
 
 function asI18n(value: unknown): LocalizedString | undefined {
   if (value && typeof value === 'object' && !Array.isArray(value)) {

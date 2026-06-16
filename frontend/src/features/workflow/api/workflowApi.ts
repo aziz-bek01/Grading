@@ -1,5 +1,6 @@
 import { httpClient } from '@/shared/api/httpClient';
 import { endpoints } from '@/shared/api/endpoints';
+import { pick, type Raw } from '@/shared/api/wireAdapter';
 import type {
   WorkflowProgressResponse,
   WorkflowStageKey,
@@ -22,15 +23,10 @@ export const workflowKeys = {
  * dashboard. Without this map the envelope is broken and the stage
  * names render as UUIDs (scout sweep #3/#6). Once BE-10 sends
  * `responsible_user_name` / `last_updated_by_name`, this adapter reads them
- * automatically. Mirrors `normalizeApprovalRequest`: snake_case FIRST with a
- * camelCase fallback so the MSW mock and the real backend both deserialise.
+ * automatically. The shared `pick` primitive (wireAdapter.ts) reads snake_case
+ * FIRST with a camelCase fallback so the MSW mock and the real backend both
+ * deserialise.
  * ------------------------------------------------------------------ */
-
-type Raw = Record<string, unknown>;
-
-function pick<T = string>(raw: Raw, snake: string, camel: string): T | null {
-  return ((raw[snake] ?? raw[camel]) as T | undefined) ?? null;
-}
 
 export function normalizeWorkflowStage(input: unknown): WorkflowStageProgress {
   const raw = (input ?? {}) as Raw;

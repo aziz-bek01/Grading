@@ -3,6 +3,7 @@ package uz.hrlab.grading.evaluation.infrastructure;
 import uz.hrlab.grading.common.infrastructure.TenantAwareRepository;
 import uz.hrlab.grading.evaluation.domain.PanelAssignmentStatus;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -13,6 +14,17 @@ public interface PanelAssignmentRepository
 
     /** Full roster of a panel (active + withdrawn) — caller filters as needed. */
     List<PanelAssignmentJpaEntity> findAllByTenantIdAndPanelId(UUID tenantId, UUID panelId);
+
+    /**
+     * PERF — batch variant of {@link #findAllByTenantIdAndPanelId} for the panel
+     * LIST surface: load the rosters of a whole page of panels in ONE round-trip
+     * instead of one query per panel (kills the N+1 in {@code PanelQueries.list}).
+     * Tenant-scoped — {@code tenant_id} is always pinned, so a panel id belonging
+     * to another tenant simply contributes no rows (no widening). The caller groups
+     * the flat result by {@code panel_id} in memory.
+     */
+    List<PanelAssignmentJpaEntity> findAllByTenantIdAndPanelIdIn(
+            UUID tenantId, Collection<UUID> panelIds);
 
     /** "My assignments" inbox — sheets assigned to an evaluator in a given state. */
     List<PanelAssignmentJpaEntity> findAllByTenantIdAndEvaluatorUserIdAndAssignmentStatus(

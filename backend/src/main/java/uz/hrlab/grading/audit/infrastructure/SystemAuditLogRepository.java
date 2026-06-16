@@ -50,6 +50,18 @@ public interface SystemAuditLogRepository extends Repository<SystemAuditLogJpaEn
             "order by sa.createdAt desc")
     java.util.List<SystemAuditLogJpaEntity> findByTenantIdOrderByCreatedAtDesc(@Param("tenantId") UUID tenantId);
 
+    /**
+     * PERF — bounded "last activity" probe. The dashboard portfolio widget and the
+     * admin tenant-stats endpoint only need the SINGLE newest audit row's
+     * {@code created_at}; the unbounded {@link #findByTenantIdOrderByCreatedAtDesc}
+     * materialised the ENTIRE tenant audit feed into memory just to read the head.
+     * This pins {@code limit 1} so the (tenant_id, created_at DESC) index returns
+     * exactly one row. Same ordering as the list variant → identical head element.
+     */
+    @Query("select sa from SystemAuditLogJpaEntity sa where sa.tenantId = :tenantId " +
+            "order by sa.createdAt desc limit 1")
+    Optional<SystemAuditLogJpaEntity> findFirstByTenantIdOrderByCreatedAtDesc(@Param("tenantId") UUID tenantId);
+
     /** Last hash for the chain (per tenant or null tenant for platform events). */
     @Query("select sa.hashCurrent from SystemAuditLogJpaEntity sa " +
             "where (:tenantId is null and sa.tenantId is null) or sa.tenantId = :tenantId " +

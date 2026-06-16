@@ -12,7 +12,6 @@ import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 import uz.hrlab.grading.tenancy.infrastructure.ClientCompanyRepository;
 
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -54,9 +53,12 @@ public class GetPortfolioSummaryQuery {
 
         // Cheapest "last activity" probe: top-1 of the tenant audit feed
         // (single partition scan via the (tenant_id, created_at DESC) index).
-        List<SystemAuditLogJpaEntity> recent =
-                auditRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
-        OffsetDateTime lastActivity = recent.isEmpty() ? null : recent.get(0).getCreatedAt();
+        // PERF — bounded finder (limit 1); the unbounded variant materialised the
+        // whole tenant feed just to read the head on every dashboard load.
+        OffsetDateTime lastActivity = auditRepository
+                .findFirstByTenantIdOrderByCreatedAtDesc(tenantId)
+                .map(SystemAuditLogJpaEntity::getCreatedAt)
+                .orElse(null);
 
         return new PortfolioSummaryResponse(
                 tenantId, clientCompanyCount, projectCount, methodologyCount, lastActivity);

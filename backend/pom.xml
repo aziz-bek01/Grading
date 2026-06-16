@@ -101,6 +101,20 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Caching (Caffeine) — tenant-safe, short-TTL cache for hot read-mostly
+             dictionary lookups (role→permission expansion runs on every auth
+             resolve). See uz.hrlab.grading.common.cache.CacheConfig for the
+             tenant-isolation rationale and the bounded/expiry policy. Versions
+             are BOM-managed by spring-boot-starter-parent (caffeine 3.1.8). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Tests -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

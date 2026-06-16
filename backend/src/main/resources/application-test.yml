@@ -26,3 +26,10 @@ grading:
   security:
     cors:
       allowed-origins: http://localhost:5173,https://test.grading.hrlab.uz
+  # Batch-4: push the @Scheduled worker re-queuer's first fire far out so it never
+  # auto-runs during the test context lifetime. Tests invoke WorkerRetryScanner /
+  # WorkerReQueuer directly instead of waiting on the timer.
+  worker:
+    requeue:
+      initial-delay-ms: 86400000   # 24h
+      fixed-delay-ms: 86400000

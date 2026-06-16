@@ -22,7 +22,10 @@ public final class ImportBatchStatusTransitionPolicy {
         ALLOWED.put(ImportBatchStatus.UPLOADED,
                 EnumSet.of(ImportBatchStatus.SCANNING, ImportBatchStatus.FAILED, ImportBatchStatus.CANCELLED));
         ALLOWED.put(ImportBatchStatus.SCANNING,
-                EnumSet.of(ImportBatchStatus.PARSING, ImportBatchStatus.SCAN_FAILED, ImportBatchStatus.CANCELLED));
+                // Batch-4: a TRANSIENT object-store retrieval error during scanning
+                // rests in retryable FAILED (distinct from the SCAN_FAILED AV verdict).
+                EnumSet.of(ImportBatchStatus.PARSING, ImportBatchStatus.SCAN_FAILED,
+                        ImportBatchStatus.FAILED, ImportBatchStatus.CANCELLED));
         ALLOWED.put(ImportBatchStatus.PARSING,
                 EnumSet.of(ImportBatchStatus.VALIDATING, ImportBatchStatus.FAILED, ImportBatchStatus.CANCELLED));
         ALLOWED.put(ImportBatchStatus.VALIDATING,
@@ -42,7 +45,14 @@ public final class ImportBatchStatusTransitionPolicy {
                         ImportBatchStatus.FAILED));
         ALLOWED.put(ImportBatchStatus.COMMITTED, EnumSet.of(ImportBatchStatus.ARCHIVED));
         ALLOWED.put(ImportBatchStatus.PARTIALLY_COMMITTED, EnumSet.of(ImportBatchStatus.ARCHIVED));
-        ALLOWED.put(ImportBatchStatus.FAILED, EnumSet.of(ImportBatchStatus.ARCHIVED));
+        // Batch-4: FAILED is a RETRYABLE resting state for TRANSIENT processing
+        // failures. The re-queuer restarts the pipeline (FAILED -> SCANNING); once
+        // the bounded retry budget is exhausted the worker lands the terminal
+        // DEAD_LETTER. ARCHIVED stays available for retention.
+        ALLOWED.put(ImportBatchStatus.FAILED,
+                EnumSet.of(ImportBatchStatus.SCANNING,
+                        ImportBatchStatus.DEAD_LETTER,
+                        ImportBatchStatus.ARCHIVED));
         ALLOWED.put(ImportBatchStatus.CANCELLED, EnumSet.of(ImportBatchStatus.ARCHIVED));
         ALLOWED.put(ImportBatchStatus.SCAN_FAILED, EnumSet.of(ImportBatchStatus.ARCHIVED));
         ALLOWED.put(ImportBatchStatus.VALIDATION_FAILED,
@@ -50,6 +60,8 @@ public final class ImportBatchStatusTransitionPolicy {
                         ImportBatchStatus.CANCELLED,
                         ImportBatchStatus.ARCHIVED));
         ALLOWED.put(ImportBatchStatus.ARCHIVED, EnumSet.noneOf(ImportBatchStatus.class));
+        // Terminal — never re-dispatched.
+        ALLOWED.put(ImportBatchStatus.DEAD_LETTER, EnumSet.noneOf(ImportBatchStatus.class));
     }
 
     private ImportBatchStatusTransitionPolicy() { }

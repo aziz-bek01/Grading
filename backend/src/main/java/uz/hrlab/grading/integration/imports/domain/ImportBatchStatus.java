@@ -21,5 +21,12 @@ public enum ImportBatchStatus {
     PARTIALLY_COMMITTED,
     FAILED,
     CANCELLED,
-    ARCHIVED
+    ARCHIVED,
+    /**
+     * Batch-4 terminal: a batch whose <em>transient</em> processing failures
+     * (FAILED) have exhausted the bounded retry budget. NEVER re-dispatched by
+     * the scheduled re-queuer. Distinct from VALIDATION_FAILED (a deterministic
+     * user-data outcome — never retried) and SCAN_FAILED (a security/AV verdict).
+     */
+    DEAD_LETTER
 }

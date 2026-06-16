@@ -1,0 +1,152 @@
+# Batch 4 — uniform bounded-retry + dead-letter for the async workers
+# (D6: keep the in-process ThreadPoolTaskExecutor + a @Scheduled re-queuer; no broker).
+#
+# Adds the retry-bookkeeping columns where they are missing and widens the
+# status CHECK constraints to admit a NEW terminal DEAD_LETTER value. All
+# constraint changes mirror how 044 widened a CHECK: DROP + re-ADD with a
+# SUPERSET list so every existing row stays valid (no data migration).
+#
+# Column inventory BEFORE this changeset:
+#   export_jobs    : (none of attempt_count / failure_reason / next_attempt_at)
+#   reports        : attempt_count, failure_reason — but NO next_attempt_at
+#   import_batches : (none) — bring it to the same model
+#
+# After: every worker table carries attempt_count INT NOT NULL DEFAULT 0,
+# failure_reason TEXT, next_attempt_at TIMESTAMPTZ (NULL = due now / no backoff),
+# and the status CHECK admits DEAD_LETTER.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-045-export-jobs-retry-columns
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,worker-retry
+      changes:
+        - addColumn:
+            tableName: export_jobs
+            columns:
+              - column:
+                  name: attempt_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column: { name: failure_reason,  type: TEXT }
+              - column: { name: next_attempt_at, type: TIMESTAMPTZ }
+        # Index that backs the re-queuer's due-rows scan (status + next_attempt_at).
+        - createIndex:
+            tableName: export_jobs
+            indexName: idx_export_jobs_retry_due
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: status } }
+              - { column: { name: next_attempt_at } }
+      rollback:
+        - dropIndex: { tableName: export_jobs, indexName: idx_export_jobs_retry_due }
+        - dropColumn: { tableName: export_jobs, columnName: next_attempt_at }
+        - dropColumn: { tableName: export_jobs, columnName: failure_reason }
+        - dropColumn: { tableName: export_jobs, columnName: attempt_count }
+
+  - changeSet:
+      id: tenant-045-reports-retry-columns
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,worker-retry
+      changes:
+        # reports already has attempt_count + failure_reason (changeset 028);
+        # only next_attempt_at is missing.
+        - addColumn:
+            tableName: reports
+            columns:
+              - column: { name: next_attempt_at, type: TIMESTAMPTZ }
+        - createIndex:
+            tableName: reports
+            indexName: idx_reports_retry_due
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: status } }
+              - { column: { name: next_attempt_at } }
+      rollback:
+        - dropIndex: { tableName: reports, indexName: idx_reports_retry_due }
+        - dropColumn: { tableName: reports, columnName: next_attempt_at }
+
+  - changeSet:
+      id: tenant-045-import-batches-retry-columns
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,worker-retry
+      changes:
+        - addColumn:
+            tableName: import_batches
+            columns:
+              - column:
+                  name: attempt_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints: { nullable: false }
+              - column: { name: failure_reason,  type: TEXT }
+              - column: { name: next_attempt_at, type: TIMESTAMPTZ }
+        - createIndex:
+            tableName: import_batches
+            indexName: idx_import_batches_retry_due
+            columns:
+              - { column: { name: tenant_id } }
+              - { column: { name: status } }
+              - { column: { name: next_attempt_at } }
+      rollback:
+        - dropIndex: { tableName: import_batches, indexName: idx_import_batches_retry_due }
+        - dropColumn: { tableName: import_batches, columnName: next_attempt_at }
+        - dropColumn: { tableName: import_batches, columnName: failure_reason }
+        - dropColumn: { tableName: import_batches, columnName: attempt_count }
+
+  # Widen the three status CHECK constraints to admit DEAD_LETTER. Each is a
+  # strict SUPERSET of the prior list (only adds DEAD_LETTER), so every existing
+  # row stays valid — exactly the 044 pattern.
+  - changeSet:
+      id: tenant-045-widen-status-checks-dead-letter
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,worker-retry
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE export_jobs DROP CONSTRAINT chk_export_jobs_status;
+              ALTER TABLE export_jobs ADD CONSTRAINT chk_export_jobs_status
+                CHECK (status IN ('REQUESTED','QUEUED','GENERATING','GENERATED','FAILED',
+                                  'DOWNLOADED','EXPIRED','CANCELLED','DEAD_LETTER'));
+
+              ALTER TABLE reports DROP CONSTRAINT chk_reports_status;
+              ALTER TABLE reports ADD CONSTRAINT chk_reports_status
+                CHECK (status IN ('REQUESTED','QUEUED','GENERATING','GENERATED','FAILED',
+                                  'DOWNLOADED','EXPIRED','CANCELLED','DEAD_LETTER'));
+
+              ALTER TABLE import_batches DROP CONSTRAINT chk_import_batches_status;
+              ALTER TABLE import_batches ADD CONSTRAINT chk_import_batches_status
+                CHECK (status IN ('UPLOADED','SCANNING','SCAN_FAILED','PARSING','VALIDATING',
+                                  'VALIDATION_FAILED','READY_FOR_REVIEW','READY_TO_COMMIT',
+                                  'COMMITTING','COMMITTED','PARTIALLY_COMMITTED',
+                                  'FAILED','CANCELLED','ARCHIVED','DEAD_LETTER'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE export_jobs DROP CONSTRAINT chk_export_jobs_status;
+              ALTER TABLE export_jobs ADD CONSTRAINT chk_export_jobs_status
+                CHECK (status IN ('REQUESTED','QUEUED','GENERATING','GENERATED','FAILED',
+                                  'DOWNLOADED','EXPIRED','CANCELLED'));
+
+              ALTER TABLE reports DROP CONSTRAINT chk_reports_status;
+              ALTER TABLE reports ADD CONSTRAINT chk_reports_status
+                CHECK (status IN ('REQUESTED','QUEUED','GENERATING','GENERATED','FAILED',
+                                  'DOWNLOADED','EXPIRED','CANCELLED'));
+
+              ALTER TABLE import_batches DROP CONSTRAINT chk_import_batches_status;
+              ALTER TABLE import_batches ADD CONSTRAINT chk_import_batches_status
+                CHECK (status IN ('UPLOADED','SCANNING','SCAN_FAILED','PARSING','VALIDATING',
+                                  'VALIDATION_FAILED','READY_FOR_REVIEW','READY_TO_COMMIT',
+                                  'COMMITTING','COMMITTED','PARTIALLY_COMMITTED',
+                                  'FAILED','CANCELLED','ARCHIVED'));

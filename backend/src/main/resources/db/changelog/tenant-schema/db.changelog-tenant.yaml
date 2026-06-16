@@ -188,3 +188,12 @@ databaseChangeLog:
   - include:
       file: 044-approval-requests-allow-evaluation-panel.yaml
       relativeToChangelogFile: true
+
+  # Batch 4 — uniform bounded-retry + dead-letter for the import/export/report
+  # async workers (D6: keep in-process ThreadPoolTaskExecutor + a @Scheduled
+  # re-queuer; no broker). Adds attempt_count / failure_reason / next_attempt_at
+  # where missing and widens the three status CHECKs to admit a terminal
+  # DEAD_LETTER value (strict superset of the prior lists — mirrors 044).
+  - include:
+      file: 045-worker-retry-dead-letter.yaml
+      relativeToChangelogFile: true

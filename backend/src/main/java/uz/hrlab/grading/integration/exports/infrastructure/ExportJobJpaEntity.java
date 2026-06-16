@@ -79,6 +79,18 @@ public class ExportJobJpaEntity extends AuditedJpaEntity {
     @Column(name = "trace_id", length = 64)
     private String traceId;
 
+    // --- Batch-4 bounded-retry + dead-letter bookkeeping (migration 045) ---
+
+    @Column(name = "attempt_count", nullable = false)
+    private int attemptCount;
+
+    @Column(name = "failure_reason", columnDefinition = "TEXT")
+    private String failureReason;
+
+    /** Earliest time the re-queuer may re-dispatch this row (exponential backoff). */
+    @Column(name = "next_attempt_at")
+    private OffsetDateTime nextAttemptAt;
+
     protected ExportJobJpaEntity() { }
 
     public ExportJobJpaEntity(UUID id, UUID tenantId, UUID projectId,
@@ -118,6 +130,9 @@ public class ExportJobJpaEntity extends AuditedJpaEntity {
     public boolean isContainsSalaryData() { return containsSalaryData; }
     public boolean isContainsPersonalData() { return containsPersonalData; }
     public String getTraceId() { return traceId; }
+    public int getAttemptCount() { return attemptCount; }
+    public String getFailureReason() { return failureReason; }
+    public OffsetDateTime getNextAttemptAt() { return nextAttemptAt; }
 
     public void setStatus(ExportJobStatus v) { this.status = v; }
     public void setGeneratedAt(OffsetDateTime v) { this.generatedAt = v; }
@@ -128,4 +143,7 @@ public class ExportJobJpaEntity extends AuditedJpaEntity {
     public void setFileChecksum(String v) { this.fileChecksum = v; }
     public void setRowCount(Integer v) { this.rowCount = v; }
     public void setTraceId(String v) { this.traceId = v; }
+    public void incrementAttempt() { this.attemptCount++; }
+    public void setFailureReason(String v) { this.failureReason = v; }
+    public void setNextAttemptAt(OffsetDateTime v) { this.nextAttemptAt = v; }
 }

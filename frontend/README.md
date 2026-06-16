@@ -16,7 +16,27 @@ npm run dev          # http://localhost:5173 — uses MSW mocks when VITE_USE_MS
 npm run build        # type-check + production build
 npm test             # vitest run
 npm run lint
+npm run e2e          # Playwright E2E (see §1a)
 ```
+
+### 1a. E2E tests (Playwright)
+
+```bash
+# First run / CI: download the browser once.
+npx playwright install --with-deps chromium
+
+npm run e2e          # headless, mocked mode (builds + serves the app, no backend)
+npm run e2e:ui       # interactive UI mode
+```
+
+Two modes, switched by `E2E_BASE_URL`:
+
+| `E2E_BASE_URL` | Mode | Behaviour |
+|----------------|------|-----------|
+| **unset** (default) | Mocked / standalone | `playwright.config.ts` `webServer` builds the app with `VITE_USE_MSW=true` + `VITE_DEV_AUTH=true` and serves it via `vite preview`. The app self-serves all `/api/v1/*` data via its in-process mock adapter; specs also install a Playwright route safety-net so no real backend is ever contacted. `baseURL` = local preview. |
+| **set** (e.g. ephemeral CI stack) | Full-stack | `webServer` is skipped and route mocks are NOT installed — specs run against `E2E_BASE_URL` end-to-end. |
+
+Specs live in `e2e/` and select by stable `data-testid` / route hrefs (never localized text). Playwright artifacts (`test-results/`, `playwright-report/`, `.playwright/`) are gitignored and never in the bundle.
 
 Environment variables (`.env.local`):
 

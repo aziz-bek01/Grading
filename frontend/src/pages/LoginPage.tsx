@@ -81,21 +81,24 @@ export function LoginPage() {
           subtitle={t('pages.login_subtitle')}
         >
           {env.devAuthEnabled ? (
-            <div className="space-y-2">
-              <Button fullWidth onClick={() => loginAs('super-admin')}>
+            // Stable `data-testid`s let E2E specs select the dev-auth role buttons
+            // without depending on localized labels (default UI locale is ru-RU).
+            // These testids are semantic and do not change any behaviour.
+            <div className="space-y-2" data-testid="login-dev-auth">
+              <Button fullWidth onClick={() => loginAs('super-admin')} data-testid="login-as-super-admin">
                 {t('auth.as_super_admin')}
               </Button>
-              <Button fullWidth variant="secondary" onClick={() => loginAs('consultant')}>
+              <Button fullWidth variant="secondary" onClick={() => loginAs('consultant')} data-testid="login-as-consultant">
                 {t('auth.as_consultant')}
               </Button>
-              <Button fullWidth variant="ghost" onClick={() => loginAs('viewer')}>
+              <Button fullWidth variant="ghost" onClick={() => loginAs('viewer')} data-testid="login-as-viewer">
                 {t('auth.as_viewer')}
               </Button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2" data-testid="login-oidc">
               {/* The single hero CTA may use the gradient (07b §3.3 / §7.2). */}
-              <Button fullWidth className="bg-brand hover:bg-brand" onClick={signInWithOidc}>
+              <Button fullWidth className="bg-brand hover:bg-brand" onClick={signInWithOidc} data-testid="login-sign-in">
                 {t('auth.sign_in')}
               </Button>
             </div>

@@ -102,6 +102,13 @@ public class PanelController {
      * permission + tenant scoping + version-status guard + ABAC + per-panel /
      * per-seat audit fire per row. Per-row failures are collected (keyed on
      * position_id; ROSTER_PARTIAL carries seat_failures). Returns 201.
+     *
+     * <p>Opt-in {@code start_evaluations} (default false): when true, each panel
+     * created with a COMPLETE roster is immediately roster-locked
+     * (COLLECTING → AWAITING_EVALUATIONS) so the per-evaluator DRAFT sheets exist
+     * and assigned experts see their rows in "My Evaluations" without N manual
+     * locks. A panel whose roster lock fails (e.g. mandatory-trio unmet) is
+     * reported as {@code ROSTER_LOCK_FAILED} but still exists in COLLECTING.
      */
     @PostMapping("/bulk-create")
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
@@ -113,7 +120,8 @@ public class PanelController {
                         s.evaluatorUserId(), s.evaluatorRole()))
                 .toList();
         BulkCreatePanelsResponse body = bulkCreateUseCase.execute(new BulkCreatePanelsCommand(
-                req.methodologyVersionId(), req.positionIds(), roster));
+                req.methodologyVersionId(), req.positionIds(), roster,
+                Boolean.TRUE.equals(req.startEvaluations())));
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 

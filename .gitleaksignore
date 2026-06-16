@@ -1,0 +1,9 @@
+# gitleaks false positives, suppressed by fingerprint (commit:path:rule:line).
+# Each entry below is a NON-secret confirmed by review.
+#
+# A Javadoc comment ("Key canonicalisation: …") in a cache test trips the
+# generic-api-key rule (it pattern-matches a "key … : <value>" shape). It is a
+# plain English comment, not a credential. The comment was reworded in a later
+# commit, but gitleaks rescans historical commit diffs, so the original line in
+# commit 9a1aabc must be suppressed by fingerprint.
+9a1aabc6b8d213e96460777c1bcf631cd4a34487:backend/src/test/java/uz/hrlab/grading/common/cache/RolePermissionCacheTenantIsolationIntegrationTest.java:generic-api-key:107

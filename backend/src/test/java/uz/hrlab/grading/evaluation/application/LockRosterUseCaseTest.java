@@ -220,7 +220,8 @@ class LockRosterUseCaseTest {
 
     private Evaluation draftEvaluation() {
         return new Evaluation(UUID.randomUUID(), tenantId, projectId, positionId, versionId,
-                UUID.randomUUID(), EvaluationStatus.DRAFT, BigDecimal.ZERO, BigDecimal.ZERO,
+                UUID.randomUUID(), null, null, EvaluationStatus.DRAFT,
+                BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, null, null, null, null, null, null, null);
     }
 

@@ -118,7 +118,8 @@ public class EvaluationJpaEntity extends AuditedJpaEntity {
 
     public Evaluation toDomain() {
         return new Evaluation(id, tenantId, projectId, positionId, methodologyVersionId,
-                evaluatorUserId, status, rawTotalScore, displayedTotalScore,
+                evaluatorUserId, panelId, evaluatorRole, status,
+                rawTotalScore, displayedTotalScore,
                 gradeBandId, assignedGradeNumber,
                 submittedAt, submittedBy, approvedAt, approvedBy,
                 lockedAt, lockedBy, archivedAt, archivedBy);

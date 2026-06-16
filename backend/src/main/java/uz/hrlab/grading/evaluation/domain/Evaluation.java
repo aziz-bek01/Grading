@@ -27,6 +27,12 @@ public final class Evaluation {
     private final UUID positionId;
     private final UUID methodologyVersionId;
     private final UUID evaluatorUserId;
+    // MVP2 multi-evaluator (P0-C) — the panel this sheet belongs to and the role
+    // the evaluator plays on it. Null for panelless / legacy single evaluations.
+    // Exposed on the single-sheet read so the FE can render the blind banner +
+    // role chip for the caller's OWN sheet (never widens what is returned).
+    private final UUID panelId;
+    private final EvaluatorRole evaluatorRole;
     private final EvaluationStatus status;
     private final BigDecimal rawTotalScore;
     private final BigDecimal displayedTotalScore;
@@ -43,6 +49,7 @@ public final class Evaluation {
 
     public Evaluation(UUID id, UUID tenantId, UUID projectId, UUID positionId,
                       UUID methodologyVersionId, UUID evaluatorUserId,
+                      UUID panelId, EvaluatorRole evaluatorRole,
                       EvaluationStatus status,
                       BigDecimal rawTotalScore, BigDecimal displayedTotalScore,
                       UUID gradeBandId, Integer assignedGradeNumber,
@@ -56,6 +63,8 @@ public final class Evaluation {
         this.positionId = positionId;
         this.methodologyVersionId = methodologyVersionId;
         this.evaluatorUserId = evaluatorUserId;
+        this.panelId = panelId;
+        this.evaluatorRole = evaluatorRole;
         this.status = status;
         this.rawTotalScore = rawTotalScore;
         this.displayedTotalScore = displayedTotalScore;
@@ -77,6 +86,8 @@ public final class Evaluation {
     public UUID positionId() { return positionId; }
     public UUID methodologyVersionId() { return methodologyVersionId; }
     public UUID evaluatorUserId() { return evaluatorUserId; }
+    public UUID panelId() { return panelId; }
+    public EvaluatorRole evaluatorRole() { return evaluatorRole; }
     public EvaluationStatus status() { return status; }
     public BigDecimal rawTotalScore() { return rawTotalScore; }
     public BigDecimal displayedTotalScore() { return displayedTotalScore; }

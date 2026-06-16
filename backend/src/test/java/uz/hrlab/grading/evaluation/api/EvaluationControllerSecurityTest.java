@@ -36,6 +36,8 @@ import uz.hrlab.grading.evaluation.application.SubmitEvaluationUseCase;
 import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreUseCase;
 import uz.hrlab.grading.evaluation.domain.Evaluation;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
+import uz.hrlab.grading.evaluation.domain.EvaluatorRole;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -210,6 +212,50 @@ class EvaluationControllerSecurityTest {
         mvc.perform(get("/api/v1/evaluations/{id}", "not-a-uuid")
                         .with(jwt().authorities(() -> "EVALUATION_READ")))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ---------------------------------------------- P0-C: blind-affordance metadata
+
+    @Test
+    void getByIdExposesPanelIdAndEvaluatorRoleOnTheOwnSheet() throws Exception {
+        // P0-C — the single-sheet detail surfaces panel_id + evaluator_role
+        // (snake_case) so the FE can render the blind banner + role chip. The read
+        // is still PanelBiasGuard-gated upstream; this only exposes the caller's
+        // OWN sheet metadata (nothing about peers).
+        UUID id = UUID.randomUUID();
+        UUID panelId = UUID.randomUUID();
+        EvaluationJpaEntity sheet = new EvaluationJpaEntity(
+                id, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), UUID.randomUUID(), EvaluationStatus.INCOMPLETE);
+        sheet.setPanelId(panelId);
+        sheet.setEvaluatorRole(EvaluatorRole.EXTERNAL_EXPERT);
+        given(queries.findById(id)).willReturn(sheet);
+
+        mvc.perform(get("/api/v1/evaluations/{id}", id)
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.panel_id").value(panelId.toString()))
+                .andExpect(jsonPath("$.evaluator_role").value("EXTERNAL_EXPERT"));
+    }
+
+    @Test
+    void getByIdKeepsPanelMetadataNullForLegacyPanellessSheet() throws Exception {
+        // A panelless / legacy single evaluation carries no panel — the new fields
+        // are absent on the wire (global NON_NULL inclusion), never a fabricated
+        // panel/role. The core sheet fields still serialize.
+        UUID id = UUID.randomUUID();
+        EvaluationJpaEntity sheet = new EvaluationJpaEntity(
+                id, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), UUID.randomUUID(), EvaluationStatus.DRAFT);
+        given(queries.findById(id)).willReturn(sheet);
+
+        mvc.perform(get("/api/v1/evaluations/{id}", id)
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.panel_id").doesNotExist())
+                .andExpect(jsonPath("$.evaluator_role").doesNotExist());
     }
 
     @Test
@@ -504,6 +550,7 @@ class EvaluationControllerSecurityTest {
     private Evaluation sampleEvaluation(UUID id) {
         return new Evaluation(id, UUID.randomUUID(),
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                null, null,
                 EvaluationStatus.DRAFT,
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null,

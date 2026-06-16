@@ -1,8 +1,10 @@
 package uz.hrlab.grading.access.infrastructure;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import uz.hrlab.grading.common.cache.CacheNames;
 
 import java.util.List;
 import java.util.UUID;
@@ -28,7 +30,19 @@ public interface RolePermissionRepository extends JpaRepository<RolePermissionJp
      * isolation is applied one layer up: the caller resolves role ids from a
      * specific {@code user_tenant_memberships} row, so only the active tenant's
      * roles ever reach this method.
+     *
+     * <p><b>Cached</b> ({@link CacheNames#ROLE_PERMISSION_CODES}) — this runs on
+     * every authenticated request. The cache is tenant-safe by construction: the
+     * key is the sorted set of globally-unique role UUIDs
+     * ({@link uz.hrlab.grading.common.cache.RolePermissionKeyGenerator}), and the
+     * value (a global permission-code set) contains no tenant-scoped data. Two
+     * tenants can only share a key when they reference the SAME global role,
+     * whose codes are identical by definition — so no cross-tenant value can ever
+     * be served. Writes to {@code role_permissions} evict via
+     * {@code RolePermissionAdminUseCase}; a 60s TTL is the backstop.
      */
+    @Cacheable(cacheNames = CacheNames.ROLE_PERMISSION_CODES,
+            keyGenerator = "rolePermissionKeyGenerator")
     @Query("""
             select distinct p.code
             from RolePermissionJpaEntity rp

@@ -359,7 +359,7 @@
       "tenant": "Компания",
       "correlation_id": "Сўров ID",
       "ip": "IP-манзил",
-      "user_agent": "User Agent",
+      "user_agent": "Браузер маълумоти",
       "hash_chain": "Хеш занжири",
       "reason": "Сабаб",
       "metadata": "Мета-маълумотлар",
@@ -2040,8 +2040,8 @@
       "restrictedHint": "Бу рухсатни ушбу форма орқали бериб бўлмайди."
     },
     "error": {
-      "permissionRestricted": "Bu ruxsatni rolga berib bo'lmaydi",
-      "permissionNotHeld": "O'zingizda yo'q ruxsatni bera olmaysiz",
+      "permissionRestricted": "Бу рухсатни ролга бериб бўлмайди",
+      "permissionNotHeld": "Ўзингизда йўқ рухсатни бера олмайсиз",
       "systemRoleForbidden": "Тизим ролини фақат супер админ таҳрирлайди",
       "saveFailed": "Рухсатларни сақлаб бўлмади. Қайта уриниб кўринг."
     },

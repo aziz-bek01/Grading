@@ -1,5 +1,6 @@
 package uz.hrlab.grading.access.application;
 
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.api.RolePermissionItem;
@@ -14,6 +15,7 @@ import uz.hrlab.grading.access.infrastructure.RoleRepository;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.cache.CacheNames;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
@@ -80,8 +82,14 @@ import java.util.stream.Collectors;
  * <p>Granted permissions take effect on the next token/context resolution: the
  * authority expansion path ({@code RolePermissionRepository.findPermissionCodesByRoleIds},
  * read by {@code DevUserAuthorityResolver} and {@code JwtTenantContextResolver})
- * re-queries {@code role_permissions} per request — there is no cached snapshot
- * to go stale.
+ * is cached ({@code CacheNames.ROLE_PERMISSION_CODES}, 60s TTL). To make a
+ * grant/revoke take effect immediately rather than after the TTL, the write path
+ * ({@link #replaceRolePermissions(String, List)}) is annotated
+ * {@code @CacheEvict(allEntries = true)} on that cache. {@code allEntries} (not a
+ * keyed evict) is required because a single role can appear in MANY cached
+ * role-id-set keys (every membership whose role set includes it); evicting the
+ * whole — small, short-lived — cache is the correct, conservative invalidation.
+ * The short TTL remains the backstop if eviction is ever missed.
  */
 @Service
 public class RolePermissionAdminUseCase {
@@ -158,6 +166,7 @@ public class RolePermissionAdminUseCase {
      * matrix (same shape as {@link #getRolePermissions(String)}).
      */
     @Transactional
+    @CacheEvict(cacheNames = CacheNames.ROLE_PERMISSION_CODES, allEntries = true)
     public RolePermissionsResponse replaceRolePermissions(String roleCode, List<String> permissionCodes) {
         TenantContext ctx = TenantContextHolder.requireActive();
 

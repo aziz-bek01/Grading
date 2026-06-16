@@ -1,5 +1,6 @@
 package uz.hrlab.grading.access.application;
 
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.api.RoleResponse;
@@ -14,6 +15,7 @@ import uz.hrlab.grading.access.infrastructure.UserRoleRepository;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.cache.CacheNames;
 import uz.hrlab.grading.common.exception.ConflictException;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
@@ -108,6 +110,10 @@ public class CustomRoleUseCase {
      * persist role + grants → audit.
      */
     @Transactional
+    // New role + grants change the role→permission mapping space — evict the
+    // RBAC-expansion cache (CacheNames.ROLE_PERMISSION_CODES). allEntries because
+    // a role id can key many cached membership sets; see RolePermissionAdminUseCase.
+    @CacheEvict(cacheNames = CacheNames.ROLE_PERMISSION_CODES, allEntries = true)
     public RoleResponse create(String code, Map<String, String> nameI18n, String name,
                                List<String> permissionCodes) {
         TenantContext ctx = TenantContextHolder.requireActive();
@@ -162,6 +168,9 @@ public class CustomRoleUseCase {
      * custom role → 404. Permission changes flow through the SAME shared guard.
      */
     @Transactional
+    // Permission replace-set changes role→permission mapping — evict the
+    // RBAC-expansion cache (allEntries; see RolePermissionAdminUseCase rationale).
+    @CacheEvict(cacheNames = CacheNames.ROLE_PERMISSION_CODES, allEntries = true)
     public RoleResponse edit(UUID roleId, Map<String, String> nameI18n, String name,
                              List<String> permissionCodes) {
         TenantContext ctx = TenantContextHolder.requireActive();
@@ -200,6 +209,9 @@ public class CustomRoleUseCase {
      * removes the {@code role_permissions} rows then the role itself; audits once.
      */
     @Transactional
+    // Deleting a role removes its role_permissions rows — evict the
+    // RBAC-expansion cache (allEntries; see RolePermissionAdminUseCase rationale).
+    @CacheEvict(cacheNames = CacheNames.ROLE_PERMISSION_CODES, allEntries = true)
     public void delete(UUID roleId) {
         TenantContext ctx = TenantContextHolder.requireActive();
         RoleJpaEntity role = requireOwnCustomRole(ctx, roleId);

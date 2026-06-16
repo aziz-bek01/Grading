@@ -9,8 +9,17 @@ import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
+import uz.hrlab.grading.gradestructure.domain.GradeStructureStatus;
+import uz.hrlab.grading.gradestructure.infrastructure.GradeJpaEntity;
+import uz.hrlab.grading.gradestructure.infrastructure.GradeRepository;
+import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureJpaEntity;
+import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.FactorLevelJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.FactorLevelRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.project.infrastructure.ProjectJpaEntity;
@@ -28,15 +37,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 
 /**
  * Default port implementation. The position query is fully wired to the
  * tenant-aware {@link PositionRepository}; audit summary, evaluation matrix and
- * executive KPI now read from the corresponding module repositories.
+ * executive KPI read from the corresponding module repositories.
  *
- * <p>Grade-distribution and methodology specs still return empty placeholders —
- * they rely on cross-aggregate joins that ship in MVP 3.
+ * <p>Batch-2 wiring: {@link #gradeDistribution} now aggregates approved/locked
+ * evaluations per assigned grade (tenant + project scoped) and resolves grade
+ * display names from the project's active grade structure; {@link
+ * #methodologySpec} resolves the project's active methodology version and reads
+ * its factors + levels (tenant-scoped). Both fall back to a correct
+ * empty/placeholder result when the project has no grade structure / methodology
+ * yet — the template still renders.
  */
 @Component
 public class DefaultReportDataPort implements ReportDataPort {
@@ -49,6 +64,10 @@ public class DefaultReportDataPort implements ReportDataPort {
     private final EvaluationRepository evaluations;
     private final EvaluationScoreRepository evaluationScores;
     private final FactorRepository factors;
+    private final FactorLevelRepository factorLevels;
+    private final MethodologyVersionRepository methodologyVersions;
+    private final GradeStructureRepository gradeStructures;
+    private final GradeRepository grades;
     private final SystemAuditLogRepository auditLog;
 
     public DefaultReportDataPort(PositionRepository positions,
@@ -56,12 +75,20 @@ public class DefaultReportDataPort implements ReportDataPort {
                                  EvaluationRepository evaluations,
                                  EvaluationScoreRepository evaluationScores,
                                  FactorRepository factors,
+                                 FactorLevelRepository factorLevels,
+                                 MethodologyVersionRepository methodologyVersions,
+                                 GradeStructureRepository gradeStructures,
+                                 GradeRepository grades,
                                  SystemAuditLogRepository auditLog) {
         this.positions = positions;
         this.projects = projects;
         this.evaluations = evaluations;
         this.evaluationScores = evaluationScores;
         this.factors = factors;
+        this.factorLevels = factorLevels;
+        this.methodologyVersions = methodologyVersions;
+        this.gradeStructures = gradeStructures;
+        this.grades = grades;
         this.auditLog = auditLog;
     }
 
@@ -84,18 +111,116 @@ public class DefaultReportDataPort implements ReportDataPort {
 
     @Override
     public List<GradeCountRow> gradeDistribution(UUID tenantId, UUID projectId) {
-        // Real cross-aggregate query lands in MVP 3 — the template handles
-        // empty data and the test suite asserts the report still renders.
-        return List.of();
+        if (tenantId == null || projectId == null) return List.of();
+
+        // Resolve the active grade structure (LOCKED preferred, else APPROVED) so
+        // grade numbers carry a human display name. Tenant + project scoped.
+        Map<Integer, String> gradeNames = resolveGradeNames(tenantId, projectId);
+
+        // Count assigned grades across the project's evaluations (tenant-scoped).
+        var page = evaluations.findAllByTenantIdAndProjectId(tenantId, projectId,
+                PageRequest.of(0, MAX_EVALUATIONS));
+        Map<Integer, Integer> countByGrade = new TreeMap<>();
+        for (EvaluationJpaEntity ev : page.getContent()) {
+            Integer g = ev.getAssignedGradeNumber();
+            if (g == null) continue;
+            countByGrade.merge(g, 1, Integer::sum);
+        }
+
+        List<GradeCountRow> rows = new ArrayList<>(countByGrade.size());
+        for (Map.Entry<Integer, Integer> e : countByGrade.entrySet()) {
+            String code = "G" + e.getKey();
+            rows.add(new GradeCountRow(
+                    code,
+                    gradeNames.getOrDefault(e.getKey(), code),
+                    e.getValue()));
+        }
+        return rows;
+    }
+
+    /** Active grade structure grade-number → display name (tenant + project scoped). */
+    private Map<Integer, String> resolveGradeNames(UUID tenantId, UUID projectId) {
+        GradeStructureJpaEntity structure = activeGradeStructure(tenantId, projectId);
+        if (structure == null) return Map.of();
+        Map<Integer, String> names = new HashMap<>();
+        for (GradeJpaEntity g :
+                grades.findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(
+                        tenantId, structure.getId())) {
+            names.put(g.getGradeNumber(), gradeName(g));
+        }
+        return names;
+    }
+
+    private GradeStructureJpaEntity activeGradeStructure(UUID tenantId, UUID projectId) {
+        var locked = gradeStructures
+                .findAllByTenantIdAndProjectIdAndStatusOrderByVersionNumberDesc(
+                        tenantId, projectId, GradeStructureStatus.LOCKED);
+        if (!locked.isEmpty()) return locked.get(0);
+        var approved = gradeStructures
+                .findAllByTenantIdAndProjectIdAndStatusOrderByVersionNumberDesc(
+                        tenantId, projectId, GradeStructureStatus.APPROVED);
+        return approved.isEmpty() ? null : approved.get(0);
     }
 
     @Override
     public MethodologySpec methodologySpec(UUID tenantId, UUID projectId, String locale) {
-        return new MethodologySpec(
-                "(active methodology — wired in MVP 3)",
-                "(version)",
-                "(status)",
-                List.<FactorRow>of());
+        if (tenantId == null || projectId == null) {
+            return new MethodologySpec("", "", "", List.of());
+        }
+        ProjectJpaEntity project = projects.findByIdAndTenantId(projectId, tenantId).orElse(null);
+        if (project == null || project.getMethodologyVersionId() == null) {
+            return new MethodologySpec("", "", "", List.of());
+        }
+        UUID versionId = project.getMethodologyVersionId();
+        MethodologyVersionJpaEntity version =
+                methodologyVersions.findByIdAndTenantId(versionId, tenantId).orElse(null);
+        if (version == null) {
+            return new MethodologySpec("", "", "", List.of());
+        }
+
+        String scoringMode = version.getScoringMode() == null
+                ? "" : version.getScoringMode().name();
+        String versionLabel = "v" + version.getVersionNumber();
+        String status = version.getStatus() == null ? "" : version.getStatus().name();
+
+        List<FactorRow> factorRows = new ArrayList<>();
+        for (FactorJpaEntity f :
+                factors.findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(
+                        tenantId, versionId)) {
+            List<Map<String, String>> levels = new ArrayList<>();
+            for (FactorLevelJpaEntity lvl :
+                    factorLevels.findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(
+                            tenantId, f.getId())) {
+                Map<String, String> lm = new LinkedHashMap<>();
+                lm.put("code", nz(lvl.getCode()));
+                lm.put("order", String.valueOf(lvl.getLevelOrder()));
+                lm.put("points", lvl.getPoints() == null ? "" : lvl.getPoints().toPlainString());
+                lm.put("label", i18n(lvl.getLabelI18n(), locale, nz(lvl.getCode())));
+                levels.add(lm);
+            }
+            factorRows.add(new FactorRow(
+                    nz(f.getCode()),
+                    i18n(f.getNameI18n(), locale, nz(f.getCode())),
+                    f.getWeight() == null ? 0 : f.getWeight().intValue(),
+                    f.getMaxPoints() == null ? 0 : f.getMaxPoints().intValue(),
+                    scoringMode,
+                    levels));
+        }
+        // Methodology display name not modelled on the version row; use version label.
+        return new MethodologySpec("methodology " + versionLabel, versionLabel, status, factorRows);
+    }
+
+    private static String gradeName(GradeJpaEntity g) {
+        Map<String, String> i18n = g.getNameI18n();
+        if (i18n == null || i18n.isEmpty()) return "G" + g.getGradeNumber();
+        return i18n.getOrDefault("ru-RU",
+                i18n.values().stream().findFirst().orElse("G" + g.getGradeNumber()));
+    }
+
+    private static String i18n(Map<String, String> map, String locale, String fallback) {
+        if (map == null || map.isEmpty()) return fallback;
+        if (locale != null && map.containsKey(locale)) return map.get(locale);
+        return map.getOrDefault("ru-RU", map.values().stream().findFirst().orElse(fallback));
     }
 
     @Override

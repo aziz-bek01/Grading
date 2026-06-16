@@ -3,6 +3,18 @@ import { afterEach, beforeEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import i18n from '@/shared/i18n';
 
+// jsdom does not implement the object-URL APIs used by the authenticated
+// blob-download path (downloadAuthenticatedFile, AuditCsvExportButton,
+// templateDownload). Provide no-op stubs so download flows can be exercised
+// in component tests without "Not implemented" errors. Individual tests may
+// still spy on these to assert create/revoke behaviour.
+if (typeof URL.createObjectURL !== 'function') {
+  URL.createObjectURL = () => 'blob:mock';
+}
+if (typeof URL.revokeObjectURL !== 'function') {
+  URL.revokeObjectURL = () => undefined;
+}
+
 afterEach(() => {
   cleanup();
 });

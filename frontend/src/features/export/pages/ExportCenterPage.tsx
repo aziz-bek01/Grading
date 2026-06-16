@@ -101,7 +101,13 @@ function Row({ job, projectId }: { job: import('../types').ExportJob; projectId:
       </td>
       <td className="px-3 py-2 text-right">
         <div className="flex items-center justify-end gap-2">
-          {canDownload ? <SignedDownloadButton exportId={job.id} /> : null}
+          {canDownload ? (
+            <SignedDownloadButton
+              exportId={job.id}
+              exportType={job.exportType}
+              format={job.format}
+            />
+          ) : null}
           {canCancel ? (
             <button
               type="button"

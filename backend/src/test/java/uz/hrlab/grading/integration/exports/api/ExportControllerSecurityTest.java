@@ -16,8 +16,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.GlobalExceptionHandler;
 import uz.hrlab.grading.common.api.WebMvcSecurityTestConfig;
+import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.exports.application.CancelExportJobUseCase;
+import uz.hrlab.grading.integration.exports.application.DownloadExportFileUseCase;
 import uz.hrlab.grading.integration.exports.application.ExportJobQueries;
 import uz.hrlab.grading.integration.exports.application.IssueDownloadUrlUseCase;
 import uz.hrlab.grading.integration.exports.application.RequestExportUseCase;
@@ -30,6 +33,8 @@ import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Tag("security")
@@ -50,6 +55,7 @@ class ExportControllerSecurityTest {
     @MockBean RequestExportUseCase requestUseCase;
     @MockBean ExportJobQueries queries;
     @MockBean IssueDownloadUrlUseCase issueUseCase;
+    @MockBean DownloadExportFileUseCase downloadFileUseCase;
     @MockBean CancelExportJobUseCase cancelUseCase;
     @MockBean AuditService audit;
 
@@ -105,4 +111,70 @@ class ExportControllerSecurityTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // --- Batch 2: backend-proxied streaming download endpoint ----------------
+
+    @Test
+    void streamingDownloadAnonymousIs401() throws Exception {
+        mvc.perform(get("/api/v1/exports/{id}/download", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void streamingDownloadWithoutExportReadIs403() throws Exception {
+        // Authenticated but missing EXPORT_READ -> @PreAuthorize denies (403).
+        mvc.perform(get("/api/v1/exports/{id}/download", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void streamingDownloadStreamsBytesWithAttachmentDisposition() throws Exception {
+        UUID id = UUID.randomUUID();
+        byte[] body = new byte[]{1, 2, 3, 4};
+        given(downloadFileUseCase.download(eq(id)))
+                .willReturn(new DownloadExportFileUseCase.DownloadPayload(
+                        body, "position_catalog_abcd1234.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        mvc.perform(get("/api/v1/exports/{id}/download", id)
+                        .with(jwt().authorities(() -> "EXPORT_READ")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.containsString("attachment")))
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.containsString("position_catalog_abcd1234.xlsx")))
+                .andExpect(content().contentType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(content().bytes(body));
+    }
+
+    @Test
+    void streamingDownloadCrossTenantIs404() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(downloadFileUseCase.download(eq(id)))
+                .willThrow(new TenantAccessDeniedException());
+        mvc.perform(get("/api/v1/exports/{id}/download", id)
+                        .with(jwt().authorities(() -> "EXPORT_READ")))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void streamingDownloadSalaryExportWithoutSalaryPermissionIs403() throws Exception {
+        // Caller holds EXPORT_READ but the salary gate in the use case throws.
+        UUID id = UUID.randomUUID();
+        given(downloadFileUseCase.download(eq(id)))
+                .willThrow(new PermissionDeniedException());
+        mvc.perform(get("/api/v1/exports/{id}/download", id)
+                        .with(jwt().authorities(() -> "EXPORT_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void streamingDownloadNonGeneratedIs400() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(downloadFileUseCase.download(eq(id)))
+                .willThrow(new ValidationException("EXPORT_NOT_READY: QUEUED"));
+        mvc.perform(get("/api/v1/exports/{id}/download", id)
+                        .with(jwt().authorities(() -> "EXPORT_READ")))
+                .andExpect(status().isBadRequest());
+    }
 }

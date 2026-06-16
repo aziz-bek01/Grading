@@ -64,7 +64,11 @@ export function ExportDetailsPage() {
       </dl>
 
       {(job.status === 'GENERATED' || job.status === 'DOWNLOADED') && (
-        <SignedDownloadButton exportId={job.id} />
+        <SignedDownloadButton
+          exportId={job.id}
+          exportType={job.exportType}
+          format={job.format}
+        />
       )}
     </section>
   );

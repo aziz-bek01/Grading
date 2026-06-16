@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   cancelExport,
+  downloadExport,
   exportKeys,
   fetchExport,
-  fetchExportDownloadUrl,
   fetchExports,
   requestExport,
 } from '../api/exportApi';
 import type {
+  ExportFormat,
   ExportJobStatus,
   ExportRequestPayload,
   ExportType,
@@ -66,9 +67,15 @@ export function useCancelExport(id: string) {
   });
 }
 
-/** One-shot fetcher for a fresh signed URL (5-minute lifetime). */
-export function useFetchDownloadUrl() {
+/**
+ * Streams the generated export through the authenticated httpClient and
+ * triggers a browser download. Bytes (not a token-bearing URL) flow through
+ * the API layer so Authorization + X-Active-Tenant-Id headers are attached;
+ * a bare `<a href>` would omit them and the server would reject with 401/403.
+ */
+export function useDownloadExport() {
   return useMutation({
-    mutationFn: (id: string) => fetchExportDownloadUrl(id),
+    mutationFn: (args: { id: string; type?: ExportType; format?: ExportFormat }) =>
+      downloadExport(args.id, { type: args.type, format: args.format }),
   });
 }

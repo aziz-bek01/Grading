@@ -792,11 +792,12 @@ describe('no tenant_id leak in outbound API requests', () => {
     assertNoTenantLeak(recorded[0]);
   });
 
-  it('exportApi.fetchExportDownloadUrl() sends no tenant id', async () => {
+  it('exportApi.downloadExport() sends no tenant id', async () => {
     recorded.length = 0;
-    const { fetchExportDownloadUrl } = await import('@/features/export/api/exportApi');
-    await fetchExportDownloadUrl('exp-1');
+    const { downloadExport } = await import('@/features/export/api/exportApi');
+    await downloadExport('exp-1', { type: 'POSITION_CATALOG', format: 'XLSX' });
     expect(recorded.length).toBe(1);
+    expect(recorded[0].url).toBe('/exports/exp-1/download');
     assertNoTenantLeak(recorded[0]);
   });
 
@@ -841,11 +842,12 @@ describe('no tenant_id leak in outbound API requests', () => {
     assertNoTenantLeak(recorded[0]);
   });
 
-  it('reportApi.fetchReportDownloadUrl() sends no tenant id', async () => {
+  it('reportApi.downloadReport() sends no tenant id', async () => {
     recorded.length = 0;
-    const { fetchReportDownloadUrl } = await import('@/features/report/api/reportApi');
-    await fetchReportDownloadUrl('rep-1');
+    const { downloadReport } = await import('@/features/report/api/reportApi');
+    await downloadReport('rep-1', { type: 'GRADE_DISTRIBUTION' });
     expect(recorded.length).toBe(1);
+    expect(recorded[0].url).toBe('/reports/rep-1/download');
     assertNoTenantLeak(recorded[0]);
   });
 

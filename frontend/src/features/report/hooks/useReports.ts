@@ -8,8 +8,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   cancelReport,
+  downloadReport,
   fetchReport,
-  fetchReportDownloadUrl,
   fetchReports,
   reportKeys,
   requestReport,
@@ -70,9 +70,15 @@ export function useCancelReport(id: string) {
   });
 }
 
-/** One-shot fetcher for a fresh signed URL (60-second lifetime). */
-export function useReportDownloadUrl() {
+/**
+ * Streams the generated report through the authenticated httpClient and
+ * triggers a browser download. Bytes (not a token-bearing URL) flow through
+ * the API layer so Authorization + X-Active-Tenant-Id headers are attached;
+ * a bare `<a href>` would omit them and the server would reject with 401/403.
+ */
+export function useDownloadReport() {
   return useMutation({
-    mutationFn: (id: string) => fetchReportDownloadUrl(id),
+    mutationFn: (args: { id: string; type?: ReportType }) =>
+      downloadReport(args.id, { type: args.type }),
   });
 }

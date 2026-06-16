@@ -3,46 +3,39 @@ package uz.hrlab.grading.reporting.application;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
-import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.integration.storage.ObjectStorageAdapter;
 import uz.hrlab.grading.reporting.domain.ReportStatus;
 import uz.hrlab.grading.reporting.infrastructure.ReportJpaEntity;
 import uz.hrlab.grading.reporting.infrastructure.ReportRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Issues a signed download URL for a generated report. TTL = 60s, matching
- * the Phase 2 export tightening (integration-review F1 / security-blueprint
- * §6).
+ * Resolves the same-origin, authenticated RELATIVE download URL for a generated
+ * report (Batch 2 — D2 decision, mirroring the export change). Re-verifies
+ * {@code REPORT_EXPORT} + tenant ownership (404 for cross-tenant) and that the
+ * report is downloadable, then returns {@code /api/v1/reports/{id}/download}.
+ * The bytes are streamed by {@link DownloadReportFileUseCase} at that endpoint
+ * (where the download audit + status flip happen). No signed token in the URL —
+ * the same-origin SPA fetches it as an authenticated blob.
  */
 @Service
 public class IssueReportDownloadUrlUseCase {
 
-    private static final Duration SIGNED_URL_TTL = Duration.ofSeconds(60);
+    private static final String DOWNLOAD_PATH = "/api/v1/reports/%s/download";
 
     private final ReportRepository reports;
-    private final ObjectStorageAdapter storage;
-    private final AuditService audit;
 
-    public IssueReportDownloadUrlUseCase(ReportRepository reports,
-                                         ObjectStorageAdapter storage,
-                                         AuditService audit) {
+    public IssueReportDownloadUrlUseCase(ReportRepository reports) {
         this.reports = reports;
-        this.storage = storage;
-        this.audit = audit;
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public String issue(UUID reportId) {
         TenantContext ctx = TenantContextHolder.requireActive();
         if (!ctx.hasPermission(PermissionCodes.REPORT_EXPORT)) {
@@ -56,36 +49,11 @@ public class IssueReportDownloadUrlUseCase {
             throw new ValidationException("REPORT_NOT_READY: " + report.getStatus());
         }
         if (report.getExpiresAt() != null && report.getExpiresAt().isBefore(OffsetDateTime.now())) {
-            report.setStatus(ReportStatus.EXPIRED);
-            reports.save(report);
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId()).projectId(report.getProjectId())
-                    .actorUserId(ctx.userId())
-                    .action(AuditAction.REPORT_EXPIRED)
-                    .entityType("Report").entityId(report.getId()).build());
             throw new ValidationException("REPORT_EXPIRED");
         }
         if (report.getFileStorageKey() == null) {
             throw new ValidationException("REPORT_FILE_MISSING");
         }
-
-        String url = storage.signedDownloadUrl(report.getFileStorageKey(), SIGNED_URL_TTL);
-
-        if (report.getStatus() == ReportStatus.GENERATED) {
-            report.setStatus(ReportStatus.DOWNLOADED);
-            report.setDownloadedAt(OffsetDateTime.now());
-            reports.save(report);
-        }
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId()).projectId(report.getProjectId())
-                .actorUserId(ctx.userId())
-                .action(AuditAction.REPORT_DOWNLOADED)
-                .entityType("Report").entityId(report.getId()).build());
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId()).projectId(report.getProjectId())
-                .actorUserId(ctx.userId())
-                .action(AuditAction.FILE_DOWNLOADED)
-                .entityType("Report").entityId(report.getId()).build());
-        return url;
+        return String.format(DOWNLOAD_PATH, report.getId());
     }
 }

@@ -61,10 +61,12 @@ export async function createPanel(payload: CreatePanelPayload): Promise<Panel> {
 /**
  * POST /panels/bulk-create — opens one panel per position with the SAME shared
  * roster in a SINGLE request (replaces the create-then-loop-assign sequence).
- * The body is whitelisted: only the three contract fields ever reach the wire,
- * so no mass-assignment / tenant_id field can leak. Returns the per-position
- * failure collector — partially-failed rows surface in `failed[]` while the rest
- * are created (no sibling rollback).
+ * The body is whitelisted: only the four contract fields ever reach the wire,
+ * so no mass-assignment / tenant_id field can leak. With `start_evaluations` the
+ * BE also locks each fully-rostered panel (→ AWAITING_EVALUATIONS + a DRAFT sheet
+ * per seat) so the assigned experts can score immediately. Returns the
+ * per-position failure collector — partially-failed rows surface in `failed[]`
+ * while the rest are created (no sibling rollback).
  */
 export async function bulkCreatePanels(
   payload: BulkCreatePanelsPayload,
@@ -80,6 +82,9 @@ export async function bulkCreatePanels(
           })),
         }
       : {}),
+    // Opt-in: lock each fully-rostered panel and create the evaluator sheets in
+    // the same call. Sent ONLY when truthy so the wire stays minimal otherwise.
+    ...(payload.start_evaluations ? { start_evaluations: true } : {}),
   };
   const res = await httpClient.post<BulkCreatePanelsResult>(
     endpoints.panels.bulkCreate,

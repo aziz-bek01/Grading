@@ -50,6 +50,7 @@ class BulkCreatePanelsUseCaseTest {
 
     @Mock CreatePanelUseCase createPanelUseCase;
     @Mock AssignEvaluatorUseCase assignEvaluatorUseCase;
+    @Mock LockRosterUseCase lockRosterUseCase;
     @Mock AuditService audit;
 
     BulkCreatePanelsUseCase useCase;
@@ -61,7 +62,8 @@ class BulkCreatePanelsUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new BulkCreatePanelsUseCase(createPanelUseCase, assignEvaluatorUseCase, audit);
+        useCase = new BulkCreatePanelsUseCase(
+                createPanelUseCase, assignEvaluatorUseCase, lockRosterUseCase, audit);
         tenantId = UUID.randomUUID();
         userId = UUID.randomUUID();
         projectId = UUID.randomUUID();
@@ -89,7 +91,7 @@ class BulkCreatePanelsUseCaseTest {
                 seat(EvaluatorRole.EXTERNAL_EXPERT));
 
         BulkCreatePanelsResponse res = useCase.execute(
-                new BulkCreatePanelsCommand(versionId, List.of(p1, p2), roster));
+                new BulkCreatePanelsCommand(versionId, List.of(p1, p2), roster, false));
 
         assertThat(res.created()).isEqualTo(2);
         assertThat(res.failed()).isEmpty();
@@ -97,6 +99,8 @@ class BulkCreatePanelsUseCaseTest {
         verify(createPanelUseCase, times(2)).create(any());
         // Shared roster (3 seats) assigned to each of the 2 panels => 6 assigns.
         verify(assignEvaluatorUseCase, times(6)).assign(any(), any(), any());
+        // start_evaluations=false → panels stay COLLECTING, NO roster lock fired.
+        verify(lockRosterUseCase, never()).lockRoster(any());
 
         // BE-6 — one wrapper audit event with the commission counts.
         ArgumentCaptor<AuditEvent> ev = ArgumentCaptor.forClass(AuditEvent.class);
@@ -105,7 +109,9 @@ class BulkCreatePanelsUseCaseTest {
         assertThat(ev.getValue().reason())
                 .contains("requested_count=2")
                 .contains("created_count=2")
-                .contains("failed_count=0");
+                .contains("failed_count=0")
+                .contains("start_evaluations=false")
+                .contains("started_count=0");
     }
 
     @Test
@@ -123,7 +129,7 @@ class BulkCreatePanelsUseCaseTest {
                 seat(EvaluatorRole.ADDITIONAL));
 
         BulkCreatePanelsResponse res = useCase.execute(
-                new BulkCreatePanelsCommand(versionId, List.of(p1), roster));
+                new BulkCreatePanelsCommand(versionId, List.of(p1), roster, false));
 
         assertThat(res.created()).isEqualTo(1);
         assertThat(res.failed()).isEmpty();
@@ -140,7 +146,7 @@ class BulkCreatePanelsUseCaseTest {
         when(createPanelUseCase.create(any())).thenReturn(panel(UUID.randomUUID()));
 
         BulkCreatePanelsResponse res = useCase.execute(
-                new BulkCreatePanelsCommand(versionId, List.of(p1), List.of()));
+                new BulkCreatePanelsCommand(versionId, List.of(p1), List.of(), false));
 
         assertThat(res.created()).isEqualTo(1);
         assertThat(res.failed()).isEmpty();
@@ -164,7 +170,7 @@ class BulkCreatePanelsUseCaseTest {
         });
 
         BulkCreatePanelsResponse res = useCase.execute(
-                new BulkCreatePanelsCommand(versionId, List.of(ok, dup), List.of()));
+                new BulkCreatePanelsCommand(versionId, List.of(ok, dup), List.of(), false));
 
         assertThat(res.created()).isEqualTo(1);
         assertThat(res.failed()).hasSize(1);
@@ -191,7 +197,7 @@ class BulkCreatePanelsUseCaseTest {
         });
 
         BulkCreatePanelsResponse res = useCase.execute(
-                new BulkCreatePanelsCommand(versionId, List.of(inScope, denied), List.of()));
+                new BulkCreatePanelsCommand(versionId, List.of(inScope, denied), List.of(), false));
 
         assertThat(res.created()).isEqualTo(1);
         assertThat(res.failed()).hasSize(1);
@@ -208,7 +214,7 @@ class BulkCreatePanelsUseCaseTest {
 
         BulkCreatePanelsResponse res = useCase.execute(
                 new BulkCreatePanelsCommand(versionId,
-                        List.of(UUID.randomUUID(), UUID.randomUUID()), List.of()));
+                        List.of(UUID.randomUUID(), UUID.randomUUID()), List.of(), false));
 
         assertThat(res.created()).isZero();
         assertThat(res.failed()).hasSize(2);
@@ -242,7 +248,7 @@ class BulkCreatePanelsUseCaseTest {
                 new BulkCreatePanelsCommand.RosterSeat(badUser, EvaluatorRole.EXTERNAL_EXPERT));
 
         BulkCreatePanelsResponse res = useCase.execute(
-                new BulkCreatePanelsCommand(versionId, List.of(p1), roster));
+                new BulkCreatePanelsCommand(versionId, List.of(p1), roster, false));
 
         assertThat(res.created()).isEqualTo(1); // panel created despite the bad seat
         assertThat(res.failed()).hasSize(1);
@@ -263,12 +269,171 @@ class BulkCreatePanelsUseCaseTest {
                 .thenThrow(new TenantAccessDeniedException());
 
         BulkCreatePanelsResponse res = useCase.execute(new BulkCreatePanelsCommand(
-                versionId, List.of(p1), List.of(seat(EvaluatorRole.EXTERNAL_EXPERT))));
+                versionId, List.of(p1), List.of(seat(EvaluatorRole.EXTERNAL_EXPERT)), false));
 
         assertThat(res.created()).isEqualTo(1);
         assertThat(res.failed()).hasSize(1);
         assertThat(res.failed().get(0).errorCode()).isEqualTo("ROSTER_PARTIAL");
         assertThat(res.failed().get(0).seatFailures().get(0).reason()).contains("ACCESS_DENIED");
+    }
+
+    // -------------------------------------------------- start_evaluations (opt-in)
+
+    @Test
+    void startEvaluationsTrueLocksEveryFullyRosteredPanel() {
+        // The wizard's regression case: a full mandatory trio + start_evaluations
+        // → each created panel is roster-locked (COLLECTING → AWAITING_EVALUATIONS)
+        // so the per-evaluator DRAFT sheets exist. The orchestration contract here
+        // is "one lockRoster per cleanly-rostered panel"; the actual sheet creation
+        // + transition is owned (and tested) by LockRosterUseCaseTest.
+        UUID p1 = UUID.randomUUID();
+        UUID p2 = UUID.randomUUID();
+        UUID panel1 = UUID.randomUUID();
+        UUID panel2 = UUID.randomUUID();
+        when(createPanelUseCase.create(any())).thenAnswer(inv -> {
+            CreatePanelCommand cmd = inv.getArgument(0);
+            return panel(cmd.positionId().equals(p1) ? panel1 : panel2);
+        });
+        List<BulkCreatePanelsCommand.RosterSeat> roster = List.of(
+                seat(EvaluatorRole.HR_DIRECTOR),
+                seat(EvaluatorRole.DEPARTMENT_DIRECTOR),
+                seat(EvaluatorRole.EXTERNAL_EXPERT));
+
+        BulkCreatePanelsResponse res = useCase.execute(
+                new BulkCreatePanelsCommand(versionId, List.of(p1, p2), roster, true));
+
+        assertThat(res.created()).isEqualTo(2);
+        assertThat(res.failed()).isEmpty();
+        // Each cleanly-rostered panel is locked exactly once.
+        verify(lockRosterUseCase).lockRoster(panel1);
+        verify(lockRosterUseCase).lockRoster(panel2);
+        verify(lockRosterUseCase, times(2)).lockRoster(any());
+
+        ArgumentCaptor<AuditEvent> ev = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit).record(ev.capture());
+        assertThat(ev.getValue().reason())
+                .contains("start_evaluations=true")
+                .contains("started_count=2");
+    }
+
+    @Test
+    void startEvaluationsFalseNeverLocks_panelsStayCollecting() {
+        // Locks the unchanged-default contract: omitted/false start_evaluations
+        // leaves panels COLLECTING and NEVER fires a roster lock (so no DRAFT
+        // sheets are created — "My Evaluations" stays empty until a manual lock).
+        UUID p1 = UUID.randomUUID();
+        when(createPanelUseCase.create(any())).thenReturn(panel(UUID.randomUUID()));
+        List<BulkCreatePanelsCommand.RosterSeat> roster = List.of(
+                seat(EvaluatorRole.HR_DIRECTOR),
+                seat(EvaluatorRole.DEPARTMENT_DIRECTOR),
+                seat(EvaluatorRole.EXTERNAL_EXPERT));
+
+        BulkCreatePanelsResponse res = useCase.execute(
+                new BulkCreatePanelsCommand(versionId, List.of(p1), roster, false));
+
+        assertThat(res.created()).isEqualTo(1);
+        assertThat(res.failed()).isEmpty();
+        verify(lockRosterUseCase, never()).lockRoster(any());
+    }
+
+    @Test
+    void seatFailureSuppressesLockEvenWhenStartEvaluationsTrue() {
+        // An incomplete roster is NEVER locked even with start_evaluations=true:
+        // the row is ROSTER_PARTIAL (panel stays COLLECTING) and NO lock is tried.
+        UUID p1 = UUID.randomUUID();
+        when(createPanelUseCase.create(any())).thenReturn(panel(UUID.randomUUID()));
+        UUID badUser = UUID.randomUUID();
+        when(assignEvaluatorUseCase.assign(any(), any(), any())).thenAnswer(inv -> {
+            UUID seatUser = inv.getArgument(1);
+            if (seatUser.equals(badUser)) {
+                throw new ValidationException(
+                        "EVALUATOR_ALREADY_ASSIGNED: this evaluator is already on the panel");
+            }
+            return null;
+        });
+        List<BulkCreatePanelsCommand.RosterSeat> roster = List.of(
+                seat(EvaluatorRole.HR_DIRECTOR),
+                new BulkCreatePanelsCommand.RosterSeat(badUser, EvaluatorRole.EXTERNAL_EXPERT));
+
+        BulkCreatePanelsResponse res = useCase.execute(
+                new BulkCreatePanelsCommand(versionId, List.of(p1), roster, true));
+
+        assertThat(res.created()).isEqualTo(1);
+        assertThat(res.failed()).hasSize(1);
+        assertThat(res.failed().get(0).errorCode()).isEqualTo("ROSTER_PARTIAL");
+        // Incomplete roster → lock NOT attempted.
+        verify(lockRosterUseCase, never()).lockRoster(any());
+    }
+
+    @Test
+    void lockFailureReportedAsRosterLockFailed_panelStillCounted() {
+        // A complete roster whose lock throws (e.g. mandatory-trio unmet inside
+        // LockRosterUseCase) → ROSTER_LOCK_FAILED; the panel STILL exists in
+        // COLLECTING (never un-created) and `created` still counts it.
+        UUID p1 = UUID.randomUUID();
+        UUID panelId = UUID.randomUUID();
+        when(createPanelUseCase.create(any())).thenReturn(panel(panelId));
+        when(lockRosterUseCase.lockRoster(panelId)).thenThrow(new ValidationException(
+                "MANDATORY_ROLES_MISSING: panel must include HR_DIRECTOR, "
+                        + "DEPARTMENT_DIRECTOR and EXTERNAL_EXPERT"));
+        // Roster assigns cleanly (no seat failures) — only the lock fails.
+        List<BulkCreatePanelsCommand.RosterSeat> roster = List.of(
+                seat(EvaluatorRole.HR_DIRECTOR),
+                seat(EvaluatorRole.DEPARTMENT_DIRECTOR));
+
+        BulkCreatePanelsResponse res = useCase.execute(
+                new BulkCreatePanelsCommand(versionId, List.of(p1), roster, true));
+
+        assertThat(res.created()).isEqualTo(1); // panel NOT un-created
+        assertThat(res.failed()).hasSize(1);
+        BulkCreatePanelsResponse.Failure f = res.failed().get(0);
+        assertThat(f.positionId()).isEqualTo(p1);
+        assertThat(f.errorCode()).isEqualTo("ROSTER_LOCK_FAILED");
+        assertThat(f.message()).contains("MANDATORY_ROLES_MISSING");
+        assertThat(f.seatFailures()).isNull();
+        verify(lockRosterUseCase).lockRoster(panelId);
+
+        ArgumentCaptor<AuditEvent> ev = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit).record(ev.capture());
+        assertThat(ev.getValue().reason())
+                .contains("start_evaluations=true")
+                .contains("started_count=0")
+                .contains("created_count=1")
+                .contains("failed_count=1");
+    }
+
+    @Test
+    void lockFailureOnOneRowDoesNotPoisonSiblingLock() {
+        // Per-row isolation extends to the lock: one panel's lock failure leaves
+        // the sibling's lock (and AWAITING_EVALUATIONS transition) intact.
+        UUID okPos = UUID.randomUUID();
+        UUID failPos = UUID.randomUUID();
+        UUID okPanel = UUID.randomUUID();
+        UUID failPanel = UUID.randomUUID();
+        when(createPanelUseCase.create(any())).thenAnswer(inv -> {
+            CreatePanelCommand cmd = inv.getArgument(0);
+            return panel(cmd.positionId().equals(okPos) ? okPanel : failPanel);
+        });
+        // Per-panel lock outcome: the OK panel locks cleanly, the bad one throws.
+        // Both arms are stubbed so strict Mockito sees no argument mismatch.
+        when(lockRosterUseCase.lockRoster(okPanel)).thenAnswer(inv -> panel(okPanel));
+        when(lockRosterUseCase.lockRoster(failPanel))
+                .thenThrow(new ValidationException("ROSTER_BELOW_FLOOR: too few evaluators"));
+        List<BulkCreatePanelsCommand.RosterSeat> roster = List.of(
+                seat(EvaluatorRole.HR_DIRECTOR),
+                seat(EvaluatorRole.DEPARTMENT_DIRECTOR),
+                seat(EvaluatorRole.EXTERNAL_EXPERT));
+
+        BulkCreatePanelsResponse res = useCase.execute(
+                new BulkCreatePanelsCommand(versionId, List.of(okPos, failPos), roster, true));
+
+        assertThat(res.created()).isEqualTo(2);
+        assertThat(res.failed()).hasSize(1);
+        assertThat(res.failed().get(0).positionId()).isEqualTo(failPos);
+        assertThat(res.failed().get(0).errorCode()).isEqualTo("ROSTER_LOCK_FAILED");
+        // The good panel was still locked; only the bad one failed.
+        verify(lockRosterUseCase).lockRoster(okPanel);
+        verify(lockRosterUseCase).lockRoster(failPanel);
     }
 
     // ------------------------------------------------------------ guard / validation
@@ -280,7 +445,7 @@ class BulkCreatePanelsUseCaseTest {
                 Set.of("EVALUATION_READ"), Set.of(), false, "ru-RU"));
 
         assertThatThrownBy(() -> useCase.execute(new BulkCreatePanelsCommand(
-                versionId, List.of(UUID.randomUUID()), List.of())))
+                versionId, List.of(UUID.randomUUID()), List.of(), false)))
                 .isInstanceOf(PermissionDeniedException.class);
         verify(createPanelUseCase, never()).create(any());
     }
@@ -288,14 +453,14 @@ class BulkCreatePanelsUseCaseTest {
     @Test
     void emptyPositionIdsRejected() {
         assertThatThrownBy(() -> useCase.execute(new BulkCreatePanelsCommand(
-                versionId, List.of(), List.of())))
+                versionId, List.of(), List.of(), false)))
                 .isInstanceOf(ValidationException.class);
     }
 
     @Test
     void missingMethodologyVersionRejected() {
         assertThatThrownBy(() -> useCase.execute(new BulkCreatePanelsCommand(
-                null, List.of(UUID.randomUUID()), List.of())))
+                null, List.of(UUID.randomUUID()), List.of(), false)))
                 .isInstanceOf(ValidationException.class);
     }
 

@@ -30,7 +30,14 @@ import java.util.UUID;
  * {@link PanelController#MAX_PAGE_SIZE} (200) per call (same cap as bulk-create
  * evaluations). Snake_case on the wire via global Jackson SNAKE_CASE:
  * {@code methodology_version_id}, {@code position_ids}, {@code roster},
- * {@code evaluator_user_id}, {@code evaluator_role}.
+ * {@code evaluator_user_id}, {@code evaluator_role}, {@code start_evaluations}.
+ *
+ * <p>{@code startEvaluations} (wire {@code start_evaluations}, OPTIONAL, default
+ * false) — when true, every panel created with a COMPLETE roster is immediately
+ * roster-locked so the per-evaluator DRAFT sheets are created and the wizard's
+ * assigned experts see their rows in "My Evaluations" without a separate manual
+ * lock per panel. A {@code null} value is treated as false (behaviour unchanged:
+ * panels stay COLLECTING).
  */
 public record BulkCreatePanelsRequest(
         @NotNull UUID methodologyVersionId,
@@ -41,7 +48,9 @@ public record BulkCreatePanelsRequest(
         List<UUID> positionIds,
 
         @Valid
-        List<RosterSeat> roster
+        List<RosterSeat> roster,
+
+        Boolean startEvaluations
 ) {
     /** One shared roster seat — the same user+role applied to every panel. */
     public record RosterSeat(

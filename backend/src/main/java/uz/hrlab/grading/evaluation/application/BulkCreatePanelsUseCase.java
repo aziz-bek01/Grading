@@ -62,9 +62,27 @@ import java.util.UUID;
  * per-seat reason list — the panel still exists in COLLECTING so the admin can
  * fix that one panel; the seat is never silently dropped.
  *
- * <p>The min-3 mandatory-trio rule is intentionally NOT enforced here — bulk
- * create only assigns the seats the admin provided and leaves panels in
- * COLLECTING; {@code LockRosterUseCase} remains the single enforcement point.
+ * <p>The min-3 mandatory-trio rule is NOT enforced by create/assign — bulk create
+ * only assigns the seats the admin provided. {@code LockRosterUseCase} remains the
+ * single enforcement point for it.
+ *
+ * <p>Opt-in {@code startEvaluations} (BE — "open evaluation panel" wizard): after
+ * a panel is created AND its shared roster assigns with NO seat failures, this use
+ * case immediately roster-locks that panel in its own {@code REQUIRES_NEW}
+ * transaction (delegating to the UNCHANGED {@link LockRosterUseCase}), which moves
+ * it COLLECTING → AWAITING_EVALUATIONS and creates one DRAFT Evaluation per seat so
+ * the assigned experts see their sheet in {@code GET /evaluations/my}. This closes
+ * the wizard gap where a bulk department commission left every panel COLLECTING and
+ * required N separate manual locks. Semantics:
+ * <ul>
+ *   <li>{@code startEvaluations=false}/omitted → UNCHANGED: panels stay COLLECTING,
+ *       no DRAFT sheets, locking is a separate manual step (existing contract);</li>
+ *   <li>a roster with seat failures is NEVER locked (it is incomplete) — the row is
+ *       reported {@code ROSTER_PARTIAL} exactly as before, panel stays COLLECTING;</li>
+ *   <li>a complete roster whose lock throws (mandatory-trio / min-3 unmet, an ABAC
+ *       re-check, etc.) → {@code ROSTER_LOCK_FAILED}; the panel STILL exists in
+ *       COLLECTING (never un-created) and {@code created} stays incremented.</li>
+ * </ul>
  */
 @Service
 public class BulkCreatePanelsUseCase {
@@ -73,13 +91,16 @@ public class BulkCreatePanelsUseCase {
 
     private final CreatePanelUseCase createPanelUseCase;
     private final AssignEvaluatorUseCase assignEvaluatorUseCase;
+    private final LockRosterUseCase lockRosterUseCase;
     private final AuditService audit;
 
     public BulkCreatePanelsUseCase(CreatePanelUseCase createPanelUseCase,
                                    AssignEvaluatorUseCase assignEvaluatorUseCase,
+                                   LockRosterUseCase lockRosterUseCase,
                                    AuditService audit) {
         this.createPanelUseCase = createPanelUseCase;
         this.assignEvaluatorUseCase = assignEvaluatorUseCase;
+        this.lockRosterUseCase = lockRosterUseCase;
         this.audit = audit;
     }
 
@@ -99,6 +120,7 @@ public class BulkCreatePanelsUseCase {
 
         List<BulkCreatePanelsResponse.Failure> failed = new ArrayList<>();
         int created = 0;
+        int started = 0;
         for (UUID positionId : command.positionIds()) {
             EvaluationPanel panel;
             try {
@@ -138,7 +160,33 @@ public class BulkCreatePanelsUseCase {
             List<BulkCreatePanelsResponse.SeatFailure> seatFailures =
                     assignRoster(panel.id(), roster);
             if (!seatFailures.isEmpty()) {
+                // Roster is INCOMPLETE — never attempt to lock (the lock floor /
+                // mandatory-trio cannot be met). Report ROSTER_PARTIAL exactly as
+                // today; the panel stays COLLECTING for the admin to fix.
                 failed.add(BulkCreatePanelsResponse.Failure.rosterPartial(positionId, seatFailures));
+                continue;
+            }
+
+            // BE — opt-in "start evaluations": the whole shared roster assigned
+            // cleanly, so lock THIS panel's roster in its own REQUIRES_NEW tx
+            // (COLLECTING → AWAITING_EVALUATIONS), which creates one DRAFT
+            // Evaluation per seat via the UNCHANGED CreateEvaluationUseCase so the
+            // assigned experts see their sheet in "My Evaluations". The seats were
+            // committed by their own inner txs above, so lockRoster sees them.
+            // When startEvaluations is false/omitted, behaviour is UNCHANGED — the
+            // panel stays COLLECTING and locking remains a separate manual step.
+            if (command.startEvaluations()) {
+                try {
+                    lockRosterInNewTx(panel.id());
+                    started++;
+                } catch (RuntimeException ex) {
+                    // The panel STILL exists in COLLECTING — never un-created,
+                    // `created` stays incremented. The mandatory-trio + min-3 guard
+                    // inside LockRosterUseCase is the single enforcement point; if
+                    // unmet it throws and lands here as ROSTER_LOCK_FAILED.
+                    failed.add(BulkCreatePanelsResponse.Failure.of(
+                            positionId, "ROSTER_LOCK_FAILED", lockReason(ex)));
+                }
             }
         }
 
@@ -153,7 +201,9 @@ public class BulkCreatePanelsUseCase {
                 .reason("methodology_version_id=" + command.methodologyVersionId()
                         + ";requested_count=" + command.positionIds().size()
                         + ";created_count=" + created
-                        + ";failed_count=" + failed.size())
+                        + ";failed_count=" + failed.size()
+                        + ";start_evaluations=" + command.startEvaluations()
+                        + ";started_count=" + started)
                 .build());
 
         return new BulkCreatePanelsResponse(created, failed);
@@ -196,6 +246,36 @@ public class BulkCreatePanelsUseCase {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void assignSeatInNewTx(UUID panelId, BulkCreatePanelsCommand.RosterSeat seat) {
         assignEvaluatorUseCase.assign(panelId, seat.evaluatorUserId(), seat.evaluatorRole());
+    }
+
+    /**
+     * Inner per-panel roster lock — REQUIRES_NEW so a single panel that cannot be
+     * locked (mandatory-trio / min-3 unmet, an ABAC re-check, etc.) does not
+     * poison sibling rows nor the already-committed panel + seats. Delegates to the
+     * UNCHANGED {@link LockRosterUseCase#lockRoster}: COLLECTING →
+     * AWAITING_EVALUATIONS plus one DRAFT Evaluation per active seat. Self-invoked
+     * via the Spring proxy (mirrors {@link #assignSeatInNewTx}) so the new
+     * transaction boundary is honoured; {@code execute()} is non-transactional so
+     * the committed seats are visible to this fresh transaction.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void lockRosterInNewTx(UUID panelId) {
+        lockRosterUseCase.lockRoster(panelId);
+    }
+
+    private static String lockReason(RuntimeException ex) {
+        if (ex instanceof TenantAccessDeniedException) {
+            return "ACCESS_DENIED: panel not lockable in this scope";
+        }
+        if (ex instanceof PermissionDeniedException) {
+            return "ACCESS_DENIED: missing permission to lock this roster";
+        }
+        if (ex instanceof BaseDomainException de) {
+            return (de.getCode() == null ? "VALIDATION" : de.getCode())
+                    + ": " + de.getMessage();
+        }
+        log.warn("Bulk create panel: unexpected roster-lock failure", ex);
+        return "INTERNAL_ERROR: unexpected failure; see logs";
     }
 
     private static String seatReason(RuntimeException ex) {

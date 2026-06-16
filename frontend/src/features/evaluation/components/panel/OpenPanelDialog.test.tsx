@@ -387,6 +387,35 @@ describe('<OpenPanelDialog /> — dept-first wizard', () => {
     expect((screen.getByTestId('wizard-position-check-OPS-4') as HTMLInputElement).checked).toBe(false);
   });
 
+  it('on partial failure also drops ROSTER_LOCK_FAILED rows (panel exists — retry would hit ALREADY_EXISTS)', async () => {
+    // p-ops-2 fully failed (kept for retry); p-ops-3 created-but-lock-failed
+    // (dropped, same family as ROSTER_PARTIAL — its panel already exists).
+    const onConfirm = vi.fn().mockResolvedValue({
+      created: 3,
+      failed: [
+        { position_id: 'p-ops-2', error_code: 'ALREADY_EXISTS', message: 'dup' },
+        { position_id: 'p-ops-3', error_code: 'ROSTER_LOCK_FAILED', message: 'lock failed' },
+      ],
+    });
+    setup(onConfirm);
+    gotoStep2('OPS');
+    fireEvent.click(screen.getByTestId('wizard-select-all'));
+    fireEvent.click(screen.getByTestId('wizard-next'));
+    fillTrio();
+    fireEvent.click(screen.getByTestId('open-panel-confirm'));
+    const result = await screen.findByTestId('open-panel-result');
+    // The ROSTER_LOCK_FAILED row renders its localized message (tests run under
+    // the ru-RU default locale — see src/test/setup.ts).
+    expect(within(result).getByTestId('open-panel-fail-p-ops-3')).toHaveTextContent(
+      /откройте панель/i,
+    );
+    // Go back to inspect the retained selection.
+    fireEvent.click(screen.getByTestId('wizard-back'));
+    // Fully-failed p-ops-2 stays selected for retry; lock-failed p-ops-3 is dropped.
+    expect((screen.getByTestId('wizard-position-check-OPS-2') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId('wizard-position-check-OPS-3') as HTMLInputElement).checked).toBe(false);
+  });
+
   it('pre-fills the DEPT_DIRECTOR seat from the advisory suggestion (editable)', () => {
     suggestionState.data = {
       department_id: 'dep-ops',

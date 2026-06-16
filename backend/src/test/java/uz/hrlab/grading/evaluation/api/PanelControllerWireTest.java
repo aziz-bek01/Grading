@@ -3,6 +3,7 @@ package uz.hrlab.grading.evaluation.api;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration;
@@ -375,6 +376,46 @@ class PanelControllerWireTest {
     }
 
     @Test
+    void bulkCreateStartEvaluationsTrueFlowsThroughToCommand() throws Exception {
+        // The wizard sends start_evaluations: true — assert it binds from the
+        // snake_case wire and reaches the command as startEvaluations()==true so
+        // the use case will lock each fully-rostered panel (the reported bug fix).
+        given(bulkCreateUseCase.execute(any()))
+                .willReturn(new BulkCreatePanelsResponse(2, List.of()));
+        mvc.perform(post("/api/v1/panels/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bulkCreateBodyWithStart(true)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.created").value(2));
+
+        ArgumentCaptor<uz.hrlab.grading.evaluation.application.BulkCreatePanelsCommand> cmd =
+                ArgumentCaptor.forClass(
+                        uz.hrlab.grading.evaluation.application.BulkCreatePanelsCommand.class);
+        org.mockito.Mockito.verify(bulkCreateUseCase).execute(cmd.capture());
+        org.assertj.core.api.Assertions.assertThat(cmd.getValue().startEvaluations()).isTrue();
+    }
+
+    @Test
+    void bulkCreateOmittedStartEvaluationsDefaultsToFalse() throws Exception {
+        // Default contract: a body WITHOUT start_evaluations binds to false, so the
+        // panels stay COLLECTING (unchanged behaviour).
+        given(bulkCreateUseCase.execute(any()))
+                .willReturn(new BulkCreatePanelsResponse(2, List.of()));
+        mvc.perform(post("/api/v1/panels/bulk-create")
+                        .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bulkCreateBody()))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<uz.hrlab.grading.evaluation.application.BulkCreatePanelsCommand> cmd =
+                ArgumentCaptor.forClass(
+                        uz.hrlab.grading.evaluation.application.BulkCreatePanelsCommand.class);
+        org.mockito.Mockito.verify(bulkCreateUseCase).execute(cmd.capture());
+        org.assertj.core.api.Assertions.assertThat(cmd.getValue().startEvaluations()).isFalse();
+    }
+
+    @Test
     void bulkCreateRejectsEmptyPositionIds() throws Exception {
         mvc.perform(post("/api/v1/panels/bulk-create")
                         .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE"))
@@ -667,5 +708,23 @@ class PanelControllerWireTest {
                   ]
                 }
                 """;
+    }
+
+    private String bulkCreateBodyWithStart(boolean start) {
+        return """
+                {
+                  "methodology_version_id": "00000000-0000-0000-0000-000000000020",
+                  "position_ids": [
+                    "00000000-0000-0000-0000-000000000011",
+                    "00000000-0000-0000-0000-000000000012"
+                  ],
+                  "roster": [
+                    {"evaluator_user_id": "00000000-0000-0000-0000-000000000031", "evaluator_role": "HR_DIRECTOR"},
+                    {"evaluator_user_id": "00000000-0000-0000-0000-000000000032", "evaluator_role": "DEPARTMENT_DIRECTOR"},
+                    {"evaluator_user_id": "00000000-0000-0000-0000-000000000033", "evaluator_role": "EXTERNAL_EXPERT"}
+                  ],
+                  "start_evaluations": %s
+                }
+                """.formatted(start);
     }
 }

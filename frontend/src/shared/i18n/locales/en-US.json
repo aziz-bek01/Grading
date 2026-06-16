@@ -692,6 +692,7 @@
           "ACCESS_DENIED": "No access to this position",
           "VALIDATION": "Invalid request",
           "ROSTER_PARTIAL": "Panel created, but a seat could not be assigned",
+          "ROSTER_LOCK_FAILED": "Panel created, but evaluations could not be started — open the panel to start them",
           "INTERNAL_ERROR": "Unexpected error"
         }
       }

@@ -177,6 +177,9 @@ const evaluations: Evaluation[] = [
 
 const bulkCreateSpy = vi.fn();
 const deleteSpy = vi.fn();
+// Panel commission bulk-create — captured so we can assert the page sets
+// start_evaluations:true on the payload (create AND start the commission).
+const bulkCreatePanelsSpy = vi.fn();
 
 vi.mock('../hooks/useEvaluation', async () => {
   const actual = await vi.importActual<typeof import('../hooks/useEvaluation')>(
@@ -202,6 +205,40 @@ vi.mock('@/features/methodology/hooks/useMethodology', () => ({
   useMethodologies: () => ({ data: { items: methodologies }, isLoading: false }),
 }));
 
+// ---- Panel-commission wizard hooks (only exercised by the commission test) ----
+// usePanels is mocked here (empty coverage) AND useBulkCreatePanels is replaced
+// with a spy so we assert the page-built payload — the real fetcher never runs.
+vi.mock('../hooks/usePanels', () => ({
+  usePanels: () => ({ data: { items: [] }, isLoading: false, isError: false }),
+  useBulkCreatePanels: () => ({ mutateAsync: bulkCreatePanelsSpy }),
+  useRosterSuggestions: () => ({ data: undefined, isError: false, isLoading: false }),
+}));
+
+vi.mock('@/features/organization/hooks/useDepartmentPositionCounts', () => ({
+  useDepartmentPositionCounts: () => ({
+    data: new Map([
+      ['dep-fin', { directCount: 4, subtreeCount: 4 }],
+      ['dep-it', { directCount: 3, subtreeCount: 3 }],
+    ]),
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+vi.mock('@/features/users-access/hooks/useUsers', () => ({
+  useUsers: () => ({
+    data: {
+      items: [
+        { id: 'u1', full_name: 'Evaluator One', status: 'ACTIVE' },
+        { id: 'u2', full_name: 'Evaluator Two', status: 'ACTIVE' },
+        { id: 'u3', full_name: 'Evaluator Three', status: 'ACTIVE' },
+      ],
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 function renderPage() {
   return render(
     renderWithProviders(
@@ -221,6 +258,7 @@ describe('EvaluationListPage — Item 1 (department / add / delete)', () => {
     signIn('super-admin');
     bulkCreateSpy.mockReset();
     deleteSpy.mockReset();
+    bulkCreatePanelsSpy.mockReset();
   });
   afterEach(() => signOut());
 
@@ -385,5 +423,39 @@ describe('EvaluationListPage — Item 1 (department / add / delete)', () => {
       expect(screen.getByText('Финансовый аналитик')).toBeInTheDocument(),
     );
     expect(screen.queryByTestId('add-positions-open')).not.toBeInTheDocument();
+  });
+
+  it('Commission: the panel wizard payload sets start_evaluations:true (create AND start)', async () => {
+    bulkCreatePanelsSpy.mockResolvedValue({ created: 1, failed: [] });
+    renderPage();
+    // Open the dept-first panel wizard.
+    fireEvent.click(screen.getByTestId('open-panel-cta'));
+    // Step 1 — pick a department, advance.
+    await waitFor(() =>
+      expect(screen.getByTestId('dept-select-IT')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId('dept-select-IT'));
+    fireEvent.click(screen.getByTestId('wizard-next'));
+    // Step 2 — select all candidate positions, advance.
+    await waitFor(() =>
+      expect(screen.getByTestId('wizard-select-all')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId('wizard-select-all'));
+    fireEvent.click(screen.getByTestId('wizard-next'));
+    // Step 3 — fill the mandatory trio, then confirm.
+    await waitFor(() =>
+      expect(screen.getByTestId('open-panel-picker-0')).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByTestId('open-panel-picker-0'), { target: { value: 'u1' } });
+    fireEvent.change(screen.getByTestId('open-panel-picker-1'), { target: { value: 'u2' } });
+    fireEvent.change(screen.getByTestId('open-panel-picker-2'), { target: { value: 'u3' } });
+    fireEvent.click(screen.getByTestId('open-panel-confirm'));
+
+    await waitFor(() => expect(bulkCreatePanelsSpy).toHaveBeenCalledTimes(1));
+    const payload = bulkCreatePanelsSpy.mock.calls[0][0];
+    expect(payload.start_evaluations).toBe(true);
+    expect(payload.methodology_version_id).toBe('v-1');
+    // No tenant_id is ever assembled into the payload.
+    expect(payload).not.toHaveProperty('tenant_id');
   });
 });

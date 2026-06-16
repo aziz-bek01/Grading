@@ -152,6 +152,11 @@ export function EvaluationListPage() {
             evaluator_user_id: r.evaluator_user_id!,
             evaluator_role: r.role,
           })),
+        // "Комиссия яратиш" must CREATE AND START the commission: the BE locks
+        // each fully-rostered panel and creates the per-evaluator DRAFT sheets,
+        // so the assigned experts can score on /app/my-evaluations right away
+        // (without this the panels stay COLLECTING and experts see nothing).
+        start_evaluations: true,
       });
     },
     [bulkCreatePanelsMutation],

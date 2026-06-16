@@ -692,6 +692,7 @@
           "ACCESS_DENIED": "Bu lavozimga ruxsat yo'q",
           "VALIDATION": "So'rov noto'g'ri",
           "ROSTER_PARTIAL": "Panel yaratildi, lekin o'rin tayinlanmadi",
+          "ROSTER_LOCK_FAILED": "Panel yaratildi, lekin baholash boshlanmadi — boshlash uchun panelni oching",
           "INTERNAL_ERROR": "Kutilmagan xato"
         }
       }

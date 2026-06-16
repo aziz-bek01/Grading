@@ -130,8 +130,9 @@ export const BulkPanelRosterSeatSchema = z.object({
  * {@link MAX_BULK_PANEL_POSITIONS} (mirrors the BE MAX_PAGE_SIZE guard — the
  * server returns 400 VALIDATION_FAILED above the cap). The roster reuses the
  * shared seat schema; the trio/min-3 rule is NOT enforced here (BE leaves panels
- * COLLECTING and enforces the floor on lock-roster). No tenant_id is declared so
- * it can never be sent.
+ * COLLECTING and enforces the floor on lock-roster). With start_evaluations the
+ * BE additionally locks each fully-rostered panel and creates the evaluator
+ * sheets. No tenant_id is declared so it can never be sent.
  */
 export const BulkCreatePanelsRequestSchema = z.object({
   methodology_version_id: uuid,
@@ -140,6 +141,7 @@ export const BulkCreatePanelsRequestSchema = z.object({
     .min(1, 'panel.validation.no_positions')
     .max(MAX_BULK_PANEL_POSITIONS, 'panel.validation.too_many_positions'),
   roster: z.array(BulkPanelRosterSeatSchema).optional(),
+  start_evaluations: z.boolean().optional(),
 });
 
 const BulkPanelSeatFailureSchema = z.object({
@@ -155,6 +157,7 @@ const BulkCreatePanelFailureSchema = z.object({
     'ACCESS_DENIED',
     'VALIDATION',
     'ROSTER_PARTIAL',
+    'ROSTER_LOCK_FAILED',
     'INTERNAL_ERROR',
   ]),
   message: z.string(),

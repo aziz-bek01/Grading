@@ -287,6 +287,9 @@ export function EvaluationMatrix({
                   </summary>
                   <textarea
                     data-testid={`comment-${f.code}`}
+                    aria-label={t('evaluation.matrix.comment_aria', {
+                      factor: pickLocalized(f.name_i18n, i18n.language, f.code),
+                    })}
                     defaultValue={
                       scores.find((s) => s.factor_id === f.id)?.comment_text ?? ''
                     }

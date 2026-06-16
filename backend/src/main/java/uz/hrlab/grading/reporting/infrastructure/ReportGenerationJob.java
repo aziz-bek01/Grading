@@ -5,9 +5,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import io.micrometer.core.instrument.Timer;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.metrics.WorkerMetrics;
 import uz.hrlab.grading.integration.storage.ObjectStorageAdapter;
 import uz.hrlab.grading.integration.storage.ObjectStoragePath;
 import uz.hrlab.grading.integration.worker.WorkerRetryPolicy;
@@ -53,15 +55,18 @@ public class ReportGenerationJob {
     private final ObjectStorageAdapter storage;
     private final ReportTemplateRegistry templates;
     private final AuditService audit;
+    private final WorkerMetrics metrics;
 
     public ReportGenerationJob(ReportRepository reports,
                                ObjectStorageAdapter storage,
                                ReportTemplateRegistry templates,
-                               AuditService audit) {
+                               AuditService audit,
+                               WorkerMetrics metrics) {
         this.reports = reports;
         this.storage = storage;
         this.templates = templates;
         this.audit = audit;
+        this.metrics = metrics;
     }
 
     @Async("reportWorkerExecutor")
@@ -86,6 +91,10 @@ public class ReportGenerationJob {
         }
         UUID projectId = report.getProjectId();
         report.incrementAttempt();
+
+        // Observability (Batch 6): STARTED counter + generation Timer (type tag only).
+        metrics.started(WorkerMetrics.JobType.REPORT);
+        Timer.Sample timer = metrics.startTimer();
 
         transition(report, ReportStatus.QUEUED);
         transition(report, ReportStatus.GENERATING);
@@ -138,6 +147,7 @@ public class ReportGenerationJob {
             report.setNextAttemptAt(null);
             report.setFailureReason(null);
             transition(report, ReportStatus.GENERATED);
+            metrics.succeeded(WorkerMetrics.JobType.REPORT);
             audit.record(AuditEvent.builder()
                     .tenantId(tenantId).projectId(projectId)
                     .action(AuditAction.REPORT_GENERATED)
@@ -145,6 +155,8 @@ public class ReportGenerationJob {
                     .reason("size=" + bytes.length).build());
         } catch (RuntimeException e) {
             handleFailure(report, tenantId, projectId, e);
+        } finally {
+            metrics.stopTimer(timer, WorkerMetrics.JobType.REPORT);
         }
         reports.save(report);
     }
@@ -166,11 +178,13 @@ public class ReportGenerationJob {
         if (WorkerRetryPolicy.canRetry(report.getAttemptCount())) {
             report.setNextAttemptAt(WorkerRetryPolicy.nextAttemptAt(OffsetDateTime.now(), report.getAttemptCount()));
             transition(report, ReportStatus.FAILED);
+            metrics.failed(WorkerMetrics.JobType.REPORT);
             log.warn("ReportGenerationJob: report {} failed attempt {} — retry due at {}",
                     report.getId(), report.getAttemptCount(), report.getNextAttemptAt());
         } else {
             report.setNextAttemptAt(null);
             transition(report, ReportStatus.DEAD_LETTER);
+            metrics.deadLetter(WorkerMetrics.JobType.REPORT);
             audit.record(AuditEvent.builder()
                     .tenantId(tenantId).projectId(projectId)
                     .action(AuditAction.REPORT_DEAD_LETTER)

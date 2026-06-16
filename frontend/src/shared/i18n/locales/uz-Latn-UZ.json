@@ -25,6 +25,7 @@
     "back": "Orqaga",
     "retry": "Qayta urinish",
     "close": "Yopish",
+    "skip_to_content": "Mazmunga o'tish",
     "reason_label": "Sabab",
     "reason_required": "Sababni kiriting (kamida 20 ta belgi)",
     "actions": "Amallar",
@@ -68,6 +69,7 @@
     "audit": "Audit jurnali",
     "users_access": "Foydalanuvchilar va ruxsatlar",
     "soon": "Tez orada",
+    "primary_aria": "Asosiy navigatsiya",
     "governance": "Boshqaruv",
     "approvals": "Tasdiqlar",
     "imports": "Importlar",
@@ -520,6 +522,12 @@
     "coming_soon": "AI-yordamchi ko'rib chiqish rejimida. To'liq integratsiya MVP 2'da.",
     "accept": "Qabul qilish",
     "reject": "Rad etish"
+  },
+  "topBar": {
+    "home_aria": "grading.hrlab.uz — bosh sahifa",
+    "active_context": "Faol kompaniya-mijoz: {{tenant}}. Faol loyiha: {{project}}.",
+    "no_tenant": "Barcha kompaniya-mijozlar",
+    "no_project": "tanlanmagan"
   },
   "sidebar": {
     "select_project_first": "Avval loyihani tanlang",
@@ -1030,6 +1038,7 @@
       "missing_required": "{{count}} ta majburiy faktorga daraja tanlanmagan.",
       "factor_raw": "Ball",
       "comment_label": "Izoh",
+      "comment_aria": "{{factor}} omili uchun izoh",
       "comment_placeholder": "Tanlov bo'yicha ixtiyoriy izoh..."
     },
     "preview": {

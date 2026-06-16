@@ -202,7 +202,7 @@ export function Sidebar({ className }: SidebarProps = {}) {
         collapsed ? 'w-16' : 'w-60',
         className,
       )}
-      aria-label="Primary navigation"
+      aria-label={t('nav.primary_aria')}
       data-collapsed={collapsed || undefined}
       data-testid="app-sidebar"
     >

@@ -50,9 +50,15 @@ export function LoginPage() {
           <img src={hrlMarkWhite} alt="HR LABORATORIES" className="h-12 w-auto" />
         </div>
         <div className="relative z-10">
-          <h1 className="text-3xl font-bold tracking-tight">HR LABORATORIES</h1>
+          {/*
+            Decorative brand wordmark — NOT the document heading. The page's
+            single <h1> is the sign-in card title ("Welcome"); making this a
+            heading too would break heading order (h1→h3) when the card title
+            was an h3, and a visual wordmark is not a semantic heading anyway.
+          */}
+          <p className="text-3xl font-bold tracking-tight" aria-hidden>HR LABORATORIES</p>
           {/* Brand tagline is an English constant per 07b §6. */}
-          <p className="mt-2 text-lg text-white/85">People. Systems. Results.</p>
+          <p className="mt-2 text-lg text-white/85" aria-hidden>People. Systems. Results.</p>
         </div>
         <div className="relative z-10 text-sm text-white/70">grading.hrlab.uz</div>
       </section>
@@ -68,7 +74,12 @@ export function LoginPage() {
             <img src={hrlMarkWhite} alt="HR LABORATORIES" className="h-5 w-auto" />
           </span>
         </div>
-        <Card className="w-full max-w-md" title={t('pages.login_title')} subtitle={t('pages.login_subtitle')}>
+        <Card
+          className="w-full max-w-md"
+          titleAs="h1"
+          title={t('pages.login_title')}
+          subtitle={t('pages.login_subtitle')}
+        >
           {env.devAuthEnabled ? (
             <div className="space-y-2">
               <Button fullWidth onClick={() => loginAs('super-admin')}>

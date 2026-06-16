@@ -44,21 +44,21 @@ export function CalibrationTable({ events, factors }: Props) {
     >
       <thead>
         <tr className="text-left text-xs uppercase text-text-muted border-b border-border">
-          <th className="py-2 px-2">{t('evaluation.calibration.col_factor')}</th>
-          <th className="py-2 px-2 text-right">
+          <th scope="col" className="py-2 px-2">{t('evaluation.calibration.col_factor')}</th>
+          <th scope="col" className="py-2 px-2 text-right">
             {t('evaluation.calibration.col_original')}
           </th>
-          <th className="py-2 px-2 text-right">
+          <th scope="col" className="py-2 px-2 text-right">
             {t('evaluation.calibration.col_adjusted')}
           </th>
-          <th className="py-2 px-2 text-right">
+          <th scope="col" className="py-2 px-2 text-right">
             {t('evaluation.calibration.col_delta')}
           </th>
-          <th className="py-2 px-2">{t('evaluation.calibration.col_reason')}</th>
-          <th className="py-2 px-2">
+          <th scope="col" className="py-2 px-2">{t('evaluation.calibration.col_reason')}</th>
+          <th scope="col" className="py-2 px-2">
             {t('evaluation.calibration.col_decided_by')}
           </th>
-          <th className="py-2 px-2">{t('evaluation.calibration.col_when')}</th>
+          <th scope="col" className="py-2 px-2">{t('evaluation.calibration.col_when')}</th>
         </tr>
       </thead>
       <tbody>

@@ -42,13 +42,13 @@ export function ExportCenterPage() {
           <table className="w-full text-sm">
             <thead className="bg-divider text-text-secondary text-xs uppercase">
               <tr>
-                <th className="text-left px-3 py-2">{t('export.col.type')}</th>
-                <th className="text-left px-3 py-2">{t('export.col.format')}</th>
-                <th className="text-left px-3 py-2">{t('export.col.status')}</th>
-                <th className="text-left px-3 py-2">{t('export.col.created_at')}</th>
-                <th className="text-left px-3 py-2">{t('export.col.expires_at')}</th>
-                <th className="text-right px-3 py-2">{t('export.col.size')}</th>
-                <th className="text-right px-3 py-2">{t('common.actions')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('export.col.type')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('export.col.format')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('export.col.status')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('export.col.created_at')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('export.col.expires_at')}</th>
+                <th scope="col" className="text-right px-3 py-2">{t('export.col.size')}</th>
+                <th scope="col" className="text-right px-3 py-2">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>

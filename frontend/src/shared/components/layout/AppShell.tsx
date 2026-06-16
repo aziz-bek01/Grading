@@ -1,16 +1,18 @@
 import { Outlet } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
 import { RouteErrorBoundary } from '@/shared/components/feedback/RouteErrorBoundary';
 
 export function AppShell() {
+  const { t } = useTranslation();
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-primary-500 text-text-inverse px-3 py-1 rounded-md text-sm"
       >
-        Skip to content
+        {t('common.skip_to_content')}
       </a>
       <TopBar />
       {/*

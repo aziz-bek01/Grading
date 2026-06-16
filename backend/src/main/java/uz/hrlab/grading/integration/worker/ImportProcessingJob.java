@@ -5,9 +5,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import io.micrometer.core.instrument.Timer;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.metrics.WorkerMetrics;
 import uz.hrlab.grading.integration.excel.ExcelParser;
 import uz.hrlab.grading.integration.imports.application.ImportTemplateDefinition;
 import uz.hrlab.grading.integration.imports.application.ImportTemplateRegistry;
@@ -53,6 +55,7 @@ public class ImportProcessingJob {
     private final ExcelParser parser;
     private final ImportValidator validator;
     private final AuditService audit;
+    private final WorkerMetrics metrics;
 
     public ImportProcessingJob(ImportBatchRepository batches,
                                ImportErrorRepository errors,
@@ -60,7 +63,8 @@ public class ImportProcessingJob {
                                ObjectStorageAdapter storage,
                                ExcelParser parser,
                                ImportValidator validator,
-                               AuditService audit) {
+                               AuditService audit,
+                               WorkerMetrics metrics) {
         this.batches = batches;
         this.errors = errors;
         this.templates = templates;
@@ -68,6 +72,7 @@ public class ImportProcessingJob {
         this.parser = parser;
         this.validator = validator;
         this.audit = audit;
+        this.metrics = metrics;
     }
 
     @Async("importWorkerExecutor")
@@ -103,12 +108,19 @@ public class ImportProcessingJob {
         // Count this attempt up-front (mirrors the export/report workers).
         batch.incrementAttempt();
 
+        // Observability (Batch 6): STARTED counter + generation Timer (type tag
+        // only). The Timer is stopped in EVERY terminal path (success, transient
+        // failure, dead-letter) via metrics.stopTimer.
+        metrics.started(WorkerMetrics.JobType.IMPORT);
+        Timer.Sample timer = metrics.startTimer();
+
         ImportTemplateDefinition def = templates.find(templateCode).orElse(null);
         if (def == null) {
             // Deterministic config error — retrying cannot help. Dead-letter now.
             recordError(tenantId, batch.getId(), "TEMPLATE_NOT_FOUND",
                     "Unknown template code: " + templateCode, traceId);
             deadLetter(batch, tenantId, projectId, isRetry, "TEMPLATE_NOT_FOUND");
+            metrics.stopTimer(timer, WorkerMetrics.JobType.IMPORT);
             return;
         }
 
@@ -123,6 +135,7 @@ public class ImportProcessingJob {
         } catch (RuntimeException e) {
             // Object-store retrieval is TRANSIENT (network/availability) — retryable.
             handleTransientFailure(batch, tenantId, projectId, "STORAGE_RETRIEVE_ERROR", e);
+            metrics.stopTimer(timer, WorkerMetrics.JobType.IMPORT);
             return;
         }
 
@@ -133,6 +146,7 @@ public class ImportProcessingJob {
             sheet = parser.parse(bytes);
         } catch (RuntimeException e) {
             handleTransientFailure(batch, tenantId, projectId, "PARSE_ERROR", e);
+            metrics.stopTimer(timer, WorkerMetrics.JobType.IMPORT);
             return;
         }
         batch.setTotalRowCount(sheet.rows().size());
@@ -168,6 +182,11 @@ public class ImportProcessingJob {
             transition(batch, ImportBatchStatus.READY_FOR_REVIEW);
             audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_VALIDATED, batch.getId()));
         }
+        // The worker ran to completion without a transient/dead-letter failure.
+        // VALIDATION_FAILED is a DATA outcome (blocking rows), not a worker
+        // failure, so both terminal pipeline states count as a SUCCEEDED run.
+        metrics.succeeded(WorkerMetrics.JobType.IMPORT);
+        metrics.stopTimer(timer, WorkerMetrics.JobType.IMPORT);
         batches.save(batch);
     }
 
@@ -188,12 +207,14 @@ public class ImportProcessingJob {
         if (WorkerRetryPolicy.canRetry(batch.getAttemptCount())) {
             batch.setNextAttemptAt(WorkerRetryPolicy.nextAttemptAt(OffsetDateTime.now(), batch.getAttemptCount()));
             transition(batch, ImportBatchStatus.FAILED);
+            metrics.failed(WorkerMetrics.JobType.IMPORT);
             log.warn("ImportProcessingJob: batch {} failed attempt {} ({}), retry due at {}",
                     batch.getId(), batch.getAttemptCount(), code, batch.getNextAttemptAt());
         } else {
             batch.setNextAttemptAt(null);
             transition(batch, ImportBatchStatus.FAILED);
             transition(batch, ImportBatchStatus.DEAD_LETTER);
+            metrics.deadLetter(WorkerMetrics.JobType.IMPORT);
             audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_DEAD_LETTER, batch.getId()));
             log.error("ImportProcessingJob: batch {} DEAD_LETTER after {} attempts ({})",
                     batch.getId(), batch.getAttemptCount(), code);
@@ -215,6 +236,7 @@ public class ImportProcessingJob {
             transition(batch, ImportBatchStatus.FAILED);
         }
         transition(batch, ImportBatchStatus.DEAD_LETTER);
+        metrics.deadLetter(WorkerMetrics.JobType.IMPORT);
         audit.record(buildAudit(tenantId, projectId, AuditAction.IMPORT_DEAD_LETTER, batch.getId()));
         log.error("ImportProcessingJob: batch {} DEAD_LETTER (non-transient: {})", batch.getId(), code);
     }

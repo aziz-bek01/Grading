@@ -25,6 +25,7 @@
     "back": "Орқага",
     "retry": "Қайта уриниш",
     "close": "Ёпиш",
+    "skip_to_content": "Мазмунга ўтиш",
     "reason_label": "Сабаб",
     "reason_required": "Сабабни киритинг (камида 20 та белги)",
     "actions": "Амаллар",
@@ -68,6 +69,7 @@
     "audit": "Аудит журнали",
     "users_access": "Фойдаланувчилар ва рухсатлар",
     "soon": "Тез орада",
+    "primary_aria": "Асосий навигация",
     "governance": "Бошқарув",
     "approvals": "Тасдиқлар",
     "imports": "Импортлар",
@@ -520,6 +522,12 @@
     "coming_soon": "AI-ёрдамчи кўриб чиқиш режимида. Тўлиқ интеграция MVP 2'да.",
     "accept": "Қабул қилиш",
     "reject": "Рад этиш"
+  },
+  "topBar": {
+    "home_aria": "grading.hrlab.uz — бош саҳифа",
+    "active_context": "Фаол компания-мижоз: {{tenant}}. Фаол лойиҳа: {{project}}.",
+    "no_tenant": "Барча компания-мижозлар",
+    "no_project": "танланмаган"
   },
   "sidebar": {
     "select_project_first": "Аввал лойиҳани танланг",
@@ -1030,6 +1038,7 @@
       "missing_required": "{{count}} та мажбурий факторга даража танланмаган.",
       "factor_raw": "Балл",
       "comment_label": "Изоҳ",
+      "comment_aria": "{{factor}} омили учун изоҳ",
       "comment_placeholder": "Танлов бўйича ихтиёрий изоҳ..."
     },
     "preview": {

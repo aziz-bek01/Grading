@@ -1,11 +1,13 @@
 package uz.hrlab.grading.integration.worker;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.metrics.WorkerMetrics;
 import uz.hrlab.grading.integration.excel.ExcelParser;
 import uz.hrlab.grading.integration.imports.application.ImportTemplateDefinition;
 import uz.hrlab.grading.integration.imports.application.ImportTemplateRegistry;
@@ -65,7 +67,8 @@ class ImportProcessingJobRetryTest {
             auditActions.add(((AuditEvent) inv.getArgument(0)).action());
             return null;
         }).when(audit).record(any(AuditEvent.class));
-        worker = new ImportProcessingJob(batches, errors, templates, storage, parser, validator, audit);
+        worker = new ImportProcessingJob(batches, errors, templates, storage, parser, validator, audit,
+                new WorkerMetrics(new SimpleMeterRegistry()));
 
         ImportTemplateDefinition def = new ImportTemplateDefinition(
                 "ORG_STRUCTURE", "Org structure",

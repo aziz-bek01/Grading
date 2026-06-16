@@ -25,6 +25,7 @@
     "back": "Назад",
     "retry": "Повторить",
     "close": "Закрыть",
+    "skip_to_content": "Перейти к содержимому",
     "reason_label": "Причина",
     "reason_required": "Укажите причину (не менее 20 символов)",
     "actions": "Действия",
@@ -68,6 +69,7 @@
     "audit": "Журнал аудита",
     "users_access": "Пользователи и доступ",
     "soon": "Скоро",
+    "primary_aria": "Основная навигация",
     "governance": "Управление",
     "approvals": "Согласования",
     "imports": "Импорты",
@@ -520,6 +522,12 @@
     "coming_soon": "AI-ассистент доступен в режиме предпросмотра. Полная интеграция в MVP 2.",
     "accept": "Принять",
     "reject": "Отклонить"
+  },
+  "topBar": {
+    "home_aria": "grading.hrlab.uz — на главную",
+    "active_context": "Активная компания-клиент: {{tenant}}. Активный проект: {{project}}.",
+    "no_tenant": "Все компании-клиенты",
+    "no_project": "не выбран"
   },
   "sidebar": {
     "select_project_first": "Сначала выберите проект",
@@ -1030,6 +1038,7 @@
       "missing_required": "Не выбраны уровни у {{count}} обязательных факторов.",
       "factor_raw": "Балл",
       "comment_label": "Комментарий",
+      "comment_aria": "Комментарий к фактору {{factor}}",
       "comment_placeholder": "Необязательные пояснения к выбору уровня..."
     },
     "preview": {

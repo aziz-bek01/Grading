@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.metrics.WorkerMetrics;
 import uz.hrlab.grading.reporting.infrastructure.ReportGenerationJob;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
@@ -71,19 +72,22 @@ public class WorkerReQueuer {
     private final ImportProcessingJob importWorker;
     private final ReportGenerationJob reportWorker;
     private final AuditService audit;
+    private final WorkerMetrics metrics;
 
     public WorkerReQueuer(TenantRepository tenants,
                           WorkerRetryScanner scanner,
                           ExportGenerationJob exportWorker,
                           ImportProcessingJob importWorker,
                           ReportGenerationJob reportWorker,
-                          AuditService audit) {
+                          AuditService audit,
+                          WorkerMetrics metrics) {
         this.tenants = tenants;
         this.scanner = scanner;
         this.exportWorker = exportWorker;
         this.importWorker = importWorker;
         this.reportWorker = reportWorker;
         this.audit = audit;
+        this.metrics = metrics;
     }
 
     /**
@@ -123,14 +127,17 @@ public class WorkerReQueuer {
             // binds app.tenant_id; dispatch happens AFTER, outside that tx.
             for (DueRow row : scanner.dueExports(tenantId, now)) {
                 audit.record(retryAudit(tenantId, row, AuditAction.EXPORT_RETRY_DISPATCHED, "ExportJob"));
+                metrics.retryDispatched(WorkerMetrics.JobType.EXPORT);
                 exportWorker.generate(row.id(), tenantId);
             }
             for (DueRow row : scanner.dueImports(tenantId, now)) {
                 audit.record(retryAudit(tenantId, row, AuditAction.IMPORT_RETRY_DISPATCHED, "ImportBatch"));
+                metrics.retryDispatched(WorkerMetrics.JobType.IMPORT);
                 importWorker.process(row.id(), tenantId);
             }
             for (DueRow row : scanner.dueReports(tenantId, now)) {
                 audit.record(retryAudit(tenantId, row, AuditAction.REPORT_RETRY_DISPATCHED, "Report"));
+                metrics.retryDispatched(WorkerMetrics.JobType.REPORT);
                 reportWorker.generate(row.id(), tenantId);
             }
         } finally {

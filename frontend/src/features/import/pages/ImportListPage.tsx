@@ -111,12 +111,12 @@ export function ImportListPage() {
           <table className="w-full text-sm">
             <thead className="bg-divider text-text-secondary text-xs uppercase">
               <tr>
-                <th className="text-left px-3 py-2">{t('import.col.filename')}</th>
-                <th className="text-left px-3 py-2">{t('import.col.template')}</th>
-                <th className="text-left px-3 py-2">{t('import.col.status')}</th>
-                <th className="text-right px-3 py-2">{t('import.col.rows')}</th>
-                <th className="text-right px-3 py-2">{t('import.col.errors')}</th>
-                <th className="text-left px-3 py-2">{t('import.col.uploaded')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('import.col.filename')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('import.col.template')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('import.col.status')}</th>
+                <th scope="col" className="text-right px-3 py-2">{t('import.col.rows')}</th>
+                <th scope="col" className="text-right px-3 py-2">{t('import.col.errors')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('import.col.uploaded')}</th>
               </tr>
             </thead>
             <tbody>

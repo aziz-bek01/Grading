@@ -1,0 +1,145 @@
+# =============================================================================
+# grading.hrlab.uz — Prometheus alerting rules (Batch 6 observability)
+# =============================================================================
+#
+# Self-contained Prometheus rule groups for the grading API. These are NOT wired
+# to a live Alertmanager here — drop this file into your Prometheus
+# `rule_files:` list (or a PrometheusRule CR if you run the prometheus-operator)
+# and point an Alertmanager route at the `team: hrlab-grading` label.
+#
+# Metric sources (emitted by uz.hrlab.grading.common.metrics.WorkerMetrics and
+# Spring Boot Actuator / Micrometer):
+#   - grading_worker_outcome_total{type,outcome}     counter (export|import|report
+#                                                     × started|succeeded|failed|
+#                                                     dead_letter|retry_dispatched)
+#   - grading_worker_dead_letter_current             gauge  (running dead-letter level)
+#   - grading_worker_generation_seconds{type}        timer  (generation duration)
+#   - up{job="grading-api"}                           Prometheus scrape liveness
+#
+# PRIVACY: none of these metrics carry tenant_id / user_id / project_id / salary
+# values — alerts are aggregate by job type / outcome only.
+#
+# The Prometheus scrape endpoint (/actuator/prometheus) requires auth / internal
+# access; configure the scrape job with the appropriate bearer token or run it
+# inside the cluster network (see infra/helm/grading-api/templates/deployment.yaml
+# prometheus.io/* annotations).
+# =============================================================================
+groups:
+  - name: grading-worker-pipelines
+    rules:
+      # --- Dead-letter present -------------------------------------------------
+      # Any job that exhausted its retry budget (export/import/report) lands in
+      # DEAD_LETTER. dead_letter > 0 means a tenant operation silently failed and
+      # needs human triage — fire fast.
+      - alert: GradingWorkerDeadLetterPresent
+        expr: grading_worker_dead_letter_current > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: hrlab-grading
+        annotations:
+          summary: "Worker dead-letter present ({{ $value }} job(s))"
+          description: >
+            One or more async worker jobs (export/import/report) have exhausted
+            their retry budget and are in DEAD_LETTER. A tenant operation failed
+            permanently. Investigate worker logs (correlationId/tenantId MDC) and
+            re-drive once the root cause is fixed.
+
+      # Defence-in-depth: also alert on the rate of new dead-letter transitions,
+      # so a process restart that resets the in-memory gauge to 0 cannot hide a
+      # genuine dead-letter spike.
+      - alert: GradingWorkerDeadLetterRate
+        expr: sum(increase(grading_worker_outcome_total{outcome="dead_letter"}[15m])) by (type) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: hrlab-grading
+        annotations:
+          summary: "New dead-letters for {{ $labels.type }} worker"
+          description: >
+            {{ $value }} {{ $labels.type }} job(s) transitioned to DEAD_LETTER in
+            the last 15 minutes.
+
+      # --- Worker failure-rate spike ------------------------------------------
+      # Retryable failures are expected occasionally; a sustained high ratio of
+      # FAILED relative to STARTED indicates a downstream outage (object store /
+      # data source / template) rather than a one-off blip.
+      - alert: GradingWorkerFailureRateHigh
+        expr: |
+          (
+            sum(rate(grading_worker_outcome_total{outcome="failed"}[10m])) by (type)
+            /
+            clamp_min(sum(rate(grading_worker_outcome_total{outcome="started"}[10m])) by (type), 1e-9)
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: hrlab-grading
+        annotations:
+          summary: "High failure rate on {{ $labels.type }} worker"
+          description: >
+            More than 50% of {{ $labels.type }} worker attempts have failed
+            (retryable) over the last 10 minutes. Likely a downstream dependency
+            outage (object store / data source / report template).
+
+      # --- Generation latency (p95) -------------------------------------------
+      # A slow generation pipeline backs up the in-process executor. Warn when
+      # the p95 duration crosses a generous ceiling so we notice before a backlog.
+      - alert: GradingWorkerGenerationSlow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(grading_worker_generation_seconds_bucket[10m])) by (le, type)
+          ) > 120
+        for: 10m
+        labels:
+          severity: warning
+          team: hrlab-grading
+        annotations:
+          summary: "{{ $labels.type }} generation p95 > 120s"
+          description: >
+            p95 generation/processing time for the {{ $labels.type }} worker has
+            exceeded 120s over the last 10 minutes — the in-process executor may
+            be backing up.
+
+  - name: grading-audit
+    rules:
+      # --- Audit-write failure -------------------------------------------------
+      # The audit trail is mandatory and append-only. Spring Boot's logback
+      # appender exposes logback event counters via Micrometer
+      # (logback_events_total{level="error"}). A burst of ERROR logs originating
+      # from the audit path is the closest in-process signal that an audit write
+      # failed. This is a coarse guard — wire a dedicated audit-failure counter
+      # if/when one ships. NOTE: requires the actuator logback metrics binder
+      # (on by default with micrometer-core).
+      - alert: GradingErrorLogSpike
+        expr: sum(increase(logback_events_total{level="error"}[5m])) > 20
+        for: 5m
+        labels:
+          severity: warning
+          team: hrlab-grading
+        annotations:
+          summary: "Error-log spike on grading API"
+          description: >
+            More than 20 ERROR-level log events in 5 minutes. Audit-write failures
+            and worker dead-letters surface here; correlate with
+            grading_worker_outcome_total and the audit log table.
+
+  - name: grading-availability
+    rules:
+      # --- API down / health ---------------------------------------------------
+      # The scrape `up` series flips to 0 when Prometheus cannot reach the target
+      # (process down, crash-looping, or the scrape endpoint is unreachable).
+      - alert: GradingApiDown
+        expr: up{job="grading-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: hrlab-grading
+        annotations:
+          summary: "grading-api target is down"
+          description: >
+            Prometheus cannot scrape the grading-api target (up == 0) for 2m. The
+            process may be down, crash-looping, or /actuator/prometheus is
+            unreachable. Check pod status and readiness probe
+            (/actuator/health/readiness).

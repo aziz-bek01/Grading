@@ -5,9 +5,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import io.micrometer.core.instrument.Timer;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.metrics.WorkerMetrics;
 import uz.hrlab.grading.integration.exports.application.ExportContentGenerator;
 import uz.hrlab.grading.integration.exports.domain.ExportJobStatus;
 import uz.hrlab.grading.integration.exports.domain.ExportJobStatusTransitionPolicy;
@@ -56,15 +58,18 @@ public class ExportGenerationJob {
     private final ObjectStorageAdapter storage;
     private final ExportContentGenerator content;
     private final AuditService audit;
+    private final WorkerMetrics metrics;
 
     public ExportGenerationJob(ExportJobRepository jobs,
                                ObjectStorageAdapter storage,
                                ExportContentGenerator content,
-                               AuditService audit) {
+                               AuditService audit,
+                               WorkerMetrics metrics) {
         this.jobs = jobs;
         this.storage = storage;
         this.content = content;
         this.audit = audit;
+        this.metrics = metrics;
     }
 
     @Async("exportWorkerExecutor")
@@ -90,6 +95,11 @@ public class ExportGenerationJob {
         }
         UUID projectId = job.getProjectId();
         job.incrementAttempt();
+
+        // Observability (Batch 6): STARTED counter + a generation Timer. Tagged
+        // by job type only — never by tenant/project/job id.
+        metrics.started(WorkerMetrics.JobType.EXPORT);
+        Timer.Sample timer = metrics.startTimer();
 
         transition(job, ExportJobStatus.QUEUED);
         transition(job, ExportJobStatus.GENERATING);
@@ -126,6 +136,7 @@ public class ExportGenerationJob {
             job.setNextAttemptAt(null);
             job.setFailureReason(null);
             transition(job, ExportJobStatus.GENERATED);
+            metrics.succeeded(WorkerMetrics.JobType.EXPORT);
             audit.record(AuditEvent.builder()
                     .tenantId(tenantId).projectId(projectId)
                     .action(AuditAction.EXPORT_GENERATED)
@@ -133,6 +144,8 @@ public class ExportGenerationJob {
                     .reason("size=" + bytes.length + " rows=" + result.rowCount()).build());
         } catch (RuntimeException e) {
             handleFailure(job, tenantId, projectId, e);
+        } finally {
+            metrics.stopTimer(timer, WorkerMetrics.JobType.EXPORT);
         }
         jobs.save(job);
     }
@@ -155,11 +168,13 @@ public class ExportGenerationJob {
         if (WorkerRetryPolicy.canRetry(job.getAttemptCount())) {
             job.setNextAttemptAt(WorkerRetryPolicy.nextAttemptAt(OffsetDateTime.now(), job.getAttemptCount()));
             transition(job, ExportJobStatus.FAILED);
+            metrics.failed(WorkerMetrics.JobType.EXPORT);
             log.warn("ExportGenerationJob: job {} failed attempt {} — retry due at {}",
                     job.getId(), job.getAttemptCount(), job.getNextAttemptAt());
         } else {
             job.setNextAttemptAt(null);
             transition(job, ExportJobStatus.DEAD_LETTER);
+            metrics.deadLetter(WorkerMetrics.JobType.EXPORT);
             audit.record(AuditEvent.builder()
                     .tenantId(tenantId).projectId(projectId)
                     .action(AuditAction.EXPORT_DEAD_LETTER)

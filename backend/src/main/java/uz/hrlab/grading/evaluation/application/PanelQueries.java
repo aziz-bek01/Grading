@@ -162,8 +162,46 @@ public class PanelQueries {
         } else {
             page = panels.findAllByTenantId(tenant, pageable);
         }
-        return page.map(p -> toSummary(tenant, p));
+        if (page.isEmpty()) {
+            return page.map(p -> null);
+        }
+
+        // PERF — batch the per-row lookups the old toSummary() did one panel at a
+        // time (was 1 + 2N queries for an N-panel page → a position read + a roster
+        // read PER panel). Now: ONE position read + ONE roster read for the whole
+        // page, grouped in memory. Output is byte-identical to the per-row path.
+        Set<UUID> panelIds = new HashSet<>();
+        Set<UUID> positionIds = new HashSet<>();
+        page.getContent().forEach(p -> {
+            panelIds.add(p.getId());
+            positionIds.add(p.getPositionId());
+        });
+
+        Map<UUID, Map<String, String>> titleByPosition = new HashMap<>();
+        positions.findAllByTenantIdAndIdIn(tenant, positionIds)
+                .forEach(p -> titleByPosition.put(p.getId(), p.getTitleI18n()));
+
+        // Group ACTIVE roster seats by panel; precompute (active, completed) counts.
+        Map<UUID, int[]> rosterCounts = new HashMap<>(); // panelId -> [active, completed]
+        for (PanelAssignmentJpaEntity a : assignments.findAllByTenantIdAndPanelIdIn(tenant, panelIds)) {
+            if (!a.getAssignmentStatus().isActive()) {
+                continue;
+            }
+            int[] c = rosterCounts.computeIfAbsent(a.getPanelId(), k -> new int[2]);
+            c[0]++;
+            if (a.getAssignmentStatus() == PanelAssignmentStatus.COMPLETED) {
+                c[1]++;
+            }
+        }
+
+        return page.map(p -> {
+            int[] c = rosterCounts.getOrDefault(p.getId(), EMPTY_COUNTS);
+            return PanelResponse.from(p.toDomain(),
+                    titleByPosition.get(p.getPositionId()), c[0], c[1]);
+        });
     }
+
+    private static final int[] EMPTY_COUNTS = new int[2];
 
     @Transactional(readOnly = true)
     public PanelDetailResponse getPanelDetail(UUID panelId) {
@@ -239,18 +277,30 @@ public class PanelQueries {
         // factor_id -> list of (evaluator, role, score)
         Map<UUID, List<PanelResultResponse.PerEvaluator>> perFactor = new HashMap<>();
         Set<UUID> evalUserIds = new HashSet<>();
-        sheets.forEach(s -> evalUserIds.add(s.getEvaluatorUserId()));
+        Set<UUID> sheetIds = new HashSet<>();
+        sheets.forEach(s -> {
+            evalUserIds.add(s.getEvaluatorUserId());
+            sheetIds.add(s.getId());
+        });
         Map<UUID, String> names = actorNames.resolveAll(tenant, evalUserIds);
-        for (EvaluationJpaEntity sheet : sheets) {
-            for (EvaluationScoreJpaEntity s : scores
-                    .findAllByTenantIdAndEvaluationId(tenant, sheet.getId())) {
-                perFactor.computeIfAbsent(s.getFactorId(), k -> new ArrayList<>())
-                        .add(new PanelResultResponse.PerEvaluator(
-                                sheet.getEvaluatorUserId(),
-                                names.getOrDefault(sheet.getEvaluatorUserId(), null),
-                                sheet.getEvaluatorRole(),
-                                s.getRawFactorScore()));
+
+        // PERF — batch every contributing sheet's scores in ONE tenant-scoped query
+        // (was one findAllByTenantIdAndEvaluationId PER sheet → N round-trips that
+        // grow with the evaluator count). Grouped by evaluation id in memory, then
+        // attributed to the owning sheet for the per-factor breakdown.
+        Map<UUID, EvaluationJpaEntity> sheetById = new HashMap<>();
+        sheets.forEach(s -> sheetById.put(s.getId(), s));
+        for (EvaluationScoreJpaEntity s : scores.findAllByTenantIdAndEvaluationIdIn(tenant, sheetIds)) {
+            EvaluationJpaEntity sheet = sheetById.get(s.getEvaluationId());
+            if (sheet == null) {
+                continue;
             }
+            perFactor.computeIfAbsent(s.getFactorId(), k -> new ArrayList<>())
+                    .add(new PanelResultResponse.PerEvaluator(
+                            sheet.getEvaluatorUserId(),
+                            names.getOrDefault(sheet.getEvaluatorUserId(), null),
+                            sheet.getEvaluatorRole(),
+                            s.getRawFactorScore()));
         }
 
         String locale = ctx.locale() == null ? "ru-RU" : ctx.locale();
@@ -287,21 +337,6 @@ public class PanelQueries {
             if (max == null || v.compareTo(max) > 0) max = v;
         }
         return max.subtract(min);
-    }
-
-    private PanelResponse toSummary(UUID tenant, EvaluationPanelJpaEntity panel) {
-        PositionJpaEntity position = positions
-                .findByIdAndTenantId(panel.getPositionId(), tenant).orElse(null);
-        List<PanelAssignmentJpaEntity> roster = assignments
-                .findAllByTenantIdAndPanelId(tenant, panel.getId()).stream()
-                .filter(a -> a.getAssignmentStatus().isActive())
-                .toList();
-        int completed = (int) roster.stream()
-                .filter(a -> a.getAssignmentStatus() == PanelAssignmentStatus.COMPLETED)
-                .count();
-        return PanelResponse.from(panel.toDomain(),
-                position == null ? null : position.getTitleI18n(),
-                roster.size(), completed);
     }
 
     private TenantContext requireRead() {

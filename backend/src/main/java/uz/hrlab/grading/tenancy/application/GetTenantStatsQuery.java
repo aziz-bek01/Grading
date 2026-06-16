@@ -9,7 +9,6 @@ import uz.hrlab.grading.project.infrastructure.ProjectRepository;
 import uz.hrlab.grading.tenancy.api.TenantStatsResponse;
 
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -57,9 +56,12 @@ public class GetTenantStatsQuery {
         // Cheapest "last activity" probe: take top-1 of the audit feed.
         // Audit table is RANGE-partitioned on created_at so this is a single
         // partition scan via the (tenant_id, created_at DESC) index.
-        List<SystemAuditLogJpaEntity> recent =
-                auditRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
-        OffsetDateTime lastActivity = recent.isEmpty() ? null : recent.get(0).getCreatedAt();
+        // PERF — bounded finder (limit 1); the unbounded variant materialised the
+        // whole tenant feed just to read the head.
+        OffsetDateTime lastActivity = auditRepository
+                .findFirstByTenantIdOrderByCreatedAtDesc(tenantId)
+                .map(SystemAuditLogJpaEntity::getCreatedAt)
+                .orElse(null);
 
         return new TenantStatsResponse(tenantId, projectCount, userCount, lastActivity);
     }

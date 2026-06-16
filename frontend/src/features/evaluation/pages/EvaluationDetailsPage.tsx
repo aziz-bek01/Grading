@@ -169,8 +169,26 @@ export function EvaluationDetailsPage() {
             requestChangesMutation.mutate({ reason })
           }
           onLock={() => lockMutation.mutate()}
+          onLockCancel={() => lockMutation.reset()}
           onArchive={(reason) => archiveMutation.mutate({ reason })}
           onCalibrate={() => setCalibrateOpen(true)}
+          // Pre-lock review summary — built entirely from data already loaded
+          // on this page (no extra backend call). scored = factors with a saved
+          // score; total = factor count in the methodology version.
+          lockSummary={{
+            positionName: positionInfo?.name ?? null,
+            positionCode: positionInfo?.code ?? null,
+            scoredFactors: scores.data?.length ?? null,
+            totalFactors: version.data.factors.length,
+            displayedTotal: evaluation.data.displayed_total_score ?? null,
+          }}
+          lockBusy={lockMutation.isPending}
+          lockError={
+            lockMutation.error
+              ? ((lockMutation.error as Error).message ||
+                t('evaluation.lock.error_generic'))
+              : null
+          }
         />
       </header>
 

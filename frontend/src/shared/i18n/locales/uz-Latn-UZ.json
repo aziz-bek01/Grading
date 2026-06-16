@@ -1056,6 +1056,19 @@
       "archive_title": "Baholash arxivlansinmi?",
       "archive_body": "Arxivdagi baholash faqat o'qish uchun bo'ladi. Sababni ko'rsating."
     },
+    "lock": {
+      "dialog_title": "Qulflashdan oldin tekshiring",
+      "summary_intro": "Siz ushbu baholashni yakunlash arafasidasiz:",
+      "summary_position": "Lavozim",
+      "summary_factors": "Baholangan omillar",
+      "summary_factors_value": "{{total}} tadan {{scored}} ta",
+      "summary_total": "Yakuniy ball",
+      "irreversible_warning": "Qulflash qaytarilmas va bekor qilib boʻlmaydi. List oʻzgarmas boʻlib qoladi — qulflangandan keyin uni tahrirlab boʻlmaydi. Keyinroq ballarni faqat sabab koʻrsatilgan kalibrovka bilan oʻzgartirish mumkin.",
+      "understand_label": "Bu yakuniy ekani va qulflangandan keyin baholashni tahrirlab boʻlmasligini tushunaman.",
+      "confirm": "Baholashni qulflash",
+      "confirming": "Qulflanmoqda…",
+      "error_generic": "Baholashni qulflab boʻlmadi. List tahrirlanadigan holatda qoladi — qayta urinib koʻring."
+    },
     "create": {
       "title": "Yangi baholash",
       "position": "Lavozim",

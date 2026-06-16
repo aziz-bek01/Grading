@@ -5,6 +5,7 @@
  */
 import { httpClient } from '@/shared/api/httpClient';
 import { downloadAuthenticatedFile } from '@/shared/api/downloadFile';
+import { mapPageEnvelope, pick, pickBool, type Raw } from '@/shared/api/wireAdapter';
 import type {
   ExportFormat,
   ExportJob,
@@ -22,22 +23,11 @@ import type {
  * every consumer (Export Center table, detail page, status badges) read
  * camelCase. Without this map `requestedAt`/`generatedAt` are `undefined`
  * → "Invalid Date" badges, and `projectId`/`requestedBy` columns are blank
- * (scout sweep #4). This mirrors `normalizeApprovalRequest` (approvalApi.ts):
- * read snake_case FIRST with a camelCase fallback so both the MSW mock and
- * the real backend deserialise. This is the ONLY case-translation point —
- * no per-component mapping.
+ * (scout sweep #4). The shared `pick` / `pickBool` primitives (wireAdapter.ts)
+ * read snake_case FIRST with a camelCase fallback so both the MSW mock and the
+ * real backend deserialise. This is the ONLY case-translation point — no
+ * per-component mapping.
  * ------------------------------------------------------------------ */
-
-type Raw = Record<string, unknown>;
-
-/** `(raw[snake] ?? raw[camel]) ?? null` — snake_case first, camelCase fallback. */
-function pick<T = string>(raw: Raw, snake: string, camel: string): T | null {
-  return ((raw[snake] ?? raw[camel]) as T | undefined) ?? null;
-}
-
-function pickBool(raw: Raw, snake: string, camel: string): boolean {
-  return Boolean(raw[snake] ?? raw[camel] ?? false);
-}
 
 export function normalizeExportJob(input: unknown): ExportJob {
   const raw = (input ?? {}) as Raw;
@@ -89,15 +79,7 @@ export async function fetchExports(filters: {
   if (filters.page !== undefined) params.page = filters.page;
   if (filters.size !== undefined) params.size = filters.size;
   const res = await httpClient.get<unknown>('/exports', { params });
-  const env = (res.data ?? {}) as Record<string, unknown>;
-  const rawItems = Array.isArray(env.items) ? (env.items as unknown[]) : [];
-  return {
-    items: rawItems.map((r) => normalizeExportJob(r)),
-    page: Number(env.page ?? 0),
-    size: Number(env.size ?? rawItems.length),
-    totalElements: Number(env.total_elements ?? env.totalElements ?? rawItems.length),
-    totalPages: Number(env.total_pages ?? env.totalPages ?? 1),
-  };
+  return mapPageEnvelope(res.data, normalizeExportJob);
 }
 
 export async function fetchExport(id: string): Promise<ExportJob> {

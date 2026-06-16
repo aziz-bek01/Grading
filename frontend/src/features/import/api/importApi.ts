@@ -5,6 +5,7 @@
  * from the JWT (security blueprint API-13).
  */
 import { httpClient } from '@/shared/api/httpClient';
+import { mapPageEnvelope, pick, pickBool, type Raw } from '@/shared/api/wireAdapter';
 import type {
   ImportBatch,
   ImportBatchStatus,
@@ -21,21 +22,11 @@ import type {
  * with `@JsonInclude(NON_NULL)`. The Import domain types + every consumer
  * (Import Center upload history, batch details, error table) read camelCase.
  * Without this map `uploadedAt` is `undefined` → "Invalid Date" and the
- * `projectId` column is blank (scout sweep #5). Mirrors
- * `normalizeApprovalRequest`: snake_case FIRST with a camelCase fallback so
- * both the MSW mock and the real backend deserialise. Single adapter — no
+ * `projectId` column is blank (scout sweep #5). The shared `pick` / `pickBool`
+ * primitives (wireAdapter.ts) read snake_case FIRST with a camelCase fallback
+ * so both the MSW mock and the real backend deserialise. Single adapter — no
  * per-component mapping.
  * ------------------------------------------------------------------ */
-
-type Raw = Record<string, unknown>;
-
-function pick<T = string>(raw: Raw, snake: string, camel: string): T | null {
-  return ((raw[snake] ?? raw[camel]) as T | undefined) ?? null;
-}
-
-function pickBool(raw: Raw, snake: string, camel: string): boolean {
-  return Boolean(raw[snake] ?? raw[camel] ?? false);
-}
 
 export function normalizeImportBatch(input: unknown): ImportBatch {
   const raw = (input ?? {}) as Raw;
@@ -120,15 +111,7 @@ export async function fetchImports(filters: {
   if (filters.page !== undefined) params.page = filters.page;
   if (filters.size !== undefined) params.size = filters.size;
   const res = await httpClient.get<unknown>('/imports', { params });
-  const env = (res.data ?? {}) as Record<string, unknown>;
-  const rawItems = Array.isArray(env.items) ? (env.items as unknown[]) : [];
-  return {
-    items: rawItems.map((r) => normalizeImportBatch(r)),
-    page: Number(env.page ?? 0),
-    size: Number(env.size ?? rawItems.length),
-    totalElements: Number(env.total_elements ?? env.totalElements ?? rawItems.length),
-    totalPages: Number(env.total_pages ?? env.totalPages ?? 1),
-  };
+  return mapPageEnvelope(res.data, normalizeImportBatch);
 }
 
 export async function fetchImport(id: string): Promise<ImportBatch> {
@@ -145,15 +128,7 @@ export async function fetchImportErrors(
   if (filters.page !== undefined) params.page = filters.page;
   if (filters.size !== undefined) params.size = filters.size;
   const res = await httpClient.get<unknown>(`/imports/${id}/errors`, { params });
-  const env = (res.data ?? {}) as Record<string, unknown>;
-  const rawItems = Array.isArray(env.items) ? (env.items as unknown[]) : [];
-  return {
-    items: rawItems.map((r) => normalizeImportError(r)),
-    page: Number(env.page ?? 0),
-    size: Number(env.size ?? rawItems.length),
-    totalElements: Number(env.total_elements ?? env.totalElements ?? rawItems.length),
-    totalPages: Number(env.total_pages ?? env.totalPages ?? 1),
-  };
+  return mapPageEnvelope(res.data, normalizeImportError);
 }
 
 export async function commitImport(id: string): Promise<ImportBatch> {

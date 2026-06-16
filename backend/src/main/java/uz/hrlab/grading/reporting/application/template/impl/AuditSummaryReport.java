@@ -4,13 +4,11 @@ import com.lowagie.text.Document;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.springframework.stereotype.Component;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
+import uz.hrlab.grading.reporting.application.template.AbstractReportTemplate;
 import uz.hrlab.grading.reporting.application.template.DocxBuilder;
 import uz.hrlab.grading.reporting.application.template.PdfBuilder;
 import uz.hrlab.grading.reporting.application.template.ReportDataPort;
 import uz.hrlab.grading.reporting.application.template.ReportGenerationContext;
-import uz.hrlab.grading.reporting.application.template.ReportTemplate;
-import uz.hrlab.grading.reporting.application.template.ReportTemplateException;
-import uz.hrlab.grading.reporting.domain.ReportFormat;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
 import java.io.OutputStream;
@@ -30,7 +28,8 @@ import java.util.Map;
  * <p>Limit: latest {@value #MAX_EVENTS} events newest-first.
  */
 @Component
-public class AuditSummaryReport implements ReportTemplate {
+public class AuditSummaryReport
+        extends AbstractReportTemplate<List<ReportDataPort.AuditEventRow>> {
 
     private static final int MAX_EVENTS = 200;
     private static final DateTimeFormatter TS = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
@@ -45,30 +44,18 @@ public class AuditSummaryReport implements ReportTemplate {
 
     @Override public ReportType reportType() { return ReportType.AUDIT_SUMMARY; }
 
-    @Override public boolean supports(ReportFormat format) {
-        return format == ReportFormat.PDF
-                || format == ReportFormat.DOCX
-                || format == ReportFormat.XLSX;
-    }
-
     @Override
-    public void render(ReportGenerationContext ctx, OutputStream out) {
-        List<ReportDataPort.AuditEventRow> rows =
-                data.loadAuditEvents(ctx.tenantId(), ctx.projectId(),
-                        null, null, MAX_EVENTS);
-        switch (ctx.format()) {
-            case PDF -> renderPdf(ctx, out, rows);
-            case DOCX -> renderDocx(ctx, out, rows);
-            case XLSX -> renderXlsx(out, rows);
-            default -> throw new ReportTemplateException("UNSUPPORTED_FORMAT: " + ctx.format());
-        }
+    protected List<ReportDataPort.AuditEventRow> loadData(ReportGenerationContext ctx) {
+        return data.loadAuditEvents(ctx.tenantId(), ctx.projectId(),
+                null, null, MAX_EVENTS);
     }
 
     private static final List<String> HEADERS =
             List.of("Timestamp", "Action", "Actor", "Entity type", "Entity id", "Reason");
 
-    private void renderPdf(ReportGenerationContext ctx, OutputStream out,
-                           List<ReportDataPort.AuditEventRow> rows) {
+    @Override
+    protected void renderPdf(ReportGenerationContext ctx, OutputStream out,
+                             List<ReportDataPort.AuditEventRow> rows) {
         Document doc = PdfBuilder.open(out);
         try {
             PdfBuilder.heading(doc, ctx.title());
@@ -98,8 +85,9 @@ public class AuditSummaryReport implements ReportTemplate {
         }
     }
 
-    private void renderDocx(ReportGenerationContext ctx, OutputStream out,
-                            List<ReportDataPort.AuditEventRow> rows) {
+    @Override
+    protected void renderDocx(ReportGenerationContext ctx, OutputStream out,
+                              List<ReportDataPort.AuditEventRow> rows) {
         WordprocessingMLPackage pkg = DocxBuilder.create();
         DocxBuilder.heading(pkg.getMainDocumentPart(), ctx.title());
         DocxBuilder.metaLine(pkg.getMainDocumentPart(), "Project",
@@ -122,7 +110,9 @@ public class AuditSummaryReport implements ReportTemplate {
         DocxBuilder.write(pkg, out);
     }
 
-    private void renderXlsx(OutputStream out, List<ReportDataPort.AuditEventRow> rows) {
+    @Override
+    protected void renderXlsx(ReportGenerationContext ctx, OutputStream out,
+                              List<ReportDataPort.AuditEventRow> rows) {
         List<String> cols = List.of("timestamp", "action", "actor", "entity_type",
                 "entity_id", "reason", "correlation_id");
         List<Map<String, String>> dataRows = new ArrayList<>(rows.size());
@@ -137,17 +127,10 @@ public class AuditSummaryReport implements ReportTemplate {
             m.put("correlation_id", nz(r.correlationId()));
             dataRows.add(m);
         }
-        byte[] bytes = excel.write("AuditSummary", cols, dataRows);
-        try {
-            out.write(bytes);
-        } catch (java.io.IOException e) {
-            throw new ReportTemplateException("XLSX_WRITE_FAILED", e);
-        }
+        writeXlsx(out, excel.write("AuditSummary", cols, dataRows));
     }
 
     private static String fmt(OffsetDateTime ts) {
         return ts == null ? "" : TS.format(ts);
     }
-
-    private static String nz(String s) { return s == null ? "" : s; }
 }

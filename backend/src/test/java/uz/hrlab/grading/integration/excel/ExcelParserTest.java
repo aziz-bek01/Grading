@@ -53,6 +53,99 @@ class ExcelParserTest {
     }
 
     // -----------------------------------------------------------------
+    // Batch 5 — import-side formula-injection neutralisation.
+    // The parser is the single choke point: a RAW (not ExcelWriter-written)
+    // workbook whose cells genuinely start with a dangerous prefix must be
+    // neutralised ON READ, before it is staged / committed / echoed back.
+    // -----------------------------------------------------------------
+
+    @Test
+    void rawMaliciousTextCellsAreNeutralisedOnParse() throws Exception {
+        // Build the workbook with raw POI so the dangerous prefixes are NOT
+        // already neutralised by the export-side SafeCellWriter — this proves
+        // the import side does the work independently.
+        byte[] xlsx = rawWorkbook(List.of("name", "note"), List.of(
+                List.of("=cmd|'/C calc'!A1", "@SUM(1+1)"),
+                List.of("-2+3+cmd", "+1+1")));
+        ExcelParser.ParsedSheet sheet = parser.parse(xlsx);
+
+        Map<String, String> r0 = sheet.rows().get(0);
+        Map<String, String> r1 = sheet.rows().get(1);
+        assertThat(r0.get("name")).isEqualTo("'=cmd|'/C calc'!A1");
+        assertThat(r0.get("note")).isEqualTo("'@SUM(1+1)");
+        assertThat(r1.get("name")).isEqualTo("'-2+3+cmd");
+        assertThat(r1.get("note")).isEqualTo("'+1+1");
+    }
+
+    @Test
+    void rawMaliciousHeaderCellIsNeutralisedOnParse() throws Exception {
+        // A header like "=cmd" is echoed into validation error messages that may
+        // be exported as a CSV error report — it must be neutralised on read.
+        byte[] xlsx = rawWorkbook(List.of("=cmd", "name"),
+                List.of(List.of("1", "Alpha")));
+        ExcelParser.ParsedSheet sheet = parser.parse(xlsx);
+        assertThat(sheet.headers().get(0)).isEqualTo("'=cmd");
+        assertThat(sheet.headers().get(1)).isEqualTo("name");
+    }
+
+    @Test
+    void negativeNumberCellIsPreservedNotPrefixed() throws Exception {
+        // A NUMBER (not text) must survive intact — prefixing "-5" would corrupt
+        // a legitimate negative value. POI types it NUMERIC, so the parser must
+        // NOT route it through the sanitiser.
+        byte[] xlsx;
+        try (Workbook wb = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("Test");
+            Row h = sheet.createRow(0);
+            h.createCell(0).setCellValue("amount");
+            Row r = sheet.createRow(1);
+            r.createCell(0).setCellValue(-5d); // numeric, not a string
+            wb.write(out);
+            xlsx = out.toByteArray();
+        }
+        ExcelParser.ParsedSheet sheet = parser.parse(xlsx);
+        assertThat(sheet.rows().get(0).get("amount")).isEqualTo("-5");
+        assertThat(sheet.rows().get(0).get("amount")).doesNotStartWith("'");
+    }
+
+    @Test
+    void leadingZeroTextCodeIsPreservedOnParse() throws Exception {
+        // A code like "0042" arrives as text starting with a digit — never a
+        // dangerous prefix — so it must be passed through unchanged.
+        byte[] xlsx = rawWorkbook(List.of("code"), List.of(List.of("0042")));
+        ExcelParser.ParsedSheet sheet = parser.parse(xlsx);
+        assertThat(sheet.rows().get(0).get("code")).isEqualTo("0042");
+    }
+
+    /**
+     * Build an .xlsx using RAW Apache POI string cells (bypassing
+     * {@link ExcelWriter}/{@link SafeCellWriter}) so test payloads reach the
+     * parser un-neutralised. Every cell is set as an explicit text value.
+     */
+    private static byte[] rawWorkbook(List<String> headers, List<List<String>> rows) throws Exception {
+        try (Workbook wb = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("Test");
+            Row header = sheet.createRow(0);
+            for (int c = 0; c < headers.size(); c++) {
+                header.createCell(c, org.apache.poi.ss.usermodel.CellType.STRING)
+                        .setCellValue(headers.get(c));
+            }
+            for (int r = 0; r < rows.size(); r++) {
+                Row row = sheet.createRow(r + 1);
+                List<String> cells = rows.get(r);
+                for (int c = 0; c < cells.size(); c++) {
+                    row.createCell(c, org.apache.poi.ss.usermodel.CellType.STRING)
+                            .setCellValue(cells.get(c));
+                }
+            }
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    // -----------------------------------------------------------------
     // Sheet selection — guide sheet (sheet #2) must be ignored on upload
     // -----------------------------------------------------------------
 

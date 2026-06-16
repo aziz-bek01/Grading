@@ -5,6 +5,10 @@ import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog'
 import { ReasonRequiredDialog } from '@/shared/components/confirm-dialog/ReasonRequiredDialog';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import {
+  LockEvaluationDialog,
+  type LockSummary,
+} from './LockEvaluationDialog';
 import type { EvaluationStatus } from '../types';
 
 interface Props {
@@ -15,8 +19,19 @@ interface Props {
   onApprove?: () => void;
   onRequestChanges?: (reason: string) => void;
   onLock?: () => void;
+  /** Fired when the pre-lock review dialog is cancelled (clears any lock error). */
+  onLockCancel?: () => void;
   onArchive?: (reason: string) => void;
   onCalibrate?: () => void;
+  /**
+   * Summary shown in the pre-lock review step — sourced from data already on
+   * the page (no extra backend call). Omit when no summary is available.
+   */
+  lockSummary?: LockSummary;
+  /** True while the lock mutation is in flight (keeps the review dialog open). */
+  lockBusy?: boolean;
+  /** Localized error from a failed lock; keeps the dialog open + sheet editable. */
+  lockError?: string | null;
 }
 
 /**
@@ -38,8 +53,12 @@ export function EvaluationActionsBar({
   onApprove,
   onRequestChanges,
   onLock,
+  onLockCancel,
   onArchive,
   onCalibrate,
+  lockSummary,
+  lockBusy = false,
+  lockError = null,
 }: Props) {
   const { t } = useTranslation();
   const [confirmApprove, setConfirmApprove] = useState(false);
@@ -145,15 +164,25 @@ export function EvaluationActionsBar({
         onCancel={() => setConfirmApprove(false)}
       />
 
-      <ConfirmDialog
-        open={confirmLock}
-        title={t('evaluation.confirm.lock_title')}
-        body={t('evaluation.confirm.lock_body')}
-        onConfirm={() => {
+      {/*
+        Lock uses a dedicated REVIEW + CONFIRM dialog (not the generic
+        ConfirmDialog): locking is irreversible, so the evaluator must review a
+        summary, acknowledge an "I understand this is final" checkbox, and the
+        dialog stays open with a spinner while the mutation runs. We do NOT close
+        it on confirm — the parent closes it by flipping `status` away from
+        APPROVED (the Lock button disappears) once the lock succeeds; on error
+        it stays open with the message so the sheet remains editable.
+      */}
+      <LockEvaluationDialog
+        open={confirmLock && status === 'APPROVED'}
+        summary={lockSummary}
+        busy={lockBusy}
+        error={lockError}
+        onConfirm={() => onLock?.()}
+        onCancel={() => {
           setConfirmLock(false);
-          onLock?.();
+          onLockCancel?.();
         }}
-        onCancel={() => setConfirmLock(false)}
       />
 
       <ReasonRequiredDialog

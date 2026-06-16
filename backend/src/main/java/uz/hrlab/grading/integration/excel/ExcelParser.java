@@ -77,7 +77,12 @@ public class ExcelParser {
             List<String> headers = new ArrayList<>();
             for (int c = headerRow.getFirstCellNum(); c < headerRow.getLastCellNum(); c++) {
                 Cell cell = headerRow.getCell(c);
-                String h = cell == null ? "" : FORMATTER.formatCellValue(cell).trim();
+                // Header text is echoed into validation error messages (which can
+                // be exported as a CSV error report) — sanitise it on read too so
+                // a malicious header like "=cmd" cannot become an executable
+                // formula in that downstream export (Batch 5).
+                String h = cell == null ? ""
+                        : ImportCellSanitizer.sanitizeText(FORMATTER.formatCellValue(cell).trim());
                 headers.add(h);
             }
             // duplicate column check
@@ -130,21 +135,50 @@ public class ExcelParser {
         return wb.getSheetAt(0);
     }
 
+    /**
+     * Extract a single cell as a String — the SINGLE import-side choke point
+     * where a raw POI cell becomes a domain/staging value.
+     *
+     * <p>Batch 5 (formula-injection hardening, import side): every cell that is
+     * read as <b>text</b> is routed through {@link ImportCellSanitizer} so a
+     * malicious value beginning with {@code = + - @ \t \r \n} is neutralised on
+     * the way in (mirrors {@link SafeCellWriter} on the export side). NUMERIC
+     * and date cells are NOT sanitised — a number parsed as a number (e.g. a
+     * negative {@code -5}) is not a formula-injection vector, and prefixing it
+     * would corrupt legitimate values.
+     */
     private static String readCell(Cell cell, FormulaEvaluator evaluator) {
         if (cell == null) return "";
         CellType type = cell.getCellType();
         if (type == CellType.FORMULA) {
             // Evaluate to a value — we never trust user formulas downstream.
+            // A formula whose cached/evaluated result is a STRING is a text
+            // cell and MUST be sanitised; a numeric/boolean result is not.
+            String value;
             try {
-                return FORMATTER.formatCellValue(cell, evaluator);
+                value = FORMATTER.formatCellValue(cell, evaluator);
             } catch (Exception e) {
-                return FORMATTER.formatCellValue(cell);
+                value = FORMATTER.formatCellValue(cell);
             }
+            return cell.getCachedFormulaResultType() == CellType.STRING
+                    ? ImportCellSanitizer.sanitizeText(value)
+                    : value;
         }
-        if (type == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
-            return cell.getLocalDateTimeCellValue().toString();
+        if (type == CellType.NUMERIC) {
+            if (DateUtil.isCellDateFormatted(cell)) {
+                return cell.getLocalDateTimeCellValue().toString();
+            }
+            // Pure number — formatted as a number, never a formula vector.
+            return FORMATTER.formatCellValue(cell);
         }
-        return FORMATTER.formatCellValue(cell);
+        if (type == CellType.STRING) {
+            // The only user free-text branch — sanitise on the way in.
+            return ImportCellSanitizer.sanitizeText(FORMATTER.formatCellValue(cell));
+        }
+        // BOOLEAN / BLANK / ERROR — DataFormatter yields a fixed token
+        // ("TRUE"/"FALSE"/""/"#REF!"); none can begin with a dangerous prefix,
+        // but route through the sanitiser anyway so the rule has no gap.
+        return ImportCellSanitizer.sanitizeText(FORMATTER.formatCellValue(cell));
     }
 
     public record ParsedSheet(List<String> headers, List<Map<String, String>> rows) { }

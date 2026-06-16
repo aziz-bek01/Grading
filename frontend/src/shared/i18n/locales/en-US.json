@@ -1056,6 +1056,19 @@
       "archive_title": "Archive evaluation?",
       "archive_body": "Archived evaluations are read-only. Provide a reason."
     },
+    "lock": {
+      "dialog_title": "Review before locking",
+      "summary_intro": "You are about to finalise this evaluation:",
+      "summary_position": "Position",
+      "summary_factors": "Scored factors",
+      "summary_factors_value": "{{scored}} of {{total}}",
+      "summary_total": "Total score",
+      "irreversible_warning": "Locking is permanent and cannot be undone. The sheet becomes immutable — you will not be able to edit it afterward. Only a calibration with a recorded reason can change scores later.",
+      "understand_label": "I understand this is final and the evaluation cannot be edited after locking.",
+      "confirm": "Lock evaluation",
+      "confirming": "Locking…",
+      "error_generic": "Could not lock the evaluation. The sheet stays editable — please try again."
+    },
     "create": {
       "title": "New evaluation",
       "position": "Position",

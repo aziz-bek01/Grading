@@ -219,7 +219,13 @@
     "column_actions": "Actions",
     "empty_title": "No projects yet",
     "empty_body": "Create the first grading project for this company-client.",
-    "list_subtitle_for_tenant": "Grading projects for client company \"{{tenant}}\"."
+    "list_subtitle_for_tenant": "Grading projects for client company \"{{tenant}}\".",
+    "code_immutable_hint": "The code cannot be changed — it is the project's immutable identifier.",
+    "code_taken": "This code is already taken. Choose another one.",
+    "save_error": "Could not save the project. Please try again.",
+    "archive_confirm_title": "Archive project?",
+    "archive_confirm_body": "Project \"{{name}}\" will be moved to the archive. It can no longer be edited.",
+    "archive_error": "Could not archive the project. Please try again."
   },
   "organization": {
     "page_title": "Organization structure",

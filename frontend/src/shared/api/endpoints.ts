@@ -29,6 +29,8 @@ export const endpoints = {
   projects: {
     list: '/projects',
     detail: (projectId: string) => `/projects/${projectId}`,
+    /** POST /projects/{id}/archive — soft-delete (status → ARCHIVED), PROJECT_EDIT. */
+    archive: (projectId: string) => `/projects/${projectId}/archive`,
     workflowProgress: (projectId: string) => `/projects/${projectId}/workflow-progress`,
   },
   departments: {

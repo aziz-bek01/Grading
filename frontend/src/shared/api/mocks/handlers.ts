@@ -164,10 +164,19 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
     const raw = readBody<Partial<MockProject> & Record<string, unknown>>(config);
     const body = stripTenantFromBody(raw, '/projects', 'POST') as Partial<MockProject>;
     const tenantId = resolveMockTenantId(config);
+    const code = body.code ?? 'NEW';
+    // Mirror the backend uniqueness contract (uq_projects_tenant_code): a
+    // duplicate code within the tenant → 409 PROJECT_CODE_TAKEN.
+    const dup = mockDb.projects.some(
+      (p) => p.tenant_id === tenantId && p.code.toUpperCase() === code.toUpperCase(),
+    );
+    if (dup) {
+      return { status: 409, body: { code: 'PROJECT_CODE_TAKEN', message: 'Project code already taken' } };
+    }
     const next: MockProject = {
       id: uuid(),
       tenant_id: tenantId,
-      code: body.code ?? 'NEW',
+      code,
       name_i18n: body.name_i18n ?? {},
       description: body.description,
       status: 'DRAFT',
@@ -178,6 +187,18 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
     mockDb.projects.unshift(next);
     return ok(next, 201);
   }
+  // POST /projects/:id/archive — soft-delete (status → ARCHIVED).
+  const projectArchive = /^\/projects\/([^/]+)\/archive$/.exec(path);
+  if (projectArchive && method === 'POST') {
+    const project = mockDb.projects.find((p) => p.id === projectArchive[1]);
+    if (!project) return notFound();
+    if (project.status === 'ARCHIVED' || project.status === 'LOCKED') {
+      return { status: 409, body: { code: 'INVALID_TRANSITION', message: `Cannot archive in ${project.status}` } };
+    }
+    project.status = 'ARCHIVED';
+    project.updated_at = new Date().toISOString();
+    return ok(project);
+  }
   const projectMatch = /^\/projects\/([^/]+)$/.exec(path);
   if (projectMatch) {
     const id = projectMatch[1];
@@ -185,9 +206,16 @@ function handleProjects(method: string, path: string, _query: URLSearchParams, c
     if (!project) return notFound();
     if (method === 'GET') return ok(project);
     if (method === 'PATCH') {
+      if (project.status === 'ARCHIVED' || project.status === 'LOCKED') {
+        return { status: 409, body: { code: 'INVALID_TRANSITION', message: `Cannot edit in ${project.status}` } };
+      }
       const raw = readBody<Partial<MockProject> & Record<string, unknown>>(config);
       const body = stripTenantFromBody(raw, path, 'PATCH') as Partial<MockProject>;
-      Object.assign(project, body, { updated_at: new Date().toISOString() });
+      // The project code is IMMUTABLE — the backend ignores it on update, so the
+      // mock drops it too (defends the "codes are never rewritten" guarantee even
+      // if a caller mistakenly sends one).
+      const { code: _ignoredCode, ...mutable } = body;
+      Object.assign(project, mutable, { updated_at: new Date().toISOString() });
       return ok(project);
     }
   }

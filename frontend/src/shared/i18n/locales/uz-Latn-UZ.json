@@ -219,7 +219,13 @@
     "column_actions": "Amallar",
     "empty_title": "Loyihalar yoʻq",
     "empty_body": "Ushbu mijoz-kompaniya uchun birinchi greyding loyihasini yarating.",
-    "list_subtitle_for_tenant": "\"{{tenant}}\" mijoz-kompaniyasi uchun greyding loyihalari."
+    "list_subtitle_for_tenant": "\"{{tenant}}\" mijoz-kompaniyasi uchun greyding loyihalari.",
+    "code_immutable_hint": "Kodni oʻzgartirib boʻlmaydi — bu loyihaning oʻzgarmas identifikatori.",
+    "code_taken": "Bu kod allaqachon ishlatilgan. Boshqa kod tanlang.",
+    "save_error": "Loyihani saqlab boʻlmadi. Qayta urinib koʻring.",
+    "archive_confirm_title": "Loyiha arxivlansinmi?",
+    "archive_confirm_body": "\"{{name}}\" loyihasi arxivga oʻtkaziladi. Keyinchalik uni tahrirlab boʻlmaydi.",
+    "archive_error": "Loyihani arxivlab boʻlmadi. Qayta urinib koʻring."
   },
   "organization": {
     "page_title": "Tashkiliy tuzilma",

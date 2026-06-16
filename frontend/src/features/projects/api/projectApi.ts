@@ -49,5 +49,17 @@ export async function updateProject(id: string, payload: ProjectUpdatePayload): 
   return res.data;
 }
 
+/**
+ * Archive (soft-delete) a project — status → ARCHIVED.
+ *
+ * POST /projects/{id}/archive (PROJECT_EDIT). The backend rejects archiving an
+ * already-ARCHIVED/LOCKED project; the UI also hides the action for those
+ * statuses so the round-trip is normally avoided.
+ */
+export async function archiveProject(id: string): Promise<Project> {
+  const res = await httpClient.post<Project>(endpoints.projects.archive(id));
+  return res.data;
+}
+
 // Re-export so noTenantIdLeak test + legacy callers keep working.
 export { fetchWorkflowProgress } from '@/features/workflow/api/workflowApi';

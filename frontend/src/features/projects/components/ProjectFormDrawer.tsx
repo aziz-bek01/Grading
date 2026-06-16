@@ -11,12 +11,22 @@ interface ProjectFormDrawerProps {
   open: boolean;
   initial?: Project;
   readOnly?: boolean;
+  /**
+   * Localized mutation error (create/update) surfaced as a banner near the top.
+   * The page maps PROJECT_CODE_TAKEN here so a failed create is no longer silent.
+   */
+  error?: string;
   onClose: () => void;
   onSubmit: (data: ProjectCreateInput) => Promise<void> | void;
 }
 
-export function ProjectFormDrawer({ open, initial, readOnly, onClose, onSubmit }: ProjectFormDrawerProps) {
+export function ProjectFormDrawer({ open, initial, readOnly, error, onClose, onSubmit }: ProjectFormDrawerProps) {
   const { t } = useTranslation();
+  // In edit mode the project code is the immutable identifier (PATCH ignores it,
+  // and there is a DB unique index). Render it read-only so the "codes are never
+  // rewritten" guarantee is visible in the UI.
+  const isEdit = Boolean(initial);
+  const codeReadOnly = readOnly || isEdit;
   const {
     register,
     handleSubmit,
@@ -47,8 +57,16 @@ export function ProjectFormDrawer({ open, initial, readOnly, onClose, onSubmit }
   }, [open, initial, reset]);
 
   const submit = handleSubmit(async (data) => {
-    await onSubmit(data);
-    onClose();
+    // Close ONLY on success. When the mutation rejects (e.g. PROJECT_CODE_TAKEN)
+    // the page surfaces the message via the `error` prop and the drawer stays
+    // open so the user can correct the input. We swallow the rejection here so it
+    // does not bubble as an unhandled promise rejection.
+    try {
+      await onSubmit(data);
+      onClose();
+    } catch {
+      /* error already surfaced by the page through the `error` prop */
+    }
   });
 
   const errMessage = (key: string | undefined) => (key ? t(`projects.${key}`, { defaultValue: key }) : undefined);
@@ -62,6 +80,16 @@ export function ProjectFormDrawer({ open, initial, readOnly, onClose, onSubmit }
       readOnly={readOnly}
       submitLabel={t('common.save')}
     >
+      {error ? (
+        <div
+          role="alert"
+          data-testid="project-form-error"
+          className="rounded-md border border-danger-500/30 bg-danger-50 text-danger-700 text-sm p-3"
+        >
+          {error}
+        </div>
+      ) : null}
+
       <div>
         <label htmlFor="project-code" className="text-sm font-medium text-text-primary">
           {t('projects.field_code')} <span className="text-danger-700">*</span>
@@ -69,12 +97,17 @@ export function ProjectFormDrawer({ open, initial, readOnly, onClose, onSubmit }
         <input
           id="project-code"
           type="text"
-          disabled={readOnly}
+          disabled={codeReadOnly}
+          aria-readonly={codeReadOnly || undefined}
           {...register('code')}
-          className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-divider"
+          className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-divider disabled:text-text-secondary"
           data-testid="project-code"
         />
-        <p className="text-xs text-text-secondary mt-1">{t('projects.field_code_hint')}</p>
+        <p className="text-xs text-text-secondary mt-1">
+          {/* In edit mode the code is locked — explain WHY (immutable identifier);
+              in create mode keep the original formatting hint. */}
+          {isEdit ? t('projects.code_immutable_hint') : t('projects.field_code_hint')}
+        </p>
         {errors.code ? <p className="text-xs text-danger-700 mt-1" role="alert">{errors.code.message}</p> : null}
       </div>
 

@@ -234,6 +234,30 @@ jobs:
             # serving the previous version.
             $COMPOSE --profile migrate run --rm grading-migrator
 
+            # OPT-IN object storage. ONLY when the operator set
+            # GRADING_STORAGE_TYPE=minio in .env.prod do we start the MinIO
+            # service (health-gated) BEFORE rolling the api so the api comes up
+            # with a ready backend. When NOT enabled, this whole block is skipped
+            # and the roll is EXACTLY as before (default path = local-FS).
+            if grep -Eq '^[[:space:]]*GRADING_STORAGE_TYPE[[:space:]]*=[[:space:]]*minio([[:space:]]|$)' .env.prod; then
+              echo '== Object storage ENABLED (GRADING_STORAGE_TYPE=minio) — bringing up grading-minio =='
+              $COMPOSE --profile storage up -d grading-minio
+              # Wait for MinIO to report healthy before rolling the api (same
+              # retry/timeout cadence as the Postgres readiness gate above).
+              for i in $(seq 1 30); do
+                s=$(docker inspect -f '{{.State.Health.Status}}' grading-minio-prod 2>/dev/null || echo none)
+                echo "minio health: $s ($i/30)"
+                [ "$s" = "healthy" ] && break
+                sleep 3
+              done
+              if [ "$(docker inspect -f '{{.State.Health.Status}}' grading-minio-prod 2>/dev/null || echo none)" != "healthy" ]; then
+                echo "FATAL: grading-minio did not become healthy — aborting roll (api keeps serving previous version)." >&2
+                exit 1
+              fi
+            else
+              echo '== Object storage DISABLED (default local-FS) — grading-minio NOT started =='
+            fi
+
             echo '== Rolling api + frontend to the new immutable tag =='
             $COMPOSE up -d grading-api grading-frontend
 

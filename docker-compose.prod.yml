@@ -159,6 +159,10 @@ services:
       # keeps its transient RSS modest so it does not contend with the still-
       # running old api during a deploy on the 2GB box.
       JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=55.0 -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
+      # Defense-in-depth: the DDL migrator never needs object storage and must
+      # NEVER reach MinIO. Pin it to local-FS regardless of what .env.prod sets
+      # for the runtime api. (Hardcoded, NOT env-overridable on purpose.)
+      GRADING_STORAGE_TYPE: local
     # Run Liquibase update only, no Spring web server, then exit.
     # NOTE: $$JAVA_OPTS escapes Compose interpolation so the literal $JAVA_OPTS
     # reaches the shell and is expanded from the container env at runtime
@@ -248,6 +252,24 @@ services:
       GRADING_IDP_ZITADEL_API_BASE: ${GRADING_IDP_ZITADEL_API_BASE:-}
       GRADING_IDP_ZITADEL_ORG_ID: ${GRADING_IDP_ZITADEL_ORG_ID:-}
       GRADING_IDP_ZITADEL_TOKEN: ${GRADING_IDP_ZITADEL_TOKEN:-}
+      # --- Object storage (report/import artifacts) ---
+      # OPT-IN, default = local-FS so this block changes NOTHING until an operator
+      # flips GRADING_STORAGE_TYPE=minio in .env.prod on the VPS. Spring relaxed-
+      # binds these to grading.storage.* (selected by grading.storage.type).
+      #   * type unset/blank -> `local`: the api writes artifacts to its tmpfs /tmp
+      #     path exactly as today; the grading-minio service stays DOWN (it is
+      #     behind the `storage` profile and never starts).
+      #   * type=minio -> the api reaches the internal MinIO at grading-minio:9000
+      #     using the MINIO_ROOT_* creds; the bucket auto-creates on first use.
+      # The access/secret keys default to the SAME MinIO root creds so a single
+      # pair in .env.prod configures both the server and the client. They default
+      # to "" when MinIO is not configured (the local path never reads them).
+      GRADING_STORAGE_TYPE: ${GRADING_STORAGE_TYPE:-local}
+      GRADING_STORAGE_MINIO_ENDPOINT: ${GRADING_STORAGE_MINIO_ENDPOINT:-http://grading-minio:9000}
+      GRADING_STORAGE_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-}
+      GRADING_STORAGE_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-}
+      GRADING_STORAGE_MINIO_BUCKET: ${MINIO_BUCKET:-grading}
+      GRADING_STORAGE_MINIO_REGION: ${MINIO_REGION:-us-east-1}
       # --- JVM ---
       # Heap is sized as a percentage of the ENFORCED container limit (mem_limit
       # below). With mem_limit=820m and MaxRAMPercentage=62 -> max heap ~508MB,
@@ -347,9 +369,72 @@ services:
           memory: 16M
     logging: *default-logging
 
+  # ---------------------------------------------------------------------------
+  # grading-minio — S3-compatible object storage for report/import artifacts.
+  #   OPT-IN + ISOLATED. Behind `profiles: ["storage"]` so it does NOT start
+  #   with the default stack — it is only brought up when an operator enables
+  #   MinIO (GRADING_STORAGE_TYPE=minio) and the deploy adds `--profile storage`.
+  #
+  #   INTERNAL-ONLY, NOT public:
+  #     * NO public `ports:` for the S3 API (:9000). The api reaches it in-cluster
+  #       at grading-minio:9000 over the private `grading-prod` bridge ONLY.
+  #     * The web console (:9001) is bound to 127.0.0.1 ONLY (loopback on the
+  #       VPS, never the public interface) for occasional operator access over an
+  #       SSH tunnel. Remove the `ports:` line entirely to disable the console.
+  #
+  #   Credentials come from .env.prod (MINIO_ROOT_USER / MINIO_ROOT_PASSWORD) —
+  #   NEVER committed. These double as the api's access/secret key (see the
+  #   grading-api GRADING_STORAGE_MINIO_* block above).
+  # ---------------------------------------------------------------------------
+  grading-minio:
+    # Pinned, immutable MinIO release tag — never `latest`.
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: grading-minio-prod
+    restart: unless-stopped
+    profiles: ["storage"]                  # never starts unless storage is enabled
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      # Console ONLY on loopback (operator access via SSH tunnel). The S3 API
+      # (:9000) is deliberately NOT published — internal network access only.
+      - "127.0.0.1:19001:9001"
+    volumes:
+      - grading-minio-data:/data
+    networks: [grading-prod]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # MinIO's built-in cluster readiness endpoint. `curl` is bundled in the
+      # minio/minio image. Probes loopback :9000 INSIDE the container (the S3 API
+      # is internal-only and not published to the host).
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # ENFORCED hard limits — honored by `docker compose up` (non-swarm). MinIO is
+    # lean for light artifact traffic on the 2GB box; 256m is ample. memswap_limit
+    # == mem_limit -> no swap, keeps RSS predictable alongside the JVM api.
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+    logging: *default-logging
+
 volumes:
   grading-pg-data-prod:
     name: grading-pg-data-prod
+  grading-minio-data:
+    name: grading-minio-data
 
 networks:
   grading-prod:

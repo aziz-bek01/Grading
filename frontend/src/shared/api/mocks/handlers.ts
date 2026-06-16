@@ -103,6 +103,8 @@ interface MatchResult {
   body: unknown;
   /** Optional content-type override (default: application/json). Used by blob/template responses. */
   contentType?: string;
+  /** Optional extra response headers (e.g. Content-Disposition for downloads). */
+  headers?: Record<string, string>;
 }
 
 function uuid(): string {
@@ -4150,9 +4152,14 @@ function handleExports(
   }
 
   // GET /exports/:id/download-url
-  const dl = /^\/exports\/([^/]+)\/download-url$/.exec(path);
-  if (dl && method === 'GET') {
-    const j = mockDb.exportJobs.find((x) => x.id === dl[1]);
+  //
+  // New contract (BE Batch 2): returns a same-origin RELATIVE path to the
+  // authenticated streaming endpoint — NOT a token-bearing storage URL. The FE
+  // download helper now hits `/exports/{id}/download` directly via the auth'd
+  // httpClient, so this endpoint is kept only for forward/back compatibility.
+  const dlUrl = /^\/exports\/([^/]+)\/download-url$/.exec(path);
+  if (dlUrl && method === 'GET') {
+    const j = mockDb.exportJobs.find((x) => x.id === dlUrl[1]);
     if (!j) return notFound();
     if (j.status !== 'GENERATED' && j.status !== 'DOWNLOADED') {
       return {
@@ -4160,19 +4167,33 @@ function handleExports(
         body: { code: 'NOT_DOWNLOADABLE', message: `Export not in downloadable state (${j.status})` },
       };
     }
+    return ok({ url: `/api/v1/exports/${j.id}/download` });
+  }
+
+  // GET /exports/:id/download — authenticated byte stream (Batch 2 contract).
+  // Streams the file with Content-Type + Content-Disposition set server-side.
+  const dl = /^\/exports\/([^/]+)\/download$/.exec(path);
+  if (dl && method === 'GET') {
+    const j = mockDb.exportJobs.find((x) => x.id === dl[1]);
+    if (!j) return notFound();
+    if (j.status !== 'GENERATED' && j.status !== 'DOWNLOADED') {
+      return {
+        status: 400,
+        body: { code: 'NOT_DOWNLOADABLE', message: `Export not in downloadable state (${j.status})` },
+      };
+    }
     j.downloaded_at = new Date().toISOString();
     if (j.status === 'GENERATED') j.status = 'DOWNLOADED';
-    // Generate a real file (CSV with DEMO banner) and serve via blob URL so
-    // the browser performs a real download instead of navigating to a stub
-    // hostname. See PO spec §6.2.
-    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-      const blob = exportBlobFor(j.export_type);
-      const url = URL.createObjectURL(blob);
-      j.signed_url = url;
-      return ok({ url });
-    }
-    // Fallback (non-browser env): keep prior stub.
-    return ok({ url: j.signed_url ?? `https://mock-storage.local/exports/${j.id}/result.xlsx?sig=stub` });
+    const blob = exportBlobFor(j.export_type);
+    const filename = `${j.export_type.toLowerCase()}_${j.id}.csv`;
+    return {
+      status: 200,
+      body: blob,
+      // DEMO bytes are CSV regardless of the requested format so a real file
+      // always opens; the real backend honours the requested xlsx/pdf/docx.
+      contentType: 'text/csv;charset=utf-8',
+      headers: { 'content-disposition': `attachment; filename="${filename}"` },
+    };
   }
 
   // POST /exports/:id/cancel
@@ -4321,9 +4342,13 @@ function handleReports(
   }
 
   // GET /reports/:id/download-url  (matched BEFORE /reports/:id)
-  const dl = /^\/reports\/([^/]+)\/download-url$/.exec(path);
-  if (dl && method === 'GET') {
-    const r = mockDb.reports.find((x) => x.id === dl[1]);
+  //
+  // New contract (BE Batch 2): returns a same-origin RELATIVE path to the
+  // authenticated streaming endpoint. Kept for compatibility; the FE download
+  // helper now hits `/reports/{id}/download` directly via the auth'd client.
+  const dlUrl = /^\/reports\/([^/]+)\/download-url$/.exec(path);
+  if (dlUrl && method === 'GET') {
+    const r = mockDb.reports.find((x) => x.id === dlUrl[1]);
     if (!r) return notFound();
     if (r.status !== 'GENERATED' && r.status !== 'DOWNLOADED') {
       return {
@@ -4331,19 +4356,30 @@ function handleReports(
         body: { code: 'NOT_DOWNLOADABLE', message: `Report not in downloadable state (${r.status})` },
       };
     }
+    return ok({ url: `/api/v1/reports/${r.id}/download` });
+  }
+
+  // GET /reports/:id/download — authenticated byte stream (Batch 2 contract).
+  const dl = /^\/reports\/([^/]+)\/download$/.exec(path);
+  if (dl && method === 'GET') {
+    const r = mockDb.reports.find((x) => x.id === dl[1]);
+    if (!r) return notFound();
+    if (r.status !== 'GENERATED' && r.status !== 'DOWNLOADED') {
+      return {
+        status: 400,
+        body: { code: 'NOT_DOWNLOADABLE', message: `Report not in downloadable state (${r.status})` },
+      };
+    }
     r.downloaded_at = new Date().toISOString();
     if (r.status === 'GENERATED') r.status = 'DOWNLOADED';
-    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-      const blob = exportBlobFor('REPORT_EXECUTIVE');
-      const url = URL.createObjectURL(blob);
-      r.signed_url = url;
-      return ok({ url });
-    }
-    return ok({
-      url:
-        r.signed_url ??
-        `https://mock-storage.local/reports/${r.id}/result.${r.format.toLowerCase()}?sig=stub`,
-    });
+    const blob = exportBlobFor('REPORT_EXECUTIVE');
+    const filename = `${r.report_type.toLowerCase()}_${r.id}.csv`;
+    return {
+      status: 200,
+      body: blob,
+      contentType: 'text/csv;charset=utf-8',
+      headers: { 'content-disposition': `attachment; filename="${filename}"` },
+    };
   }
 
   // POST /reports/:id/cancel
@@ -4602,7 +4638,7 @@ export function createMockAdapter(realAdapter: AxiosAdapter | undefined): AxiosA
       data: matched.body,
       status: matched.status,
       statusText: matched.status === 201 ? 'Created' : 'OK',
-      headers: { 'content-type': contentType },
+      headers: { 'content-type': contentType, ...(matched.headers ?? {}) },
       config: config as never,
     } as AxiosResponse;
     if (matched.status >= 400) {

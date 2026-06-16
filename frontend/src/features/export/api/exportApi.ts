@@ -4,6 +4,7 @@
  * NO tenant identifier is ever sent — backend derives it from the JWT.
  */
 import { httpClient } from '@/shared/api/httpClient';
+import { downloadAuthenticatedFile } from '@/shared/api/downloadFile';
 import type {
   ExportFormat,
   ExportJob,
@@ -104,10 +105,32 @@ export async function fetchExport(id: string): Promise<ExportJob> {
   return normalizeExportJob(res.data);
 }
 
-/** Returns a fresh 5-minute signed URL. Call site triggers the download. */
-export async function fetchExportDownloadUrl(id: string): Promise<string> {
-  const res = await httpClient.get<{ url: string }>(`/exports/${id}/download-url`);
-  return res.data.url;
+/**
+ * Deterministic same-origin download path for an export (relative to the
+ * httpClient baseURL `/api/v1`). The backend `download-url` endpoint returns
+ * exactly this path; using it directly avoids an extra round-trip AND ensures
+ * the bytes flow through the authenticated `httpClient` (Authorization +
+ * X-Active-Tenant-Id headers), which a `<a href>` navigation cannot do.
+ */
+export function exportDownloadPath(id: string): string {
+  return `/exports/${id}/download`;
+}
+
+/**
+ * Streams the generated export bytes through the authenticated `httpClient`
+ * and triggers a browser download. The filename is taken from the server's
+ * Content-Disposition header (falls back to `<type>_<id>.<ext>`). Rejects with
+ * the typed `ApiError` on 401/403/404/400 so the call site can localize it.
+ */
+export async function downloadExport(
+  id: string,
+  fallback: { type?: ExportType; format?: ExportFormat },
+): Promise<void> {
+  const base = (fallback.type ?? 'export').toLowerCase();
+  await downloadAuthenticatedFile({
+    path: exportDownloadPath(id),
+    fallbackFilename: `${base}_${id}`,
+  });
 }
 
 export async function cancelExport(id: string): Promise<ExportJob> {

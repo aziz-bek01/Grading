@@ -219,7 +219,9 @@ function Row({ report }: { report: Report }) {
       </td>
       <td className="px-3 py-2 text-right">
         <div className="flex items-center justify-end gap-2">
-          {canDownload ? <ReportSignedDownloadButton reportId={report.id} /> : null}
+          {canDownload ? (
+            <ReportSignedDownloadButton reportId={report.id} reportType={report.reportType} />
+          ) : null}
           {canCancel ? (
             <button
               type="button"

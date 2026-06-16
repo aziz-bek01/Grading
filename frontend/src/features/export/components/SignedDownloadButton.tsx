@@ -1,62 +1,58 @@
 /**
- * SignedDownloadButton — clicks call `GET /exports/{id}/download-url`,
- * receive a fresh 60-second signed URL, then trigger a browser download
- * via a temporary <a download>. Tracks expiry and re-fetches the URL on
- * the next click after it lapses.
+ * SignedDownloadButton — streams the generated export file through the
+ * authenticated API client and triggers a client-side download.
  *
- * The 60s TTL matches backend SECURITY blueprint §6 (60s max) — tightened
- * from the original 5-minute window per MVP 2 Phase 2 integration review
- * finding F1. Keep this constant in lock-step with
- * `ObjectStorageAdapter.MAX_SIGNED_URL_TTL` on the backend.
+ * The backend `GET /exports/{id}/download` endpoint is JWT-authenticated and
+ * STREAMS the bytes (Content-Type + Content-Disposition set server-side).
+ * There is NO token in the URL, so a plain `<a href>` navigation omits the
+ * Authorization (+ X-Active-Tenant-Id) header and the server rejects it. We
+ * therefore pull the bytes through the shared httpClient (`useDownloadExport`
+ * → downloadAuthenticatedFile), build an object URL, and click a temporary
+ * `<a download>` with the server-authoritative filename.
  */
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, Loader2 } from 'lucide-react';
-import { useFetchDownloadUrl } from '../hooks/useExports';
+import { ApiError } from '@/shared/api/apiError';
+import { useDownloadExport } from '../hooks/useExports';
+import type { ExportFormat, ExportType } from '../types';
 
 interface Props {
   exportId: string;
-  /** Suggested filename; backend signed URL may override via content-disposition. */
-  filename?: string;
+  /** Used for the fallback filename; server Content-Disposition still wins. */
+  exportType?: ExportType;
+  format?: ExportFormat;
   disabled?: boolean;
   className?: string;
 }
 
-// Matches backend SECURITY blueprint §6 (60s max signed URL TTL).
-// Kept in lock-step with ObjectStorageAdapter.MAX_SIGNED_URL_TTL.
-const SIGNED_URL_TTL_MS = 60 * 1000;
+/** Maps an httpClient error to a localized, status-aware message key. */
+function errorKey(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 403) return 'export.download.error_forbidden';
+    if (err.status === 404) return 'export.download.error_not_found';
+    if (err.status === 400) return 'export.download.error_unavailable';
+  }
+  return 'export.download.error_v2';
+}
 
-export function SignedDownloadButton({ exportId, filename, disabled, className }: Props) {
+export function SignedDownloadButton({
+  exportId,
+  exportType,
+  format,
+  disabled,
+  className,
+}: Props) {
   const { t } = useTranslation();
-  const fetcher = useFetchDownloadUrl();
-  const cached = useRef<{ url: string; fetchedAt: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const triggerDownload = (url: string) => {
-    const a = document.createElement('a');
-    a.href = url;
-    if (filename) a.download = filename;
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
+  const downloader = useDownloadExport();
+  const [errorMsgKey, setErrorMsgKey] = useState<string | null>(null);
 
   const onClick = async () => {
-    setError(null);
-    // Reuse cached URL only if still within the 60s TTL (with a 5s safety margin).
-    const now = Date.now();
-    if (cached.current && now - cached.current.fetchedAt < SIGNED_URL_TTL_MS - 5_000) {
-      triggerDownload(cached.current.url);
-      return;
-    }
+    setErrorMsgKey(null);
     try {
-      const url = await fetcher.mutateAsync(exportId);
-      cached.current = { url, fetchedAt: Date.now() };
-      triggerDownload(url);
+      await downloader.mutateAsync({ id: exportId, type: exportType, format });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'unknown';
-      setError(msg);
+      setErrorMsgKey(errorKey(err));
     }
   };
 
@@ -69,13 +65,13 @@ export function SignedDownloadButton({ exportId, filename, disabled, className }
       <button
         type="button"
         onClick={onClick}
-        disabled={disabled || fetcher.isPending}
+        disabled={disabled || downloader.isPending}
         className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary-500 text-text-inverse text-sm disabled:opacity-50 ${className ?? ''}`}
       >
-        {fetcher.isPending ? (
+        {downloader.isPending ? (
           <>
             <Loader2 className="animate-spin" size={14} aria-hidden />
-            {t('export.download.generating_url')}
+            {t('export.download.downloading')}
           </>
         ) : (
           <>
@@ -84,12 +80,12 @@ export function SignedDownloadButton({ exportId, filename, disabled, className }
           </>
         )}
       </button>
-      {error ? (
+      {errorMsgKey ? (
         <span className="text-xs text-danger-700" role="alert">
-          {t('export.download.error_v2')}
+          {t(errorMsgKey)}
         </span>
       ) : null}
-      {isMsw && !error ? (
+      {isMsw && !errorMsgKey ? (
         <span className="text-[10px] text-text-muted">
           {t('export.download.demo_warning')}
         </span>

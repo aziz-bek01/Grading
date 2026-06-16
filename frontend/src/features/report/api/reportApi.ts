@@ -10,6 +10,7 @@
  * NO tenant identifier is ever sent — backend derives it from the JWT.
  */
 import { httpClient } from '@/shared/api/httpClient';
+import { downloadAuthenticatedFile } from '@/shared/api/downloadFile';
 import type {
   Report,
   ReportFormat,
@@ -120,13 +121,31 @@ export async function fetchReport(id: string): Promise<Report> {
 }
 
 /**
- * Returns a fresh 60-second signed URL. Call site triggers the download
- * via `SignedDownloadButton`. The 60s TTL matches backend SECURITY blueprint
- * §6 and is enforced by `ObjectStorageAdapter.MAX_SIGNED_URL_TTL`.
+ * Deterministic same-origin download path for a report (relative to the
+ * httpClient baseURL `/api/v1`). The backend `download-url` endpoint returns
+ * exactly this path; using it directly avoids an extra round-trip AND keeps
+ * the bytes flowing through the authenticated `httpClient` (Authorization +
+ * X-Active-Tenant-Id headers), which a bare `<a href>` navigation cannot do.
  */
-export async function fetchReportDownloadUrl(id: string): Promise<string> {
-  const res = await httpClient.get<{ url: string }>(`/reports/${id}/download-url`);
-  return res.data.url;
+export function reportDownloadPath(id: string): string {
+  return `/reports/${id}/download`;
+}
+
+/**
+ * Streams the generated report bytes through the authenticated `httpClient`
+ * and triggers a browser download. The filename is taken from the server's
+ * Content-Disposition header (falls back to `<type>_<id>.<ext>`). Rejects with
+ * the typed `ApiError` on 401/403/404/400 so the call site can localize it.
+ */
+export async function downloadReport(
+  id: string,
+  fallback: { type?: ReportType },
+): Promise<void> {
+  const base = (fallback.type ?? 'report').toLowerCase();
+  await downloadAuthenticatedFile({
+    path: reportDownloadPath(id),
+    fallbackFilename: `${base}_${id}`,
+  });
 }
 
 export async function cancelReport(id: string): Promise<Report> {

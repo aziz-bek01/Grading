@@ -145,9 +145,9 @@ export function PanelAveragedResult({ panelId, status, result, gradeBadge }: Pro
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs uppercase text-text-muted border-b border-border">
-            <th className="py-1 px-2">{t('panel.result.col_factor')}</th>
-            <th className="py-1 px-2 text-right">{t('panel.result.col_average')}</th>
-            <th className="py-1 px-2 text-right">{t('panel.result.col_disagreement')}</th>
+            <th scope="col" className="py-1 px-2">{t('panel.result.col_factor')}</th>
+            <th scope="col" className="py-1 px-2 text-right">{t('panel.result.col_average')}</th>
+            <th scope="col" className="py-1 px-2 text-right">{t('panel.result.col_disagreement')}</th>
           </tr>
         </thead>
         <tbody>

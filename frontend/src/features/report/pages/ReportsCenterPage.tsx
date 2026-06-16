@@ -153,15 +153,15 @@ export function ReportsCenterPage() {
           <table className="w-full text-sm">
             <thead className="bg-divider text-text-secondary text-xs uppercase">
               <tr>
-                <th className="text-left px-3 py-2">{t('report.col_title')}</th>
-                <th className="text-left px-3 py-2">{t('report.col_type')}</th>
-                <th className="text-left px-3 py-2">{t('report.col_format')}</th>
-                <th className="text-left px-3 py-2">{t('report.col_status')}</th>
-                <th className="text-left px-3 py-2">{t('report.col_contains_salary')}</th>
-                <th className="text-left px-3 py-2">{t('report.col_created_by')}</th>
-                <th className="text-left px-3 py-2">{t('report.col_created_at')}</th>
-                <th className="text-left px-3 py-2">{t('report.col_expires_at')}</th>
-                <th className="text-right px-3 py-2">{t('common.actions')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('report.col_title')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('report.col_type')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('report.col_format')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('report.col_status')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('report.col_contains_salary')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('report.col_created_by')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('report.col_created_at')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('report.col_expires_at')}</th>
+                <th scope="col" className="text-right px-3 py-2">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>

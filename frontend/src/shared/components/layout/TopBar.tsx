@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { TenantSelector } from './TenantSelector';
 import { ProjectSelector } from './ProjectSelector';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -12,10 +13,16 @@ import hrlMark from '@/assets/brand/hrl-mark-gradient.svg';
  * The 6px coloured bar under the header is the tenant visual fingerprint.
  */
 export function TopBar() {
+  const { t } = useTranslation();
   const activeTenant = useAuthStore((s) => s.activeTenant);
   const activeProject = useAuthStore((s) => s.activeProject);
 
-  const ariaActive = `Active company-client: ${activeTenant?.brand_name ?? 'All company-clients'}. Active project: ${activeProject?.name ?? 'none'}.`;
+  // a11y (Batch 6): the banner landmark's accessible name is now localized in
+  // all 4 locales (was a hardcoded English template literal).
+  const ariaActive = t('topBar.active_context', {
+    tenant: activeTenant?.brand_name ?? t('topBar.no_tenant'),
+    project: activeProject?.name ?? t('topBar.no_project'),
+  });
 
   const hue = activeTenant?.fingerprint_hue;
   const fingerprintColor = hue !== undefined ? `hsl(${hue} 70% 45%)` : 'transparent';
@@ -24,7 +31,7 @@ export function TopBar() {
     <header className="sticky top-0 z-20 bg-surface border-b border-border" aria-label={ariaActive}>
       <div className="h-14 flex items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-3">
-          <Link to={routes.dashboard} className="flex items-center gap-2" aria-label="grading.hrlab.uz home">
+          <Link to={routes.dashboard} className="flex items-center gap-2" aria-label={t('topBar.home_aria')}>
             <img src={hrlMark} alt="HR LABORATORIES" className="h-7 w-auto" />
           </Link>
           <TenantSelector />

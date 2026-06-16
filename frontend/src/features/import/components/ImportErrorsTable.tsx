@@ -81,11 +81,11 @@ export function ImportErrorsTable({ errors, level, onLevelChange, loading }: Pro
           <table className="w-full text-sm">
             <thead className="bg-divider text-text-secondary text-xs uppercase">
               <tr>
-                <th className="text-left px-3 py-2">{t('import.errors.col_row')}</th>
-                <th className="text-left px-3 py-2">{t('import.errors.col_level')}</th>
-                <th className="text-left px-3 py-2">{t('import.errors.col_field')}</th>
-                <th className="text-left px-3 py-2">{t('import.errors.col_message')}</th>
-                <th className="text-left px-3 py-2">{t('import.errors.col_fix')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('import.errors.col_row')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('import.errors.col_level')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('import.errors.col_field')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('import.errors.col_message')}</th>
+                <th scope="col" className="text-left px-3 py-2">{t('import.errors.col_fix')}</th>
               </tr>
             </thead>
             <tbody>

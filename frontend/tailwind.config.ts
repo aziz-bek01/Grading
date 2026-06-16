@@ -49,12 +49,17 @@ const config: Config = {
         warning: { 50: '#FFFBEB', 500: '#F59E0B', 600: '#D97706', 700: '#B45309', DEFAULT: '#F59E0B' },
         danger: { 50: '#FEF2F2', 500: '#EF4444', 600: '#DC2626', 700: '#B91C1C', DEFAULT: '#EF4444' },
         info: { 50: '#EFF6FF', 500: '#3B82F6', 600: '#2563EB', DEFAULT: '#3B82F6' },
-        locked: '#64748B',
+        // a11y (Batch 6): darkened slate-500 → slate-600 so the locked badge's
+        // 12px label clears WCAG AA (4.5:1) on `locked-bg`. Was #64748B (4.34:1).
+        locked: '#475569',
         'locked-bg': '#F1F5F9',
         // Deep teal — reserved security signal, deliberately off the brand axis. See 07b §4.
         'salary-sensitive': '#0F766E',
         'salary-sensitive-bg': '#ECFDF8',
-        'ai-suggestion': '#0EA5E9',
+        // a11y (Batch 6): darkened sky-500 → sky-700 so AI-suggestion text/badge
+        // clears WCAG AA on `ai-suggestion-bg`. Was #0EA5E9 (2.60:1 — failing).
+        // The brighter sky stays available as `chart-6` for non-text chart fills.
+        'ai-suggestion': '#0369A1',
         'ai-suggestion-bg': '#F0F9FF',
         'audit-alert': '#DC2626',
         'audit-alert-bg': '#FEF2F2',

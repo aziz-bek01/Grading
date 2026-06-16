@@ -25,6 +25,7 @@
     "back": "Back",
     "retry": "Retry",
     "close": "Close",
+    "skip_to_content": "Skip to content",
     "reason_label": "Reason",
     "reason_required": "Provide a reason (at least 20 characters)",
     "actions": "Actions",
@@ -68,6 +69,7 @@
     "audit": "Audit log",
     "users_access": "Users & Access",
     "soon": "Soon",
+    "primary_aria": "Primary navigation",
     "governance": "Governance",
     "approvals": "Approvals",
     "imports": "Imports",
@@ -520,6 +522,12 @@
     "coming_soon": "AI assistant is in preview. Full integration ships in MVP 2.",
     "accept": "Accept",
     "reject": "Reject"
+  },
+  "topBar": {
+    "home_aria": "grading.hrlab.uz home",
+    "active_context": "Active company-client: {{tenant}}. Active project: {{project}}.",
+    "no_tenant": "All company-clients",
+    "no_project": "none"
   },
   "sidebar": {
     "select_project_first": "Select a project first",
@@ -1030,6 +1038,7 @@
       "missing_required": "{{count}} required factor(s) not yet scored.",
       "factor_raw": "Raw",
       "comment_label": "Comment",
+      "comment_aria": "Comment for factor {{factor}}",
       "comment_placeholder": "Optional notes on this level selection..."
     },
     "preview": {

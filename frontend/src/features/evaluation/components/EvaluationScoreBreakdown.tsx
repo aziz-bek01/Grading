@@ -32,16 +32,16 @@ export function EvaluationScoreBreakdown({ version, scores }: Props) {
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs uppercase text-text-muted border-b border-border">
-            <th className="py-1 px-2">
+            <th scope="col" className="py-1 px-2">
               {t('evaluation.breakdown.col_factor')}
             </th>
-            <th className="py-1 px-2 text-right">
+            <th scope="col" className="py-1 px-2 text-right">
               {t('evaluation.breakdown.col_weight')}
             </th>
-            <th className="py-1 px-2">
+            <th scope="col" className="py-1 px-2">
               {t('evaluation.breakdown.col_level')}
             </th>
-            <th className="py-1 px-2 text-right">
+            <th scope="col" className="py-1 px-2 text-right">
               {t('evaluation.breakdown.col_raw')}
             </th>
           </tr>

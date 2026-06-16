@@ -56,8 +56,10 @@ const toneMap: Record<StatusTone, ToneSpec> = {
     icon: <Lock size={12} />,
   },
   archived: {
+    // a11y (Batch 6): text-muted (#64748B) on the divider bg is 4.23:1 — below
+    // AA for the 12px badge label. text-secondary (#475569) is 6.73:1.
     bg: 'bg-divider',
-    fg: 'text-text-muted',
+    fg: 'text-text-secondary',
     border: 'border-border-strong',
     icon: <Archive size={12} />,
   },

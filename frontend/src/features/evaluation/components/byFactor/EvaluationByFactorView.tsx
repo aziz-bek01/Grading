@@ -647,7 +647,7 @@ export function EvaluationByFactorView({
                 </colgroup>
                 <thead className="bg-divider text-text-secondary text-xs uppercase tracking-wide sticky top-0 z-[1]">
                   <tr>
-                    <th className="px-2 py-3 w-8 text-left align-top">
+                    <th scope="col" className="px-2 py-3 w-8 text-left align-top">
                       <input
                         type="checkbox"
                         checked={allSelected}
@@ -657,16 +657,16 @@ export function EvaluationByFactorView({
                         className="h-4 w-4 accent-primary-500"
                       />
                     </th>
-                    <th className="px-3 py-3 text-left font-medium align-top">
+                    <th scope="col" className="px-3 py-3 text-left font-medium align-top">
                       {t('evaluation.byFactor.table.column.position')}
                     </th>
-                    <th className="px-3 py-3 text-left font-medium align-top">
+                    <th scope="col" className="px-3 py-3 text-left font-medium align-top">
                       {t('evaluation.byFactor.table.column.level')}
                     </th>
-                    <th className="px-3 py-3 text-left font-medium align-top">
+                    <th scope="col" className="px-3 py-3 text-left font-medium align-top">
                       {t('evaluation.byFactor.table.column.comment')}
                     </th>
-                    <th className="px-3 py-3 text-right font-medium align-top hidden lg:table-cell">
+                    <th scope="col" className="px-3 py-3 text-right font-medium align-top hidden lg:table-cell">
                       {t('common.status')}
                     </th>
                   </tr>

@@ -1,7 +1,13 @@
 import '@testing-library/jest-dom/vitest';
-import { afterEach, beforeEach } from 'vitest';
+import { afterEach, beforeEach, expect } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { toHaveNoViolations } from 'jest-axe';
 import i18n from '@/shared/i18n';
+
+// Register the jest-axe matcher globally so `expectNoA11yViolations`
+// (src/test/a11y.ts) and any test can assert axe-clean DOM. jest-axe is a
+// DEV/test-only dependency — it is never imported by production code.
+expect.extend(toHaveNoViolations);
 
 // jsdom does not implement the object-URL APIs used by the authenticated
 // blob-download path (downloadAuthenticatedFile, AuditCsvExportButton,

@@ -4,13 +4,11 @@ import com.lowagie.text.Document;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.springframework.stereotype.Component;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
+import uz.hrlab.grading.reporting.application.template.AbstractReportTemplate;
 import uz.hrlab.grading.reporting.application.template.DocxBuilder;
 import uz.hrlab.grading.reporting.application.template.PdfBuilder;
 import uz.hrlab.grading.reporting.application.template.ReportDataPort;
 import uz.hrlab.grading.reporting.application.template.ReportGenerationContext;
-import uz.hrlab.grading.reporting.application.template.ReportTemplate;
-import uz.hrlab.grading.reporting.application.template.ReportTemplateException;
-import uz.hrlab.grading.reporting.domain.ReportFormat;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
 import java.io.OutputStream;
@@ -25,7 +23,8 @@ import java.util.Map;
  * PDF, DOCX, XLSX.
  */
 @Component
-public class GradeDistributionReport implements ReportTemplate {
+public class GradeDistributionReport
+        extends AbstractReportTemplate<List<ReportDataPort.GradeCountRow>> {
 
     private final ReportDataPort data;
     private final ExcelWriter excel;
@@ -37,25 +36,14 @@ public class GradeDistributionReport implements ReportTemplate {
 
     @Override public ReportType reportType() { return ReportType.GRADE_DISTRIBUTION; }
 
-    @Override public boolean supports(ReportFormat format) {
-        return format == ReportFormat.PDF
-                || format == ReportFormat.DOCX
-                || format == ReportFormat.XLSX;
+    @Override
+    protected List<ReportDataPort.GradeCountRow> loadData(ReportGenerationContext ctx) {
+        return data.gradeDistribution(ctx.tenantId(), ctx.projectId());
     }
 
     @Override
-    public void render(ReportGenerationContext ctx, OutputStream out) {
-        List<ReportDataPort.GradeCountRow> rows = data.gradeDistribution(ctx.tenantId(), ctx.projectId());
-        switch (ctx.format()) {
-            case PDF -> renderPdf(ctx, out, rows);
-            case DOCX -> renderDocx(ctx, out, rows);
-            case XLSX -> renderXlsx(out, rows);
-            default -> throw new ReportTemplateException("UNSUPPORTED_FORMAT: " + ctx.format());
-        }
-    }
-
-    private void renderPdf(ReportGenerationContext ctx, OutputStream out,
-                           List<ReportDataPort.GradeCountRow> rows) {
+    protected void renderPdf(ReportGenerationContext ctx, OutputStream out,
+                             List<ReportDataPort.GradeCountRow> rows) {
         Document doc = PdfBuilder.open(out);
         try {
             PdfBuilder.heading(doc, ctx.title());
@@ -78,8 +66,9 @@ public class GradeDistributionReport implements ReportTemplate {
         }
     }
 
-    private void renderDocx(ReportGenerationContext ctx, OutputStream out,
-                            List<ReportDataPort.GradeCountRow> rows) {
+    @Override
+    protected void renderDocx(ReportGenerationContext ctx, OutputStream out,
+                              List<ReportDataPort.GradeCountRow> rows) {
         WordprocessingMLPackage pkg = DocxBuilder.create();
         DocxBuilder.heading(pkg.getMainDocumentPart(), ctx.title());
         DocxBuilder.metaLine(pkg.getMainDocumentPart(), "Project", ctx.projectId().toString());
@@ -96,7 +85,9 @@ public class GradeDistributionReport implements ReportTemplate {
         DocxBuilder.write(pkg, out);
     }
 
-    private void renderXlsx(OutputStream out, List<ReportDataPort.GradeCountRow> rows) {
+    @Override
+    protected void renderXlsx(ReportGenerationContext ctx, OutputStream out,
+                              List<ReportDataPort.GradeCountRow> rows) {
         List<Map<String, String>> dataRows = new ArrayList<>();
         for (ReportDataPort.GradeCountRow r : rows) {
             Map<String, String> m = new LinkedHashMap<>();
@@ -105,12 +96,7 @@ public class GradeDistributionReport implements ReportTemplate {
             m.put("positions", String.valueOf(r.positionCount()));
             dataRows.add(m);
         }
-        byte[] bytes = excel.write("GradeDistribution",
-                List.of("grade_code", "grade_name", "positions"), dataRows);
-        try {
-            out.write(bytes);
-        } catch (java.io.IOException e) {
-            throw new ReportTemplateException("XLSX_WRITE_FAILED", e);
-        }
+        writeXlsx(out, excel.write("GradeDistribution",
+                List.of("grade_code", "grade_name", "positions"), dataRows));
     }
 }

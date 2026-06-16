@@ -4,13 +4,11 @@ import com.lowagie.text.Document;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.springframework.stereotype.Component;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
+import uz.hrlab.grading.reporting.application.template.AbstractReportTemplate;
 import uz.hrlab.grading.reporting.application.template.DocxBuilder;
 import uz.hrlab.grading.reporting.application.template.PdfBuilder;
 import uz.hrlab.grading.reporting.application.template.ReportDataPort;
 import uz.hrlab.grading.reporting.application.template.ReportGenerationContext;
-import uz.hrlab.grading.reporting.application.template.ReportTemplate;
-import uz.hrlab.grading.reporting.application.template.ReportTemplateException;
-import uz.hrlab.grading.reporting.domain.ReportFormat;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
 import java.io.OutputStream;
@@ -33,7 +31,8 @@ import java.util.Map;
  * {@code SALARY_VIEW}.
  */
 @Component
-public class EvaluationSummaryReport implements ReportTemplate {
+public class EvaluationSummaryReport
+        extends AbstractReportTemplate<ReportDataPort.EvaluationMatrix> {
 
     private final ReportDataPort data;
     private final ExcelWriter excel;
@@ -45,29 +44,17 @@ public class EvaluationSummaryReport implements ReportTemplate {
 
     @Override public ReportType reportType() { return ReportType.EVALUATION_SUMMARY; }
 
-    @Override public boolean supports(ReportFormat format) {
-        return format == ReportFormat.PDF
-                || format == ReportFormat.DOCX
-                || format == ReportFormat.XLSX;
-    }
-
     @Override
-    public void render(ReportGenerationContext ctx, OutputStream out) {
-        ReportDataPort.EvaluationMatrix matrix =
-                data.loadEvaluations(ctx.tenantId(), ctx.projectId());
-        switch (ctx.format()) {
-            case PDF -> renderPdf(ctx, out, matrix);
-            case DOCX -> renderDocx(ctx, out, matrix);
-            case XLSX -> renderXlsx(out, matrix);
-            default -> throw new ReportTemplateException("UNSUPPORTED_FORMAT: " + ctx.format());
-        }
+    protected ReportDataPort.EvaluationMatrix loadData(ReportGenerationContext ctx) {
+        return data.loadEvaluations(ctx.tenantId(), ctx.projectId());
     }
 
     private static final List<String> CONDENSED_HEADERS =
             List.of("Position code", "Position", "Status", "Total", "Grade");
 
-    private void renderPdf(ReportGenerationContext ctx, OutputStream out,
-                           ReportDataPort.EvaluationMatrix matrix) {
+    @Override
+    protected void renderPdf(ReportGenerationContext ctx, OutputStream out,
+                             ReportDataPort.EvaluationMatrix matrix) {
         Document doc = PdfBuilder.open(out);
         try {
             PdfBuilder.heading(doc, ctx.title());
@@ -92,8 +79,9 @@ public class EvaluationSummaryReport implements ReportTemplate {
         }
     }
 
-    private void renderDocx(ReportGenerationContext ctx, OutputStream out,
-                            ReportDataPort.EvaluationMatrix matrix) {
+    @Override
+    protected void renderDocx(ReportGenerationContext ctx, OutputStream out,
+                              ReportDataPort.EvaluationMatrix matrix) {
         WordprocessingMLPackage pkg = DocxBuilder.create();
         DocxBuilder.heading(pkg.getMainDocumentPart(), ctx.title());
         DocxBuilder.metaLine(pkg.getMainDocumentPart(), "Project", nz(matrix.projectName()));
@@ -116,7 +104,9 @@ public class EvaluationSummaryReport implements ReportTemplate {
         DocxBuilder.write(pkg, out);
     }
 
-    private void renderXlsx(OutputStream out, ReportDataPort.EvaluationMatrix matrix) {
+    @Override
+    protected void renderXlsx(ReportGenerationContext ctx, OutputStream out,
+                              ReportDataPort.EvaluationMatrix matrix) {
         // XLSX expands the factor columns so reviewers can reconcile every score.
         List<String> cols = new ArrayList<>();
         cols.add("position_code");
@@ -143,13 +133,6 @@ public class EvaluationSummaryReport implements ReportTemplate {
             m.put("grade_code", nz(r.gradeCode()));
             dataRows.add(m);
         }
-        byte[] bytes = excel.write("EvaluationSummary", cols, dataRows);
-        try {
-            out.write(bytes);
-        } catch (java.io.IOException e) {
-            throw new ReportTemplateException("XLSX_WRITE_FAILED", e);
-        }
+        writeXlsx(out, excel.write("EvaluationSummary", cols, dataRows));
     }
-
-    private static String nz(String s) { return s == null ? "" : s; }
 }

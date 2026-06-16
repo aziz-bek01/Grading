@@ -4,13 +4,11 @@ import com.lowagie.text.Document;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.springframework.stereotype.Component;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
+import uz.hrlab.grading.reporting.application.template.AbstractReportTemplate;
 import uz.hrlab.grading.reporting.application.template.DocxBuilder;
 import uz.hrlab.grading.reporting.application.template.PdfBuilder;
 import uz.hrlab.grading.reporting.application.template.ReportDataPort;
 import uz.hrlab.grading.reporting.application.template.ReportGenerationContext;
-import uz.hrlab.grading.reporting.application.template.ReportTemplate;
-import uz.hrlab.grading.reporting.application.template.ReportTemplateException;
-import uz.hrlab.grading.reporting.domain.ReportFormat;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
 import java.io.OutputStream;
@@ -25,7 +23,8 @@ import java.util.Map;
  * (multilingual title). PDF + DOCX + XLSX implemented.
  */
 @Component
-public class MethodologySpecReport implements ReportTemplate {
+public class MethodologySpecReport
+        extends AbstractReportTemplate<ReportDataPort.MethodologySpec> {
 
     private final ReportDataPort data;
     private final ExcelWriter excel;
@@ -37,26 +36,14 @@ public class MethodologySpecReport implements ReportTemplate {
 
     @Override public ReportType reportType() { return ReportType.METHODOLOGY_SPEC; }
 
-    @Override public boolean supports(ReportFormat format) {
-        return format == ReportFormat.PDF
-                || format == ReportFormat.DOCX
-                || format == ReportFormat.XLSX;
+    @Override
+    protected ReportDataPort.MethodologySpec loadData(ReportGenerationContext ctx) {
+        return data.methodologySpec(ctx.tenantId(), ctx.projectId(), ctx.locale());
     }
 
     @Override
-    public void render(ReportGenerationContext ctx, OutputStream out) {
-        ReportDataPort.MethodologySpec spec =
-                data.methodologySpec(ctx.tenantId(), ctx.projectId(), ctx.locale());
-        switch (ctx.format()) {
-            case PDF -> renderPdf(ctx, out, spec);
-            case DOCX -> renderDocx(ctx, out, spec);
-            case XLSX -> renderXlsx(out, spec);
-            default -> throw new ReportTemplateException("UNSUPPORTED_FORMAT: " + ctx.format());
-        }
-    }
-
-    private void renderPdf(ReportGenerationContext ctx, OutputStream out,
-                           ReportDataPort.MethodologySpec spec) {
+    protected void renderPdf(ReportGenerationContext ctx, OutputStream out,
+                             ReportDataPort.MethodologySpec spec) {
         Document doc = PdfBuilder.open(out);
         try {
             PdfBuilder.heading(doc, ctx.title());
@@ -84,8 +71,9 @@ public class MethodologySpecReport implements ReportTemplate {
         }
     }
 
-    private void renderDocx(ReportGenerationContext ctx, OutputStream out,
-                            ReportDataPort.MethodologySpec spec) {
+    @Override
+    protected void renderDocx(ReportGenerationContext ctx, OutputStream out,
+                              ReportDataPort.MethodologySpec spec) {
         WordprocessingMLPackage pkg = DocxBuilder.create();
         DocxBuilder.heading(pkg.getMainDocumentPart(), ctx.title());
         DocxBuilder.metaLine(pkg.getMainDocumentPart(), "Methodology", spec.methodologyName());
@@ -109,7 +97,9 @@ public class MethodologySpecReport implements ReportTemplate {
         DocxBuilder.write(pkg, out);
     }
 
-    private void renderXlsx(OutputStream out, ReportDataPort.MethodologySpec spec) {
+    @Override
+    protected void renderXlsx(ReportGenerationContext ctx, OutputStream out,
+                              ReportDataPort.MethodologySpec spec) {
         List<String> cols = List.of("factor_code", "factor_title", "weight", "max_points",
                 "scoring_mode", "level_code", "level_title", "points", "scale_value");
         List<Map<String, String>> rows = new ArrayList<>();
@@ -128,11 +118,6 @@ public class MethodologySpecReport implements ReportTemplate {
                 rows.add(m);
             }
         }
-        byte[] bytes = excel.write("MethodologySpec", cols, rows);
-        try {
-            out.write(bytes);
-        } catch (java.io.IOException e) {
-            throw new ReportTemplateException("XLSX_WRITE_FAILED", e);
-        }
+        writeXlsx(out, excel.write("MethodologySpec", cols, rows));
     }
 }

@@ -124,14 +124,23 @@ export function useCreatePanel() {
  * Bulk-create panels (dept-first wizard). One request opens one panel per
  * position with the shared roster. Invalidates the panel list so the
  * already-paneled coverage marks + per-department progress refresh after a
- * commission. Per-position failures are surfaced by the caller from the result,
- * NOT thrown — only a transport/validation error rejects the mutation.
+ * commission. When the wizard passes start_evaluations the BE locks each
+ * fully-rostered panel and creates a DRAFT sheet per seat, so we ALSO invalidate
+ * the evaluator self-inbox (mirrors {@link useReopenPanelForExpert}) — a freshly
+ * rostered evaluator sees their sheet without a manual reload. Per-position
+ * failures are surfaced by the caller from the result, NOT thrown — only a
+ * transport/validation error rejects the mutation.
  */
 export function useBulkCreatePanels() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: BulkCreatePanelsPayload) => bulkCreatePanels(payload),
-    onSuccess: () => invalidatePanel(qc),
+    onSuccess: () => {
+      invalidatePanel(qc);
+      // start_evaluations creates a DRAFT sheet per seat — refresh every
+      // evaluator's self-inbox (tenant-prefixed) so it appears without a reload.
+      qc.invalidateQueries({ queryKey: ['evaluations', 'my'] });
+    },
   });
 }
 

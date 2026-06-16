@@ -285,14 +285,24 @@ export interface BulkPanelRosterSeat {
  * POST /panels/bulk-create body. The SAME roster is applied to every position;
  * the BE opens one panel per position_id (NOT a single mega-panel). The
  * mandatory-trio / min-3 rule is NOT enforced here — that is the lock-roster
- * enforcement point; bulk-create just assigns the provided seats and leaves
- * panels COLLECTING. tenant_id is NEVER sent (JWT-derived).
+ * enforcement point; bulk-create just assigns the provided seats and, with
+ * start_evaluations unset, leaves panels COLLECTING. With start_evaluations
+ * the BE additionally LOCKS each fully-rostered panel right after assigning the
+ * roster (→ AWAITING_EVALUATIONS, one DRAFT evaluation sheet per seat) so the
+ * assigned experts can score immediately. tenant_id is NEVER sent (JWT-derived).
  */
 export interface BulkCreatePanelsPayload {
   methodology_version_id: string;
   position_ids: string[];
   /** Optional; shared across every position. */
   roster?: BulkPanelRosterSeat[];
+  /**
+   * Optional. When true the BE locks each fully-rostered panel after assigning
+   * the roster (AWAITING_EVALUATIONS + a DRAFT sheet per seat) instead of leaving
+   * it COLLECTING — so the wizard creates AND starts the commission in one call.
+   * A panel whose lock fails surfaces as a ROSTER_LOCK_FAILED row (panel exists).
+   */
+  start_evaluations?: boolean;
 }
 
 /** Stable per-position error codes returned by bulk-create. */
@@ -301,6 +311,10 @@ export type BulkCreatePanelErrorCode =
   | 'ACCESS_DENIED'
   | 'VALIDATION'
   | 'ROSTER_PARTIAL'
+  // start_evaluations was requested and the panel WAS created, but locking its
+  // roster (→ AWAITING_EVALUATIONS) failed — same family as ROSTER_PARTIAL: the
+  // panel exists, so a retry would just hit ALREADY_EXISTS.
+  | 'ROSTER_LOCK_FAILED'
   | 'INTERNAL_ERROR';
 
 /**

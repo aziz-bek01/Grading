@@ -58,6 +58,50 @@ describe('panel bulk-create / roster-suggestions wire (MSW from BE records)', ()
     expect(BulkCreatePanelsResultSchema.safeParse(result).success).toBe(true);
   });
 
+  it('sends start_evaluations:true on the wire when requested (create AND start)', async () => {
+    // Stub the raw post so we assert the WHITELISTED body exactly WITHOUT
+    // persisting a panel into the mock DB (the MSW handler uses unshift, which
+    // the suite's length-truncate rollback would not undo). The flag must reach
+    // the wire only when set, and no tenant_id is ever carried.
+    const postSpy = vi
+      .spyOn(httpClient, 'post')
+      .mockResolvedValue({ data: { created: 1, failed: [] } } as never);
+    await bulkCreatePanels({
+      methodology_version_id: 'mv-cfo-v1',
+      position_ids: ['pos-ks-ops-mgr'],
+      roster: [
+        { evaluator_user_id: 'user-hr-dir', evaluator_role: 'HR_DIRECTOR' },
+        { evaluator_user_id: 'user-dept-dir', evaluator_role: 'DEPARTMENT_DIRECTOR' },
+        { evaluator_user_id: 'user-ext-exp', evaluator_role: 'EXTERNAL_EXPERT' },
+      ],
+      start_evaluations: true,
+    });
+    const body = postSpy.mock.calls[0][1] as Record<string, unknown>;
+    expect(body.start_evaluations).toBe(true);
+    expect(body).not.toHaveProperty('tenant_id');
+  });
+
+  it('OMITS start_evaluations from the wire when unset / falsy', async () => {
+    const postSpy = vi
+      .spyOn(httpClient, 'post')
+      .mockResolvedValue({ data: { created: 1, failed: [] } } as never);
+    // Unset.
+    await bulkCreatePanels({
+      methodology_version_id: 'mv-cfo-v1',
+      position_ids: ['pos-ks-ops-mgr'],
+    });
+    // Explicit false.
+    await bulkCreatePanels({
+      methodology_version_id: 'mv-cfo-v1',
+      position_ids: ['pos-ks-ops-mgr'],
+      start_evaluations: false,
+    });
+    const unsetBody = postSpy.mock.calls[0][1] as Record<string, unknown>;
+    const falseBody = postSpy.mock.calls[1][1] as Record<string, unknown>;
+    expect(unsetBody).not.toHaveProperty('start_evaluations');
+    expect(falseBody).not.toHaveProperty('start_evaluations');
+  });
+
   it('reports duplicate-active rows as ALREADY_EXISTS without seat_failures, and creates the rest', async () => {
     // First call creates one panel for pos-ks-ops-coo.
     await bulkCreatePanels({

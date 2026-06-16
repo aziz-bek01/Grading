@@ -426,11 +426,16 @@ function OpenPanelDialogBody({
       } else {
         // Keep open; drop succeeded positions so a retry only re-attempts
         // failures (mirrors AddPositionsDialog). A row reported ROSTER_PARTIAL
-        // DID create its panel, so it is also dropped — only fully-failed rows
+        // or ROSTER_LOCK_FAILED DID create its panel, so it is also dropped — a
+        // retry would just hit ALREADY_EXISTS. Only fully-failed rows
         // (ALREADY_EXISTS / ACCESS_DENIED / VALIDATION) remain selected.
         const retryIds = new Set(
           r.failed
-            .filter((f) => f.error_code !== 'ROSTER_PARTIAL')
+            .filter(
+              (f) =>
+                f.error_code !== 'ROSTER_PARTIAL' &&
+                f.error_code !== 'ROSTER_LOCK_FAILED',
+            )
             .map((f) => f.position_id),
         );
         setSelectedPositions((prev) => {

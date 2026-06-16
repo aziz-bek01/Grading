@@ -1,11 +1,13 @@
 package uz.hrlab.grading.reporting.infrastructure;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.metrics.WorkerMetrics;
 import uz.hrlab.grading.integration.storage.ObjectStorageAdapter;
 import uz.hrlab.grading.integration.worker.WorkerRetryPolicy;
 import uz.hrlab.grading.reporting.application.template.ReportTemplateRegistry;
@@ -54,7 +56,8 @@ class ReportGenerationJobRetryTest {
             auditActions.add(((AuditEvent) inv.getArgument(0)).action());
             return null;
         }).when(audit).record(any(AuditEvent.class));
-        worker = new ReportGenerationJob(reports, storage, templates, audit);
+        worker = new ReportGenerationJob(reports, storage, templates, audit,
+                new WorkerMetrics(new SimpleMeterRegistry()));
         when(templates.require(any(), any()))
                 .thenThrow(new IllegalStateException("transient template lookup outage"));
     }

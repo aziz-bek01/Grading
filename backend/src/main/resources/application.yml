@@ -79,10 +79,34 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # health + info are PUBLIC (allowlisted in SecurityConfig.PUBLIC_PATHS).
+        # prometheus + metrics are EXPOSED on the management surface but are NOT
+        # public — they fall through to `.anyRequest().authenticated()` in
+        # SecurityConfig because the allowlist matches only `/actuator/health/**`
+        # and `/actuator/info`, never `/actuator/**`. Exposing here just makes
+        # the endpoint *reachable* by an authenticated/internal scraper; it does
+        # NOT relax authentication. Metrics can leak tenant counts / operational
+        # data, hence they must stay authenticated (Batch 6 security note).
+        include: health,info,prometheus,metrics
   endpoint:
     health:
       show-details: never
+      probes:
+        # liveness/readiness groups so the public /actuator/health/{liveness,
+        # readiness} probes (used by the Helm chart) keep working without
+        # exposing component detail.
+        enabled: true
+  # Common tags applied to every meter. tenant/user/project are DELIBERATELY
+  # absent — high-cardinality + identifying values must never become metric
+  # tags (tenant-isolation + salary [BLOCKING] gates). Only the static
+  # application name is attached here.
+  metrics:
+    tags:
+      application: grading
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 springdoc:
   api-docs:

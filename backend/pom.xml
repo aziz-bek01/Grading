@@ -101,6 +101,19 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Observability (Batch 6) — Prometheus scrape registry. Micrometer-core
+             ships transitively with the actuator; this adds the Prometheus
+             rendering registry so /actuator/prometheus can be exposed. The
+             endpoint is exposed to the management surface but is NOT on the
+             SecurityConfig public allowlist (see SecurityConfig.PUBLIC_PATHS) —
+             metrics can leak tenant counts / operational data, so it requires
+             auth / internal-network access. Only health + info stay public.
+             Version is BOM-managed by spring-boot-starter-parent. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
         <!-- Caching (Caffeine) — tenant-safe, short-TTL cache for hot read-mostly
              dictionary lookups (role→permission expansion runs on every auth
              resolve). See uz.hrlab.grading.common.cache.CacheConfig for the

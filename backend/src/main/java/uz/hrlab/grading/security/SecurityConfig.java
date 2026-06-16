@@ -53,8 +53,20 @@ import java.util.List;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SecurityConfig {
 
-    /** Public endpoints that never require auth. */
-    private static final String[] PUBLIC_PATHS = {
+    /**
+     * Public endpoints that never require auth.
+     *
+     * <p>SECURITY (Batch 6 observability): the actuator allowlist is INTENTIONALLY
+     * narrow — only {@code /actuator/health/**} (liveness/readiness probes) and
+     * {@code /actuator/info}. It is NOT {@code /actuator/**}. The Prometheus
+     * scrape endpoint ({@code /actuator/prometheus}) and {@code /actuator/metrics}
+     * are EXPOSED on the management surface (see {@code application.yml}) but
+     * deliberately omitted here, so they fall through to
+     * {@code .anyRequest().authenticated()}. Metrics can leak tenant counts and
+     * operational data, so they must require authentication / internal-network
+     * access — never anonymous. Do not widen this to {@code /actuator/**}.
+     */
+    static final String[] PUBLIC_PATHS = {
             "/actuator/health/**",
             "/actuator/info",
             "/v3/api-docs/**",

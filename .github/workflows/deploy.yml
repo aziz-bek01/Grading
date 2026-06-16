@@ -158,7 +158,9 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [build-images, gate]
     if: needs.gate.outputs.should_deploy == 'true'
-    timeout-minutes: 20
+    # Headroom over a realistic ~16-min migrate+roll+smoke on the 2GB box while
+    # still bounding a stuck rollout; aligned with the SSH command_timeout (30m).
+    timeout-minutes: 30
     environment:
       name: production
       url: https://grading.hrlab.uz

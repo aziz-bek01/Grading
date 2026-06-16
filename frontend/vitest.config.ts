@@ -27,5 +27,10 @@ export default defineConfig({
     css: false,
     pool: 'threads',
     testTimeout: 15000,
+    // Vitest owns the unit/component suite under `src` ONLY. The Playwright E2E
+    // specs live in `e2e/` and use `@playwright/test` (a different runner), so
+    // exclude that dir to stop Vitest from mis-collecting `e2e/*.spec.ts`.
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
   },
 });

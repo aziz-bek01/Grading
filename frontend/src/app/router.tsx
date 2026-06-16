@@ -137,6 +137,18 @@ const AuditListPage = lazy(() =>
   import('@/features/audit/pages/AuditListPage').then((m) => ({ default: m.AuditListPage })),
 );
 
+// E2E-ONLY harness route (salary-masking invariant). The `lazy()` + its
+// dynamic `import()` are created ONLY when the harness is enabled
+// (`import.meta.env.DEV || __ENABLE_MSW__`), so in a real prod build the whole
+// expression collapses to `false` and Rolldown never emits the harness chunk
+// (verified: no E2ESalaryHarnessPage chunk in the prod dist).
+const E2E_HARNESS_ENABLED = import.meta.env.DEV || __ENABLE_MSW__;
+const E2ESalaryHarnessPage = E2E_HARNESS_ENABLED
+  ? lazy(() =>
+      import('@/pages/E2ESalaryHarnessPage').then((m) => ({ default: m.E2ESalaryHarnessPage })),
+    )
+  : null;
+
 export function AppRouter() {
   return (
     <Suspense fallback={<LoadingState />}>
@@ -145,6 +157,11 @@ export function AppRouter() {
       <Route path={routes.authCallback} element={<AuthCallbackPage />} />
       <Route path={routes.accessDenied} element={<AccessDeniedPage />} />
       <Route path={routes.noAccess} element={<AccessDeniedPage />} />
+
+      {/* E2E-only salary-masking harness — dev/mock builds only (see guard). */}
+      {E2ESalaryHarnessPage ? (
+        <Route path="/__e2e/salary" element={<E2ESalaryHarnessPage />} />
+      ) : null}
 
       <Route element={<RequireAuth />}>
         <Route path="/" element={<Navigate to={routes.dashboard} replace />} />

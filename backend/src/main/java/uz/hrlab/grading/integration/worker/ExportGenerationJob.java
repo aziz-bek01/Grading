@@ -8,7 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.integration.excel.ExcelWriter;
+import uz.hrlab.grading.integration.exports.application.ExportContentGenerator;
 import uz.hrlab.grading.integration.exports.domain.ExportJobStatus;
 import uz.hrlab.grading.integration.exports.domain.ExportJobStatusTransitionPolicy;
 import uz.hrlab.grading.integration.exports.infrastructure.ExportJobJpaEntity;
@@ -20,7 +20,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,9 +28,11 @@ import java.util.UUID;
  * the DB with tenant context, generates a tenant-scoped XLSX, stores it
  * under the canonical namespace, and updates the job status atomically.
  *
- * <p>For MVP 2 Phase 2 the generation body is a placeholder — the actual
- * data queries live per-type and are wired in Phase 3 (and salary types only
- * after security-engineer signs off on `SafeLogger` masking).
+ * <p>Batch-2: the generation body now produces REAL, tenant-scoped content via
+ * {@link ExportContentGenerator} (sourced through the tenant + project scoped
+ * {@code ReportDataPort}) in the requested {@code ExportFormat}. Salary-bearing
+ * types remain structurally-stubbed (valid empty document) until the salary
+ * data source ships in a later batch — see {@link ExportContentGenerator}.
  */
 @Component
 public class ExportGenerationJob {
@@ -40,16 +41,16 @@ public class ExportGenerationJob {
 
     private final ExportJobRepository jobs;
     private final ObjectStorageAdapter storage;
-    private final ExcelWriter writer;
+    private final ExportContentGenerator content;
     private final AuditService audit;
 
     public ExportGenerationJob(ExportJobRepository jobs,
                                ObjectStorageAdapter storage,
-                               ExcelWriter writer,
+                               ExportContentGenerator content,
                                AuditService audit) {
         this.jobs = jobs;
         this.storage = storage;
-        this.writer = writer;
+        this.content = content;
         this.audit = audit;
     }
 
@@ -75,27 +76,25 @@ public class ExportGenerationJob {
                 .entityType("ExportJob").entityId(job.getId()).build());
 
         try {
-            // Placeholder content — Phase 3 wires real tenant-scoped queries.
-            byte[] xlsx = writer.write("Export",
-                    List.of("export_id", "type", "format", "generated_at"),
-                    List.of(Map.of(
-                            "export_id", job.getId().toString(),
-                            "type", job.getExportType().name(),
-                            "format", job.getFormat().name(),
-                            "generated_at", OffsetDateTime.now().toString())));
+            // Real, tenant-scoped content sourced through ReportDataPort (locale
+            // is not modelled on the export job — methodologySpec tolerates null).
+            ExportContentGenerator.GeneratedExport result = content.generate(
+                    job.getExportType(), job.getFormat(), tenantId, projectId, null);
+            byte[] bytes = result.bytes();
             String storageKey = ObjectStoragePath.forExportResult(tenantId, projectId, job.getId(),
-                    job.getFormat().name().toLowerCase());
+                    result.extension());
             Map<String, String> metadata = new HashMap<>();
             metadata.put("tenant_id", tenantId.toString());
             metadata.put("project_id", projectId.toString());
             metadata.put("contains_salary_data", String.valueOf(job.isContainsSalaryData()));
-            metadata.put("checksum_sha256", sha256(xlsx));
-            storage.store(xlsx, storageKey, metadata);
+            metadata.put("content_type", result.contentType());
+            metadata.put("checksum_sha256", sha256(bytes));
+            storage.store(bytes, storageKey, metadata);
 
             job.setFileStorageKey(storageKey);
-            job.setFileSize((long) xlsx.length);
+            job.setFileSize((long) bytes.length);
             job.setFileChecksum(metadata.get("checksum_sha256"));
-            job.setRowCount(1);
+            job.setRowCount(result.rowCount());
             job.setGeneratedAt(OffsetDateTime.now());
             // Expiry per blueprint — 24h after generation for download window
             job.setExpiresAt(OffsetDateTime.now().plusHours(24));
@@ -104,7 +103,7 @@ public class ExportGenerationJob {
                     .tenantId(tenantId).projectId(projectId)
                     .action(AuditAction.EXPORT_GENERATED)
                     .entityType("ExportJob").entityId(job.getId())
-                    .reason("size=" + xlsx.length).build());
+                    .reason("size=" + bytes.length + " rows=" + result.rowCount()).build());
         } catch (RuntimeException e) {
             transition(job, ExportJobStatus.FAILED);
             audit.record(AuditEvent.builder()

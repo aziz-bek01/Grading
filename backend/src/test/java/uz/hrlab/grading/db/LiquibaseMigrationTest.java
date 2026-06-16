@@ -162,6 +162,25 @@ class LiquibaseMigrationTest extends AbstractIntegrationTest {
         assertThat(count).isEqualTo(1L);
     }
 
+    // --- my-evaluations inbox finders are index-backed (changesets 015 / 034) ---
+
+    @Test
+    void myEvaluationsInboxIndexesExist() {
+        // (tenant_id, evaluator_user_id) — backs the my-evaluations list finder.
+        assertThat(indexExists("idx_evaluations_tenant_evaluator")).isTrue();
+        // (tenant_id, evaluator_user_id, assignment_status) — backs the panel
+        // assignment inbox finder.
+        assertThat(indexExists("idx_panel_assignments_evaluator")).isTrue();
+    }
+
+    private boolean indexExists(String name) {
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM pg_indexes "
+                        + "WHERE schemaname='public' AND indexname=?",
+                Long.class, name);
+        return count != null && count == 1L;
+    }
+
     private boolean tableExists(String name) {
         Long count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables "

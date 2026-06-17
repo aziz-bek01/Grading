@@ -7,3 +7,8 @@
 # commit, but gitleaks rescans historical commit diffs, so the original line in
 # commit 9a1aabc must be suppressed by fingerprint.
 9a1aabc6b8d213e96460777c1bcf631cd4a34487:backend/src/test/java/uz/hrlab/grading/common/cache/RolePermissionCacheTenantIsolationIntegrationTest.java:generic-api-key:107
+
+# A long agent-role "description:" line in devops-sre.md (the words "secrets
+# management ... Vault/KMS ...") pattern-matches the generic-api-key rule. It is
+# plain English agent documentation, NOT a credential. Confirmed by review.
+4763dfd68c906fc174aeb891fd4d5758a078f6b9:.claude/agents/devops-sre.md:generic-api-key:3

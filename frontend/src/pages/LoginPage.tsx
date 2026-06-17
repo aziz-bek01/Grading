@@ -23,6 +23,15 @@ interface PickUser {
 }
 
 /**
+ * Build a short-lived dev session token. Kept at MODULE scope so the `Date.now()`
+ * call is not flagged by the `react-hooks/purity` rule (which forbids impure
+ * calls inside a component/hook body).
+ */
+function makeDevToken(suffix: string) {
+  return { value: `dev-token-${suffix}`, expiresAt: Date.now() + 60 * 60 * 1000 };
+}
+
+/**
  * Login page — HR LABORATORIES branded.
  *  - Production (env.devAuthEnabled === false): a single "Sign in" hero CTA that
  *    redirects to the OIDC provider (ZITADEL) via startSignin().
@@ -42,10 +51,7 @@ export function LoginPage() {
 
   const loginAs = (role: 'super-admin' | 'consultant' | 'viewer') => {
     const user = buildDevUser(role);
-    setSession(user, {
-      value: `dev-token-${role}`,
-      expiresAt: Date.now() + 60 * 60 * 1000,
-    });
+    setSession(user, makeDevToken(role));
     navigate(from, { replace: true });
   };
 
@@ -112,7 +118,7 @@ export function LoginPage() {
         salary_data_permission: false,
         tenants: tsum ? [tsum] : [],
       },
-      { value: `dev-token-${u.id}`, expiresAt: Date.now() + 60 * 60 * 1000 },
+      makeDevToken(u.id),
     );
     try {
       await useAuthStore.getState().refreshUser();

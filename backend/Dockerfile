@@ -21,13 +21,17 @@ COPY mvnw pom.xml ./
 # No-op on a normal LF checkout / CI.
 RUN sed -i 's/\r$//' ./mvnw .mvn/maven.config \
  && chmod +x ./mvnw \
- && ./mvnw -B -ntp dependency:go-offline
+ && ( ./mvnw -B -ntp dependency:go-offline \
+   || { echo '>> go-offline failed (transient network — e.g. Premature end of Content-Length); retry 1/2 in 8s'; sleep 8; ./mvnw -B -ntp dependency:go-offline; } \
+   || { echo '>> retry 2/2 in 15s'; sleep 15; ./mvnw -B -ntp dependency:go-offline; } )
 
 # Now copy sources and build the executable jar.
 # Tests are run in CI (see .github/workflows/ci.yml) — image build skips them
 # so that a failing test never produces an image, and image builds stay fast.
 COPY src/ src/
-RUN ./mvnw -B -ntp clean package -DskipTests \
+RUN ( ./mvnw -B -ntp clean package -DskipTests \
+   || { echo '>> package failed (transient network?); retry 1/2 in 8s'; sleep 8; ./mvnw -B -ntp clean package -DskipTests; } \
+   || { echo '>> retry 2/2 in 15s'; sleep 15; ./mvnw -B -ntp clean package -DskipTests; } ) \
  && cp target/grading-*.jar /workspace/app.jar \
  && java -Djarmode=tools -jar /workspace/app.jar extract --layers --destination /workspace/extracted || true
 

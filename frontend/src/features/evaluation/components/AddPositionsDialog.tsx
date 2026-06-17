@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Search } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Layers, Search } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
 import type { Methodology } from '@/features/methodology/types';
 import type { Position } from '@/features/positions/types/positionTypes';
 import type { BulkCreateEvaluationResult } from '../types';
+
+/** Pure client-side grouping threshold — auto-enable group-by-dept when > 30 candidates. */
+const GROUP_BY_DEPT_AUTO_THRESHOLD = 30;
 
 interface AddPositionsDialogProps {
   open: boolean;
@@ -93,6 +96,8 @@ function AddPositionsDialogBody({
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BulkCreateEvaluationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Track which dept groups are collapsed (only used in grouped mode)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Candidate diff: project positions MINUS those already evaluated for the
   // selected version. Done by (position_id|version_id) key against existingKeys.
@@ -112,6 +117,33 @@ function AddPositionsDialogBody({
         );
       });
   }, [positions, versionId, existingKeys, search, i18n.language, departmentNameOf]);
+
+  // Group-by-department toggle — defaults ON when candidate count > threshold.
+  // Pure client-side; departmentNameOf(positionId) is already available.
+  const [groupByDept, setGroupByDept] = useState(
+    () => candidates.length > GROUP_BY_DEPT_AUTO_THRESHOLD,
+  );
+
+  // Grouped candidates: Map<departmentLabel, Position[]>
+  const groupedCandidates = useMemo(() => {
+    if (!groupByDept) return null;
+    const map = new Map<string, typeof candidates>();
+    for (const p of candidates) {
+      const dept = departmentNameOf(p.id) || t('evaluation.add_positions.no_department');
+      const existing = map.get(dept) ?? [];
+      map.set(dept, [...existing, p]);
+    }
+    return map;
+  }, [candidates, groupByDept, departmentNameOf, t]);
+
+  const toggleGroupCollapse = (dept: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(dept)) next.delete(dept);
+      else next.add(dept);
+      return next;
+    });
+  };
 
   const allSelected =
     candidates.length > 0 && candidates.every((p) => selected.has(p.id));
@@ -212,8 +244,8 @@ function AddPositionsDialogBody({
           </select>
         </div>
 
-        <div className="shrink-0 flex items-center gap-2">
-          <label className="relative flex-1">
+        <div className="shrink-0 flex items-center gap-2 flex-wrap">
+          <label className="relative flex-1 min-w-[160px]">
             <span className="sr-only">{t('common.search')}</span>
             <Search
               size={14}
@@ -240,6 +272,28 @@ function AddPositionsDialogBody({
             />
             {t('evaluation.add_positions.select_all')}
           </label>
+          {/* Group-by-dept toggle — visible when there are candidates */}
+          {candidates.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setGroupByDept((v) => !v)}
+              data-testid="add-positions-group-by-dept"
+              title={t(
+                groupByDept
+                  ? 'evaluation.add_positions.group_by_dept_off'
+                  : 'evaluation.add_positions.group_by_dept_on',
+              )}
+              className={cn(
+                'inline-flex items-center gap-1 h-9 px-2.5 border rounded-md text-xs transition-colors',
+                groupByDept
+                  ? 'bg-primary-50 border-primary-400 text-primary-700'
+                  : 'bg-surface border-border-strong text-text-secondary hover:text-text-primary',
+              )}
+            >
+              <Layers size={13} aria-hidden />
+              {t('evaluation.add_positions.by_dept')}
+            </button>
+          ) : null}
         </div>
 
         <div
@@ -250,7 +304,86 @@ function AddPositionsDialogBody({
             <p className="p-4 text-sm text-text-muted text-center">
               {t('evaluation.add_positions.empty')}
             </p>
+          ) : groupedCandidates ? (
+            // Grouped by department — each group is collapsible
+            Array.from(groupedCandidates.entries()).map(([dept, deptPositions]) => {
+              const isCollapsed = collapsedGroups.has(dept);
+              const deptAllSelected =
+                deptPositions.length > 0 &&
+                deptPositions.every((p) => selected.has(p.id));
+              const toggleDeptAll = () => {
+                setSelected((prev) => {
+                  const next = new Set(prev);
+                  if (deptAllSelected) {
+                    for (const p of deptPositions) next.delete(p.id);
+                  } else {
+                    for (const p of deptPositions) next.add(p.id);
+                  }
+                  return next;
+                });
+              };
+              return (
+                <div key={dept}>
+                  {/* Dept group header */}
+                  <div className="flex items-center gap-2 px-3 py-2 bg-divider/60 sticky top-0 z-[1]">
+                    <input
+                      type="checkbox"
+                      checked={deptAllSelected}
+                      onChange={toggleDeptAll}
+                      data-testid={`add-positions-dept-select-${dept}`}
+                      className="h-4 w-4 accent-primary-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => toggleGroupCollapse(dept)}
+                      className="flex-1 flex items-center gap-1.5 text-left text-xs font-semibold text-text-secondary uppercase tracking-wide"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight size={12} aria-hidden />
+                      ) : (
+                        <ChevronDown size={12} aria-hidden />
+                      )}
+                      {dept}
+                      <span className="font-normal normal-case text-text-muted ml-1">
+                        ({deptPositions.length})
+                      </span>
+                    </button>
+                  </div>
+                  {/* Dept positions list */}
+                  {!isCollapsed
+                    ? deptPositions.map((p) => {
+                        const checked = selected.has(p.id);
+                        return (
+                          <label
+                            key={p.id}
+                            data-testid={`add-positions-row-${p.code}`}
+                            className={cn(
+                              'flex items-start gap-2.5 px-3 py-2.5 text-sm cursor-pointer transition-colors border-t border-border/50',
+                              checked ? 'bg-primary-50/40' : 'hover:bg-divider/40',
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => toggleRow(p.id, e.target.checked)}
+                              data-testid={`add-positions-check-${p.code}`}
+                              className="mt-0.5 h-4 w-4 accent-primary-500"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-medium text-text-primary">
+                                {pickLocalized(p.title_i18n, i18n.language)}
+                              </span>
+                              <span className="block text-xs text-text-muted font-mono">{p.code}</span>
+                            </span>
+                          </label>
+                        );
+                      })
+                    : null}
+                </div>
+              );
+            })
           ) : (
+            // Flat list (default when <= threshold or user toggled off)
             candidates.map((p) => {
               const checked = selected.has(p.id);
               return (

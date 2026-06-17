@@ -100,6 +100,12 @@
     "as_super_admin": "Войти как HRLab Super Admin",
     "as_consultant": "Войти как HRLab Consultant",
     "as_viewer": "Войти как Viewer",
+    "as_specific_user": "Войти под конкретным пользователем…",
+    "picker_title": "Выберите пользователя",
+    "picker_search": "Поиск по имени или email",
+    "picker_loading": "Загрузка пользователей…",
+    "picker_error": "Не удалось загрузить пользователей",
+    "picker_empty": "Пользователи не найдены",
     "sign_in": "Войти",
     "signing_in": "Вход в систему…",
     "signing_in_body": "Завершаем вход, пожалуйста подождите…",
@@ -1015,7 +1021,11 @@
       "empty": "Нет должностей, ожидающих оценки по выбранной версии.",
       "selected_count": "Выбрано: {{count}}",
       "confirm": "Добавить",
-      "result_summary": "Создано: {{created}}, ошибок: {{failed}}."
+      "result_summary": "Создано: {{created}}, ошибок: {{failed}}.",
+      "by_dept": "По подразд.",
+      "group_by_dept_on": "Сгруппировать по подразделению",
+      "group_by_dept_off": "Отменить группировку",
+      "no_department": "Без подразделения"
     },
     "delete": {
       "action": "Удалить оценку",
@@ -1025,7 +1035,17 @@
     },
     "filter": {
       "status": "Статус",
-      "methodology": "Методология"
+      "methodology": "Методология",
+      "chip_incomplete": "Только неполные",
+      "chip_mine": "Только мои",
+      "clear_chips": "Сбросить фильтры",
+      "density_compact": "Компактно",
+      "density_comfortable": "Обычный вид"
+    },
+    "completion_bar": {
+      "scored": "{{scored}}/{{total}} оценено",
+      "panels": "Панели ({{count}})",
+      "view_by_dept": "По подразделениям"
     },
     "status": {
       "draft": "Черновик",
@@ -1217,7 +1237,8 @@
         "result_summary": "Обновлено: {{updated}}, ошибок: {{failed}}."
       },
       "autosave": {
-        "saved": "Сохранено",
+        "saved": "Все изменения сохранены",
+        "saving": "Сохранение…",
         "failed": "Не сохранено — нажмите для повтора"
       }
     }

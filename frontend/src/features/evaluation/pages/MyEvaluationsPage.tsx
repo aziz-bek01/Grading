@@ -35,6 +35,15 @@ export function MyEvaluationsPage() {
   const { can } = usePermission();
   const canRead = can(PERMISSIONS.EVALUATION_READ);
 
+  // Committee scorer = can read evaluations but is NOT a methodology-aware
+  // manager/oversight role (all of which hold METHODOLOGY_READ). Such a user
+  // scores via the focused factor-by-factor K-sheet, so their assigned-evaluation
+  // card deep-links to the project Evaluation page in by-factor mode
+  // (?mode=by-factor) rather than the per-sheet Matrix detail page. Managers keep
+  // the existing per-sheet detail deep-link.
+  const isCommitteeScorer =
+    canRead && !can(PERMISSIONS.METHODOLOGY_READ);
+
   const query = useMyEvaluations();
   const rows = useMemo(() => query.data ?? [], [query.data]);
 
@@ -86,14 +95,20 @@ export function MyEvaluationsPage() {
                 </>
               );
 
+              // Committee scorers score in the by-factor K-sheet (server-scoped
+              // to their own rows); managers open the per-sheet Matrix detail.
+              const target = isCommitteeScorer
+                ? `${routes.projectEvaluation(row.projectId)}?mode=by-factor`
+                : routes.projectEvaluationDetail(
+                    row.projectId,
+                    row.evaluationId,
+                  );
+
               return (
                 <li key={row.evaluationId}>
                   {row.projectId ? (
                     <Link
-                      to={routes.projectEvaluationDetail(
-                        row.projectId,
-                        row.evaluationId,
-                      )}
+                      to={target}
                       data-testid={`open-my-evaluation-${row.evaluationId}`}
                       className="flex items-center gap-4 px-1 py-3 hover:bg-divider/50 rounded-md"
                     >

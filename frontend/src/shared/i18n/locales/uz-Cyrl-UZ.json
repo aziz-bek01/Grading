@@ -100,6 +100,12 @@
     "as_super_admin": "HRLab Super Admin сифатида кириш",
     "as_consultant": "HRLab Consultant сифатида кириш",
     "as_viewer": "Кузатувчи сифатида кириш",
+    "as_specific_user": "Муайян фойдаланувчи сифатида кириш…",
+    "picker_title": "Фойдаланувчини танланг",
+    "picker_search": "Исм ёки email бўйича қидириш",
+    "picker_loading": "Фойдаланувчилар юкланмоқда…",
+    "picker_error": "Фойдаланувчиларни юклаб бўлмади",
+    "picker_empty": "Фойдаланувчи топилмади",
     "sign_in": "Кириш",
     "signing_in": "Тизимга кирилмоқда…",
     "signing_in_body": "Кириш якунланмоқда, кутиб туринг…",
@@ -1015,7 +1021,11 @@
       "empty": "Танланган версия бўйича баҳолашни кутаётган лавозим йўқ.",
       "selected_count": "Танланди: {{count}}",
       "confirm": "Қўшиш",
-      "result_summary": "Яратилди: {{created}}, хатолар: {{failed}}."
+      "result_summary": "Яратилди: {{created}}, хатолар: {{failed}}.",
+      "by_dept": "Бўлим",
+      "group_by_dept_on": "Бўлим бўйича гуруҳлаш",
+      "group_by_dept_off": "Гуруҳни бекор қилиш",
+      "no_department": "Бўлимсиз"
     },
     "delete": {
       "action": "Баҳолашни ўчириш",
@@ -1025,7 +1035,17 @@
     },
     "filter": {
       "status": "Ҳолат",
-      "methodology": "Методология"
+      "methodology": "Методология",
+      "chip_incomplete": "Фақат тўлиқ эмас",
+      "chip_mine": "Фақат менинг",
+      "clear_chips": "Фильтрларни тозалаш",
+      "density_compact": "Ихчам",
+      "density_comfortable": "Оддий кўриниш"
+    },
+    "completion_bar": {
+      "scored": "{{scored}}/{{total}} баҳоланган",
+      "panels": "Панеллар ({{count}})",
+      "view_by_dept": "Бўлимлар бўйича"
     },
     "status": {
       "draft": "Қоралама",
@@ -1217,7 +1237,8 @@
         "result_summary": "Янгиланди: {{updated}}, хатолар: {{failed}}."
       },
       "autosave": {
-        "saved": "Сақланди",
+        "saved": "Барча ўзгаришлар сақланди",
+        "saving": "Сақланмоқда…",
         "failed": "Сақланмади — қайта уриниш учун босинг"
       }
     }

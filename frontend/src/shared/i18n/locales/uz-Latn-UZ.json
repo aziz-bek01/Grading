@@ -100,6 +100,12 @@
     "as_super_admin": "HRLab Super Admin sifatida kirish",
     "as_consultant": "HRLab Consultant sifatida kirish",
     "as_viewer": "Kuzatuvchi sifatida kirish",
+    "as_specific_user": "Muayyan foydalanuvchi sifatida kirish…",
+    "picker_title": "Foydalanuvchini tanlang",
+    "picker_search": "Ism yoki email bo'yicha qidirish",
+    "picker_loading": "Foydalanuvchilar yuklanmoqda…",
+    "picker_error": "Foydalanuvchilarni yuklab bo'lmadi",
+    "picker_empty": "Foydalanuvchi topilmadi",
     "sign_in": "Kirish",
     "signing_in": "Tizimga kirilmoqda…",
     "signing_in_body": "Kirish yakunlanmoqda, kutib turing…",
@@ -1015,7 +1021,11 @@
       "empty": "Tanlangan versiya boʻyicha baholashni kutayotgan lavozim yoʻq.",
       "selected_count": "Tanlandi: {{count}}",
       "confirm": "Qoʻshish",
-      "result_summary": "Yaratildi: {{created}}, xatolar: {{failed}}."
+      "result_summary": "Yaratildi: {{created}}, xatolar: {{failed}}.",
+      "by_dept": "Boʻlim",
+      "group_by_dept_on": "Boʻlim boʻyicha guruhlash",
+      "group_by_dept_off": "Guruhni bekor qilish",
+      "no_department": "Boʻlimsiz"
     },
     "delete": {
       "action": "Baholashni oʻchirish",
@@ -1025,7 +1035,17 @@
     },
     "filter": {
       "status": "Holat",
-      "methodology": "Metodologiya"
+      "methodology": "Metodologiya",
+      "chip_incomplete": "Faqat to'liq emas",
+      "chip_mine": "Faqat mening",
+      "clear_chips": "Filtrlarni tozalash",
+      "density_compact": "Ixcham",
+      "density_comfortable": "Oddiy ko'rinish"
+    },
+    "completion_bar": {
+      "scored": "{{scored}}/{{total}} baholangan",
+      "panels": "Panellar ({{count}})",
+      "view_by_dept": "Boʻlimlar boʻyicha"
     },
     "status": {
       "draft": "Qoralama",
@@ -1217,7 +1237,8 @@
         "result_summary": "Yangilandi: {{updated}}, xatolar: {{failed}}."
       },
       "autosave": {
-        "saved": "Saqlandi",
+        "saved": "Barcha oʻzgarishlar saqlandi",
+        "saving": "Saqlanmoqda…",
         "failed": "Saqlanmadi — qayta urinish uchun bosing"
       }
     }

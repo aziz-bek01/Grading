@@ -694,56 +694,79 @@ export function EvaluationByFactorView({
         </Card>
       </div>
 
-      {/* Bottom toolbar */}
-      <Card compact>
-        <div className="flex flex-wrap items-center gap-3 justify-between">
-          <div className="text-sm text-text-secondary">
-            {t('evaluation.byFactor.toolbar.selected', {
-              selected: bulkSet.size,
-              total: totalElements,
-            })}
-          </div>
-          <div className="flex items-center gap-2">
-            {rowsQuery.isFetching ? (
-              <Loader2
-                size={16}
-                className={cn('animate-spin text-text-muted')}
-                aria-hidden
-              />
-            ) : null}
-            <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
-              <Button
-                variant="secondary"
-                onClick={() => setBulkScoreOpen(true)}
-                disabled={bulkSet.size === 0}
-                data-testid="bulk-score-open"
+      {/* Bottom toolbar — sticky to the viewport bottom so bulk actions + pagination
+          stay visible while scrolling through 25 rows (Phase 1 improvement).
+          z-10 keeps it below the global TopBar (z-20) but above the table content.
+          The border-t provides visual separation from the table. */}
+      <div
+        className="sticky bottom-0 z-10 bg-background border-t border-border"
+        data-testid="byfactor-sticky-toolbar"
+      >
+        <Card compact>
+          <div className="flex flex-wrap items-center gap-3 justify-between">
+            <div className="flex items-center gap-3 text-sm text-text-secondary">
+              {t('evaluation.byFactor.toolbar.selected', {
+                selected: bulkSet.size,
+                total: totalElements,
+              })}
+              {/* Global save-state indicator: "Saving…" while fetching/mutating,
+                  "All changes saved" otherwise. Derived from rowsQuery.isFetching
+                  and the bulk mutations' pending state. */}
+              <span
+                className={cn(
+                  'text-xs tabular-nums transition-opacity',
+                  rowsQuery.isFetching || bulkScoreMutation.isPending || bulkSubmitMutation.isPending
+                    ? 'text-text-muted opacity-100'
+                    : 'text-success-600 opacity-80',
+                )}
+                data-testid="byfactor-save-state"
+                aria-live="polite"
               >
-                {t('evaluation.byFactor.bulk.set_all.cta', {
-                  count: bulkSet.size,
-                })}
-              </Button>
-            </PermissionGate>
-            <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
-              <Button
-                onClick={() => setBulkSubmitOpen(true)}
-                disabled={bulkSet.size === 0}
-                data-testid="bulk-submit-open"
-              >
-                {t('evaluation.byFactor.bulk.submit.cta', {
-                  count: bulkSet.size,
-                })}
-              </Button>
-            </PermissionGate>
+                {rowsQuery.isFetching || bulkScoreMutation.isPending || bulkSubmitMutation.isPending ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Loader2 size={12} className="animate-spin" aria-hidden />
+                    {t('evaluation.byFactor.autosave.saving')}
+                  </span>
+                ) : (
+                  t('evaluation.byFactor.autosave.saved')
+                )}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
+                <Button
+                  variant="secondary"
+                  onClick={() => setBulkScoreOpen(true)}
+                  disabled={bulkSet.size === 0}
+                  data-testid="bulk-score-open"
+                >
+                  {t('evaluation.byFactor.bulk.set_all.cta', {
+                    count: bulkSet.size,
+                  })}
+                </Button>
+              </PermissionGate>
+              <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
+                <Button
+                  onClick={() => setBulkSubmitOpen(true)}
+                  disabled={bulkSet.size === 0}
+                  data-testid="bulk-submit-open"
+                >
+                  {t('evaluation.byFactor.bulk.submit.cta', {
+                    count: bulkSet.size,
+                  })}
+                </Button>
+              </PermissionGate>
+            </div>
           </div>
-        </div>
-        <PaginationBar
-          page={page}
-          totalPages={totalPages}
-          total={totalElements}
-          pageSize={PAGE_SIZE}
-          onPageChange={setPage}
-        />
-      </Card>
+          <PaginationBar
+            page={page}
+            totalPages={totalPages}
+            total={totalElements}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        </Card>
+      </div>
 
       <BulkScoreDialog
         open={bulkScoreOpen}

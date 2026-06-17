@@ -52,10 +52,16 @@ function setActiveProject(id: string | null) {
   );
 }
 
-function renderPage(activeProjectId: string | null = null) {
+function renderPage(
+  activeProjectId: string | null = null,
+  // Default to a MANAGER context (EVALUATION_READ + METHODOLOGY_READ) so the
+  // existing deep-link assertions keep the per-sheet Matrix detail route.
+  // Committee-scorer tests pass only EVALUATION_READ.
+  permissions: string[] = [PERMISSIONS.EVALUATION_READ, PERMISSIONS.METHODOLOGY_READ],
+) {
   // The deep-link no longer depends on the active project — leave it unset by
   // default. Tests that want to prove independence set it to a DIFFERENT id.
-  signInWithPermissions([PERMISSIONS.EVALUATION_READ]);
+  signInWithPermissions(permissions);
   setActiveProject(activeProjectId);
   return render(
     renderWithProviders(
@@ -95,7 +101,7 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
     expect(screen.getByText('3/8')).toBeInTheDocument();
   });
 
-  it("links each row to the project-scoped sheet built from the row's OWN project", () => {
+  it("manager: links each row to the per-sheet Matrix detail built from the row's OWN project", () => {
     queryState.data = [row({ evaluationId: 'eval-42', projectId: 'proj-77' })];
     // A DIFFERENT project is active — the link must still use the row's project,
     // proving the deep-link is independent of which project is active.
@@ -107,7 +113,7 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
     );
   });
 
-  it('links every row regardless of the active project (no project active)', () => {
+  it('manager: links every row regardless of the active project (no project active)', () => {
     queryState.data = [
       row({ evaluationId: 'eval-a', projectId: 'proj-a' }),
       row({ evaluationId: 'eval-b', projectId: 'proj-b' }),
@@ -120,6 +126,18 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
     expect(screen.getByTestId('open-my-evaluation-eval-b')).toHaveAttribute(
       'href',
       '/app/projects/proj-b/evaluation/eval-b',
+    );
+  });
+
+  it('committee scorer (no METHODOLOGY_READ): row links to the by-factor scoring view, NOT the per-sheet Matrix detail', () => {
+    queryState.data = [row({ evaluationId: 'eval-42', projectId: 'proj-77' })];
+    renderPage('proj-other', [PERMISSIONS.EVALUATION_READ]);
+    const link = screen.getByTestId('open-my-evaluation-eval-42');
+    // By-factor mode on the project Evaluation page — the evaluationId is NOT in
+    // the URL (the K-sheet is server-scoped to the scorer's own assigned rows).
+    expect(link).toHaveAttribute(
+      'href',
+      '/app/projects/proj-77/evaluation?mode=by-factor',
     );
   });
 

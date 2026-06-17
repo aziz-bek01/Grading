@@ -100,6 +100,12 @@
     "as_super_admin": "Sign in as HRLab Super Admin",
     "as_consultant": "Sign in as HRLab Consultant",
     "as_viewer": "Sign in as Viewer",
+    "as_specific_user": "Sign in as a specific user…",
+    "picker_title": "Choose a user",
+    "picker_search": "Search by name or email",
+    "picker_loading": "Loading users…",
+    "picker_error": "Couldn't load users",
+    "picker_empty": "No users found",
     "sign_in": "Sign in",
     "signing_in": "Signing in…",
     "signing_in_body": "Completing sign-in, please wait…",
@@ -1015,7 +1021,11 @@
       "empty": "No positions are awaiting evaluation for the selected version.",
       "selected_count": "Selected: {{count}}",
       "confirm": "Add",
-      "result_summary": "Created: {{created}}, failed: {{failed}}."
+      "result_summary": "Created: {{created}}, failed: {{failed}}.",
+      "by_dept": "By dept",
+      "group_by_dept_on": "Group by department",
+      "group_by_dept_off": "Ungroup departments",
+      "no_department": "No department"
     },
     "delete": {
       "action": "Delete evaluation",
@@ -1025,7 +1035,17 @@
     },
     "filter": {
       "status": "Status",
-      "methodology": "Methodology"
+      "methodology": "Methodology",
+      "chip_incomplete": "Only incomplete",
+      "chip_mine": "Only mine",
+      "clear_chips": "Clear filters",
+      "density_compact": "Compact",
+      "density_comfortable": "Comfortable"
+    },
+    "completion_bar": {
+      "scored": "{{scored}}/{{total}} scored",
+      "panels": "Panels ({{count}})",
+      "view_by_dept": "View by department"
     },
     "status": {
       "draft": "Draft",
@@ -1217,7 +1237,8 @@
         "result_summary": "Updated: {{updated}}, failed: {{failed}}."
       },
       "autosave": {
-        "saved": "Saved",
+        "saved": "All changes saved",
+        "saving": "Saving…",
         "failed": "Save failed — click to retry"
       }
     }

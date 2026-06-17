@@ -14,6 +14,12 @@ interface Props {
   /** Already-loaded panels (the host loads them for the coverage strip). */
   panels: Panel[];
   loading?: boolean;
+  /**
+   * When true, renders without the outer Card and without a title header —
+   * for use inside a Drawer where the host already provides chrome.
+   * When false (default), the original Card + title rendering is preserved.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -26,8 +32,11 @@ interface Props {
  * fetch). The position title comes from the panel's own
  * `position_title_i18n` (BE-resolved), so no positions cross-reference is
  * needed here.
+ *
+ * Phase 1: gains a `compact` prop so it renders without Card/title chrome when
+ * placed inside a Drawer (the host already provides that chrome).
  */
-export function PanelListSection({ projectId, panels, loading }: Props) {
+export function PanelListSection({ projectId, panels, loading, compact = false }: Props) {
   const { t, i18n } = useTranslation();
 
   const columns: DataTableColumn<Panel>[] = useMemo(
@@ -83,26 +92,34 @@ export function PanelListSection({ projectId, panels, loading }: Props) {
     [t, i18n.language, projectId],
   );
 
+  const table = (
+    <DataTable<Panel>
+      columns={columns}
+      rows={panels}
+      rowKey={(row) => row.id}
+      loading={loading}
+      searchPredicate={(row, q) =>
+        pickLocalized(row.position_title_i18n, i18n.language)
+          .toLowerCase()
+          .includes(q)
+      }
+      emptyTitle={t('panel.list.empty_title')}
+      emptyBody={t('panel.list.empty_body')}
+    />
+  );
+
+  // In compact mode (inside Drawer), skip the outer Card + title chrome.
+  if (compact) {
+    return <div data-testid="panel-list-compact">{table}</div>;
+  }
+
   return (
     <Card>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-text-primary">
-          {t('panel.list.title')}
-        </h2>
-      </div>
-      <DataTable<Panel>
-        columns={columns}
-        rows={panels}
-        rowKey={(row) => row.id}
-        loading={loading}
-        searchPredicate={(row, q) =>
-          pickLocalized(row.position_title_i18n, i18n.language)
-            .toLowerCase()
-            .includes(q)
-        }
-        emptyTitle={t('panel.list.empty_title')}
-        emptyBody={t('panel.list.empty_body')}
-      />
+      <h2 className="text-sm font-medium text-text-primary mb-3" data-testid="panel-list-title">
+        {t('panel.list.title')}
+        <span className="text-text-muted tabular-nums ml-1">({panels.length})</span>
+      </h2>
+      {table}
     </Card>
   );
 }

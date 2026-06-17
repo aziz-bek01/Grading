@@ -1,23 +1,30 @@
 import { Suspense, lazy, useCallback, useMemo, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
 import {
   Link,
   useParams,
   useSearchParams,
 } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { LayoutGrid, TableProperties, Trash2 } from 'lucide-react';
+import { LayoutGrid, TableProperties, Trash2, X } from 'lucide-react';
 import { Card } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui/Button';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
+import { Drawer } from '@/shared/components/layout/Drawer';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { usePermission } from '@/features/auth/usePermission';
+import { useAuthStore } from '@/features/auth/authStore';
 import { pickLocalized } from '@/shared/lib/localized';
 import { cn } from '@/shared/lib/cn';
 import { useMethodologies } from '@/features/methodology/hooks/useMethodology';
+import {
+  fetchMethodologyVersions,
+  methodologyKeys,
+} from '@/features/methodology/api/methodologyApi';
 import { usePositions } from '@/features/positions/hooks/usePositions';
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import {
@@ -26,10 +33,10 @@ import {
   useEvaluations,
 } from '../hooks/useEvaluation';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
+import { EvaluationCompletionBar } from '../components/EvaluationCompletionBar';
 import { AddPositionsDialog } from '../components/AddPositionsDialog';
 import type { RosterSeed } from '../components/panel/OpenPanelDialog';
 import { useBulkCreatePanels, usePanels } from '../hooks/usePanels';
-import { DepartmentPanelProgress } from '../components/panel/DepartmentPanelProgress';
 import { PanelListSection } from '../components/panel/PanelListSection';
 import { isEvaluationDeletable } from '../types';
 import type { BulkCreatePanelsResult, PanelEvaluatorDraft } from '../panelTypes';
@@ -54,9 +61,31 @@ const OpenPanelDialog = lazy(() =>
 );
 
 type ViewMode = 'by-position' | 'by-factor';
+type TableDensity = 'comfortable' | 'compact';
+
+const DENSITY_STORAGE_KEY = 'evaluation_table_density';
 
 function isViewMode(value: string | null): value is ViewMode {
   return value === 'by-position' || value === 'by-factor';
+}
+
+function readDensity(): TableDensity {
+  if (typeof window === 'undefined') return 'comfortable';
+  try {
+    const v = window.localStorage.getItem(DENSITY_STORAGE_KEY);
+    return v === 'compact' ? 'compact' : 'comfortable';
+  } catch {
+    return 'comfortable';
+  }
+}
+
+function writeDensity(v: TableDensity): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(DENSITY_STORAGE_KEY, v);
+  } catch {
+    /* ignore */
+  }
 }
 
 const STATUSES: EvaluationStatus[] = [
@@ -72,25 +101,53 @@ const STATUSES: EvaluationStatus[] = [
 /**
  * Evaluation list — table with status / methodology / position filters.
  * "+ New evaluation" CTA gated behind EVALUATION_EDIT.
+ *
+ * Phase 1 changes:
+ * - CompletionBar replaces stacked DepartmentPanelProgress (now in popover)
+ * - PanelListSection moved to Drawer (no longer in vertical stack)
+ * - Quick-filter chips: "Only incomplete" (status=INCOMPLETE), "Only mine"
+ *   (evaluatorUserId=current user — backend supports evaluatorUserId param)
+ * - Density toggle (comfortable/compact) persisted to localStorage
+ * - positionsQuery size 200 → 500
  */
 export function EvaluationListPage() {
   const { t, i18n } = useTranslation();
   const { projectId = '' } = useParams<{ projectId: string }>();
   const { can } = usePermission();
   const canEdit = can(PERMISSIONS.EVALUATION_EDIT);
+  const currentUser = useAuthStore((s) => s.user);
+
+  // Committee scorer = can read evaluations but is NOT a methodology-aware
+  // manager/oversight role (HRLAB_SUPER_ADMIN / HRLAB_CONSULTANT /
+  // HRLAB_PROJECT_MANAGER / CLIENT_HR_DIRECTOR all hold METHODOLOGY_READ). Such a
+  // user (e.g. a Department Director assigned to a panel) gets a focused,
+  // factor-by-factor scoring experience — no project-wide management surfaces
+  // (by-position list, completion bar, add-positions). Backend enforces the
+  // per-sheet bias isolation; this is purely the role-aware UI shaping.
+  const isCommitteeScorer =
+    can(PERMISSIONS.EVALUATION_READ) && !can(PERMISSIONS.METHODOLOGY_READ);
+
   const [searchParams, setSearchParams] = useSearchParams();
-  const mode: ViewMode = isViewMode(searchParams.get('mode'))
-    ? (searchParams.get('mode') as ViewMode)
-    : 'by-position';
+  // A committee scorer is locked to the by-factor scoring view regardless of the
+  // ?mode= URL param — they never see the by-position all-positions table.
+  const mode: ViewMode = isCommitteeScorer
+    ? 'by-factor'
+    : isViewMode(searchParams.get('mode'))
+      ? (searchParams.get('mode') as ViewMode)
+      : 'by-position';
   const factorParam = searchParams.get('factor');
   // The methodology the K-sheet is scoped to. Shared via the URL so a refresh
   // keeps the choice AND the Add-positions dialog defaults to the same version.
   const methodologyParam = searchParams.get('methodology');
 
+  // Quick-filter chips — driven via URL params.
+  // "Only incomplete": status=INCOMPLETE (backend supports `status` param — verified in EvaluationController.java)
+  // "Only mine": evaluatorUserId=currentUser.id (backend supports `evaluatorUserId` — verified in EvaluationController.java)
+  const chipIncomplete = searchParams.get('chip_incomplete') === '1';
+  const chipMine = searchParams.get('chip_mine') === '1';
+
   const setMode = useCallback(
     (next: ViewMode) => {
-      // Preserve the factor + methodology params when switching to by-factor;
-      // drop the factor when going back to by-position so URLs stay minimal.
       const params = new URLSearchParams(searchParams);
       params.set('mode', next);
       if (next === 'by-position') params.delete('factor');
@@ -123,25 +180,76 @@ export function EvaluationListPage() {
     [searchParams, setSearchParams],
   );
 
+  const toggleChip = useCallback(
+    (chip: 'incomplete' | 'mine', currentValue: boolean) => {
+      const params = new URLSearchParams(searchParams);
+      if (currentValue) {
+        params.delete(`chip_${chip}`);
+      } else {
+        params.set(`chip_${chip}`, '1');
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const clearChips = useCallback(() => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('chip_incomplete');
+    params.delete('chip_mine');
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // The chip_incomplete and chip_mine params drive the BE query.
+  // chip_incomplete maps to status=INCOMPLETE; chip_mine maps to evaluatorUserId=currentUser.id.
+  // When both active we pass both; the BE ANDs them.
+  // NOTE: chip_mine is only active when a currentUser is available.
+  const chipMineUserId = chipMine && currentUser?.id ? currentUser.id : undefined;
+
   const [statusFilter, setStatusFilter] = useState<EvaluationStatus | ''>('');
   const [methodologyFilter, setMethodologyFilter] = useState<string>('');
+  const [density, setDensity] = useState<TableDensity>(readDensity);
   const [adding, setAdding] = useState(false);
   const [openingPanel, setOpeningPanel] = useState(false);
+  const [panelsDrawerOpen, setPanelsDrawerOpen] = useState(false);
   // Roster seed for the copy-roster affordance (FE-6) — kept across reopen so a
   // whole department can be commissioned then the roster reused for the next.
   const [rosterSeed, setRosterSeed] = useState<RosterSeed | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Evaluation | null>(null);
 
+  const handleDensityToggle = useCallback(() => {
+    setDensity((prev) => {
+      const next: TableDensity = prev === 'comfortable' ? 'compact' : 'comfortable';
+      writeDensity(next);
+      return next;
+    });
+  }, []);
+
+  // The effective status for the BE query: chip_incomplete wins over dropdown
+  // because the chip is more specific (forces INCOMPLETE); if neither active,
+  // use the dropdown value.
+  const effectiveStatus: EvaluationStatus | undefined =
+    chipIncomplete ? 'INCOMPLETE' : statusFilter || undefined;
+
   const evalsQuery = useEvaluations({
     projectId,
-    status: statusFilter || undefined,
+    status: effectiveStatus,
+    // evaluatorUserId is a supported BE param (EvaluationController.java line 141)
+    evaluatorUserId: chipMineUserId,
   });
-  const positionsQuery = usePositions(projectId ? { projectId, size: 200 } : null);
+
+  // Phase 1: size 200 → 500 to prevent silent truncation past 200 positions.
+  const positionsQuery = usePositions(projectId ? { projectId, size: 500 } : null);
   const methodologiesQuery = useMethodologies(projectId);
-  // FE-1: the same department tree the by-factor view consumes — used to map
-  // position.department_id -> localized department name FE-side (no BE change).
+  const versionQueries = useQueries({
+    queries: (methodologiesQuery.data?.items ?? []).map((meth) => ({
+      queryKey: methodologyKeys.versions(meth.id),
+      queryFn: () => fetchMethodologyVersions(meth.id),
+      enabled: !!meth.id,
+      staleTime: 5 * 60_000,
+    })),
+  });
   const treeQuery = useDepartmentTree(projectId);
-  // FE-7: already-loaded panel set for the per-department progress column.
   const panelsQuery = usePanels(projectId ? { projectId } : {});
   const bulkCreateMutation = useBulkCreateEvaluations();
   const deleteMutation = useDeleteEvaluation();
@@ -171,8 +279,7 @@ export function EvaluationListPage() {
           })),
         // "Комиссия яратиш" must CREATE AND START the commission: the BE locks
         // each fully-rostered panel and creates the per-evaluator DRAFT sheets,
-        // so the assigned experts can score on /app/my-evaluations right away
-        // (without this the panels stay COLLECTING and experts see nothing).
+        // so the assigned experts can score on /app/my-evaluations right away.
         start_evaluations: true,
       });
     },
@@ -187,7 +294,6 @@ export function EvaluationListPage() {
     return m;
   }, [positionsQuery.data, i18n.language]);
 
-  // position_id -> department_id, then department_id -> localized name.
   const positionDeptIdMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of positionsQuery.data?.items ?? []) {
@@ -214,8 +320,7 @@ export function EvaluationListPage() {
   );
 
   // FE-2 candidate diff: keys of (position_id|methodology_version_id) that
-  // already have a NON-archived evaluation. The Add-positions dialog filters
-  // candidates against this set for the selected version.
+  // already have a NON-archived evaluation.
   const existingEvalKeys = useMemo(() => {
     const set = new Set<string>();
     for (const e of evalsQuery.data?.items ?? []) {
@@ -233,25 +338,17 @@ export function EvaluationListPage() {
     return m;
   }, [methodologiesQuery.data, i18n.language]);
 
-  /**
-   * Evaluations reference a methodology *version* id, but the dropdown filters
-   * by methodology (container) id. Bridge version → methodology via the
-   * active/latest version pointers the enriched list response now provides, so
-   * the column shows the methodology name and the filter actually matches.
-   */
   const versionToMeth = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
-    for (const meth of methodologiesQuery.data?.items ?? []) {
+    (methodologiesQuery.data?.items ?? []).forEach((meth, idx) => {
       const entry = { id: meth.id, name: pickLocalized(meth.name_i18n, i18n.language) };
       if (meth.active_version_id) m.set(meth.active_version_id, entry);
       if (meth.latest_version_id) m.set(meth.latest_version_id, entry);
-    }
+      for (const v of versionQueries[idx]?.data ?? []) m.set(v.id, entry);
+    });
     return m;
-  }, [methodologiesQuery.data, i18n.language]);
+  }, [methodologiesQuery.data, versionQueries, i18n.language]);
 
-  // The active version of the methodology the K-sheet is currently scoped to
-  // (from the ?methodology= URL param). Used to default the Add-positions
-  // dialog so creating evaluations follows the selected methodology version.
   const selectedVersionId = useMemo(() => {
     if (!methodologyParam) return null;
     const meth = (methodologiesQuery.data?.items ?? []).find(
@@ -270,6 +367,9 @@ export function EvaluationListPage() {
     return items;
   }, [evalsQuery.data, methodologyFilter, versionToMeth]);
 
+  // Whether any quick-filter chip is active — drives "Clear filters" affordance.
+  const anyChipActive = chipIncomplete || chipMine;
+
   const columns: DataTableColumn<Evaluation>[] = [
     {
       key: 'position',
@@ -279,8 +379,7 @@ export function EvaluationListPage() {
       sortAccessor: (row) => positionMap.get(row.position_id) ?? '',
     },
     {
-      // FE-1: department column, derived FE-side from already-available data
-      // (positions + department tree). No change to EvaluationResponse.
+      // FE-1: department column derived FE-side from already-available data.
       key: 'department',
       header: t('evaluation.column.department'),
       render: (row) => departmentNameOfPosition(row.position_id) || '—',
@@ -315,10 +414,7 @@ export function EvaluationListPage() {
       key: 'updated',
       header: t('evaluation.column.updated'),
       render: (row) =>
-        (row.submitted_at ?? row.approved_at ?? row.locked_at ?? '').slice(
-          0,
-          10,
-        ) || '—',
+        (row.submitted_at ?? row.approved_at ?? row.locked_at ?? '').slice(0, 10) || '—',
     },
     {
       key: 'actions',
@@ -332,10 +428,6 @@ export function EvaluationListPage() {
           >
             {t('common.edit')}
           </Link>
-          {/* FE-3: row-level delete — pre-submission rows (DRAFT / INCOMPLETE /
-              COMPLETE) + EVALUATION_EDIT. Post-submission rows keep the Archive
-              path on the detail page. Visibility derives from the single shared
-              `isEvaluationDeletable` predicate (mirrors the BE guard). */}
           {canEdit && isEvaluationDeletable(row.status) ? (
             <button
               type="button"
@@ -353,8 +445,11 @@ export function EvaluationListPage() {
     },
   ];
 
+  // Density toggle: compact mode uses DataTable `dense` prop to tighten cell py.
+  const denseTable = density === 'compact';
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Breadcrumbs extra={[{ label: t('nav.evaluation') }]} />
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -377,29 +472,39 @@ export function EvaluationListPage() {
                 {t('panel.dialog.title')}
               </Button>
             </PermissionGate>
-            <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
-              <Button
-                onClick={() => setAdding(true)}
-                data-testid="add-positions-open"
-                title={t('evaluation.cta.add_positions_tooltip')}
-              >
-                {t('evaluation.add_positions.cta')}
-              </Button>
-            </PermissionGate>
+            {/* "+ Add positions" is a project-management action. A committee
+                scorer HAS EVALUATION_EDIT (they must score), so the permission
+                gate alone is not enough — additionally require they are not a
+                committee scorer. Managers/oversight (METHODOLOGY_READ holders)
+                keep the button. */}
+            {!isCommitteeScorer ? (
+              <PermissionGate permission={PERMISSIONS.EVALUATION_EDIT}>
+                <Button
+                  onClick={() => setAdding(true)}
+                  data-testid="add-positions-open"
+                  title={t('evaluation.cta.add_positions_tooltip')}
+                >
+                  {t('evaluation.add_positions.cta')}
+                </Button>
+              </PermissionGate>
+            ) : null}
           </div>
-          {/* PD-4: one-line guidance distinguishing the two header CTAs — the
-              expert-commission (multi-evaluator panel) flow vs. opening
-              single-position evaluation sheets — so they are not confused. */}
-          <p
-            className="text-xs text-text-muted max-w-md text-right"
-            data-testid="evaluation-cta-helper"
-          >
-            {t('evaluation.cta.helper')}
-          </p>
+          {/* The CTA helper describes the "Open panel" / "Add positions" actions —
+              irrelevant for a committee scorer (who has neither button). */}
+          {!isCommitteeScorer ? (
+            <p
+              className="text-xs text-text-muted max-w-md text-right"
+              data-testid="evaluation-cta-helper"
+            >
+              {t('evaluation.cta.helper')}
+            </p>
+          ) : null}
         </div>
       </header>
 
-      {/* Mode toggle — preserves URL state via ?mode= so refresh / share works. */}
+      {/* Mode toggle — hidden for committee scorers (locked to by-factor). */}
+      {!isCommitteeScorer ? (
+      <>
       <div
         role="tablist"
         aria-label={t('evaluation.byFactor.mode_toggle.aria')}
@@ -440,40 +545,28 @@ export function EvaluationListPage() {
         </button>
       </div>
 
-      {/* FE-6: one-line helper so the two pagination/metric surfaces are not
-          confused — by-position is per-position drill-down, by-factor is the
-          bulk K-sheet. */}
       <p
-        className="text-xs text-text-muted -mt-3"
+        className="text-xs text-text-muted -mt-2"
         data-testid="evaluation-mode-hint"
       >
         {mode === 'by-position'
           ? t('evaluation.mode_hint.by_position')
           : t('evaluation.mode_hint.by_factor')}
       </p>
+      </>
+      ) : null}
 
-      {/* FE-7: per-department panel coverage (X of Y positions paneled),
-          derived from the already-loaded panels + department tree + positions —
-          no new endpoint. Dept directors only see their own scope because the
-          BE GET /panels response is ABAC-scoped (no FE-only hiding). */}
+      {/* Phase 1 IA: CompletionBar replaces stacked DepartmentPanelProgress.
+          DepartmentPanelProgress is now inside the popover within CompletionBar.
+          PanelListSection is now in the Drawer below. */}
       {mode === 'by-position' ? (
-        <DepartmentPanelProgress
+        <EvaluationCompletionBar
+          evaluations={evalsQuery.data?.items ?? []}
+          panels={panelsQuery.data?.items ?? []}
           projectId={projectId}
           departments={treeQuery.data ?? []}
           positions={positionsQuery.data?.items ?? []}
-          panels={panelsQuery.data?.items ?? []}
-        />
-      ) : null}
-
-      {/* T3 (Defect 2): evaluation-panels list — un-dead-ends a created panel by
-          giving it a viewable/manageable detail route. Reuses the already-loaded
-          `panelsQuery` + shared DataTable + PanelStatusBadge (no new fetch,
-          no bespoke table). Shown whenever there is at least one panel. */}
-      {mode === 'by-position' && (panelsQuery.data?.items.length ?? 0) > 0 ? (
-        <PanelListSection
-          projectId={projectId}
-          panels={panelsQuery.data?.items ?? []}
-          loading={panelsQuery.isLoading}
+          onOpenPanelsDrawer={() => setPanelsDrawerOpen(true)}
         />
       ) : null}
 
@@ -490,58 +583,160 @@ export function EvaluationListPage() {
       ) : null}
 
       {mode === 'by-position' ? (
-      <Card>
-        <DataTable<Evaluation>
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.id}
-          loading={evalsQuery.isLoading}
-          searchPredicate={(row, q) =>
-            (positionMap.get(row.position_id) ?? '').toLowerCase().includes(q)
-          }
-          emptyTitle={t('evaluation.empty_title')}
-          emptyBody={t('evaluation.empty_body')}
-          filterBar={
-            <div className="flex items-center gap-2 flex-wrap">
-              <select
-                aria-label={t('evaluation.filter.status')}
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.target.value as EvaluationStatus | '')
-                }
-                data-testid="filter-status"
-                className="h-9 px-3 border border-border-strong rounded-md text-sm bg-surface"
-              >
-                <option value="">{t('common.all')}</option>
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {t(`evaluation.status.${s.toLowerCase()}`)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label={t('evaluation.filter.methodology')}
-                value={methodologyFilter}
-                onChange={(e) => setMethodologyFilter(e.target.value)}
-                data-testid="filter-methodology"
-                className="h-9 px-3 border border-border-strong rounded-md text-sm bg-surface"
-              >
-                <option value="">{t('common.all')}</option>
-                {Array.from(methodologyMap.entries()).map(([id, name]) => (
-                  <option key={id} value={id}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          }
-        />
-      </Card>
+        <Card>
+          <DataTable<Evaluation>
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => row.id}
+            loading={evalsQuery.isLoading}
+            dense={denseTable}
+            searchPredicate={(row, q) =>
+              (positionMap.get(row.position_id) ?? '').toLowerCase().includes(q)
+            }
+            emptyTitle={t('evaluation.empty_title')}
+            emptyBody={t('evaluation.empty_body')}
+            filterBar={
+              <div className="flex flex-col gap-2">
+                {/* Dropdowns row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    aria-label={t('evaluation.filter.status')}
+                    value={chipIncomplete ? '' : statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value as EvaluationStatus | '');
+                      // Clear chip_incomplete when manually picking a status
+                      if (chipIncomplete) {
+                        const params = new URLSearchParams(searchParams);
+                        params.delete('chip_incomplete');
+                        setSearchParams(params, { replace: true });
+                      }
+                    }}
+                    disabled={chipIncomplete}
+                    data-testid="filter-status"
+                    className="h-9 px-3 border border-border-strong rounded-md text-sm bg-surface disabled:opacity-50"
+                  >
+                    <option value="">{t('common.all')}</option>
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {t(`evaluation.status.${s.toLowerCase()}`)}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label={t('evaluation.filter.methodology')}
+                    value={methodologyFilter}
+                    onChange={(e) => setMethodologyFilter(e.target.value)}
+                    data-testid="filter-methodology"
+                    className="h-9 px-3 border border-border-strong rounded-md text-sm bg-surface"
+                  >
+                    <option value="">{t('common.all')}</option>
+                    {Array.from(methodologyMap.entries()).map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Density toggle */}
+                  <button
+                    type="button"
+                    onClick={handleDensityToggle}
+                    data-testid="density-toggle"
+                    title={t(
+                      density === 'comfortable'
+                        ? 'evaluation.filter.density_compact'
+                        : 'evaluation.filter.density_comfortable',
+                    )}
+                    className={cn(
+                      'h-9 px-3 border rounded-md text-sm transition-colors',
+                      density === 'compact'
+                        ? 'bg-primary-50 border-primary-400 text-primary-700'
+                        : 'bg-surface border-border-strong text-text-secondary hover:text-text-primary',
+                    )}
+                  >
+                    {t(
+                      density === 'comfortable'
+                        ? 'evaluation.filter.density_compact'
+                        : 'evaluation.filter.density_comfortable',
+                    )}
+                  </button>
+                </div>
+
+                {/* Quick-filter chips row — flex-wrap so Uzbek labels don't overflow */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* "Only incomplete" chip — backend `status` param supported */}
+                  <button
+                    type="button"
+                    onClick={() => toggleChip('incomplete', chipIncomplete)}
+                    aria-pressed={chipIncomplete}
+                    data-testid="chip-only-incomplete"
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border transition-colors',
+                      chipIncomplete
+                        ? 'bg-warning-100 border-warning-400 text-warning-800 font-medium'
+                        : 'bg-surface border-border-strong text-text-secondary hover:border-primary-400 hover:text-primary-700',
+                    )}
+                  >
+                    {t('evaluation.filter.chip_incomplete')}
+                    {chipIncomplete ? <X size={12} aria-hidden /> : null}
+                  </button>
+
+                  {/* "Only mine" chip — backend `evaluatorUserId` param supported
+                      (EvaluationController.java listById @RequestParam evaluatorUserId) */}
+                  {currentUser ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleChip('mine', chipMine)}
+                      aria-pressed={chipMine}
+                      data-testid="chip-only-mine"
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border transition-colors',
+                        chipMine
+                          ? 'bg-primary-100 border-primary-400 text-primary-800 font-medium'
+                          : 'bg-surface border-border-strong text-text-secondary hover:border-primary-400 hover:text-primary-700',
+                      )}
+                    >
+                      {t('evaluation.filter.chip_mine')}
+                      {chipMine ? <X size={12} aria-hidden /> : null}
+                    </button>
+                  ) : null}
+
+                  {/* "Clear filters" — shown when any chip is active */}
+                  {anyChipActive ? (
+                    <button
+                      type="button"
+                      onClick={clearChips}
+                      data-testid="chip-clear-filters"
+                      className="text-xs text-text-muted hover:text-text-primary underline"
+                    >
+                      {t('evaluation.filter.clear_chips')}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            }
+          />
+        </Card>
       ) : null}
 
-      {/* FE-2: multi-select "Add positions" dialog (replaces the single-create
-          dialog). Reuses the BulkScoreDialog modal structure + partial-fail
-          result block. Gated behind EVALUATION_EDIT. */}
+      {/* Phase 1: PanelListSection moved to Drawer (slide-over).
+          No longer stacked in the vertical flow — opened via CompletionBar trigger. */}
+      <Drawer
+        open={panelsDrawerOpen}
+        title={`${t('panel.list.title')} (${panelsQuery.data?.items.length ?? 0})`}
+        onClose={() => setPanelsDrawerOpen(false)}
+        widthClassName="max-w-2xl"
+        data-testid="panels-drawer"
+      >
+        <PanelListSection
+          projectId={projectId}
+          panels={panelsQuery.data?.items ?? []}
+          loading={panelsQuery.isLoading}
+          compact
+        />
+      </Drawer>
+
+      {/* FE-2: multi-select "Add positions" dialog */}
       <AddPositionsDialog
         open={adding}
         positions={positionsQuery.data?.items ?? []}
@@ -561,13 +756,6 @@ export function EvaluationListPage() {
         onClose={() => setAdding(false)}
       />
 
-      {/* FE-1..FE-6: dept-first 3-step panel wizard (replaces the flat
-          single-position dialog). Step 1 department → Step 2 server-filtered
-          positions → Step 3 shared roster, then ONE bulk-create. Gated behind
-          EVALUATION_PANEL_MANAGE. */}
-      {/* Mounted only while open so its lazy chunk is fetched on first use, not
-          on page load. The wizard already renders nothing when closed, so
-          gating the mount is behaviour-preserving. */}
       {openingPanel ? (
         <Suspense fallback={null}>
           <OpenPanelDialog
@@ -578,8 +766,6 @@ export function EvaluationListPage() {
             rosterSeed={rosterSeed}
             onConfirm={handleBulkOpenPanels}
             onCopyRosterToNext={(seed) => {
-              // FE-6: keep HR + externals (dept director already cleared by the
-              // wizard), reopen at Step 1 for the next department.
               setRosterSeed(seed);
               setOpeningPanel(false);
               setTimeout(() => setOpeningPanel(true), 0);
@@ -592,8 +778,6 @@ export function EvaluationListPage() {
         </Suspense>
       ) : null}
 
-      {/* FE-3: delete confirmation for pre-submission rows — reuses ConfirmDialog
-          with the optional required-reason field (>=5 chars, matching BE ReasonRequest). */}
       <ConfirmDialog
         open={deleteTarget != null}
         destructive

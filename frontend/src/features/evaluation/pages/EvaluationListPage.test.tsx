@@ -1,7 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
-import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
+import {
+  renderWithProviders,
+  signIn,
+  signInWithPermissions,
+  signOut,
+} from '@/test/testUtils';
+import { PERMISSIONS } from '@/shared/types/permissions';
 import { EvaluationListPage } from './EvaluationListPage';
 import type { Evaluation } from '../types';
 import type { Methodology } from '@/features/methodology/types';
@@ -470,5 +476,49 @@ describe('EvaluationListPage — Item 1 (department / add / delete)', () => {
     expect(screen.getByTestId('evaluation-cta-helper')).toBeInTheDocument();
     expect(screen.getByTestId('open-panel-cta')).toHaveAttribute('title');
     expect(screen.getByTestId('add-positions-open')).toHaveAttribute('title');
+  });
+});
+
+// A committee scorer = EVALUATION_READ + EVALUATION_EDIT but NO METHODOLOGY_READ
+// (e.g. a Department Director assigned to a panel). They get a focused,
+// factor-by-factor scoring experience: no mode toggle, no by-position table, no
+// completion bar, no "+ Add positions". Managers/oversight (any METHODOLOGY_READ
+// holder) keep the full experience — proven by the manager (super-admin) tests
+// above which still see the toggle + add-positions.
+describe('EvaluationListPage — committee scorer (no METHODOLOGY_READ)', () => {
+  beforeEach(() => {
+    // EVALUATION_READ + EVALUATION_EDIT (they must score) but deliberately NO
+    // METHODOLOGY_READ → isCommitteeScorer === true.
+    signInWithPermissions([
+      PERMISSIONS.PROJECT_READ,
+      PERMISSIONS.POSITION_READ,
+      PERMISSIONS.EVALUATION_READ,
+      PERMISSIONS.EVALUATION_EDIT,
+    ]);
+  });
+  afterEach(() => signOut());
+
+  it('hides the by-position / by-factor mode toggle (locked to by-factor)', () => {
+    renderPage();
+    expect(screen.queryByTestId('evaluation-mode-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mode-by-position')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mode-by-factor')).not.toBeInTheDocument();
+  });
+
+  it('never renders the by-position completion bar (project-wide aggregate leak)', () => {
+    renderPage();
+    expect(
+      screen.queryByTestId('evaluation-completion-bar'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides the "+ Add positions" CTA even though they hold EVALUATION_EDIT', () => {
+    renderPage();
+    expect(screen.queryByTestId('add-positions-open')).not.toBeInTheDocument();
+  });
+
+  it('hides the "Open evaluation panel" CTA (no EVALUATION_PANEL_MANAGE)', () => {
+    renderPage();
+    expect(screen.queryByTestId('open-panel-cta')).not.toBeInTheDocument();
   });
 });

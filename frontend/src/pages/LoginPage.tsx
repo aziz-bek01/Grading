@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/features/auth/authStore';
-import { buildDevUser } from '@/features/auth/devAuth';
+import { buildDevUser, DEV_BOOTSTRAP_USER_ID } from '@/features/auth/devAuth';
+import { httpClient } from '@/shared/api/httpClient';
+import type { TenantSummary } from '@/shared/auth/authTypes';
 import { env } from '@/shared/config/env';
 import { startSignin } from '@/shared/auth/oidcClient';
 import { Button } from '@/shared/components/ui/Button';
@@ -9,6 +12,15 @@ import { Card } from '@/shared/components/ui/Card';
 import { LanguageSwitcher } from '@/shared/components/layout/LanguageSwitcher';
 import { routes } from '@/shared/config/routes';
 import hrlMarkWhite from '@/assets/brand/hrl-mark-white.svg';
+
+/** A real user the dev "sign in as a specific user" picker can impersonate. */
+interface PickUser {
+  id: string;
+  email: string;
+  full_name: string;
+  /** A tenant the user belongs to — pre-seeds the active tenant on sign-in. */
+  tenantId?: string;
+}
 
 /**
  * Login page — HR LABORATORIES branded.
@@ -36,6 +48,85 @@ export function LoginPage() {
     });
     navigate(from, { replace: true });
   };
+
+  // --- Dev-only "sign in as a specific user" picker --------------------------
+  // Lets a developer sign in as ANY real user from the (locally-copied) data,
+  // not just the three hardcoded role shortcuts. The list is fetched via a
+  // bootstrap super-admin identity (X-Dev-User) BEFORE any session exists.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerUsers, setPickerUsers] = useState<PickUser[]>([]);
+  const [pickerTenants, setPickerTenants] = useState<Record<string, TenantSummary>>({});
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerError, setPickerError] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const openPicker = async () => {
+    setPickerOpen(true);
+    if (pickerUsers.length > 0) return;
+    setPickerLoading(true);
+    setPickerError(false);
+    try {
+      const bootstrap = { headers: { 'X-Dev-User': DEV_BOOTSTRAP_USER_ID } } as const;
+      // The bootstrap admin's tenants — /users is tenant-scoped, so we sweep
+      // every tenant the admin can see and merge the user sets.
+      const me = await httpClient.get<{
+        tenants: Array<{ id: string; slug: string; brand_name: string; fingerprint_hue?: number }>;
+      }>('/users/me', bootstrap);
+      const tenants = me.data.tenants ?? [];
+      const tmap: Record<string, TenantSummary> = {};
+      for (const tn of tenants) {
+        tmap[tn.id] = { id: tn.id, slug: tn.slug, brand_name: tn.brand_name, fingerprint_hue: tn.fingerprint_hue };
+      }
+      const byId = new Map<string, PickUser>();
+      for (const tn of tenants) {
+        const res = await httpClient.get<{ items: Array<{ id: string; email: string; full_name: string }> }>(
+          '/users',
+          { params: { size: 200 }, headers: { 'X-Dev-User': DEV_BOOTSTRAP_USER_ID, 'X-Dev-Tenant': tn.id } },
+        );
+        for (const it of res.data.items ?? []) {
+          if (!byId.has(it.id)) byId.set(it.id, { id: it.id, email: it.email, full_name: it.full_name, tenantId: tn.id });
+        }
+      }
+      setPickerTenants(tmap);
+      setPickerUsers([...byId.values()].sort((a, b) => a.email.localeCompare(b.email)));
+    } catch {
+      setPickerError(true);
+    } finally {
+      setPickerLoading(false);
+    }
+  };
+
+  const loginAsUser = async (u: PickUser) => {
+    const tsum = u.tenantId ? pickerTenants[u.tenantId] : undefined;
+    // Seed a minimal session with just the identity (+ one known tenant so the
+    // X-Dev-Tenant header is sent); refreshUser() then hydrates the user's REAL
+    // tenants + roles + permissions from /users/me so the UI gates correctly.
+    setSession(
+      {
+        id: u.id,
+        email: u.email,
+        name: u.full_name || u.email,
+        locale: 'ru-RU',
+        roles: [],
+        permissions: [],
+        salary_data_permission: false,
+        tenants: tsum ? [tsum] : [],
+      },
+      { value: `dev-token-${u.id}`, expiresAt: Date.now() + 60 * 60 * 1000 },
+    );
+    try {
+      await useAuthStore.getState().refreshUser();
+    } catch {
+      /* backend still resolves authority per-request from X-Dev-User */
+    }
+    navigate(from, { replace: true });
+  };
+
+  const filteredPickUsers = query.trim()
+    ? pickerUsers.filter((u) =>
+        `${u.full_name} ${u.email}`.toLowerCase().includes(query.trim().toLowerCase()),
+      )
+    : pickerUsers;
 
   const signInWithOidc = () => {
     void startSignin(from);
@@ -94,6 +185,54 @@ export function LoginPage() {
               <Button fullWidth variant="ghost" onClick={() => loginAs('viewer')} data-testid="login-as-viewer">
                 {t('auth.as_viewer')}
               </Button>
+
+              {/* Sign in as ANY real user (dev-only). */}
+              <div className="pt-2 mt-2 border-t border-divider">
+                {!pickerOpen ? (
+                  <Button
+                    fullWidth
+                    variant="ghost"
+                    onClick={() => void openPicker()}
+                    data-testid="login-as-specific-user"
+                  >
+                    {t('auth.as_specific_user')}
+                  </Button>
+                ) : (
+                  <div className="space-y-2" data-testid="login-user-picker">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder={t('auth.picker_search')}
+                      aria-label={t('auth.picker_search')}
+                      className="w-full h-9 px-3 border border-border-strong rounded-md text-sm bg-surface"
+                    />
+                    <div className="max-h-60 overflow-auto rounded-md border border-border divide-y divide-divider">
+                      {pickerLoading ? (
+                        <p className="px-3 py-2 text-sm text-text-muted">{t('auth.picker_loading')}</p>
+                      ) : pickerError ? (
+                        <p className="px-3 py-2 text-sm text-danger-600">{t('auth.picker_error')}</p>
+                      ) : filteredPickUsers.length === 0 ? (
+                        <p className="px-3 py-2 text-sm text-text-muted">{t('auth.picker_empty')}</p>
+                      ) : (
+                        filteredPickUsers.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => void loginAsUser(u)}
+                            data-testid={`login-pick-${u.id}`}
+                            className="w-full text-left px-3 py-2 hover:bg-divider"
+                          >
+                            <span className="block text-sm text-text-primary">{u.full_name || u.email}</span>
+                            <span className="block text-xs text-text-muted">{u.email}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="space-y-2" data-testid="login-oidc">

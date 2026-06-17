@@ -38,6 +38,12 @@ interface Props {
    */
   positions?: Position[];
   panels: Panel[];
+  /**
+   * When true, renders without the outer Card wrapper — for use inside a popover
+   * or Drawer where the host already provides the chrome. Defaults to false
+   * (preserves the original standalone Card usage).
+   */
+  standalone?: boolean;
 }
 
 interface DeptCoverage {
@@ -54,6 +60,7 @@ export function DepartmentPanelProgress({
   departments,
   positions = [],
   panels,
+  standalone = false,
 }: Props) {
   const { t, i18n } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -111,9 +118,10 @@ export function DepartmentPanelProgress({
   const totalPaneled = rows.reduce((s, r) => s + r.paneled, 0);
   const totalPositions = rows.reduce((s, r) => s + r.total, 0);
 
-  return (
-    <Card>
-      <div className="flex items-center justify-between mb-3">
+  const content = (
+    <>
+      {/* Overall summary row — always visible */}
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-text-primary">
           {t('panel.dept_progress.title')}
         </h2>
@@ -124,7 +132,11 @@ export function DepartmentPanelProgress({
           })}
         </span>
       </div>
-      <ul className="space-y-2" data-testid="dept-progress-list">
+
+      {/* Per-department rows — always expanded (collapsing is handled by the
+          popover / drawer host in the new IA; the standalone Card keeps the
+          list visible since the host replaced the interim sectionOpen toggle). */}
+      <ul className="space-y-2 mt-3" data-testid="dept-progress-list">
         {visible.map((r) => {
           const pct = r.total > 0 ? Math.round((r.paneled / r.total) * 100) : 0;
           const full = r.total > 0 && r.paneled >= r.total;
@@ -206,6 +218,13 @@ export function DepartmentPanelProgress({
           )}
         </button>
       ) : null}
-    </Card>
+    </>
   );
+
+  // `standalone` mode: no outer Card (e.g. when embedded in a popover or Drawer).
+  if (standalone) {
+    return <div data-testid="dept-progress-standalone">{content}</div>;
+  }
+
+  return <Card>{content}</Card>;
 }

@@ -35,6 +35,16 @@ export interface DataTableProps<T> {
   pageSize?: number;
   onRowClick?: (row: T) => void;
   className?: string;
+  /**
+   * Additional CSS class(es) applied to every body `<tr>`.
+   * Used for density variants (e.g. `"py-0"` for compact mode).
+   */
+  rowClassName?: string;
+  /**
+   * When true, body cells use tighter vertical padding (`py-1.5` instead of
+   * `py-3`). Enables a "compact" density mode — persisted by the host.
+   */
+  dense?: boolean;
 }
 
 type SortDir = 'asc' | 'desc';
@@ -53,6 +63,8 @@ export function DataTable<T>({
   pageSize = 20,
   onRowClick,
   className,
+  rowClassName,
+  dense = false,
 }: DataTableProps<T>) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
@@ -189,11 +201,19 @@ export function DataTable<T>({
                   className={cn(
                     'border-t border-border hover:bg-divider/40',
                     onRowClick && 'cursor-pointer',
+                    rowClassName,
                   )}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >
                   {filteredCols.map((col) => (
-                    <td key={col.key} className={cn('px-4 py-3 text-text-primary', col.className)}>
+                    <td
+                      key={col.key}
+                      className={cn(
+                        'px-4 text-text-primary',
+                        dense ? 'py-1.5' : 'py-3',
+                        col.className,
+                      )}
+                    >
                       {col.render(row)}
                     </td>
                   ))}

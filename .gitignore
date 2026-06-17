@@ -84,3 +84,7 @@ frontend/scripts/_recovered_*.json
 # --- Misc ---
 *.bak
 *.orig
+
+# local prod DB copies (NEVER commit — real salary/PII)
+.local-dumps/
+.local-tools/

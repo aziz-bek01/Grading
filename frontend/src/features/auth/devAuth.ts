@@ -2,6 +2,15 @@ import type { CurrentUser } from '@/shared/auth/authTypes';
 import { PERMISSIONS } from '@/shared/types/permissions';
 
 /**
+ * The dev super-admin user (seeded by the Liquibase `dev` context) used as the
+ * default identity AND to bootstrap the dev "sign in as a specific user" picker —
+ * it fetches the user list via this identity (X-Dev-User) before any session
+ * exists. To explore a LOCAL COPY OF PROD data, point this (and the `base` user
+ * + tenants below) at a real user/tenant UUID from that copy.
+ */
+export const DEV_BOOTSTRAP_USER_ID = 'aaaa1111-aaaa-1111-aaaa-1111aaaa1111';
+
+/**
  * Local-only dev seed user.
  * Used when the backend dev-auth endpoint is not yet wired.
  * Backend will replace this via `POST /dev-auth/login` returning a real Token.

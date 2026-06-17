@@ -1,0 +1,32 @@
+# Normalize line endings so the repo is consistent regardless of contributor OS.
+# Default: let Git decide text vs binary and normalize to LF in the repo; on
+# checkout, line endings follow the user's core.autocrlf preference.
+* text=auto
+
+# Scripts that run inside Linux containers MUST stay LF on every platform — a
+# Windows checkout (core.autocrlf=true) otherwise rewrites them with CRLF and
+# corrupts the shebang ("./mvnw: not found" when building the backend image).
+mvnw    text eol=lf
+gradlew text eol=lf
+*.sh    text eol=lf
+.mvn/maven.config text eol=lf
+
+# Windows batch wrappers must stay CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Treat these as binary — never line-ending-normalize or diff as text.
+*.jar   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.xlsx  binary
+*.xls   binary
+*.docx  binary

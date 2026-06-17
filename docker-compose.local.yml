@@ -40,8 +40,9 @@ services:
 
   # ---------------------------------------------------------------------------
   # postgres — local dev database (separate volume/network from prod).
-  #   * Publishes 5432 so the HYBRID path (./mvnw spring-boot:run) can reach it
-  #     from the host at jdbc:postgresql://localhost:5432/grading_control_db.
+  #   * Host-published on 55432 by default (override: POSTGRES_HOST_PORT) so it
+  #     never clashes with a native Postgres on 5432. For the HYBRID path run with
+  #     POSTGRES_HOST_PORT=5432 so ./mvnw -P local reaches localhost:5432.
   #   * 00-bootstrap.sql (mounted read-only) creates grading_control_db + the
   #     grading_app bootstrap superuser the `local` Spring profile connects as.
   #   * The grading_runtime / grading_migrator / grading_audit_reader roles are
@@ -62,7 +63,12 @@ services:
       POSTGRES_DB: postgres
       POSTGRES_INITDB_ARGS: "--data-checksums"
     ports:
-      - "5432:5432"          # host access for the hybrid (mvnw) dev path
+      # Host-published on 55432 by DEFAULT so it never clashes with a native
+      # PostgreSQL already on 5432 ("port is already allocated"). The full-Docker
+      # stack does NOT use this — the backend reaches Postgres in-network at
+      # postgres:5432. Override with POSTGRES_HOST_PORT (e.g. =5432) for the
+      # HYBRID path / external DB tools. The container always listens on 5432.
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
     volumes:
       - grading-pg-data-local:/var/lib/postgresql/data
       # First-init bootstrap: create grading_control_db + grading_app superuser.

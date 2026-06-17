@@ -86,6 +86,9 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
+      // Allow the Claude Code Preview reverse-proxy's generated Host header
+      // (Vite otherwise returns "Blocked request"). Dev/preview only.
+      allowedHosts: true,
       proxy: {
         '/api': {
           target: process.env.VITE_API_PROXY ?? 'http://localhost:8080',

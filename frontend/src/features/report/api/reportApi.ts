@@ -71,7 +71,16 @@ export const reportKeys = {
 };
 
 export async function requestReport(payload: ReportRequestPayload): Promise<Report> {
-  const res = await httpClient.post<unknown>('/reports/request', payload);
+  // The backend uses the global SNAKE_CASE Jackson strategy, so the request body
+  // MUST use snake_case keys. Posting the camelCase payload directly made
+  // `report_type` / `project_id` deserialize to null -> 400 VALIDATION_FAILED.
+  const body = {
+    report_type: payload.reportType,
+    format: payload.format,
+    project_id: payload.projectId,
+    filter_params: payload.filterParams ?? null,
+  };
+  const res = await httpClient.post<unknown>('/reports/request', body);
   return normalizeReport(res.data);
 }
 

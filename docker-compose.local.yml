@@ -1,0 +1,180 @@
+# =============================================================================
+# grading.hrlab.uz — LOCAL DEVELOPER stack (build everything from SOURCE).
+# =============================================================================
+# PURPOSE
+#   One command brings up the WHOLE app — Postgres (with demo data), backend,
+#   frontend — so a developer can clone the repo and review/click through the
+#   real product on their own machine. NOT a production artifact.
+#
+#   Run:
+#     docker compose -f docker-compose.local.yml up --build
+#   Then open:
+#     http://localhost:8081          -> the SPA (dev-auth: "Sign in as super-admin")
+#     http://localhost:8080/actuator/health  -> backend health
+#   Stop + wipe demo DB:
+#     docker compose -f docker-compose.local.yml down -v
+#
+# DEV-ONLY — DO NOT DEPLOY:
+#   * Passwordless dev-auth login (X-Dev-* headers, no JWT/OIDC).
+#   * Well-known DEV credentials below (grading_app / grading_app_pwd, etc.).
+#   * The `dev` Liquibase context seeds DEMO tenants/users/projects.
+#   Production runs from docker-compose.prod.yml (pulls immutable GHCR images,
+#   real OIDC, secrets from .env.prod) and is COMPLETELY UNTOUCHED by this file.
+#
+# WHY this is separate from docker-compose.prod.yml:
+#   prod PULLS pre-built images by immutable tag and bakes dev-auth OFF. This
+#   file BUILDS from source and flips dev-auth ON for the frontend so the local
+#   reviewer gets a populated, clickable UI hitting the REAL local backend
+#   (no MSW mock). The two never share a network, volume, or container name.
+# =============================================================================
+
+name: grading-local
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # postgres — local dev database (separate volume/network from prod).
+  #   * Publishes 5432 so the HYBRID path (./mvnw spring-boot:run) can reach it
+  #     from the host at jdbc:postgresql://localhost:5432/grading_control_db.
+  #   * 00-bootstrap.sql (mounted read-only) creates grading_control_db + the
+  #     grading_app bootstrap superuser the `local` Spring profile connects as.
+  #   * The grading_runtime / grading_migrator / grading_audit_reader roles are
+  #     created AFTER, by Liquibase's `test-roles` context, when the backend
+  #     boots under the `local` profile.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: grading-postgres-local
+    restart: unless-stopped
+    environment:
+      # DEV-ONLY cluster superuser. The entrypoint runs 00-bootstrap.sql as this
+      # user, which then creates grading_control_db + the grading_app role.
+      POSTGRES_USER: grading_super
+      POSTGRES_PASSWORD: grading_super_pwd   # DEV-ONLY placeholder. Never reuse.
+      # Keep the entrypoint's default `postgres` db; our script creates the real
+      # application database grading_control_db itself (so ownership is correct).
+      POSTGRES_DB: postgres
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "5432:5432"          # host access for the hybrid (mvnw) dev path
+    volumes:
+      - grading-pg-data-local:/var/lib/postgresql/data
+      # First-init bootstrap: create grading_control_db + grading_app superuser.
+      - ./infra/local/initdb:/docker-entrypoint-initdb.d:ro
+    networks: [grading-local]
+    healthcheck:
+      # Probe the bootstrap DB we actually create, as the role the app uses.
+      test: ["CMD-SHELL", "pg_isready -U grading_app -d grading_control_db || pg_isready -U grading_super -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # backend — grading-api built from ./backend, profile=local.
+  #   * profile=local => DevAuthFilter binds (X-Dev-* headers) AND Liquibase runs
+  #     contexts control-plane,seeds,test-roles,mode-shared,dev. The `dev`
+  #     context seeds the ACME/Beta demo tenants + demo super-admin so the UI is
+  #     populated. Liquibase runs on boot (single connection migrates + serves),
+  #     exactly as application-local.yml is designed for — no separate migrator.
+  #   * Overrides the datasource URL/user to reach the `postgres` SERVICE
+  #     (host `postgres`, not localhost) on the shared compose network.
+  #   * CORS allowlist set to the dockerised frontend origin AND the vite dev
+  #     server origin, so BOTH the full-Docker and hybrid paths work.
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend          # uses backend/Dockerfile (the prod multi-stage build — unchanged)
+    image: grading-api:local
+    container_name: grading-api-local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"               # SPA proxy target + direct host access (actuator, swagger)
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SERVER_PORT: "8080"
+      MANAGEMENT_SERVER_PORT: "8080"
+      # Outside K8s the liveness/readiness probe groups are not auto-enabled;
+      # turn them on so /actuator/health/{readiness,liveness} (and the container
+      # HEALTHCHECK in backend/Dockerfile) return 200 instead of 404.
+      MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+      # --- Datasource: override application-local.yml's localhost URL so the
+      #     container reaches the `postgres` SERVICE. Spring relaxed-binds these
+      #     SPRING_DATASOURCE_* env vars over the YAML values. ---
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/grading_control_db
+      SPRING_DATASOURCE_USERNAME: grading_app
+      SPRING_DATASOURCE_PASSWORD: grading_app_pwd     # DEV-ONLY (matches initdb script)
+      # --- CORS: full-Docker SPA origin (8081) + vite dev server (5173/5174).
+      #     With the dockerised SPA the API is same-origin via the nginx proxy,
+      #     but we still allow these so the hybrid path and direct calls work. ---
+      GRADING_CORS_ALLOWED_ORIGINS: "http://localhost:8081,http://localhost:5173,http://localhost:5174"
+      # Modest local heap; the prod compose sizes this for the VPS.
+      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"
+    networks: [grading-local]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s         # cold JVM start + Liquibase migrate + dev seed
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # frontend — SPA built from ./frontend with the LOCAL Dockerfile (dev-auth ON,
+  # MSW OFF) and served by nginx that proxies /api/v1 -> the backend service.
+  #   * build.context = ./frontend so all the prod Dockerfile's COPY paths
+  #     resolve; build.dockerfile points at the local variant outside that
+  #     context; additional_contexts passes the local nginx conf as `localcfg`.
+  #   * The reviewer opens http://localhost:8081, clicks "Sign in as
+  #     super-admin", and every /api/v1 call is proxied same-origin to the real
+  #     local backend (DevAuthFilter resolves RBAC from the seeded DB).
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../infra/local/frontend/Dockerfile.local
+      additional_contexts:
+        # Named build context so the Dockerfile can COPY the local nginx config
+        # that lives OUTSIDE the ./frontend build context. NOTE: additional_contexts
+        # paths resolve relative to THIS compose file's directory (the repo root),
+        # NOT relative to build.context — hence ./infra (not ../infra).
+        localcfg: ./infra/local/frontend
+      args:
+        VITE_DEV_AUTH: "true"
+        VITE_USE_MSW: "false"
+        VITE_API_BASE_URL: "/api/v1"
+    image: grading-frontend:local
+    container_name: grading-frontend-local
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8081:8080"               # open http://localhost:8081
+    networks: [grading-local]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "--tries=1", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    logging: *default-logging
+
+volumes:
+  grading-pg-data-local:
+    name: grading-pg-data-local
+
+networks:
+  grading-local:
+    name: grading-local
+    driver: bridge

@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -87,6 +88,52 @@ class MethodologyVersionControllerSecurityTest {
         return new MethodologyVersion(id, UUID.randomUUID(), UUID.randomUUID(),
                 1, MethodologyVersionStatus.DRAFT, mode,
                 new BigDecimal("100"), null, null, null, null, null);
+    }
+
+    // -------------------- Defect-1: scoring-flow READ broadening --------------------
+
+    @Test
+    void getVersionWithMethodologyReadReturns200() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(queries.findVersionById(id)).willReturn(draft(id, ScoringMode.WEIGHTED_POINTS));
+        mvc.perform(get("/api/v1/methodology-versions/{id}", id)
+                        .with(jwt().authorities(() -> "METHODOLOGY_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getVersionWithEvaluationReadOnlyReturns200() throws Exception {
+        // Defect-1: an assigned evaluator (EVALUATION_READ, NO METHODOLOGY_READ)
+        // must be able to load the methodology version to render the scoring sheet.
+        UUID id = UUID.randomUUID();
+        given(queries.findVersionById(id)).willReturn(draft(id, ScoringMode.WEIGHTED_POINTS));
+        mvc.perform(get("/api/v1/methodology-versions/{id}", id)
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getVersionWithNeitherReadIsForbidden() throws Exception {
+        mvc.perform(get("/api/v1/methodology-versions/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listFactorsWithEvaluationReadOnlyReturns200() throws Exception {
+        // Defect-1: scoring-sheet hydration step (the version's factors).
+        UUID id = UUID.randomUUID();
+        given(queries.listFactorsByVersion(id)).willReturn(java.util.List.of());
+        mvc.perform(get("/api/v1/methodology-versions/{id}/factors", id)
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listFactorsWithNeitherReadIsForbidden() throws Exception {
+        mvc.perform(get("/api/v1/methodology-versions/{id}/factors", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isForbidden());
     }
 
     @Test

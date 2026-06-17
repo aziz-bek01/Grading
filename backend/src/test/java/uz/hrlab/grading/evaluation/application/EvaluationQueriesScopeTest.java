@@ -101,10 +101,7 @@ class EvaluationQueriesScopeTest {
     void setUp() {
         abacGate = new AbacGate(
                 List.of(new ProjectMembershipPolicy(), new DepartmentScopePolicy()), audit);
-        var panelBiasGuard = new uz.hrlab.grading.evaluation.application.PanelBiasGuard(
-                org.mockito.Mockito.mock(
-                        uz.hrlab.grading.evaluation.infrastructure.PanelRepository.class),
-                audit);
+        var panelBiasGuard = new uz.hrlab.grading.evaluation.application.PanelBiasGuard(audit);
         queries = new EvaluationQueries(evaluations, scores, calibrationEvents,
                 factors, positions, departments, departmentScopeFilter, abacGate, panelBiasGuard);
         tenantId = UUID.randomUUID();

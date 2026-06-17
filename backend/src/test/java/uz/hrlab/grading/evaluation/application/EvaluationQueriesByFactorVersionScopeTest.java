@@ -88,10 +88,7 @@ class EvaluationQueriesByFactorVersionScopeTest {
     void setUp() {
         abacGate = new AbacGate(
                 List.of(new ProjectMembershipPolicy(), new DepartmentScopePolicy()), audit);
-        var panelBiasGuard = new uz.hrlab.grading.evaluation.application.PanelBiasGuard(
-                org.mockito.Mockito.mock(
-                        uz.hrlab.grading.evaluation.infrastructure.PanelRepository.class),
-                audit);
+        var panelBiasGuard = new uz.hrlab.grading.evaluation.application.PanelBiasGuard(audit);
         queries = new EvaluationQueries(evaluations, scores, calibrationEvents,
                 factors, positions, departments, departmentScopeFilter, abacGate, panelBiasGuard);
         tenantId = UUID.randomUUID();
@@ -162,14 +159,20 @@ class EvaluationQueriesByFactorVersionScopeTest {
     void departmentScopedCallerAlsoScopesGridToFactorsVersion() {
         setScopedContext(Set.of(departmentId));
         stubFactor(factorVersionId);
-        when(evaluations.findForFactorGridInDepartments(
-                eq(tenantId), eq(projectId), eq(factorVersionId), any(), any(), any(), any()))
+        // Defect-2: a department-scoped committee member is confined to OWN rows, so
+        // the OWN-ONLY department finder is used — still scoped to the factor's
+        // version (the behaviour under test). The all-evaluators department finder
+        // and the non-department finder are never used.
+        when(evaluations.findForFactorGridInDepartmentsOwnOnly(
+                eq(tenantId), eq(projectId), eq(factorVersionId), any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
 
         queries.listByFactor(projectId, factorId, null, null, pageable);
 
-        verify(evaluations).findForFactorGridInDepartments(
-                eq(tenantId), eq(projectId), eq(factorVersionId), any(), any(), any(), any());
+        verify(evaluations).findForFactorGridInDepartmentsOwnOnly(
+                eq(tenantId), eq(projectId), eq(factorVersionId), any(), any(), any(), any(), any());
+        verify(evaluations, never())
+                .findForFactorGridInDepartments(any(), any(), any(), any(), any(), any(), any());
         verify(evaluations, never())
                 .findForFactorGrid(any(), any(), any(), any(), any(), any());
     }
@@ -210,19 +213,24 @@ class EvaluationQueriesByFactorVersionScopeTest {
     }
 
     private void setBypassContext() {
-        // CAMPAIGN_RESULTS_VIEW = a result-viewer (HR director) — sees the FULL
-        // K-sheet grid (the bias blind is lifted), so the existing
-        // findForFactorGrid assertions still hold under MVP2 BE-11.
+        // Defect-2: an HRLab OVERSIGHT role (consultant) is the identity that sees
+        // the FULL K-sheet grid (the bias blind is lifted). CAMPAIGN_RESULTS_VIEW no
+        // longer lifts the per-sheet/grid blind, so the full-grid assertions are now
+        // pinned to an oversight role. The version-scoping behaviour under test is
+        // orthogonal to the bias blind.
         TenantContextHolder.set(new TenantContext(
                 UUID.randomUUID(), tenantId, Set.of(projectId),
-                Set.of(RoleCodes.CLIENT_HR_DIRECTOR),
-                Set.of("EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW"), Set.of(), false, "ru-RU"));
+                Set.of(RoleCodes.HRLAB_CONSULTANT),
+                Set.of("EVALUATION_READ"), Set.of(), false, "ru-RU"));
     }
 
     private void setScopedContext(Set<UUID> deptScope) {
+        // A department-scoped EVALUATION_COMMITTEE_MEMBER is NOT an oversight role,
+        // so it is confined to its OWN rows (the own-only department finder) — see
+        // departmentScopedCallerAlsoScopesGridToFactorsVersion.
         TenantContextHolder.set(new TenantContext(
                 UUID.randomUUID(), tenantId, Set.of(projectId),
                 Set.of(RoleCodes.EVALUATION_COMMITTEE_MEMBER),
-                Set.of("EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW"), deptScope, false, "ru-RU"));
+                Set.of("EVALUATION_READ"), deptScope, false, "ru-RU"));
     }
 }

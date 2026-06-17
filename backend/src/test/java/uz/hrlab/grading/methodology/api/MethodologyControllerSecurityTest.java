@@ -109,6 +109,89 @@ class MethodologyControllerSecurityTest {
                 .andExpect(status().isOk());
     }
 
+    // ---------- Defect-2: by-factor scoring view — methodology selector source ----------
+    // The committee scorer (department director) holds EVALUATION_READ but NOT
+    // METHODOLOGY_READ, yet the by-factor view's methodology selector is fed by
+    // the list / detail / versions endpoints. Each must now permit EVALUATION_READ
+    // (read-only, non-sensitive structure); write endpoints stay METHODOLOGY_*-gated.
+
+    @Test
+    void listWithEvaluationReadOnlyReturns200() throws Exception {
+        given(queries.findByProject(any(), any()))
+                .willReturn((Page) new PageImpl<>(List.of()));
+        mvc.perform(get("/api/v1/methodologies")
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listWithNeitherReadIsForbidden() throws Exception {
+        mvc.perform(get("/api/v1/methodologies")
+                        .with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getByIdWithEvaluationReadOnlyReturns200() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(queries.findMethodologyById(id)).willReturn(sample(id));
+        mvc.perform(get("/api/v1/methodologies/{id}", id)
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getByIdWithNeitherReadIsForbidden() throws Exception {
+        mvc.perform(get("/api/v1/methodologies/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listVersionsWithEvaluationReadOnlyReturns200() throws Exception {
+        UUID methodologyId = UUID.randomUUID();
+        given(queries.listVersions(methodologyId)).willReturn(List.of());
+        mvc.perform(get("/api/v1/methodologies/{id}/versions", methodologyId)
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listVersionsWithNeitherReadIsForbidden() throws Exception {
+        mvc.perform(get("/api/v1/methodologies/{id}/versions", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    /**
+     * Defect-2 guard: broadening the READ endpoints to EVALUATION_READ must NOT
+     * leak into any write/edit/create path. An EVALUATION_READ-only caller is
+     * still forbidden from creating, editing and archiving a methodology.
+     */
+    @Test
+    void writeEndpointsStillForbiddenForEvaluationReadOnly() throws Exception {
+        mvc.perform(post("/api/v1/methodologies")
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(scratchBody()))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/methodologies/from-template")
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"template_code\":\"CLASSIC_8_FACTOR\",\"code\":\"M1\",\"name_i18n\":{\"ru-RU\":\"X\"}}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(patch("/api/v1/methodologies/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/methodologies/{id}/archive", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"x\"}"))
+                .andExpect(status().isForbidden());
+    }
+
     /**
      * B4: the single-methodology detail path must carry latest_version_id (the
      * list path already does) so the FE create-from-scratch flow can deep-link

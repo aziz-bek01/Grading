@@ -61,8 +61,16 @@ public class FactorController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * List a factor's levels. Broadened to EVALUATION_READ: the scoring sheet's
+     * version-detail aggregator ({@code fetchMethodologyVersion}) hydrates each
+     * factor's levels here to render the level picker, and an assigned evaluator
+     * does not hold METHODOLOGY_READ. READ-only, non-sensitive structure; every
+     * level write endpoint below stays METHODOLOGY_EDIT-gated. Tenant scoping is
+     * enforced inside {@code queries.listLevelsByFactor}.
+     */
     @GetMapping("/factors/{id}/levels")
-    @PreAuthorize("hasAuthority('METHODOLOGY_READ')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public List<FactorLevelResponse> listLevels(@PathVariable UUID id) {
         return queries.listLevelsByFactor(id).stream()
                 .map(FactorLevelResponse::from)

@@ -20,17 +20,14 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
-import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
-import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
-import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
@@ -56,28 +53,27 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * P0-A — END-TO-END proof of the blind-scoring rule (R-CRIT-1 / REQ-ISO-2 /
- * REQ-ISO-4) on EVERY read path of {@link EvaluationQueries}, with a REAL
- * {@link PanelBiasGuard} over a panel that is still COLLECTING. This complements
- * {@link PanelBiasGuardTest} (which unit-tests the guard in isolation) by proving
- * the guard is actually WIRED into the three read surfaces the live evaluation
- * screens use:
+ * P0-A / Defect-2 — END-TO-END proof of the blind-scoring rule (R-CRIT-1 /
+ * REQ-ISO-2 / REQ-ISO-4) on EVERY read path of {@link EvaluationQueries}, with a
+ * REAL {@link PanelBiasGuard}. This complements {@link PanelBiasGuardTest} (which
+ * unit-tests the guard in isolation) by proving the guard is actually WIRED into
+ * the read surfaces the live evaluation screens use:
  *
  * <ol>
- *   <li><b>By-factor grid</b> ({@code listByFactor}) — a non-bypass caller is
+ *   <li><b>By-factor grid</b> ({@code listByFactor}) — a non-oversight caller is
  *       routed to the OWN-ONLY finder ({@code findForFactorGridOwnOnly}) so a peer
  *       never even sees evaluator B's row; the all-evaluators finder is never
- *       called. A CAMPAIGN_RESULTS_VIEW holder gets the full grid.</li>
+ *       called. An HRLab oversight role gets the full grid.</li>
  *   <li><b>Single-id scores</b> ({@code findScoresByEvaluationId}) — a peer
- *       reading evaluator B's collecting sheet → 404 ({@link
- *       TenantAccessDeniedException}) + ACCESS_DENIED_BY_ABAC, and the scores are
- *       never loaded. The owner reads their own.</li>
- *   <li><b>Single-sheet detail</b> ({@code findById}) — the endpoint behind
- *       EvaluationDetailsPage / MyEvaluationsPage deep-link: same blind — a peer
- *       is 404'd, the owner passes.</li>
+ *       reading evaluator B's panel sheet → 404 ({@link
+ *       TenantAccessDeniedException}) + ACCESS_DENIED_BY_ABAC, scores never loaded.
+ *       The owner reads their own.</li>
+ *   <li><b>Single-sheet detail</b> ({@code findById}) and <b>calibration
+ *       history</b> ({@code findCalibrationHistory}) — same blind.</li>
  * </ol>
  *
- * EVALUATION_READ alone never lifts the blind (deny-by-default).
+ * Defect-2: neither EVALUATION_READ nor CAMPAIGN_RESULTS_VIEW lifts the per-sheet
+ * blind; ONLY an HRLab oversight role does.
  */
 @Tag("security")
 @ExtendWith(MockitoExtension.class)
@@ -89,7 +85,6 @@ class EvaluationQueriesPanelBlindTest {
     @Mock FactorRepository factors;
     @Mock PositionRepository positions;
     @Mock DepartmentRepository departments;
-    @Mock PanelRepository panels;
     @Mock AuditService audit;
 
     DepartmentScopeFilter departmentScopeFilter = new DepartmentScopeFilter();
@@ -101,6 +96,7 @@ class EvaluationQueriesPanelBlindTest {
     UUID projectId;
     UUID panelId;
     UUID positionId;
+    UUID departmentId;
     UUID factorId;
     UUID versionId;
     UUID evaluationId;
@@ -112,13 +108,14 @@ class EvaluationQueriesPanelBlindTest {
     void setUp() {
         abacGate = new AbacGate(
                 List.of(new ProjectMembershipPolicy(), new DepartmentScopePolicy()), audit);
-        panelBiasGuard = new PanelBiasGuard(panels, audit);
+        panelBiasGuard = new PanelBiasGuard(audit);
         queries = new EvaluationQueries(evaluations, scores, calibrationEvents,
                 factors, positions, departments, departmentScopeFilter, abacGate, panelBiasGuard);
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         panelId = UUID.randomUUID();
         positionId = UUID.randomUUID();
+        departmentId = UUID.randomUUID();
         factorId = UUID.randomUUID();
         versionId = UUID.randomUUID();
         evaluationId = UUID.randomUUID();
@@ -132,8 +129,10 @@ class EvaluationQueriesPanelBlindTest {
     // ====================================================== 1. BY-FACTOR GRID
 
     @Test
-    void gridConfinesNonBypassCallerToOwnRowsViaOwnOnlyFinder() {
-        setEvaluatorContext(evaluatorA, Set.of("EVALUATION_READ"));
+    void gridConfinesNonOversightCallerToOwnRowsViaOwnOnlyFinder() {
+        // CLIENT_HR_SPECIALIST is neither oversight nor department-scoped, so the
+        // grid takes the non-department own-only finder confined to the caller.
+        setContext(evaluatorA, Set.of(RoleCodes.CLIENT_HR_SPECIALIST), "EVALUATION_READ");
         stubFactor();
         when(evaluations.findForFactorGridOwnOnly(
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(),
@@ -142,19 +141,38 @@ class EvaluationQueriesPanelBlindTest {
 
         queries.listByFactor(projectId, factorId, null, null, pageable);
 
-        // The grid is confined to the CALLER's own evaluations (own-only finder
-        // bound to evaluatorA) — a peer's row can never surface.
         verify(evaluations).findForFactorGridOwnOnly(
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(),
                 eq(evaluatorA), any());
-        // The all-evaluators grid finder is NEVER used for a non-bypass caller.
         verify(evaluations, never())
                 .findForFactorGrid(any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    void gridGivesFullViewToCampaignResultsViewHolder() {
-        setEvaluatorContext(evaluatorA, Set.of("EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW"));
+    void gridConfinesCampaignResultsViewPeerToOwnRows() {
+        // Defect-2: CAMPAIGN_RESULTS_VIEW no longer lifts the grid blind. A
+        // CLIENT_HR_SPECIALIST peer holding CAMPAIGN_RESULTS_VIEW is still confined
+        // to their OWN rows (non-department own-only finder).
+        setContext(evaluatorA, Set.of(RoleCodes.CLIENT_HR_SPECIALIST),
+                "EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW");
+        stubFactor();
+        when(evaluations.findForFactorGridOwnOnly(
+                eq(tenantId), eq(projectId), eq(versionId), any(), any(),
+                eq(evaluatorA), any()))
+                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+
+        queries.listByFactor(projectId, factorId, null, null, pageable);
+
+        verify(evaluations).findForFactorGridOwnOnly(
+                eq(tenantId), eq(projectId), eq(versionId), any(), any(),
+                eq(evaluatorA), any());
+        verify(evaluations, never())
+                .findForFactorGrid(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void gridGivesFullViewToOversightRole() {
+        setContext(evaluatorA, Set.of(RoleCodes.HRLAB_CONSULTANT), "EVALUATION_READ");
         stubFactor();
         when(evaluations.findForFactorGrid(
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(), any()))
@@ -162,8 +180,6 @@ class EvaluationQueriesPanelBlindTest {
 
         queries.listByFactor(projectId, factorId, null, null, pageable);
 
-        // A result-viewer lifts the blind: the FULL grid finder is used, the
-        // own-only finder is not.
         verify(evaluations).findForFactorGrid(
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(), any());
         verify(evaluations, never()).findForFactorGridOwnOnly(
@@ -173,9 +189,8 @@ class EvaluationQueriesPanelBlindTest {
     // ================================================ 2. SINGLE-ID SCORES READ
 
     @Test
-    void scoresPeerOnForeignCollectingSheetIs404WithDenialAndNoScoreLoad() {
-        setEvaluatorContext(evaluatorA, Set.of("EVALUATION_READ"));
-        stubCollectingPanel();
+    void scoresPeerOnForeignPanelSheetIs404WithDenialAndNoScoreLoad() {
+        setContext(evaluatorA, Set.of(RoleCodes.EVALUATION_COMMITTEE_MEMBER), "EVALUATION_READ");
         stubPositionInScope(); // tenant-wide caller passes the dept gate
         stubSheetOwnedBy(evaluatorB); // foreign sheet
 
@@ -187,10 +202,36 @@ class EvaluationQueriesPanelBlindTest {
     }
 
     @Test
-    void scoresOwnerOnOwnCollectingSheetIsAllowed() {
-        setEvaluatorContext(evaluatorA, Set.of("EVALUATION_READ"));
-        stubCollectingPanel();
+    void scoresCampaignResultsViewPeerOnForeignPanelSheetIs404() {
+        // Defect-2 core repro: a peer holding CAMPAIGN_RESULTS_VIEW (department
+        // director) reading another evaluator's panel scores → 404, not 200.
+        setContext(evaluatorA, Set.of(RoleCodes.DEPARTMENT_MANAGER),
+                "EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW");
+        stubPositionInScope();
+        stubSheetOwnedBy(evaluatorB);
+
+        assertThatThrownBy(() -> queries.findScoresByEvaluationId(evaluationId))
+                .isInstanceOf(TenantAccessDeniedException.class);
+        verify(scores, never()).findAllByTenantIdAndEvaluationId(any(), any());
+        assertDenialAudited();
+    }
+
+    @Test
+    void scoresOwnerOnOwnPanelSheetIsAllowed() {
+        setContext(evaluatorA, Set.of(RoleCodes.EVALUATION_COMMITTEE_MEMBER), "EVALUATION_READ");
         stubSheetOwnedBy(evaluatorA); // own sheet
+        when(scores.findAllByTenantIdAndEvaluationId(tenantId, evaluationId))
+                .thenReturn(List.of());
+
+        assertThat(queries.findScoresByEvaluationId(evaluationId)).isEmpty();
+        verify(scores).findAllByTenantIdAndEvaluationId(tenantId, evaluationId);
+    }
+
+    @Test
+    void scoresOversightRoleOnForeignPanelSheetIsAllowed() {
+        setContext(evaluatorA, Set.of(RoleCodes.HRLAB_CONSULTANT), "EVALUATION_READ");
+        stubPositionInScope();
+        stubSheetOwnedBy(evaluatorB);
         when(scores.findAllByTenantIdAndEvaluationId(tenantId, evaluationId))
                 .thenReturn(List.of());
 
@@ -201,9 +242,8 @@ class EvaluationQueriesPanelBlindTest {
     // ============================================== 3. SINGLE-SHEET DETAIL READ
 
     @Test
-    void detailPeerOnForeignCollectingSheetIs404WithDenial() {
-        setEvaluatorContext(evaluatorA, Set.of("EVALUATION_READ"));
-        stubCollectingPanel();
+    void detailPeerOnForeignPanelSheetIs404WithDenial() {
+        setContext(evaluatorA, Set.of(RoleCodes.EVALUATION_COMMITTEE_MEMBER), "EVALUATION_READ");
         stubPositionInScope();
         stubSheetOwnedBy(evaluatorB);
 
@@ -214,20 +254,55 @@ class EvaluationQueriesPanelBlindTest {
     }
 
     @Test
-    void detailOwnerOnOwnCollectingSheetIsAllowed() {
-        setEvaluatorContext(evaluatorA, Set.of("EVALUATION_READ"));
-        stubCollectingPanel();
+    void detailOwnerOnOwnPanelSheetIsAllowed() {
+        setContext(evaluatorA, Set.of(RoleCodes.EVALUATION_COMMITTEE_MEMBER), "EVALUATION_READ");
         EvaluationJpaEntity own = stubSheetOwnedBy(evaluatorA);
 
         assertThat(queries.findById(evaluationId)).isSameAs(own);
     }
 
     @Test
-    void evaluationReadAloneDoesNotLiftTheBlindOnAnyPath() {
-        // Deny-by-default: EVALUATION_READ is the ONLY permission and the peer is
-        // still blocked on both single-id paths.
-        setEvaluatorContext(evaluatorA, Set.of("EVALUATION_READ"));
-        stubCollectingPanel();
+    void detailOversightRoleOnForeignPanelSheetIsAllowed() {
+        setContext(evaluatorA, Set.of(RoleCodes.HRLAB_SUPER_ADMIN), "EVALUATION_READ");
+        stubPositionInScope();
+        EvaluationJpaEntity foreign = stubSheetOwnedBy(evaluatorB);
+
+        assertThat(queries.findById(evaluationId)).isSameAs(foreign);
+    }
+
+    // ============================================== 4. CALIBRATION HISTORY READ
+
+    @Test
+    void calibrationHistoryPeerOnForeignPanelSheetIs404WithDenial() {
+        setContext(evaluatorA, Set.of(RoleCodes.DEPARTMENT_MANAGER),
+                "EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW");
+        stubPositionInScope();
+        stubSheetOwnedBy(evaluatorB);
+
+        assertThatThrownBy(() -> queries.findCalibrationHistory(evaluationId))
+                .isInstanceOf(TenantAccessDeniedException.class);
+        verify(calibrationEvents, never())
+                .findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(any(), any());
+        assertDenialAudited();
+    }
+
+    @Test
+    void calibrationHistoryOwnerOnOwnPanelSheetIsAllowed() {
+        setContext(evaluatorA, Set.of(RoleCodes.EVALUATION_COMMITTEE_MEMBER), "EVALUATION_READ");
+        stubSheetOwnedBy(evaluatorA);
+        when(calibrationEvents.findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(tenantId, evaluationId))
+                .thenReturn(List.of());
+
+        assertThat(queries.findCalibrationHistory(evaluationId)).isEmpty();
+        verify(calibrationEvents).findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(tenantId, evaluationId);
+    }
+
+    @Test
+    void neitherReadNorCampaignResultsViewLiftsTheBlindOnAnyPath() {
+        // Deny-by-default: a peer with EVALUATION_READ + CAMPAIGN_RESULTS_VIEW is
+        // still blocked on every per-sheet path.
+        setContext(evaluatorA, Set.of(RoleCodes.DEPARTMENT_MANAGER),
+                "EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW");
         stubPositionInScope();
         stubSheetOwnedBy(evaluatorB);
 
@@ -235,19 +310,8 @@ class EvaluationQueriesPanelBlindTest {
                 .isInstanceOf(TenantAccessDeniedException.class);
         assertThatThrownBy(() -> queries.findScoresByEvaluationId(evaluationId))
                 .isInstanceOf(TenantAccessDeniedException.class);
-    }
-
-    @Test
-    void resultViewerPeerMayReadForeignCollectingSheet() {
-        // The blind is lifted ONLY by CAMPAIGN_RESULTS_VIEW (HR director / PM / CEO).
-        setEvaluatorContext(evaluatorA, Set.of("EVALUATION_READ", "CAMPAIGN_RESULTS_VIEW"));
-        stubPositionInScope(); // tenant-wide caller passes the C-2 dept gate
-        EvaluationJpaEntity foreign = stubSheetOwnedBy(evaluatorB);
-
-        assertThatCode(() -> queries.findById(evaluationId)).doesNotThrowAnyException();
-        assertThat(queries.findById(evaluationId)).isSameAs(foreign);
-        // The bias guard's bypass short-circuits before the panel is consulted.
-        verify(panels, never()).findByIdAndTenantId(any(), any());
+        assertThatThrownBy(() -> queries.findCalibrationHistory(evaluationId))
+                .isInstanceOf(TenantAccessDeniedException.class);
     }
 
     // --------------------------------------------------------------- helpers
@@ -259,18 +323,17 @@ class EvaluationQueriesPanelBlindTest {
         when(factors.findByIdAndTenantId(factorId, tenantId)).thenReturn(Optional.of(factor));
     }
 
-    private void stubCollectingPanel() {
-        EvaluationPanelJpaEntity panel = new EvaluationPanelJpaEntity(
-                panelId, tenantId, projectId, positionId, versionId,
-                EvaluationPanelStatus.AWAITING_EVALUATIONS, 3);
-        lenient().when(panels.findByIdAndTenantId(panelId, tenantId))
-                .thenReturn(Optional.of(panel));
-    }
-
-    /** Position resolved by the C-2 dept gate; a tenant-wide caller is always in-scope. */
+    /**
+     * Position resolved by the C-2 dept gate. The position lives in {@code
+     * departmentId}, which the caller's department scope INCLUDES (see
+     * {@link #setContext}). This makes the C-2 department gate PERMIT for a
+     * department-scoped peer (the realistic Defect-2 repro: a department director
+     * who CAN see the position's department) so the test isolates the BIAS blind
+     * as the decisive blocker — not the department gate.
+     */
     private void stubPositionInScope() {
         PositionJpaEntity p = new PositionJpaEntity(
-                positionId, tenantId, projectId, UUID.randomUUID(), "P-001",
+                positionId, tenantId, projectId, departmentId, "P-001",
                 Map.of("ru-RU", "Position"), null, null, null, null, PositionStatus.ACTIVE);
         lenient().when(positions.findByIdAndTenantId(positionId, tenantId))
                 .thenReturn(Optional.of(p));
@@ -294,14 +357,15 @@ class EvaluationQueriesPanelBlindTest {
     }
 
     /**
-     * Tenant-wide caller ({@code CLIENT_HR_SPECIALIST}) so the C-2 department gate
-     * is satisfied and the test isolates the BIAS blind specifically. The blind
-     * keys only on the {@code CAMPAIGN_RESULTS_VIEW} permission, never the role.
+     * Build a caller context. The role set drives both the ABAC department/project
+     * gate AND the new role-based bias bypass. The caller is a project member
+     * (project in {@code projectIds}) and their department scope INCLUDES the
+     * position's {@code departmentId}, so the C-2 department gate PERMITs and the
+     * test isolates the BIAS blind specifically.
      */
-    private void setEvaluatorContext(UUID userId, Set<String> permissions) {
+    private void setContext(UUID userId, Set<String> roles, String... permissions) {
         TenantContextHolder.set(new TenantContext(
-                userId, tenantId, Set.of(projectId),
-                Set.of(RoleCodes.CLIENT_HR_SPECIALIST),
-                permissions, Set.of(), false, "ru-RU"));
+                userId, tenantId, Set.of(projectId), roles,
+                Set.of(permissions), Set.of(departmentId), false, "ru-RU"));
     }
 }

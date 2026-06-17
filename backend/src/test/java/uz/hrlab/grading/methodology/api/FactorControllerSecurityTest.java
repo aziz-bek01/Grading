@@ -134,4 +134,45 @@ class FactorControllerSecurityTest {
                         .with(jwt().authorities(() -> "METHODOLOGY_READ")))
                 .andExpect(status().isOk());
     }
+
+    // -------------------- Defect-1: factor LEVELS read broadening --------------------
+
+    @Test
+    void listLevelsWithMethodologyReadReturns200() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(queries.listLevelsByFactor(id)).willReturn(java.util.List.of());
+        mvc.perform(get("/api/v1/factors/{id}/levels", id)
+                        .with(jwt().authorities(() -> "METHODOLOGY_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listLevelsWithEvaluationReadOnlyReturns200() throws Exception {
+        // Defect-1: the scoring sheet hydrates each factor's levels to render the
+        // level picker; an assigned evaluator holds EVALUATION_READ, not
+        // METHODOLOGY_READ. The READ-only levels endpoint must admit EVALUATION_READ.
+        UUID id = UUID.randomUUID();
+        given(queries.listLevelsByFactor(id)).willReturn(java.util.List.of());
+        mvc.perform(get("/api/v1/factors/{id}/levels", id)
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listLevelsWithNeitherReadIsForbidden() throws Exception {
+        mvc.perform(get("/api/v1/factors/{id}/levels", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void addLevelStillRequiresEditNotEvaluationRead() throws Exception {
+        // Guard: the WRITE endpoint was NOT broadened — EVALUATION_READ cannot create.
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/api/v1/factors/{id}/levels", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
 }

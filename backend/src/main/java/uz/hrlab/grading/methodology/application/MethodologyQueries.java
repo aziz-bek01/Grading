@@ -52,7 +52,14 @@ public class MethodologyQueries {
 
     @Transactional(readOnly = true)
     public Methodology findMethodologyById(UUID id) {
-        TenantContext ctx = requireReadPerm();
+        // Defect-2: the by-factor scoring view (frontend EvaluationByFactorView)
+        // populates its methodology selector from the methodology LIST/DETAIL
+        // endpoints. A committee scorer (department director) holds
+        // EVALUATION_READ, not METHODOLOGY_READ — so the structural READ gate is
+        // broadened to either (same rationale as Defect-1: methodology
+        // names/versions/factors are non-salary, non-sensitive structure needed
+        // to score). Tenant + project ABAC below are UNCHANGED.
+        TenantContext ctx = requireMethodologyStructureReadPerm();
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(id, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         if (m.getProjectId() != null) {
@@ -73,7 +80,9 @@ public class MethodologyQueries {
      */
     @Transactional(readOnly = true)
     public UUID findLatestVersionId(UUID methodologyId) {
-        TenantContext ctx = requireReadPerm();
+        // Defect-2: detail-path companion to findMethodologyById — same broadened
+        // structural READ so the scorer's selector can deep-link the version.
+        TenantContext ctx = requireMethodologyStructureReadPerm();
         return versions.findFirstByTenantIdAndMethodologyIdOrderByVersionNumberDesc(
                         ctx.tenantId(), methodologyId)
                 .map(MethodologyVersionJpaEntity::getId)
@@ -82,7 +91,11 @@ public class MethodologyQueries {
 
     @Transactional(readOnly = true)
     public Page<MethodologyJpaEntity> findByProject(UUID projectId, Pageable pageable) {
-        TenantContext ctx = requireReadPerm();
+        // Defect-2: backs GET /methodologies?projectId=... — the scoring view's
+        // methodology selector source. Broadened to EVALUATION_READ; project ABAC
+        // (enforceCanListInProject) is UNCHANGED, so an evaluator still only sees
+        // methodologies in projects they are a member of.
+        TenantContext ctx = requireMethodologyStructureReadPerm();
         if (projectId != null) {
             abacGate.enforceCanListInProject(ctx, projectId);
             return methodologies.findAllByTenantIdAndProjectId(
@@ -103,7 +116,10 @@ public class MethodologyQueries {
     @Transactional(readOnly = true)
     public Map<UUID, List<MethodologyVersionJpaEntity>> versionsByMethodologyIds(
             Collection<UUID> methodologyIds) {
-        TenantContext ctx = requireReadPerm();
+        // Defect-2: list-path enrichment (latest/active version pointers) invoked
+        // by GET /methodologies — same broadened structural READ as findByProject,
+        // which already enforced the project ABAC that produced these ids.
+        TenantContext ctx = requireMethodologyStructureReadPerm();
         if (methodologyIds == null || methodologyIds.isEmpty()) {
             return Map.of();
         }
@@ -114,7 +130,12 @@ public class MethodologyQueries {
 
     @Transactional(readOnly = true)
     public MethodologyVersion findVersionById(UUID id) {
-        TenantContext ctx = requireReadPerm();
+        // Defect-1: the scoring sheet (fetchMethodologyVersion) needs this read to
+        // render the form. An assigned evaluator holds EVALUATION_READ, not
+        // METHODOLOGY_READ — so the structural READ permission is broadened to
+        // either. Tenant + project ABAC below are UNCHANGED (an evaluator must
+        // still be a member of the version's project).
+        TenantContext ctx = requireMethodologyStructureReadPerm();
         MethodologyVersionJpaEntity v = versions.findByIdAndTenantId(id, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(v.getMethodologyId(), ctx.tenantId())
@@ -127,7 +148,11 @@ public class MethodologyQueries {
 
     @Transactional(readOnly = true)
     public List<MethodologyVersionJpaEntity> listVersions(UUID methodologyId) {
-        TenantContext ctx = requireReadPerm();
+        // Defect-2: backs GET /methodologies/{id}/versions — the scoring entry
+        // page (EvaluationListPage) fans out this call per methodology to map
+        // version_id → methodology. Broadened to EVALUATION_READ; tenant + project
+        // ABAC below are UNCHANGED.
+        TenantContext ctx = requireMethodologyStructureReadPerm();
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(methodologyId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         if (m.getProjectId() != null) {
@@ -147,7 +172,9 @@ public class MethodologyQueries {
 
     @Transactional(readOnly = true)
     public List<FactorJpaEntity> listFactorsByVersion(UUID versionId) {
-        TenantContext ctx = requireReadPerm();
+        // Defect-1: scoring-sheet hydration step (factors of the version). Same
+        // broadened structural READ as findVersionById; ABAC unchanged.
+        TenantContext ctx = requireMethodologyStructureReadPerm();
         MethodologyVersionJpaEntity v = versions.findByIdAndTenantId(versionId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(v.getMethodologyId(), ctx.tenantId())
@@ -161,7 +188,9 @@ public class MethodologyQueries {
 
     @Transactional(readOnly = true)
     public List<FactorLevel> listLevelsByFactor(UUID factorId) {
-        TenantContext ctx = requireReadPerm();
+        // Defect-1: scoring-sheet hydration step (levels of each factor). Same
+        // broadened structural READ as findVersionById; tenant scoping unchanged.
+        TenantContext ctx = requireMethodologyStructureReadPerm();
         FactorJpaEntity f = factors.findByIdAndTenantId(factorId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         return levels.findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(
@@ -173,6 +202,37 @@ public class MethodologyQueries {
     private TenantContext requireReadPerm() {
         TenantContext ctx = TenantContextHolder.requireActive();
         if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_READ)) {
+            throw new PermissionDeniedException();
+        }
+        return ctx;
+    }
+
+    /**
+     * Service-layer gate for the methodology STRUCTURE reads the scoring flow
+     * needs. Either {@code METHODOLOGY_READ} (methodology authors) OR
+     * {@code EVALUATION_READ} (assigned evaluators who do NOT hold
+     * METHODOLOGY_READ) is sufficient — reading methodology names / versions /
+     * factor / level structure is non-salary, non-sensitive. A caller with
+     * NEITHER is denied here (defence in depth: the controller
+     * {@code @PreAuthorize} mirrors this OR, but the service is the authoritative
+     * gate, matching the project's "enforce in service, not only controller"
+     * rule). Tenant + project ABAC remain enforced by the callers.
+     *
+     * <p>Covers two related broadenings:
+     * <ul>
+     *   <li>Defect-1 — the scoring SHEET hydration (single version + its factors +
+     *       each factor's levels): {@link #findVersionById},
+     *       {@link #listFactorsByVersion}, {@link #listLevelsByFactor}.</li>
+     *   <li>Defect-2 — the by-factor scoring VIEW's methodology selector source
+     *       (list + detail + versions): {@link #findByProject},
+     *       {@link #versionsByMethodologyIds}, {@link #findMethodologyById},
+     *       {@link #findLatestVersionId}, {@link #listVersions}.</li>
+     * </ul>
+     */
+    private TenantContext requireMethodologyStructureReadPerm() {
+        TenantContext ctx = TenantContextHolder.requireActive();
+        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_READ)
+                && !ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
             throw new PermissionDeniedException();
         }
         return ctx;

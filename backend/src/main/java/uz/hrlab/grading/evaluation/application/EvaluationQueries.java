@@ -290,11 +290,12 @@ public class EvaluationQueries {
         // scoring a foreign-version evaluation against this factor.
         UUID methodologyVersionId = factor.getMethodologyVersionId();
 
-        // BE-11 — bias-isolation: a caller WITHOUT CAMPAIGN_RESULTS_VIEW is
-        // confined to their OWN evaluations on the grid so a peer never even sees
-        // another evaluator's row of a still-collecting panel (REQ-ISO-2). The
-        // confinement also drives the count (no leak). CAMPAIGN_RESULTS_VIEW
-        // holders see the full grid. EVALUATION_READ alone does NOT lift it.
+        // BE-11 / Defect-2 — bias-isolation: a caller WITHOUT an HRLab oversight
+        // role is confined to their OWN evaluations on the grid so a peer never even
+        // sees another evaluator's row of a still-collecting panel (REQ-ISO-2). The
+        // confinement also drives the count (no leak). Only HRLab oversight roles
+        // (super-admin / consultant / PM) see the full grid; neither EVALUATION_READ
+        // nor CAMPAIGN_RESULTS_VIEW lifts the per-sheet blind.
         boolean confineToOwn = panelBiasGuard.shouldConfineGridToOwn(ctx);
         UUID ownEvaluator = confineToOwn ? ctx.userId() : null;
 

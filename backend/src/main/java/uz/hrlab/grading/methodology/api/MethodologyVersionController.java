@@ -63,8 +63,17 @@ public class MethodologyVersionController {
                 actorNames.resolve(v.lockedBy()));
     }
 
+    /**
+     * Read a methodology version. Also readable by EVALUATION_READ holders:
+     * the scoring sheet (frontend {@code fetchMethodologyVersion}) needs the
+     * version + factors + levels to render the form, and an assigned evaluator
+     * (committee / department-director) does NOT hold METHODOLOGY_READ. Reading
+     * methodology STRUCTURE is non-salary / non-sensitive; only the READ path is
+     * broadened — every write/approve/lock endpoint stays METHODOLOGY_*-gated.
+     * Tenant scoping is enforced inside {@code queries.findVersionById}.
+     */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('METHODOLOGY_READ')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public MethodologyVersionResponse getById(@PathVariable UUID id) {
         return toResponse(queries.findVersionById(id));
     }
@@ -83,8 +92,13 @@ public class MethodologyVersionController {
                 req.scoringMode(), req.targetTotalPoints()));
     }
 
+    /**
+     * List a version's factors. Broadened to EVALUATION_READ for the same reason
+     * as {@link #getById}: the scoring sheet hydrates factors (and then each
+     * factor's levels) to render the form. READ-only; write endpoints unchanged.
+     */
     @GetMapping("/{id}/factors")
-    @PreAuthorize("hasAuthority('METHODOLOGY_READ')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public List<FactorResponse> listFactors(@PathVariable UUID id) {
         return queries.listFactorsByVersion(id).stream()
                 .map(e -> FactorResponse.from(e.toDomain()))

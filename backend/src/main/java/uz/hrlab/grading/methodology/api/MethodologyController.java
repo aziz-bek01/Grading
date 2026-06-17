@@ -89,7 +89,7 @@ public class MethodologyController {
     public static final int MAX_PAGE_SIZE = 200;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('METHODOLOGY_READ')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public PageResponse<MethodologyResponse> list(@RequestParam(required = false) UUID projectId,
                                                   Pageable pageable) {
         Pageable safePageable = clampPageSize(pageable);
@@ -120,7 +120,7 @@ public class MethodologyController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('METHODOLOGY_READ')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public MethodologyResponse getById(@PathVariable UUID id) {
         // B4: carry latest_version_id on the detail path (the list path already
         // does) so the FE create-from-scratch flow can deep-link into the new v1
@@ -163,7 +163,7 @@ public class MethodologyController {
     }
 
     @GetMapping("/{id}/versions")
-    @PreAuthorize("hasAuthority('METHODOLOGY_READ')")
+    @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public java.util.List<MethodologyVersionResponse> listVersions(@PathVariable UUID id) {
         return queries.listVersions(id).stream()
                 .map(v -> v.toDomain())

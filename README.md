@@ -42,7 +42,7 @@ then open:
 | <http://localhost:8081>                        | The app (SPA). **Start here.**                   |
 | <http://localhost:8080/actuator/health>        | Backend health                                   |
 | <http://localhost:8080/swagger-ui.html>        | API docs                                          |
-| `localhost:5432`                               | Postgres (`grading_control_db`)                  |
+| `localhost:55432`                              | Postgres (`grading_control_db`) — override host port via `POSTGRES_HOST_PORT` |
 
 **Log in:** on the login screen click **"Sign in as super-admin"** (the
 passwordless dev-auth button). You land in the demo tenant with full
@@ -72,10 +72,12 @@ The configs (`application-local.yml`, `vite.config.ts`, `frontend/.env.example`)
 are designed for this. Fastest inner loop — hot-reload on both sides. Requires
 JDK 21 and Node 22 installed.
 
-**1. Postgres only:**
+**1. Postgres only** (published on host 5432 so the `local` profile's
+`localhost:5432` datasource reaches it — if 5432 is taken, pick another and set the
+datasource accordingly):
 
 ```bash
-docker compose -f docker-compose.local.yml up -d postgres
+POSTGRES_HOST_PORT=5432 docker compose -f docker-compose.local.yml up -d postgres
 ```
 
 This creates `grading_control_db` + the `grading_app` bootstrap user (via

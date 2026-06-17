@@ -20,29 +20,20 @@ import { ProgressChip } from '../components/byFactor/ProgressChip';
  * Lists ONLY the caller's own scoring sheets (GET /evaluations/my, gated
  * EVALUATION_READ; the BE scopes by the JWT actor, never a client param). Each
  * row carries a localized position title (+ code), the sheet status, and a
- * filled / total factor progress chip, and deep-links to the SAME scoring sheet
- * the evaluation list opens ({@link EvaluationDetailsPage} → EvaluationMatrix).
+ * filled / total factor progress chip, and deep-links to the project Evaluation
+ * page in by-factor mode (the single scoring surface) for that row's project.
  *
- * The inbox is project-agnostic on the wire, but the sheet route is
+ * The inbox is project-agnostic on the wire, but the scoring route is
  * project-scoped — each row carries its OWN project id, so we deep-link via
- * {@link routes.projectEvaluationDetail} using `row.projectId`. EVERY row is
- * therefore linkable regardless of which project is active; a row is only shown
- * non-linkable as a graceful guard if `projectId` is unexpectedly missing, so
- * the page never produces a broken URL.
+ * {@link routes.projectEvaluation} (`?mode=by-factor`) using `row.projectId`.
+ * EVERY row is therefore linkable regardless of which project is active; a row
+ * is only shown non-linkable as a graceful guard if `projectId` is unexpectedly
+ * missing, so the page never produces a broken URL.
  */
 export function MyEvaluationsPage() {
   const { t } = useTranslation();
   const { can } = usePermission();
   const canRead = can(PERMISSIONS.EVALUATION_READ);
-
-  // Committee scorer = can read evaluations but is NOT a methodology-aware
-  // manager/oversight role (all of which hold METHODOLOGY_READ). Such a user
-  // scores via the focused factor-by-factor K-sheet, so their assigned-evaluation
-  // card deep-links to the project Evaluation page in by-factor mode
-  // (?mode=by-factor) rather than the per-sheet Matrix detail page. Managers keep
-  // the existing per-sheet detail deep-link.
-  const isCommitteeScorer =
-    canRead && !can(PERMISSIONS.METHODOLOGY_READ);
 
   const query = useMyEvaluations();
   const rows = useMemo(() => query.data ?? [], [query.data]);
@@ -95,14 +86,12 @@ export function MyEvaluationsPage() {
                 </>
               );
 
-              // Committee scorers score in the by-factor K-sheet (server-scoped
-              // to their own rows); managers open the per-sheet Matrix detail.
-              const target = isCommitteeScorer
-                ? `${routes.projectEvaluation(row.projectId)}?mode=by-factor`
-                : routes.projectEvaluationDetail(
-                    row.projectId,
-                    row.evaluationId,
-                  );
+              // ALL evaluators score in the by-factor K-sheet — the single
+              // scoring surface. The per-sheet Matrix detail page is no longer a
+              // scoring entry point (it was a duplicate); it stays reachable from
+              // the positions list for review (calibration history / comments /
+              // audit).
+              const target = `${routes.projectEvaluation(row.projectId)}?mode=by-factor`;
 
               return (
                 <li key={row.evaluationId}>

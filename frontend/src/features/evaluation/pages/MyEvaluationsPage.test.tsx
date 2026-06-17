@@ -101,7 +101,7 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
     expect(screen.getByText('3/8')).toBeInTheDocument();
   });
 
-  it("manager: links each row to the per-sheet Matrix detail built from the row's OWN project", () => {
+  it("links each row to the by-factor scoring view built from the row's OWN project", () => {
     queryState.data = [row({ evaluationId: 'eval-42', projectId: 'proj-77' })];
     // A DIFFERENT project is active — the link must still use the row's project,
     // proving the deep-link is independent of which project is active.
@@ -109,11 +109,11 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
     const link = screen.getByTestId('open-my-evaluation-eval-42');
     expect(link).toHaveAttribute(
       'href',
-      '/app/projects/proj-77/evaluation/eval-42',
+      '/app/projects/proj-77/evaluation?mode=by-factor',
     );
   });
 
-  it('manager: links every row regardless of the active project (no project active)', () => {
+  it('links every row regardless of the active project (no project active)', () => {
     queryState.data = [
       row({ evaluationId: 'eval-a', projectId: 'proj-a' }),
       row({ evaluationId: 'eval-b', projectId: 'proj-b' }),
@@ -121,11 +121,11 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
     renderPage(null);
     expect(screen.getByTestId('open-my-evaluation-eval-a')).toHaveAttribute(
       'href',
-      '/app/projects/proj-a/evaluation/eval-a',
+      '/app/projects/proj-a/evaluation?mode=by-factor',
     );
     expect(screen.getByTestId('open-my-evaluation-eval-b')).toHaveAttribute(
       'href',
-      '/app/projects/proj-b/evaluation/eval-b',
+      '/app/projects/proj-b/evaluation?mode=by-factor',
     );
   });
 

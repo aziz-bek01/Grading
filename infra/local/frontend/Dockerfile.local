@@ -1,0 +1,93 @@
+# syntax=docker/dockerfile:1.7
+# =============================================================================
+# grading-frontend — LOCAL DEV image (full-Docker review path).
+# =============================================================================
+# DEV-ONLY. Built ONLY by docker-compose.local.yml. The PRODUCTION image
+# (frontend/Dockerfile) is UNCHANGED and remains the only image CI builds/pushes.
+#
+# WHY a separate local Dockerfile instead of reusing the prod image:
+#   The prod image bakes `.env.production` (VITE_DEV_AUTH=false, VITE_USE_MSW=
+#   false) into the bundle, so the passwordless "Sign in as super-admin" dev
+#   login is intentionally stripped — correct for prod, useless for local
+#   review. This image flips ONLY the two dev flags and adds an nginx /api/v1
+#   reverse proxy so the SPA talks to the REAL local backend (not MSW).
+#
+# HOW the flags are flipped without editing any committed file:
+#   `vite build` runs in production mode and auto-loads `.env.production`. Vite's
+#   dotenv precedence is `.env.{mode}.local` > `.env.local` > `.env.{mode}` >
+#   `.env`. We GENERATE a `.env.production.local` INSIDE the builder from build
+#   ARGs (below). Because `.env.production.local` outranks `.env.production`, our
+#   VITE_DEV_AUTH=true / VITE_USE_MSW=false win — WITHOUT touching the repo's
+#   `.env.production` (so the prod build is byte-for-byte unaffected) and WITHOUT
+#   relying on `.env.local` (which .dockerignore excludes from the build context).
+#   The bundle stays a real production build (import.meta.env.PROD=true, MSW
+#   chunk tree-shaken out), it just keeps the dev-auth login buttons.
+#
+# Build context = ./frontend (set in docker-compose.local.yml), so all COPY
+# paths below are relative to the frontend/ directory exactly like the prod
+# Dockerfile. This file lives outside that context and is referenced via
+# `dockerfile:` — that is allowed by Compose/BuildKit.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1 — Build the SPA bundle with dev-auth ON, MSW OFF.
+# -----------------------------------------------------------------------------
+FROM node:22-alpine AS builder
+
+# Flipped only here, only for local. Defaults are dev-safe; compose passes them.
+ARG VITE_DEV_AUTH=true
+ARG VITE_USE_MSW=false
+# Same-origin: the SPA calls /api/v1 which nginx (stage 2) proxies to the backend.
+ARG VITE_API_BASE_URL=/api/v1
+ARG VITE_DEFAULT_LOCALE=ru-RU
+
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+RUN npm install --no-audit --no-fund
+
+# Same source set the prod Dockerfile copies, INCLUDING .env.production (so the
+# normal precedence chain is intact), then we add a higher-precedence
+# `.env.production.local` that overrides ONLY the dev-auth + MSW flags.
+COPY tsconfig*.json vite.config.ts vitest.config.ts postcss.config.js tailwind.config.ts eslint.config.js index.html .env.production ./
+COPY public/ public/
+COPY src/ src/
+
+# Generate the override file from build ARGs. Highest dotenv precedence in
+# production mode -> these values win over .env.production. This file is created
+# in the image layer only; it never enters the repo.
+RUN printf 'VITE_DEV_AUTH=%s\nVITE_USE_MSW=%s\nVITE_API_BASE_URL=%s\nVITE_DEFAULT_LOCALE=%s\n' \
+      "$VITE_DEV_AUTH" "$VITE_USE_MSW" "$VITE_API_BASE_URL" "$VITE_DEFAULT_LOCALE" \
+      > .env.production.local \
+ && echo "[local-build] .env.production.local ->" && cat .env.production.local \
+ && npm run build
+
+# -----------------------------------------------------------------------------
+# Stage 2 — Serve via nginx-unprivileged (non-root, port 8080) + /api/v1 proxy.
+# Mirrors the prod runtime stage; only the server block differs (adds the proxy).
+# -----------------------------------------------------------------------------
+FROM nginxinc/nginx-unprivileged:1.27.2-alpine AS runtime
+
+LABEL org.opencontainers.image.title="grading-frontend-local" \
+      org.opencontainers.image.description="grading.hrlab.uz SPA — LOCAL DEV image (dev-auth on, /api proxy). NOT FOR PRODUCTION." \
+      org.opencontainers.image.vendor="HR Laboratories"
+
+USER root
+RUN rm -f /etc/nginx/conf.d/default.conf
+# Local server block lives next to this Dockerfile, OUTSIDE the ./frontend build
+# context, so it is passed via a separate build context (see compose `additional_contexts`).
+COPY --from=localcfg nginx.local.conf /etc/nginx/conf.d/grading.conf
+COPY --from=builder /workspace/dist /usr/share/nginx/html
+
+# Local runtime config: API base /api/v1, OIDC disabled (dev-auth is used instead).
+RUN printf '{ "apiBaseUrl": "/api/v1", "environment": "local", "oidc": null }\n' \
+      > /usr/share/nginx/html/config.json \
+ && chown -R 101:101 /usr/share/nginx/html
+
+USER 101
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \
+  CMD wget --quiet --spider --tries=1 http://127.0.0.1:8080/healthz || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

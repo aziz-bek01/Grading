@@ -15,7 +15,12 @@ WORKDIR /workspace
 # independently of source changes.
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-RUN chmod +x ./mvnw \
+# Strip CRLF first: a Windows checkout (git core.autocrlf) rewrites mvnw + the
+# .mvn/maven.config args with CRLF, which corrupts the `#!/bin/sh` shebang
+# (-> "./mvnw: not found", exit 127) and the Maven args inside this Linux stage.
+# No-op on a normal LF checkout / CI.
+RUN sed -i 's/\r$//' ./mvnw .mvn/maven.config \
+ && chmod +x ./mvnw \
  && ./mvnw -B -ntp dependency:go-offline
 
 # Now copy sources and build the executable jar.

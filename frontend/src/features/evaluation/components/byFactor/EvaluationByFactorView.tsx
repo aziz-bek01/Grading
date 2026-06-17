@@ -37,11 +37,7 @@ import type {
   EvaluationsByFactorFilters,
 } from '../../types';
 import { FactorTabs, type FactorCompletionMap } from './FactorTabs';
-import {
-  BY_FACTOR_FILTER_STICKY_TOP,
-  BY_FACTOR_STICKY_TOP,
-  BY_FACTOR_STICKY_Z,
-} from './stickyOffset';
+import { BY_FACTOR_STICKY_TOP, BY_FACTOR_STICKY_Z } from './stickyOffset';
 import { PositionScoreRow } from './PositionScoreRow';
 import { BulkScoreDialog } from './BulkScoreDialog';
 import { BulkSubmitDialog } from './BulkSubmitDialog';
@@ -467,10 +463,14 @@ export function EvaluationByFactorView({
           When the project has >1 methodology with an active version a compact
           selector replaces the static name so factor tabs + rows + bulk
           actions all follow the SELECTED version. */}
-      <div
-        className={cn('sticky bg-background pt-1', BY_FACTOR_STICKY_TOP, BY_FACTOR_STICKY_Z)}
-        data-testid="byfactor-methodology-header"
-      >
+      {/* Single sticky region: methodology line + factor tabs + filter bar
+          stack together and stay pinned while scrolling 200 rows. ONE sticky
+          wrapper (no per-element top-offset math) so the filter bar can never
+          overlap/hide the factor tabs — the strip height varies (e.g. the blind
+          banner adds rows), which made the old hand-computed offsets cover the
+          tabs. The evaluator can always see WHICH factor they are scoring. */}
+      <div className={cn('sticky bg-background', BY_FACTOR_STICKY_TOP, BY_FACTOR_STICKY_Z)}>
+      <div className="pt-1" data-testid="byfactor-methodology-header">
         <div className="flex flex-wrap items-center gap-2 pb-1.5">
           <span className="text-xs uppercase tracking-wide text-text-muted">
             {t('evaluation.byFactor.active_methodology')}
@@ -530,12 +530,9 @@ export function EvaluationByFactorView({
         />
       </div>
 
-      {/* Filter bar — sticky just BELOW the tabs (FE-9) using the SHARED
-          offset/z-index constants so it stacks correctly and never diverges. */}
-      <Card
-        compact
-        className={cn('sticky bg-background', BY_FACTOR_FILTER_STICKY_TOP, BY_FACTOR_STICKY_Z)}
-      >
+      {/* Filter bar — now part of the single sticky region above (it is no
+          longer its own sticky layer, which used to overlap the factor tabs). */}
+      <Card compact className="mt-2 bg-background">
         <div className="flex flex-wrap items-center gap-2">
           <select
             aria-label={t('evaluation.byFactor.filter.department')}
@@ -601,6 +598,7 @@ export function EvaluationByFactorView({
           />
         </div>
       </Card>
+      </div>
 
       {/*
         Full-width K-sheet table. The old right-side rubric reference panel

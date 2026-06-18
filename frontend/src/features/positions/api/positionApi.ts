@@ -46,7 +46,7 @@ export async function updatePosition(id: string, payload: PositionUpdatePayload)
   return res.data;
 }
 
-export async function archivePosition(id: string): Promise<Position> {
-  const res = await httpClient.post<Position>(endpoints.positions.archive(id), {});
-  return res.data;
+export async function archivePosition(id: string): Promise<void> {
+  // Backend returns 204 No Content — do not read res.data (it would be empty).
+  await httpClient.post(endpoints.positions.archive(id), {});
 }

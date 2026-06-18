@@ -15,6 +15,12 @@ interface PositionFormDrawerProps {
   departments: Department[];
   initial?: Position;
   readOnly?: boolean;
+  /**
+   * Localized mutation error (create/update) surfaced as a banner near the top.
+   * The page maps POSITION_CODE_TAKEN / POSITION_DEPARTMENT_INVALID etc. here so
+   * a failed create/update is no longer silent.
+   */
+  error?: string;
   onClose: () => void;
   onSubmit: (input: PositionCreateInput) => Promise<void> | void;
 }
@@ -25,10 +31,16 @@ export function PositionFormDrawer({
   departments,
   initial,
   readOnly,
+  error,
   onClose,
   onSubmit,
 }: PositionFormDrawerProps) {
   const { t, i18n } = useTranslation();
+  // In edit mode the code is the immutable identifier — disable it so the
+  // "codes are never rewritten" guarantee is visible in the UI.
+  const isEdit = Boolean(initial);
+  const codeReadOnly = readOnly || isEdit;
+
   const {
     register,
     control,
@@ -65,8 +77,16 @@ export function PositionFormDrawer({
   }, [open, initial, projectId, reset]);
 
   const submit = handleSubmit(async (data) => {
-    await onSubmit(data);
-    onClose();
+    // Close ONLY on success. When the mutation rejects (e.g. POSITION_CODE_TAKEN)
+    // the page surfaces the message via the `error` prop and the drawer stays
+    // open so the user can correct the input. We swallow the rejection here so
+    // it does not bubble as an unhandled promise rejection.
+    try {
+      await onSubmit(data);
+      onClose();
+    } catch {
+      /* error already surfaced by the page through the `error` prop */
+    }
   });
 
   const tr = (msg?: string) =>
@@ -79,7 +99,18 @@ export function PositionFormDrawer({
       onClose={onClose}
       onSubmit={submit}
       readOnly={readOnly}
+      submitLabel={t('common.save')}
     >
+      {error ? (
+        <div
+          role="alert"
+          data-testid="position-form-error"
+          className="rounded-md border border-danger-500/30 bg-danger-50 text-danger-700 text-sm p-3"
+        >
+          {error}
+        </div>
+      ) : null}
+
       <div>
         <label htmlFor="pos-department" className="text-sm font-medium text-text-primary">
           {t('positions.field_department')} <span className="text-danger-700">*</span>
@@ -123,11 +154,15 @@ export function PositionFormDrawer({
         <input
           id="pos-code"
           type="text"
-          disabled={readOnly}
+          disabled={codeReadOnly}
+          aria-readonly={codeReadOnly || undefined}
           {...register('code')}
-          className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface"
+          className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-divider disabled:text-text-secondary"
           data-testid="pos-code"
         />
+        <p className="text-xs text-text-secondary mt-1">
+          {isEdit ? t('positions.code_immutable_hint') : t('positions.field_code_hint')}
+        </p>
         {errors.code ? <p className="text-xs text-danger-700 mt-1" role="alert">{errors.code.message}</p> : null}
       </div>
 

@@ -412,11 +412,21 @@ function handlePositions(method: string, path: string, query: URLSearchParams, c
   if (path === '/positions' && method === 'POST') {
     const raw = readBody<Partial<MockPosition> & Record<string, unknown>>(config);
     const body = stripTenantFromBody(raw, '/positions', 'POST') as Partial<MockPosition>;
+    const projectId = body.project_id ?? 'proj-acme-2026';
+    const code = body.code ?? 'NEW';
+    // Mirror the backend uniqueness contract: a duplicate code within the
+    // project → 409 POSITION_CODE_TAKEN (mirrors CreatePositionUseCase).
+    const dup = mockDb.positions.some(
+      (p) => p.project_id === projectId && p.code.toUpperCase() === code.toUpperCase(),
+    );
+    if (dup) {
+      return { status: 409, body: { code: 'POSITION_CODE_TAKEN', message: 'Position code already exists in project' } };
+    }
     const next: MockPosition = {
       id: uuid(),
-      project_id: body.project_id ?? 'proj-acme-2026',
+      project_id: projectId,
       department_id: body.department_id ?? '',
-      code: body.code ?? 'NEW',
+      code,
       title_i18n: body.title_i18n ?? {},
       function: body.function,
       category: body.category,

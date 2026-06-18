@@ -7,6 +7,7 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 
 import java.util.UUID;
@@ -22,9 +23,12 @@ import java.util.UUID;
  * <ul>
  *   <li>A caller holding an HRLab OVERSIGHT role
  *       ({@link RoleCodes#PANEL_OVERSIGHT_ROLES} — super-admin / consultant /
- *       project-manager) is exempt: those identities are calibration/aggregation
- *       oversight and are NOT panel peers, so they may read any sheet for
- *       calibration.</li>
+ *       project-manager) is exempt ONLY when they are a PURE overseer: an oversight
+ *       identity that is NOT itself a member/evaluator of the target panel may read
+ *       any sheet for calibration. Defect-3: an oversight-role holder who IS a
+ *       member/evaluator of the SAME panel is a PEER — he is treated like any other
+ *       committee member and is BLIND to a co-evaluator's sheet (so a super-admin
+ *       who is also scoring cannot peek at a rival's in-progress sheet).</li>
  *   <li>Otherwise, a single-id read of a PANEL evaluation is allowed ONLY if the
  *       requester is its own evaluator (REQ-ISO-2). A peer attempt is denied with a
  *       404-equivalent {@link TenantAccessDeniedException} (no existence reveal) +
@@ -49,32 +53,54 @@ import java.util.UUID;
 public class PanelBiasGuard {
 
     private final AuditService audit;
+    private final EvaluationRepository evaluations;
 
-    public PanelBiasGuard(AuditService audit) {
+    public PanelBiasGuard(AuditService audit, EvaluationRepository evaluations) {
         this.audit = audit;
+        this.evaluations = evaluations;
     }
 
     /**
      * Enforce the blind for a single-id evaluation read. No-op for panelless /
-     * legacy evaluations ({@code panel_id == null}), the owning evaluator, and
-     * HRLab oversight-role holders. Throws {@link TenantAccessDeniedException}
-     * (→ 404) for a peer reading another evaluator's PANEL sheet, in ANY panel
-     * phase. The caller must already have tenant-matched the evaluation.
+     * legacy evaluations ({@code panel_id == null}), the owning evaluator, and a
+     * PURE HRLab overseer (oversight role that is NOT a member of this panel).
+     * Throws {@link TenantAccessDeniedException} (→ 404) for a peer reading another
+     * evaluator's PANEL sheet, in ANY panel phase — INCLUDING an oversight-role
+     * holder who is also a member/evaluator of THIS panel (Defect-3). The caller
+     * must already have tenant-matched the evaluation.
      */
     public void enforceCanReadSheet(TenantContext ctx, EvaluationJpaEntity evaluation) {
         UUID panelId = evaluation.getPanelId();
         if (panelId == null) {
             return; // legacy / panelless — no blind (scoped strictly to panel sheets)
         }
-        if (canBypassBlind(ctx)) {
-            return; // HRLab oversight — may read any sheet for calibration
-        }
         boolean isOwner = ctx.userId() != null
                 && ctx.userId().equals(evaluation.getEvaluatorUserId());
-        if (!isOwner) {
-            recordDenial(ctx, evaluation, panelId);
-            throw new TenantAccessDeniedException();
+        if (isOwner) {
+            return; // the owning evaluator always reads their own sheet
         }
+        if (canBypassBlind(ctx) && !isPanelMember(ctx, panelId)) {
+            // Defect-3: only a PURE overseer (oversight role, NOT a member of this
+            // panel) keeps the per-sheet calibration bypass. An oversight holder who
+            // is ALSO a member/evaluator of THIS panel is a peer → blind to a
+            // co-evaluator's sheet (REQ blind-scoring), falls through to the denial.
+            return;
+        }
+        recordDenial(ctx, evaluation, panelId);
+        throw new TenantAccessDeniedException();
+    }
+
+    /**
+     * Defect-3 peer test — whether the caller has at least one of their OWN
+     * evaluations in {@code panelId}. If so they are a member/evaluator of that
+     * panel and must be blind to a co-evaluator's sheet even if they hold an HRLab
+     * oversight role. Tenant-scoped existence check (any status counts: membership,
+     * not progress, is the question).
+     */
+    private boolean isPanelMember(TenantContext ctx, UUID panelId) {
+        return ctx.userId() != null
+                && evaluations.existsByTenantIdAndPanelIdAndEvaluatorUserId(
+                        ctx.tenantId(), panelId, ctx.userId());
     }
 
     /**

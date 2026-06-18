@@ -73,6 +73,28 @@ public interface EvaluationRepository
             UUID tenantId, UUID panelId, UUID evaluatorUserId, EvaluationStatus excludedStatus);
 
     /**
+     * Blind-scoring peer test (GRID): does the caller hold at least one of their
+     * OWN evaluations within the K-sheet's (tenant, project, methodologyVersionId)
+     * scope? If so they are a PANEL MEMBER/evaluator in this grid's scope and must
+     * be treated as a peer (blind to other members), even when they also hold an
+     * HRLab oversight role. A pure overseer (no own evaluation in scope) returns
+     * false and keeps the calibration bypass. Tenant-scoped; any status counts
+     * (membership, not progress, is the question).
+     */
+    boolean existsByTenantIdAndProjectIdAndMethodologyVersionIdAndEvaluatorUserId(
+            UUID tenantId, UUID projectId, UUID methodologyVersionId, UUID evaluatorUserId);
+
+    /**
+     * Blind-scoring peer test (SINGLE SHEET): does the caller hold at least one of
+     * their OWN evaluations in the TARGET sheet's panel? If so they are a member of
+     * that panel and must be blind to a co-evaluator's sheet, even when they also
+     * hold an HRLab oversight role. A pure overseer (no own evaluation in the panel)
+     * returns false and keeps the per-sheet calibration bypass. Tenant-scoped.
+     */
+    boolean existsByTenantIdAndPanelIdAndEvaluatorUserId(
+            UUID tenantId, UUID panelId, UUID evaluatorUserId);
+
+    /**
      * Tenant-scoped hard delete (Item 1, BE-2). {@link TenantAwareRepository}
      * intentionally hides the BOLA-prone single-arg {@code deleteById(id)}; this
      * derived deleter keeps the tenant filter in the predicate so a row from

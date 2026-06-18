@@ -13,6 +13,7 @@ import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 
 import java.util.Set;
@@ -24,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * BE-11 / Defect-2 — bias-isolation read guard (R-CRIT-1 / REQ-ISO-1..6, DATA
@@ -38,6 +40,7 @@ import static org.mockito.Mockito.verify;
 class PanelBiasGuardTest {
 
     @Mock AuditService audit;
+    @Mock EvaluationRepository evaluations;
 
     PanelBiasGuard guard;
 
@@ -49,7 +52,7 @@ class PanelBiasGuardTest {
 
     @BeforeEach
     void setUp() {
-        guard = new PanelBiasGuard(audit);
+        guard = new PanelBiasGuard(audit, evaluations);
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         panelId = UUID.randomUUID();
@@ -106,15 +109,48 @@ class PanelBiasGuardTest {
     }
 
     @Test
-    void hrlabOversightRoleBypassesTheBlind() {
+    void pureOverseerBypassesTheBlind() {
+        // Defect-3: a PURE overseer (oversight role, NOT a member of this panel —
+        // existsByTenantIdAndPanelIdAndEvaluatorUserId returns false by default) may
+        // read a peer's panel sheet for live calibration.
         EvaluationJpaEntity sheet = sheetOwnedBy(owner);
 
-        // Each oversight role may read a peer's panel sheet for calibration.
         for (String role : RoleCodes.PANEL_OVERSIGHT_ROLES) {
             assertThatCode(() -> guard.enforceCanReadSheet(
                     ctx(peer, Set.of(role), "EVALUATION_READ"), sheet))
                     .doesNotThrowAnyException();
         }
+        verify(audit, never()).record(any());
+    }
+
+    @Test
+    void oversightHolderWhoIsAPanelMemberIsBlindToAPeersSheet() {
+        // Defect-3 core fix: an oversight-role holder (e.g. HRLAB_SUPER_ADMIN) who
+        // is ALSO a member/evaluator of THIS panel is a PEER → blind to a
+        // co-evaluator's sheet, denied with a 404-equivalent + denial audit.
+        EvaluationJpaEntity sheet = sheetOwnedBy(owner);
+        when(evaluations.existsByTenantIdAndPanelIdAndEvaluatorUserId(tenantId, panelId, peer))
+                .thenReturn(true); // peer (super-admin) has his OWN evaluation in this panel
+
+        assertThatThrownBy(() -> guard.enforceCanReadSheet(
+                ctx(peer, Set.of(RoleCodes.HRLAB_SUPER_ADMIN), "EVALUATION_READ"), sheet))
+                .isInstanceOf(TenantAccessDeniedException.class);
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit).record(captor.capture());
+        assertThat(captor.getValue().action()).isEqualTo(AuditAction.ACCESS_DENIED_BY_ABAC);
+    }
+
+    @Test
+    void oversightHolderWhoIsAPanelMemberStillReadsOwnSheet() {
+        // The owner check precedes the bypass: an oversight-member reading their OWN
+        // sheet is always allowed (membership in the panel never blinds the owner to
+        // themselves), and we never even hit the membership lookup.
+        EvaluationJpaEntity own = sheetOwnedBy(peer);
+
+        assertThatCode(() -> guard.enforceCanReadSheet(
+                ctx(peer, Set.of(RoleCodes.HRLAB_SUPER_ADMIN), "EVALUATION_READ"), own))
+                .doesNotThrowAnyException();
         verify(audit, never()).record(any());
     }
 

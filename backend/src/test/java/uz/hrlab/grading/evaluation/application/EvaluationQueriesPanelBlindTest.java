@@ -108,7 +108,7 @@ class EvaluationQueriesPanelBlindTest {
     void setUp() {
         abacGate = new AbacGate(
                 List.of(new ProjectMembershipPolicy(), new DepartmentScopePolicy()), audit);
-        panelBiasGuard = new PanelBiasGuard(audit);
+        panelBiasGuard = new PanelBiasGuard(audit, evaluations);
         queries = new EvaluationQueries(evaluations, scores, calibrationEvents,
                 factors, positions, departments, departmentScopeFilter, abacGate, panelBiasGuard);
         tenantId = UUID.randomUUID();
@@ -171,9 +171,13 @@ class EvaluationQueriesPanelBlindTest {
     }
 
     @Test
-    void gridGivesFullViewToOversightRole() {
+    void gridGivesFullViewToPureOverseer() {
+        // Defect-3: a PURE overseer — oversight role with NO own evaluation in this
+        // (tenant, project, version) scope — keeps the full-grid calibration view.
         setContext(evaluatorA, Set.of(RoleCodes.HRLAB_CONSULTANT), "EVALUATION_READ");
         stubFactor();
+        when(evaluations.existsByTenantIdAndProjectIdAndMethodologyVersionIdAndEvaluatorUserId(
+                tenantId, projectId, versionId, evaluatorA)).thenReturn(false);
         when(evaluations.findForFactorGrid(
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
@@ -184,6 +188,31 @@ class EvaluationQueriesPanelBlindTest {
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(), any());
         verify(evaluations, never()).findForFactorGridOwnOnly(
                 any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void gridConfinesOversightHolderWhoIsAMemberInScopeToOwnRows() {
+        // Defect-3 core fix: an oversight-role holder (HRLAB_SUPER_ADMIN — the "asr"
+        // repro) who is ALSO a member/evaluator in THIS grid's scope (he has his own
+        // evaluations in this version) is a PEER → confined to OWN rows via the
+        // own-only finder. The full-grid finder is never called, so he never sees a
+        // co-evaluator's in-progress level selection.
+        setContext(evaluatorA, Set.of(RoleCodes.HRLAB_SUPER_ADMIN), "EVALUATION_READ");
+        stubFactor();
+        when(evaluations.existsByTenantIdAndProjectIdAndMethodologyVersionIdAndEvaluatorUserId(
+                tenantId, projectId, versionId, evaluatorA)).thenReturn(true);
+        when(evaluations.findForFactorGridOwnOnly(
+                eq(tenantId), eq(projectId), eq(versionId), any(), any(),
+                eq(evaluatorA), any()))
+                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+
+        queries.listByFactor(projectId, factorId, null, null, pageable);
+
+        verify(evaluations).findForFactorGridOwnOnly(
+                eq(tenantId), eq(projectId), eq(versionId), any(), any(),
+                eq(evaluatorA), any());
+        verify(evaluations, never())
+                .findForFactorGrid(any(), any(), any(), any(), any(), any());
     }
 
     // ================================================ 2. SINGLE-ID SCORES READ
@@ -228,15 +257,36 @@ class EvaluationQueriesPanelBlindTest {
     }
 
     @Test
-    void scoresOversightRoleOnForeignPanelSheetIsAllowed() {
+    void scoresPureOverseerOnForeignPanelSheetIsAllowed() {
+        // PURE overseer (oversight role, NOT a member of this panel) keeps the
+        // per-sheet calibration bypass.
         setContext(evaluatorA, Set.of(RoleCodes.HRLAB_CONSULTANT), "EVALUATION_READ");
         stubPositionInScope();
         stubSheetOwnedBy(evaluatorB);
+        when(evaluations.existsByTenantIdAndPanelIdAndEvaluatorUserId(tenantId, panelId, evaluatorA))
+                .thenReturn(false);
         when(scores.findAllByTenantIdAndEvaluationId(tenantId, evaluationId))
                 .thenReturn(List.of());
 
         assertThat(queries.findScoresByEvaluationId(evaluationId)).isEmpty();
         verify(scores).findAllByTenantIdAndEvaluationId(tenantId, evaluationId);
+    }
+
+    @Test
+    void scoresOversightHolderWhoIsAPanelMemberOnForeignSheetIs404() {
+        // Defect-3 single-sheet consistency: an oversight-role holder who is ALSO a
+        // member/evaluator of this panel is a PEER → blind to a co-evaluator's
+        // scores → 404 + denial, scores never loaded.
+        setContext(evaluatorA, Set.of(RoleCodes.HRLAB_SUPER_ADMIN), "EVALUATION_READ");
+        stubPositionInScope();
+        stubSheetOwnedBy(evaluatorB);
+        when(evaluations.existsByTenantIdAndPanelIdAndEvaluatorUserId(tenantId, panelId, evaluatorA))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> queries.findScoresByEvaluationId(evaluationId))
+                .isInstanceOf(TenantAccessDeniedException.class);
+        verify(scores, never()).findAllByTenantIdAndEvaluationId(any(), any());
+        assertDenialAudited();
     }
 
     // ============================================== 3. SINGLE-SHEET DETAIL READ
@@ -262,12 +312,39 @@ class EvaluationQueriesPanelBlindTest {
     }
 
     @Test
-    void detailOversightRoleOnForeignPanelSheetIsAllowed() {
+    void detailPureOverseerOnForeignPanelSheetIsAllowed() {
+        // PURE overseer (no own evaluation in this panel) keeps the bypass.
         setContext(evaluatorA, Set.of(RoleCodes.HRLAB_SUPER_ADMIN), "EVALUATION_READ");
         stubPositionInScope();
         EvaluationJpaEntity foreign = stubSheetOwnedBy(evaluatorB);
+        when(evaluations.existsByTenantIdAndPanelIdAndEvaluatorUserId(tenantId, panelId, evaluatorA))
+                .thenReturn(false);
 
         assertThat(queries.findById(evaluationId)).isSameAs(foreign);
+    }
+
+    @Test
+    void detailOversightHolderWhoIsAPanelMemberOnForeignSheetIs404() {
+        // Defect-3 single-sheet consistency on the detail read.
+        setContext(evaluatorA, Set.of(RoleCodes.HRLAB_SUPER_ADMIN), "EVALUATION_READ");
+        stubPositionInScope();
+        stubSheetOwnedBy(evaluatorB);
+        when(evaluations.existsByTenantIdAndPanelIdAndEvaluatorUserId(tenantId, panelId, evaluatorA))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> queries.findById(evaluationId))
+                .isInstanceOf(TenantAccessDeniedException.class);
+        assertDenialAudited();
+    }
+
+    @Test
+    void detailOversightMemberStillReadsOwnSheet() {
+        // The owner short-circuit precedes the bypass/membership logic: an
+        // oversight-member reading their OWN sheet is always allowed.
+        setContext(evaluatorA, Set.of(RoleCodes.HRLAB_SUPER_ADMIN), "EVALUATION_READ");
+        EvaluationJpaEntity own = stubSheetOwnedBy(evaluatorA);
+
+        assertThat(queries.findById(evaluationId)).isSameAs(own);
     }
 
     // ============================================== 4. CALIBRATION HISTORY READ

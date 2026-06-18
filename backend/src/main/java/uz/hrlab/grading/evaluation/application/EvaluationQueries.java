@@ -290,13 +290,22 @@ public class EvaluationQueries {
         // scoring a foreign-version evaluation against this factor.
         UUID methodologyVersionId = factor.getMethodologyVersionId();
 
-        // BE-11 / Defect-2 — bias-isolation: a caller WITHOUT an HRLab oversight
-        // role is confined to their OWN evaluations on the grid so a peer never even
-        // sees another evaluator's row of a still-collecting panel (REQ-ISO-2). The
-        // confinement also drives the count (no leak). Only HRLab oversight roles
-        // (super-admin / consultant / PM) see the full grid; neither EVALUATION_READ
-        // nor CAMPAIGN_RESULTS_VIEW lifts the per-sheet blind.
-        boolean confineToOwn = panelBiasGuard.shouldConfineGridToOwn(ctx);
+        // BE-11 / Defect-2 / Defect-3 — bias-isolation: a caller WITHOUT an HRLab
+        // oversight role is confined to their OWN evaluations on the grid so a peer
+        // never even sees another evaluator's row of a still-collecting panel
+        // (REQ-ISO-2). The confinement also drives the count (no leak).
+        //
+        // Defect-3 ("a member is blind, a pure overseer can see"): an oversight-role
+        // holder who is ALSO a member/evaluator in THIS grid's scope (he has at least
+        // one of his OWN evaluations in this (tenant, project, methodologyVersionId))
+        // is a PEER → he MUST be confined to own (blind to other members), exactly
+        // like a non-oversight committee member. Only a PURE overseer (oversight role
+        // but NO own evaluation in scope) keeps the full-grid calibration bypass.
+        // Neither EVALUATION_READ nor CAMPAIGN_RESULTS_VIEW lifts the per-sheet blind.
+        boolean viewerIsMemberInScope = ctx.userId() != null
+                && evaluations.existsByTenantIdAndProjectIdAndMethodologyVersionIdAndEvaluatorUserId(
+                        tenant, projectId, methodologyVersionId, ctx.userId());
+        boolean confineToOwn = panelBiasGuard.shouldConfineGridToOwn(ctx) || viewerIsMemberInScope;
         UUID ownEvaluator = confineToOwn ? ctx.userId() : null;
 
         // E4-S2 — department-scope filter on the K-sheet grid.

@@ -17,7 +17,11 @@ import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
+import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
+import uz.hrlab.grading.evaluation.domain.EvaluatorRole;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.PanelAssignmentRepository;
 import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
@@ -25,6 +29,7 @@ import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -57,6 +62,7 @@ class DeletePanelUseCaseTest {
     @Mock PanelLoader loader;
     @Mock PanelRepository panels;
     @Mock PanelAssignmentRepository assignments;
+    @Mock EvaluationRepository evaluations;
     @Mock AbacGate abacGate;
     @Mock AuditService audit;
 
@@ -72,7 +78,8 @@ class DeletePanelUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new DeletePanelUseCase(loader, panels, assignments, abacGate, audit);
+        useCase = new DeletePanelUseCase(
+                loader, panels, assignments, evaluations, abacGate, audit);
         tenantId = UUID.randomUUID();
         userId = UUID.randomUUID();
         projectId = UUID.randomUUID();
@@ -108,6 +115,44 @@ class DeletePanelUseCaseTest {
         assertThat(ev.entityId()).isEqualTo(panelId);
     }
 
+    @Test
+    void collectingPanelDetachesEvaluationsThenDeletesPanelPreservingTheirWork() {
+        stubLoad(EvaluationPanelStatus.COLLECTING);
+        // A scored, still-INCOMPLETE per-evaluator sheet attached to this panel
+        // (the prod repro: 1 evaluation referencing the panel via the RESTRICT FK).
+        UUID evaluationId = UUID.randomUUID();
+        UUID evaluatorUserId = UUID.randomUUID();
+        EvaluationJpaEntity attached = new EvaluationJpaEntity(
+                evaluationId, tenantId, projectId, positionId, versionId,
+                evaluatorUserId, EvaluationStatus.INCOMPLETE);
+        attached.setPanelId(panelId);
+        attached.setEvaluatorRole(EvaluatorRole.HR_DIRECTOR);
+        when(evaluations.findAllByTenantIdAndPanelId(tenantId, panelId))
+                .thenReturn(List.of(attached));
+
+        useCase.delete(panelId, "collecting panel clean-up before re-creation");
+
+        // The evaluation is DETACHED (panel_id + evaluator_role nulled) and SAVED —
+        // its work survives; it becomes a standalone non-panel sheet, same owner.
+        ArgumentCaptor<EvaluationJpaEntity> savedCaptor =
+                ArgumentCaptor.forClass(EvaluationJpaEntity.class);
+        verify(evaluations).save(savedCaptor.capture());
+        EvaluationJpaEntity saved = savedCaptor.getValue();
+        assertThat(saved.getId()).isEqualTo(evaluationId);
+        assertThat(saved.getPanelId()).isNull();
+        assertThat(saved.getEvaluatorRole()).isNull();
+        // Still owned by the same evaluator, still INCOMPLETE, never deleted.
+        assertThat(saved.getEvaluatorUserId()).isEqualTo(evaluatorUserId);
+        assertThat(saved.getStatus()).isEqualTo(EvaluationStatus.INCOMPLETE);
+        // The evaluation row is never deleted — EvaluationRepository (TenantAware)
+        // deliberately exposes no delete/deleteById; PRESERVE is the only path.
+
+        // Roster seats still removed, panel still hard-deleted, action audited.
+        verify(assignments).deleteAllByTenantIdAndPanelId(tenantId, panelId);
+        verify(panels).deleteByIdAndTenantId(panelId, tenantId);
+        verify(audit).record(any(AuditEvent.class));
+    }
+
     @ParameterizedTest
     @EnumSource(value = EvaluationPanelStatus.class,
             names = {"AWAITING_EVALUATIONS", "AVERAGED", "SUBMITTED", "APPROVED", "LOCKED", "ARCHIVED"})
@@ -123,6 +168,9 @@ class DeletePanelUseCaseTest {
         verify(assignments, never()).deleteAllByTenantIdAndPanelId(any(), any());
         verify(panels, never()).deleteByIdAndTenantId(any(), any());
         verify(audit, never()).record(any());
+        // No evaluations touched/detached when the guard rejects the delete.
+        verify(evaluations, never()).findAllByTenantIdAndPanelId(any(), any());
+        verify(evaluations, never()).save(any());
     }
 
     @Test

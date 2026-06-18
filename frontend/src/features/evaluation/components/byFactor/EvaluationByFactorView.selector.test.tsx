@@ -106,6 +106,11 @@ vi.mock('@/features/methodology/hooks/useMethodology', () => ({
     data: { items: [meth8, meth12] },
     isLoading: false,
   }),
+  // Manager path: useMyMethodologies is called unconditionally (Rules of Hooks)
+  // but the manager has METHODOLOGY_READ so the /my endpoint is never actually
+  // used. Return an inert empty result so the component does not crash.
+  // NOTE: /my returns a plain array in `data`, NOT a {items} envelope.
+  useMyMethodologies: () => ({ data: [], isLoading: false }),
   useMethodologyVersion: (versionId?: string) => ({
     data:
       versionId === 'v-8'

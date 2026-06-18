@@ -8,9 +8,13 @@ import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.common.exception.ValidationException;
+import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.methodology.domain.Factor;
 import uz.hrlab.grading.methodology.domain.FactorLevel;
 import uz.hrlab.grading.methodology.domain.Methodology;
+import uz.hrlab.grading.methodology.domain.MethodologyStatus;
 import uz.hrlab.grading.methodology.domain.MethodologyVersion;
 import uz.hrlab.grading.methodology.infrastructure.FactorJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.FactorLevelRepository;
@@ -25,6 +29,7 @@ import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -36,17 +41,20 @@ public class MethodologyQueries {
     private final MethodologyVersionRepository versions;
     private final FactorRepository factors;
     private final FactorLevelRepository levels;
+    private final EvaluationRepository evaluations;
     private final AbacGate abacGate;
 
     public MethodologyQueries(MethodologyRepository methodologies,
                               MethodologyVersionRepository versions,
                               FactorRepository factors,
                               FactorLevelRepository levels,
+                              EvaluationRepository evaluations,
                               AbacGate abacGate) {
         this.methodologies = methodologies;
         this.versions = versions;
         this.factors = factors;
         this.levels = levels;
+        this.evaluations = evaluations;
         this.abacGate = abacGate;
     }
 
@@ -106,6 +114,60 @@ public class MethodologyQueries {
     }
 
     /**
+     * PART B — evaluator-scoped methodology list: the ACTIVE methodologies in
+     * {@code projectId} under which the caller holds at least one of their OWN,
+     * non-ARCHIVED evaluations. Backs {@code GET /api/v1/methodologies/my}.
+     *
+     * <p>Gate: {@code EVALUATION_READ} (the scoring permission a committee member
+     * holds) — the structural READ gate, broadened like the rest of the scoring
+     * reads. The result is self-scoped by construction: only methodologies the
+     * caller has an own evaluation under can appear, so this deliberately does NOT
+     * route through the department-scope fail-closed filter (mirrors
+     * {@code EvaluationQueries.listMine} — explicit ownership IS the authorization).
+     *
+     * <p>Steps (all batched — no N+1): distinct methodology-version ids from the
+     * caller's own non-ARCHIVED evaluations in the project → owning methodology
+     * ids → ACTIVE containers among them in that project. Tenant + project +
+     * evaluator are pinned in every predicate; ARCHIVED sheets and ARCHIVED
+     * containers are excluded.
+     */
+    @Transactional(readOnly = true)
+    public List<MethodologyJpaEntity> findMyMethodologiesInProject(UUID projectId) {
+        TenantContext ctx = TenantContextHolder.requireActive();
+        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
+            throw new PermissionDeniedException();
+        }
+        if (projectId == null) {
+            throw new ValidationException("projectId is required");
+        }
+        UUID tenant = ctx.tenantId();
+        UUID me = ctx.userId();
+        if (me == null) {
+            return List.of();
+        }
+
+        // Distinct version ids the caller has an own, non-ARCHIVED evaluation under.
+        List<UUID> versionIds = evaluations
+                .findDistinctMethodologyVersionIdsByEvaluatorInProject(
+                        tenant, projectId, me, EvaluationStatus.ARCHIVED);
+        if (versionIds.isEmpty()) {
+            return List.of();
+        }
+
+        // Map versions → methodology ids (ONE tenant-scoped query — no N+1).
+        Set<UUID> methodologyIds = versions.findAllByTenantIdAndIdIn(tenant, versionIds).stream()
+                .map(MethodologyVersionJpaEntity::getMethodologyId)
+                .collect(Collectors.toSet());
+        if (methodologyIds.isEmpty()) {
+            return List.of();
+        }
+
+        // ACTIVE containers among those ids, in this project (ARCHIVED filtered out).
+        return methodologies.findAllByTenantIdAndProjectIdAndStatusAndIdIn(
+                tenant, projectId, MethodologyStatus.ACTIVE, methodologyIds);
+    }
+
+    /**
      * Batched version lookup for the list view: returns, per methodology id, all
      * its versions ordered version-number-descending. One query for the whole
      * page (no N+1). Tenant-scoped + permission-guarded like every other read.
@@ -126,6 +188,44 @@ public class MethodologyQueries {
         return versions.findAllByTenantIdAndMethodologyIdInOrderByVersionNumberDesc(
                         ctx.tenantId(), methodologyIds).stream()
                 .collect(Collectors.groupingBy(MethodologyVersionJpaEntity::getMethodologyId));
+    }
+
+    /**
+     * PART D — count of IN-PROGRESS (not-yet-submitted) evaluations across ALL
+     * versions of {@code methodologyId}. Backs the deactivate/archive
+     * confirmation dialog so the user knows how many scoring sheets are still
+     * open. "In progress" = the pre-submission statuses (DRAFT / INCOMPLETE /
+     * COMPLETE — {@code EvaluationStatus.isPreSubmission}); SUBMITTED / APPROVED /
+     * LOCKED / ARCHIVED are excluded.
+     *
+     * <p>Gate: {@code METHODOLOGY_EDIT} (the same permission Archive/Restore
+     * require — this count is part of that admin flow). Methodology loaded by
+     * id + tenant (BOLA → 404); version ids resolved tenant-scoped.
+     */
+    @Transactional(readOnly = true)
+    public long countInProgressEvaluations(UUID methodologyId) {
+        TenantContext ctx = TenantContextHolder.requireActive();
+        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT)) {
+            throw new PermissionDeniedException();
+        }
+        UUID tenant = ctx.tenantId();
+        MethodologyJpaEntity m = methodologies.findByIdAndTenantId(methodologyId, tenant)
+                .orElseThrow(TenantAccessDeniedException::new);
+        if (m.getProjectId() != null) {
+            abacGate.enforceCanListInProject(ctx, m.getProjectId());
+        }
+        List<UUID> versionIds = versions
+                .findAllByTenantIdAndMethodologyIdOrderByVersionNumberDesc(tenant, methodologyId)
+                .stream()
+                .map(MethodologyVersionJpaEntity::getId)
+                .toList();
+        if (versionIds.isEmpty()) {
+            return 0L;
+        }
+        List<EvaluationStatus> inProgress = List.of(
+                EvaluationStatus.DRAFT, EvaluationStatus.INCOMPLETE, EvaluationStatus.COMPLETE);
+        return evaluations.countByTenantIdAndMethodologyVersionIdInAndStatusIn(
+                tenant, versionIds, inProgress);
     }
 
     @Transactional(readOnly = true)

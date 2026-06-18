@@ -137,6 +137,7 @@ public final class AuditAction {
     public static final String METHODOLOGY_CREATED                   = "METHODOLOGY_CREATED";
     public static final String METHODOLOGY_UPDATED                   = "METHODOLOGY_UPDATED";
     public static final String METHODOLOGY_ARCHIVED                  = "METHODOLOGY_ARCHIVED";
+    public static final String METHODOLOGY_RESTORED                  = "METHODOLOGY_RESTORED";
     public static final String METHODOLOGY_APPROVED                  = "METHODOLOGY_APPROVED";
     public static final String METHODOLOGY_LOCKED                    = "METHODOLOGY_LOCKED";
     public static final String METHODOLOGY_VERSION_CREATED           = "METHODOLOGY_VERSION_CREATED";

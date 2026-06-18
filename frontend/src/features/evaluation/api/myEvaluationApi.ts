@@ -44,6 +44,12 @@ interface MyEvaluationRowWire {
   status: EvaluationStatus;
   filled_factors_count: number;
   total_factors_count: number;
+  /** PART 4 — new fields added by the backend (may be absent on older rows) */
+  methodology_version_id?: string | null;
+  methodology_id?: string | null;
+  /** Locale map like position_title, e.g. {"ru-RU":"...", "uz-Cyrl-UZ":"..."} */
+  methodology_name?: LocalizedString | null;
+  methodology_active_version_number?: number | null;
 }
 
 /** camelCase domain row consumed by the inbox page. */
@@ -60,6 +66,13 @@ export interface MyEvaluationRow {
   status: EvaluationStatus;
   filledFactorsCount: number;
   totalFactorsCount: number;
+  /** PART 4 — methodology grouping fields */
+  methodologyVersionId: string | null;
+  methodologyId: string | null;
+  /** Locale map for the methodology name (for group header). */
+  methodologyName: LocalizedString | null;
+  /** Active version number for the methodology (for group header label). */
+  methodologyActiveVersionNumber: number | null;
 }
 
 function adaptRow(row: MyEvaluationRowWire, locale: string): MyEvaluationRow {
@@ -74,6 +87,10 @@ function adaptRow(row: MyEvaluationRowWire, locale: string): MyEvaluationRow {
     status: row.status,
     filledFactorsCount: row.filled_factors_count,
     totalFactorsCount: row.total_factors_count,
+    methodologyVersionId: row.methodology_version_id ?? null,
+    methodologyId: row.methodology_id ?? null,
+    methodologyName: row.methodology_name ?? null,
+    methodologyActiveVersionNumber: row.methodology_active_version_number ?? null,
   };
 }
 

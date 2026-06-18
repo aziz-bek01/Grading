@@ -26,6 +26,8 @@ import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyRepository;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
@@ -81,6 +83,8 @@ class EvaluationQueriesScopeTest {
     @Mock FactorRepository factors;
     @Mock PositionRepository positions;
     @Mock DepartmentRepository departments;
+    @Mock MethodologyVersionRepository methodologyVersions;
+    @Mock MethodologyRepository methodologies;
     @Mock AuditService audit;
 
     DepartmentScopeFilter departmentScopeFilter = new DepartmentScopeFilter();
@@ -103,7 +107,8 @@ class EvaluationQueriesScopeTest {
                 List.of(new ProjectMembershipPolicy(), new DepartmentScopePolicy()), audit);
         var panelBiasGuard = new uz.hrlab.grading.evaluation.application.PanelBiasGuard(audit, evaluations);
         queries = new EvaluationQueries(evaluations, scores, calibrationEvents,
-                factors, positions, departments, departmentScopeFilter, abacGate, panelBiasGuard);
+                factors, positions, departments, methodologyVersions, methodologies,
+                departmentScopeFilter, abacGate, panelBiasGuard);
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         d1 = UUID.randomUUID();

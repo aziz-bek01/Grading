@@ -14,17 +14,20 @@ import {
   createMethodology,
   createMethodologyFromTemplate,
   createNewVersion,
+  fetchInProgressCount,
   fetchMethodologies,
   fetchMethodology,
   fetchMethodologyTemplates,
   fetchMethodologyVersion,
   fetchMethodologyVersions,
+  fetchMyMethodologies,
   lockVersion,
   methodologyKeys,
   removeFactor,
   removeFactorLevel,
   reorderFactorLevels,
   reorderFactors,
+  restoreMethodology,
   saveMethodologyAsTemplate,
   updateCustomTemplate,
   updateFactor,
@@ -54,6 +57,43 @@ export function useMethodologies(projectId: string | undefined) {
     queryKey: projectId ? methodologyKeys.listByProject(projectId) : ['methodologies', 'list', null],
     queryFn: () => fetchMethodologies(projectId!),
     enabled: !!projectId,
+  });
+}
+
+/**
+ * Fetch ONLY the methodologies the caller is assigned to (has own evaluations
+ * in) whose status = ACTIVE. Used in the by-factor K-sheet for evaluators who
+ * do not hold METHODOLOGY_READ. `enabled` is intentionally a prop so the
+ * caller can unconditionally invoke both this hook and useMethodologies, then
+ * pick which result feeds the dropdown based on the user's permission — this
+ * satisfies the Rules of Hooks requirement that hooks are called unconditionally.
+ */
+export function useMyMethodologies(projectId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: projectId ? methodologyKeys.myList(projectId) : ['methodologies', 'my', null],
+    queryFn: () => fetchMyMethodologies(projectId!),
+    enabled: !!projectId && (options?.enabled !== false),
+  });
+}
+
+export function useRestoreMethodology(id: string, projectId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: MethodologyReasonPayload) => restoreMethodology(id, payload),
+    onSuccess: () => invalidateMethodology(qc, projectId, id),
+  });
+}
+
+/**
+ * Lazy query for in-progress evaluation count — only fetches when a dialog
+ * is open (enabled by the caller). Used in the deactivate confirmation dialog.
+ */
+export function useInProgressCount(id: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: id ? methodologyKeys.inProgressCount(id) : ['methodologies', 'in-progress-count', null],
+    queryFn: () => fetchInProgressCount(id!),
+    enabled: !!id && (options?.enabled !== false),
+    staleTime: 0, // always fresh when the dialog opens
   });
 }
 

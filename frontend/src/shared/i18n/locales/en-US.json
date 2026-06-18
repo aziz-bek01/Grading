@@ -630,7 +630,15 @@
     "subtitle": "Scoring sheets assigned to you. Open a sheet to enter scores.",
     "empty_title": "No evaluations assigned to you yet",
     "empty_body": "When you are assigned as an evaluator for a position, the scoring sheet will appear here.",
-    "select_project_hint": "Select a project at the top to open the scoring sheet."
+    "select_project_hint": "Select a project at the top to open the scoring sheet.",
+    "no_match_title": "No results",
+    "no_match_body": "Try adjusting or clearing your filters.",
+    "no_match_clear": "Clear filters",
+    "group": {
+      "completion": "{{scored}}/{{total}}",
+      "completion_aria": "{{scored}} of {{total}} scored",
+      "version_draft": "—"
+    }
   },
   "panel": {
     "role": {
@@ -886,6 +894,21 @@
       "locked": "Locked",
       "archived": "Archived"
     },
+    "container_status": {
+      "ACTIVE": "Active",
+      "ARCHIVED": "Inactive"
+    },
+    "show_inactive": "Show inactive",
+    "deactivate": {
+      "action": "Deactivate",
+      "title": "Deactivate methodology «{{name}}»?",
+      "body": "{{count}} evaluations in progress will be hidden from evaluators. Evaluations are not deleted; you can reactivate anytime."
+    },
+    "reactivate": {
+      "action": "Reactivate",
+      "title": "Reactivate methodology «{{name}}»?",
+      "body": "This methodology will be visible to evaluators again; progress is preserved."
+    },
     "type": {
       "classic_8_factor": "8-factor (classic)",
       "extended_11_criteria": "11-criteria (extended)",
@@ -1036,6 +1059,7 @@
     "filter": {
       "status": "Status",
       "methodology": "Methodology",
+      "position_search": "Search by position",
       "chip_incomplete": "Only incomplete",
       "chip_mine": "Only mine",
       "clear_chips": "Clear filters",
@@ -1163,6 +1187,8 @@
       },
       "no_methodology_title": "No methodology selected",
       "no_methodology_body": "Create and approve at least one methodology before evaluating by factor.",
+      "no_assigned_methodology_title": "No methodology assigned",
+      "no_assigned_methodology_body": "You are not assigned to any active methodology in this project. Contact your project manager.",
       "no_factors_title": "No factors in this methodology version",
       "no_factors_body": "Open the methodology and add factors.",
       "empty_title": "No positions match the filters",

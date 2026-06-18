@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.methodology.domain.MethodologyStatus;
 import uz.hrlab.grading.methodology.domain.MethodologyType;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionStatus;
@@ -60,6 +61,7 @@ class MethodologyQueriesEvaluatorReadTest {
     @Mock MethodologyVersionRepository versions;
     @Mock FactorRepository factors;
     @Mock FactorLevelRepository levels;
+    @Mock EvaluationRepository evaluations;
     @Mock AbacGate abacGate;
 
     MethodologyQueries queries;
@@ -71,7 +73,7 @@ class MethodologyQueriesEvaluatorReadTest {
 
     @BeforeEach
     void setUp() {
-        queries = new MethodologyQueries(methodologies, versions, factors, levels, abacGate);
+        queries = new MethodologyQueries(methodologies, versions, factors, levels, evaluations, abacGate);
         tenantId = UUID.randomUUID();
         methodologyId = UUID.randomUUID();
         versionId = UUID.randomUUID();

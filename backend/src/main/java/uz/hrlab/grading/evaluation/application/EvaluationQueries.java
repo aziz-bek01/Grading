@@ -19,8 +19,13 @@ import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
+import uz.hrlab.grading.methodology.domain.MethodologyVersionStatus;
 import uz.hrlab.grading.methodology.infrastructure.FactorJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyRepository;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
 import uz.hrlab.grading.organization.infrastructure.DepartmentJpaEntity;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
@@ -58,6 +63,8 @@ public class EvaluationQueries {
     private final FactorRepository factors;
     private final PositionRepository positions;
     private final DepartmentRepository departments;
+    private final MethodologyVersionRepository methodologyVersions;
+    private final MethodologyRepository methodologies;
     private final DepartmentScopeFilter departmentScopeFilter;
     private final AbacGate abacGate;
     private final PanelBiasGuard panelBiasGuard;
@@ -68,6 +75,8 @@ public class EvaluationQueries {
                              FactorRepository factors,
                              PositionRepository positions,
                              DepartmentRepository departments,
+                             MethodologyVersionRepository methodologyVersions,
+                             MethodologyRepository methodologies,
                              DepartmentScopeFilter departmentScopeFilter,
                              AbacGate abacGate,
                              PanelBiasGuard panelBiasGuard) {
@@ -77,6 +86,8 @@ public class EvaluationQueries {
         this.factors = factors;
         this.positions = positions;
         this.departments = departments;
+        this.methodologyVersions = methodologyVersions;
+        this.methodologies = methodologies;
         this.departmentScopeFilter = departmentScopeFilter;
         this.abacGate = abacGate;
         this.panelBiasGuard = panelBiasGuard;
@@ -172,6 +183,20 @@ public class EvaluationQueries {
      * <p>Progress counts reuse the batched {@code countByTenantIdAndEvaluationIdIn}
      * finder (no per-row N+1); the per-version factor total denominator is cached
      * per methodology version; position titles are batch-loaded tenant-scoped.
+     *
+     * <p>ACTIVE-METHODOLOGY FILTER (PART A): sheets whose methodology version
+     * belongs to an ARCHIVED methodology container are EXCLUDED here — the inbox
+     * must not deep-link a scorer into a retired methodology. This filter applies
+     * to the SELF inbox ONLY; the project-level evaluation list ({@link #list})
+     * used by managers must NOT inherit it.
+     *
+     * <p>METHODOLOGY ENRICHMENT (PART A): each row also carries its
+     * methodology_version_id, the owning methodology_id, the container's localized
+     * name, and the container's active version number (highest version-number
+     * among its APPROVED / LOCKED versions — same derivation as
+     * {@code MethodologyResponse.active_version_number}). All three lookups are
+     * batched (distinct version ids → versions → methodology ids → containers +
+     * all-versions-per-container) so there is no per-row N+1.
      */
     @Transactional(readOnly = true)
     public List<MyEvaluationRow> listMine() {
@@ -187,23 +212,58 @@ public class EvaluationQueries {
             return List.of();
         }
 
+        // PART A — active-methodology-only self inbox (ARCHIVED-container sheets
+        // dropped). This finder is for listMine ONLY (see #list for managers).
         List<EvaluationJpaEntity> mine = evaluations
-                .findAllByTenantIdAndEvaluatorUserIdOrderByUpdatedAtDesc(tenant, me);
+                .findActiveMethodologyEvaluationsByEvaluator(tenant, me);
         if (mine.isEmpty()) {
             return List.of();
         }
 
         Set<UUID> positionIds = new HashSet<>();
         Set<UUID> evalIds = new HashSet<>();
+        Set<UUID> versionIds = new HashSet<>();
         mine.forEach(e -> {
             positionIds.add(e.getPositionId());
             evalIds.add(e.getId());
+            versionIds.add(e.getMethodologyVersionId());
         });
 
         // Batch-load positions (ONE tenant-scoped query — no N+1).
         Map<UUID, PositionJpaEntity> positionById = new HashMap<>();
         positions.findAllByTenantIdAndIdIn(tenant, positionIds)
                 .forEach(p -> positionById.put(p.getId(), p));
+
+        // PART A — batch-load the distinct methodology versions to derive each
+        // sheet's owning methodologyId (ONE tenant-scoped query — no N+1).
+        Map<UUID, UUID> methodologyIdByVersion = new HashMap<>();
+        methodologyVersions.findAllByTenantIdAndIdIn(tenant, versionIds)
+                .forEach(v -> methodologyIdByVersion.put(v.getId(), v.getMethodologyId()));
+
+        // PART A — batch-load the distinct methodology containers (localized name).
+        Set<UUID> methodologyIds = new HashSet<>(methodologyIdByVersion.values());
+        Map<UUID, MethodologyJpaEntity> methodologyById = new HashMap<>();
+        methodologies.findAllByTenantIdAndIdIn(tenant, methodologyIds)
+                .forEach(m -> methodologyById.put(m.getId(), m));
+
+        // PART A — derive the active version number per methodology = highest
+        // version-number among its APPROVED / LOCKED versions (the SAME rule
+        // MethodologyResponse.fromList uses for active_version_number). One batched
+        // version query covers every methodology on the page (no N+1); the rows
+        // are version-number DESC so the first APPROVED/LOCKED is the active one.
+        Map<UUID, Integer> activeVersionNumberByMethodology = new HashMap<>();
+        if (!methodologyIds.isEmpty()) {
+            methodologyVersions
+                    .findAllByTenantIdAndMethodologyIdInOrderByVersionNumberDesc(tenant, methodologyIds)
+                    .forEach(v -> {
+                        if ((v.getStatus() == MethodologyVersionStatus.APPROVED
+                                || v.getStatus() == MethodologyVersionStatus.LOCKED)
+                                && !activeVersionNumberByMethodology.containsKey(v.getMethodologyId())) {
+                            activeVersionNumberByMethodology.put(
+                                    v.getMethodologyId(), v.getVersionNumber());
+                        }
+                    });
+        }
 
         // Batched filled-score count per evaluation (reuse the recently-added
         // grouped finder — NOT one count query per row).
@@ -222,6 +282,8 @@ public class EvaluationQueries {
                     vid -> factors
                             .findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(tenant, vid)
                             .size());
+            UUID methodologyId = methodologyIdByVersion.get(e.getMethodologyVersionId());
+            MethodologyJpaEntity m = methodologyId == null ? null : methodologyById.get(methodologyId);
             out.add(new MyEvaluationRow(
                     e.getId(),
                     e.getProjectId(),
@@ -231,7 +293,12 @@ public class EvaluationQueries {
                     p == null ? null : p.getTitleI18n(),
                     e.getStatus(),
                     filledByEval.getOrDefault(e.getId(), 0),
-                    total));
+                    total,
+                    e.getMethodologyVersionId(),
+                    methodologyId,
+                    m == null ? null : m.getNameI18n(),
+                    methodologyId == null ? null
+                            : activeVersionNumberByMethodology.get(methodologyId)));
         }
         return out;
     }

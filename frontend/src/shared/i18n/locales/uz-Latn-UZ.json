@@ -630,7 +630,15 @@
     "subtitle": "Sizga tayinlangan baholash varaqlari. Ballar qoʻyish uchun varaqni oching.",
     "empty_title": "Sizga hali birorta baholash tayinlanmagan",
     "empty_body": "Siz lavozim boʻyicha ekspert etib tayinlanganingizda, baholash varagʻi shu yerda paydo boʻladi.",
-    "select_project_hint": "Baholash varagʻini ochish uchun yuqoridan loyihani tanlang."
+    "select_project_hint": "Baholash varagʻini ochish uchun yuqoridan loyihani tanlang.",
+    "no_match_title": "Natija topilmadi",
+    "no_match_body": "Filtrlarni oʻzgartiring yoki tozalang.",
+    "no_match_clear": "Filtrlarni tozalash",
+    "group": {
+      "completion": "{{scored}}/{{total}}",
+      "completion_aria": "{{scored}} ta {{total}} dan baholandi",
+      "version_draft": "—"
+    }
   },
   "panel": {
     "role": {
@@ -886,6 +894,21 @@
       "locked": "Bloklangan",
       "archived": "Arxivda"
     },
+    "container_status": {
+      "ACTIVE": "Faol",
+      "ARCHIVED": "Nofaol"
+    },
+    "show_inactive": "Nofaollarni ko'rsatish",
+    "deactivate": {
+      "action": "Deaktivlashtirish",
+      "title": "«{{name}}» metodologiyasini deaktivlashtirasizmi?",
+      "body": "Jarayonda {{count}} ta baholash baholovchilardan yashirib qo'yiladi. Baholashlar o'chirilmaydi — metodologiyani istalgan vaqt reaktivlashtirsa bo'ladi."
+    },
+    "reactivate": {
+      "action": "Reaktivlashtirish",
+      "title": "«{{name}}» metodologiyasini reaktivlashtirasizmi?",
+      "body": "Metodologiya yana baholovchilarga ko'rinadi. Baholash jarayoni saqlangan."
+    },
     "type": {
       "classic_8_factor": "8 faktor (klassik)",
       "extended_11_criteria": "11 mezon (kengaytirilgan)",
@@ -1036,6 +1059,7 @@
     "filter": {
       "status": "Holat",
       "methodology": "Metodologiya",
+      "position_search": "Lavozim bo'yicha qidirish",
       "chip_incomplete": "Faqat to'liq emas",
       "chip_mine": "Faqat mening",
       "clear_chips": "Filtrlarni tozalash",
@@ -1163,6 +1187,8 @@
       },
       "no_methodology_title": "Metodologiya tanlanmagan",
       "no_methodology_body": "Faktor bo'yicha baholash uchun kamida bitta metodologiyani yaratib, tasdiqlang.",
+      "no_assigned_methodology_title": "Metodologiya tayinlanmagan",
+      "no_assigned_methodology_body": "Siz ushbu loyihada hech qanday faol metodologiyaga tayinlanmagansiz. Loyiha menejeriga murojaat qiling.",
       "no_factors_title": "Metodologiya versiyasida faktorlar yo'q",
       "no_factors_body": "Metodologiyani ochib, faktorlar qo'shing.",
       "empty_title": "Filtrlarga mos lavozim topilmadi",

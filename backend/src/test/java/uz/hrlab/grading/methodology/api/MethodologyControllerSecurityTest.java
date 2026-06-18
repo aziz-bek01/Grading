@@ -25,6 +25,7 @@ import uz.hrlab.grading.methodology.application.CreateMethodologyFromTemplateUse
 import uz.hrlab.grading.methodology.application.MethodologyActorNameResolver;
 import uz.hrlab.grading.methodology.application.MethodologyAggregate;
 import uz.hrlab.grading.methodology.application.MethodologyQueries;
+import uz.hrlab.grading.methodology.application.RestoreMethodologyUseCase;
 import uz.hrlab.grading.methodology.application.SaveAsTemplateUseCase;
 import uz.hrlab.grading.methodology.application.UpdateMethodologyMetadataUseCase;
 import uz.hrlab.grading.methodology.domain.Methodology;
@@ -73,6 +74,7 @@ class MethodologyControllerSecurityTest {
     @MockBean CreateMethodologyFromScratchUseCase createFromScratch;
     @MockBean UpdateMethodologyMetadataUseCase updateMetadata;
     @MockBean ArchiveMethodologyUseCase archiveUseCase;
+    @MockBean RestoreMethodologyUseCase restoreUseCase;
     @MockBean SaveAsTemplateUseCase saveAsTemplate;
     @MockBean MethodologyQueries queries;
     @MockBean MethodologyActorNameResolver actorNames;
@@ -190,6 +192,106 @@ class MethodologyControllerSecurityTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\":\"x\"}"))
                 .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/methodologies/{id}/restore", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"x\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/methodologies/{id}/in-progress-count", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    // ---------------------------------------------------------- restore (PART C)
+
+    @Test
+    void restoreRequiresMethodologyEdit() throws Exception {
+        mvc.perform(post("/api/v1/methodologies/{id}/restore", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "METHODOLOGY_READ"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"reinstate\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void restoreWithEditReturns200AndActiveStatus() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(restoreUseCase.restore(eq(id), any())).willReturn(sample(id));
+        mvc.perform(post("/api/v1/methodologies/{id}/restore", id)
+                        .with(jwt().authorities(() -> "METHODOLOGY_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"reinstate\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    void restoreNotArchivedReturns400() throws Exception {
+        given(restoreUseCase.restore(any(), any()))
+                .willThrow(new uz.hrlab.grading.common.exception.ValidationException(
+                        "METHODOLOGY_NOT_ARCHIVED", "not archived"));
+        mvc.perform(post("/api/v1/methodologies/{id}/restore", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "METHODOLOGY_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"reinstate\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("METHODOLOGY_NOT_ARCHIVED"));
+    }
+
+    @Test
+    void restoreMissingReasonReturns400() throws Exception {
+        mvc.perform(post("/api/v1/methodologies/{id}/restore", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "METHODOLOGY_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void restoreCrossTenantReturns404() throws Exception {
+        given(restoreUseCase.restore(any(), any()))
+                .willThrow(new TenantAccessDeniedException());
+        mvc.perform(post("/api/v1/methodologies/{id}/restore", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "METHODOLOGY_EDIT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"reinstate\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ------------------------------------------------- in-progress-count (PART D)
+
+    @Test
+    void inProgressCountRequiresMethodologyEdit() throws Exception {
+        mvc.perform(get("/api/v1/methodologies/{id}/in-progress-count", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "METHODOLOGY_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void inProgressCountWithEditReturnsCount() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(queries.countInProgressEvaluations(id)).willReturn(3L);
+        mvc.perform(get("/api/v1/methodologies/{id}/in-progress-count", id)
+                        .with(jwt().authorities(() -> "METHODOLOGY_EDIT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.in_progress_evaluation_count").value(3));
+    }
+
+    // --------------------------------------------------- evaluator list (PART B)
+
+    @Test
+    void myRequiresEvaluationRead() throws Exception {
+        mvc.perform(get("/api/v1/methodologies/my?projectId={p}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void myWithEvaluationReadReturns200() throws Exception {
+        given(queries.findMyMethodologiesInProject(any())).willReturn(List.of());
+        mvc.perform(get("/api/v1/methodologies/my?projectId={p}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk());
     }
 
     /**

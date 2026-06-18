@@ -33,11 +33,13 @@ const base = '/methodologies';
 export const methodologyKeys = {
   all: ['methodologies'] as const,
   listByProject: (projectId: string) => ['methodologies', 'list', projectId] as const,
+  myList: (projectId: string) => ['methodologies', 'my', projectId] as const,
   detail: (id: string) => ['methodologies', 'detail', id] as const,
   versions: (methodologyId: string) =>
     ['methodologies', 'versions', methodologyId] as const,
   version: (versionId: string) => ['methodology-versions', 'detail', versionId] as const,
   templates: ['methodology-templates'] as const,
+  inProgressCount: (id: string) => ['methodologies', 'in-progress-count', id] as const,
 };
 
 // ---------- Methodology listing / CRUD ----------
@@ -95,6 +97,39 @@ export async function archiveMethodology(
 ): Promise<Methodology> {
   const res = await httpClient.post<Methodology>(`${base}/${id}/archive`, payload);
   return res.data;
+}
+
+export async function restoreMethodology(
+  id: string,
+  payload: MethodologyReasonPayload,
+): Promise<Methodology> {
+  const res = await httpClient.post<Methodology>(`${base}/${id}/restore`, payload);
+  return res.data;
+}
+
+/**
+ * GET /methodologies/{id}/in-progress-count
+ * Returns the count of in-progress evaluations for a methodology.
+ * Gated METHODOLOGY_EDIT.
+ */
+export async function fetchInProgressCount(id: string): Promise<number> {
+  const res = await httpClient.get<{ in_progress_evaluation_count: number }>(
+    `${base}/${id}/in-progress-count`,
+  );
+  return res.data.in_progress_evaluation_count;
+}
+
+/**
+ * GET /methodologies/my?projectId={projectId}
+ * Returns a PLAIN ARRAY (no envelope) of methodologies the caller is assigned
+ * to (has own evaluations in) AND whose status = ACTIVE. Gated EVALUATION_READ.
+ */
+export async function fetchMyMethodologies(projectId: string): Promise<{ items: Methodology[] }> {
+  const res = await httpClient.get<Methodology[]>(`${base}/my`, {
+    params: { projectId },
+  });
+  const rows = Array.isArray(res.data) ? res.data : [];
+  return { items: rows };
 }
 
 // ---------- Versions ----------

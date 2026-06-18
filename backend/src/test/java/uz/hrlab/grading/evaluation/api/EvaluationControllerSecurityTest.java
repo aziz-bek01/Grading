@@ -127,9 +127,13 @@ class EvaluationControllerSecurityTest {
         UUID projectId = UUID.randomUUID();
         UUID panelId = UUID.randomUUID();
         UUID positionId = UUID.randomUUID();
+        UUID methodologyVersionId = UUID.randomUUID();
+        UUID methodologyId = UUID.randomUUID();
         given(queries.listMine()).willReturn(List.of(new MyEvaluationRow(
                 evaluationId, projectId, panelId, positionId, "P-001",
-                java.util.Map.of("ru-RU", "Кассир"), EvaluationStatus.DRAFT, 0, 8)));
+                java.util.Map.of("ru-RU", "Кассир"), EvaluationStatus.DRAFT, 0, 8,
+                methodologyVersionId, methodologyId,
+                java.util.Map.of("ru-RU", "Классическая 8-факторная"), 2)));
         mvc.perform(get("/api/v1/evaluations/my").with(jwt().authorities(() -> "EVALUATION_READ")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].evaluation_id").value(evaluationId.toString()))
@@ -137,7 +141,11 @@ class EvaluationControllerSecurityTest {
                 .andExpect(jsonPath("$[0].panel_id").value(panelId.toString()))
                 .andExpect(jsonPath("$[0].status").value("DRAFT"))
                 .andExpect(jsonPath("$[0].filled_factors_count").value(0))
-                .andExpect(jsonPath("$[0].total_factors_count").value(8));
+                .andExpect(jsonPath("$[0].total_factors_count").value(8))
+                .andExpect(jsonPath("$[0].methodology_version_id").value(methodologyVersionId.toString()))
+                .andExpect(jsonPath("$[0].methodology_id").value(methodologyId.toString()))
+                .andExpect(jsonPath("$[0].methodology_name.ru-RU").value("Классическая 8-факторная"))
+                .andExpect(jsonPath("$[0].methodology_active_version_number").value(2));
     }
 
     @Test

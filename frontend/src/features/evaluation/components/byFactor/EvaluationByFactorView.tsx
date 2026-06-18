@@ -18,7 +18,7 @@ import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { usePermission } from '@/features/auth/usePermission';
 import { useAuthStore } from '@/features/auth/authStore';
-import { useMethodologies, useMethodologyVersion } from '@/features/methodology/hooks/useMethodology';
+import { useMethodologies, useMyMethodologies, useMethodologyVersion } from '@/features/methodology/hooks/useMethodology';
 import { ScoringModeBadge } from '@/features/methodology/components/ScoringModeBadge';
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import { pickLocalized } from '@/shared/lib/localized';
@@ -125,6 +125,15 @@ export function EvaluationByFactorView({
   const { can } = usePermission();
   const canEdit = can(PERMISSIONS.EVALUATION_EDIT);
   /**
+   * PART 1 — evaluator methodology scoping.
+   * Managers/oversight (METHODOLOGY_READ) see all project methodologies.
+   * Plain evaluators (no METHODOLOGY_READ) see only the ones they are
+   * assigned to via GET /methodologies/my (BE derives the scope from the JWT).
+   * Both hooks are called UNCONDITIONALLY to satisfy the Rules of Hooks;
+   * only the enabled flag gates the actual network request.
+   */
+  const canMethodologyRead = can(PERMISSIONS.METHODOLOGY_READ);
+  /**
    * Points-visibility exception (PO-ratified): plain expert evaluators must
    * judge positions by level DESCRIPTIONS only — surfacing the raw point
    * value anchors the score (anchoring bias). Project admins / HR directors
@@ -160,13 +169,26 @@ export function EvaluationByFactorView({
   const [bulkSubmitOpen, setBulkSubmitOpen] = useState(false);
 
   // ----- Resolve selectable methodologies + the active selection -----
-  const methodologiesQuery = useMethodologies(projectId);
+  // Both hooks called unconditionally (Rules of Hooks); only one actually
+  // fetches based on the `enabled` flag derived from canMethodologyRead.
+  const methodologiesQuery = useMethodologies(canMethodologyRead ? projectId : undefined);
+  const myMethodologiesQuery = useMyMethodologies(
+    !canMethodologyRead ? projectId : undefined,
+    { enabled: !canMethodologyRead },
+  );
   // Evaluations are reused (NO new endpoint) only to (a) compute a sensible
   // default selection — the methodology with the most evaluations — and (b)
   // decide which methodologies are worth offering in the selector. The
   // by-factor ROWS themselves still come from the scoped by-factor endpoint
   // (BE derives the version from factorId), never from this list.
   const evaluationsQuery = useEvaluations({ projectId });
+
+  /**
+   * The active query result to source methodologies from, based on the
+   * caller's METHODOLOGY_READ permission. Both branches are always declared
+   * above; we only pick which one feeds the downstream derived state.
+   */
+  const activeMethodologiesQuery = canMethodologyRead ? methodologiesQuery : myMethodologiesQuery;
 
   /**
    * Methodologies the user may switch between in the K-sheet: every
@@ -176,8 +198,8 @@ export function EvaluationByFactorView({
    */
   const selectableMethodologies = useMemo(
     () =>
-      (methodologiesQuery.data?.items ?? []).filter((m) => m.active_version_id),
-    [methodologiesQuery.data],
+      (activeMethodologiesQuery.data?.items ?? []).filter((m) => m.active_version_id),
+    [activeMethodologiesQuery.data],
   );
 
   /**
@@ -188,12 +210,12 @@ export function EvaluationByFactorView({
    */
   const versionToMethodologyId = useMemo(() => {
     const m = new Map<string, string>();
-    for (const meth of methodologiesQuery.data?.items ?? []) {
+    for (const meth of activeMethodologiesQuery.data?.items ?? []) {
       if (meth.active_version_id) m.set(meth.active_version_id, meth.id);
       if (meth.latest_version_id) m.set(meth.latest_version_id, meth.id);
     }
     return m;
-  }, [methodologiesQuery.data]);
+  }, [activeMethodologiesQuery.data]);
 
   /** Default selection = methodology with the MOST non-archived evaluations. */
   const defaultMethodologyId = useMemo(() => {
@@ -318,7 +340,10 @@ export function EvaluationByFactorView({
   };
   const rowsQuery = useEvaluationsByFactor(filters);
 
-  const rows: EvaluationByFactorRow[] = rowsQuery.data?.items ?? [];
+  const rows: EvaluationByFactorRow[] = useMemo(
+    () => rowsQuery.data?.items ?? [],
+    [rowsQuery.data],
+  );
   const totalElements = rowsQuery.data?.total_elements ?? 0;
   const totalPages = rowsQuery.data?.total_pages ?? 1;
 
@@ -424,9 +449,24 @@ export function EvaluationByFactorView({
   );
 
   // ----- Loading / error / empty branches -----
-  if (methodologiesQuery.isLoading || versionQuery.isLoading) {
+  if (activeMethodologiesQuery.isLoading || versionQuery.isLoading) {
     return <LoadingState />;
   }
+
+  // Evaluator-specific empty state: the evaluator has EVALUATION_READ but no
+  // METHODOLOGY_READ, and the /my endpoint returned an empty list — they have
+  // no active methodology assigned in this project.
+  if (!canMethodologyRead && !activeMethodologiesQuery.isLoading && selectableMethodologies.length === 0) {
+    return (
+      <div role="status">
+        <EmptyState
+          title={t('evaluation.byFactor.no_assigned_methodology_title')}
+          body={t('evaluation.byFactor.no_assigned_methodology_body')}
+        />
+      </div>
+    );
+  }
+
   if (!activeMethodology || !versionQuery.data) {
     return (
       <EmptyState

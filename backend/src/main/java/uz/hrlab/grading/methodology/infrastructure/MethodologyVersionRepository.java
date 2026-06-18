@@ -29,6 +29,16 @@ public interface MethodologyVersionRepository
             findFirstByTenantIdAndMethodologyIdOrderByVersionNumberDesc(
                     UUID tenantId, UUID methodologyId);
 
+    /**
+     * Batched by-id lookup for the "my evaluations" inbox enrichment: resolve a
+     * page of distinct {@code methodologyVersionId}s to their version rows in ONE
+     * tenant-scoped query (no N+1). Tenant is pinned, so an id from another tenant
+     * simply contributes no row (never widens scope — not the BOLA-prone
+     * {@code findAllById}).
+     */
+    List<MethodologyVersionJpaEntity> findAllByTenantIdAndIdIn(
+            UUID tenantId, Collection<UUID> ids);
+
     boolean existsByTenantIdAndMethodologyIdAndVersionNumber(
             UUID tenantId, UUID methodologyId, int versionNumber);
 }

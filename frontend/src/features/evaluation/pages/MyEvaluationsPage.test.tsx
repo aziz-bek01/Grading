@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import {
   renderWithProviders,
@@ -42,6 +42,11 @@ function row(over: Partial<MyEvaluationRow> = {}): MyEvaluationRow {
     status: 'DRAFT',
     filledFactorsCount: 3,
     totalFactorsCount: 8,
+    // PART 4 — new methodology fields (optional; defaults so old-style tests pass)
+    methodologyVersionId: 'mver-1',
+    methodologyId: 'meth-1',
+    methodologyName: { 'ru-RU': 'Методология А', 'en-US': 'Methodology A' },
+    methodologyActiveVersionNumber: 2,
     ...over,
   };
 }
@@ -73,7 +78,7 @@ function renderPage(
   );
 }
 
-describe('<MyEvaluationsPage /> (Feature 1)', () => {
+describe('<MyEvaluationsPage /> (Feature 1 + Part 4)', () => {
   beforeEach(() => {
     queryState.data = [];
     queryState.isLoading = false;
@@ -116,7 +121,7 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
   it('links every row regardless of the active project (no project active)', () => {
     queryState.data = [
       row({ evaluationId: 'eval-a', projectId: 'proj-a' }),
-      row({ evaluationId: 'eval-b', projectId: 'proj-b' }),
+      row({ evaluationId: 'eval-b', projectId: 'proj-b', methodologyId: 'meth-2', methodologyName: { 'en-US': 'Methodology B' } }),
     ];
     renderPage(null);
     expect(screen.getByTestId('open-my-evaluation-eval-a')).toHaveAttribute(
@@ -179,5 +184,109 @@ describe('<MyEvaluationsPage /> (Feature 1)', () => {
       ),
     );
     expect(screen.queryByTestId('my-evaluations-page')).not.toBeInTheDocument();
+  });
+
+  // ----- PART 4: grouping + filter tests -----
+
+  it('groups rows into separate sections by methodologyId', () => {
+    queryState.data = [
+      row({
+        evaluationId: 'eval-x1',
+        projectId: 'proj-1',
+        methodologyId: 'meth-A',
+        methodologyName: { 'en-US': 'Alpha Methodology' },
+        methodologyActiveVersionNumber: 1,
+      }),
+      row({
+        evaluationId: 'eval-x2',
+        projectId: 'proj-1',
+        methodologyId: 'meth-B',
+        methodologyName: { 'en-US': 'Beta Methodology' },
+        methodologyActiveVersionNumber: 3,
+        title: 'HR Manager',
+        positionCode: 'HR-MGR',
+      }),
+    ];
+    renderPage();
+    // Both group headers visible
+    expect(screen.getByTestId('my-evaluations-group-meth-A')).toBeInTheDocument();
+    expect(screen.getByTestId('my-evaluations-group-meth-B')).toBeInTheDocument();
+    // Both rows visible (both groups expanded by default)
+    expect(screen.getByTestId('open-my-evaluation-eval-x1')).toBeInTheDocument();
+    expect(screen.getByTestId('open-my-evaluation-eval-x2')).toBeInTheDocument();
+  });
+
+  it('methodology filter narrows visible rows to the selected methodology', () => {
+    queryState.data = [
+      row({
+        evaluationId: 'eval-m1',
+        methodologyId: 'meth-A',
+        methodologyName: { 'en-US': 'Alpha Methodology' },
+        title: 'Row A',
+        positionCode: 'A-001',
+      }),
+      row({
+        evaluationId: 'eval-m2',
+        methodologyId: 'meth-B',
+        methodologyName: { 'en-US': 'Beta Methodology' },
+        title: 'Row B',
+        positionCode: 'B-001',
+      }),
+    ];
+    renderPage();
+
+    // Both rows visible before filtering
+    expect(screen.getByTestId('open-my-evaluation-eval-m1')).toBeInTheDocument();
+    expect(screen.getByTestId('open-my-evaluation-eval-m2')).toBeInTheDocument();
+
+    // Apply methodology filter: select meth-A
+    const methodologySelect = screen.getByTestId('my-evaluations-filter-methodology');
+    fireEvent.change(methodologySelect, { target: { value: 'meth-A' } });
+
+    expect(screen.getByTestId('open-my-evaluation-eval-m1')).toBeInTheDocument();
+    expect(screen.queryByTestId('open-my-evaluation-eval-m2')).not.toBeInTheDocument();
+  });
+
+  it('status filter narrows visible rows', () => {
+    queryState.data = [
+      row({ evaluationId: 'eval-s1', status: 'DRAFT' }),
+      row({ evaluationId: 'eval-s2', status: 'SUBMITTED', methodologyId: 'meth-2', methodologyName: { 'en-US': 'M2' } }),
+    ];
+    renderPage();
+
+    const statusSelect = screen.getByTestId('my-evaluations-filter-status');
+    fireEvent.change(statusSelect, { target: { value: 'SUBMITTED' } });
+
+    expect(screen.queryByTestId('open-my-evaluation-eval-s1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('open-my-evaluation-eval-s2')).toBeInTheDocument();
+  });
+
+  it('position search input filters rows by title/code (case-insensitive)', () => {
+    queryState.data = [
+      row({ evaluationId: 'eval-p1', title: 'Financial Analyst', positionCode: 'FIN-01' }),
+      row({ evaluationId: 'eval-p2', title: 'HR Manager', positionCode: 'HR-MGR', methodologyId: 'meth-2', methodologyName: { 'en-US': 'M2' } }),
+    ];
+    renderPage();
+
+    const searchInput = screen.getByTestId('my-evaluations-filter-search');
+    fireEvent.change(searchInput, { target: { value: 'financial' } });
+
+    expect(screen.getByTestId('open-my-evaluation-eval-p1')).toBeInTheDocument();
+    expect(screen.queryByTestId('open-my-evaluation-eval-p2')).not.toBeInTheDocument();
+  });
+
+  it('shows no-match state when all rows are filtered out', () => {
+    queryState.data = [row({ evaluationId: 'eval-nm1', title: 'CEO' })];
+    renderPage();
+
+    const searchInput = screen.getByTestId('my-evaluations-filter-search');
+    fireEvent.change(searchInput, { target: { value: 'zzz-not-a-real-position' } });
+
+    // Filter bar remains visible
+    expect(screen.getByTestId('my-evaluations-filter-bar')).toBeInTheDocument();
+    // No match state shown
+    expect(screen.getByTestId('my-evaluations-filter-clear')).toBeInTheDocument();
+    // Original row not visible
+    expect(screen.queryByTestId('open-my-evaluation-eval-nm1')).not.toBeInTheDocument();
   });
 });

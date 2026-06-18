@@ -23,6 +23,7 @@ import uz.hrlab.grading.methodology.application.CreateMethodologyFromTemplateUse
 import uz.hrlab.grading.methodology.application.MethodologyActorNameResolver;
 import uz.hrlab.grading.methodology.application.MethodologyAggregate;
 import uz.hrlab.grading.methodology.application.MethodologyQueries;
+import uz.hrlab.grading.methodology.application.RestoreMethodologyUseCase;
 import uz.hrlab.grading.methodology.application.SaveAsTemplateUseCase;
 import uz.hrlab.grading.methodology.application.UpdateMethodologyMetadataUseCase;
 import uz.hrlab.grading.common.api.PageResponse;
@@ -42,6 +43,7 @@ public class MethodologyController {
     private final CreateMethodologyFromScratchUseCase createFromScratch;
     private final UpdateMethodologyMetadataUseCase updateMetadata;
     private final ArchiveMethodologyUseCase archiveUseCase;
+    private final RestoreMethodologyUseCase restoreUseCase;
     private final SaveAsTemplateUseCase saveAsTemplate;
     private final MethodologyQueries queries;
     private final MethodologyActorNameResolver actorNames;
@@ -50,6 +52,7 @@ public class MethodologyController {
                                  CreateMethodologyFromScratchUseCase createFromScratch,
                                  UpdateMethodologyMetadataUseCase updateMetadata,
                                  ArchiveMethodologyUseCase archiveUseCase,
+                                 RestoreMethodologyUseCase restoreUseCase,
                                  SaveAsTemplateUseCase saveAsTemplate,
                                  MethodologyQueries queries,
                                  MethodologyActorNameResolver actorNames) {
@@ -57,6 +60,7 @@ public class MethodologyController {
         this.createFromScratch = createFromScratch;
         this.updateMetadata = updateMetadata;
         this.archiveUseCase = archiveUseCase;
+        this.restoreUseCase = restoreUseCase;
         this.saveAsTemplate = saveAsTemplate;
         this.queries = queries;
         this.actorNames = actorNames;
@@ -119,6 +123,28 @@ public class MethodologyController {
         return PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
     }
 
+    /**
+     * Evaluator-scoped methodology list — the ACTIVE methodologies in
+     * {@code projectId} the caller holds at least one of their OWN evaluations
+     * under. Same enriched list-item shape as {@link #list} (latest/active version
+     * pointers), but self-scoped: only methodologies the caller actually scores
+     * appear. Gated on {@code EVALUATION_READ} (the scoring permission) — the
+     * service ({@code MethodologyQueries.findMyMethodologiesInProject}) is the
+     * authoritative gate; tenant + ownership scoping happens there.
+     */
+    @GetMapping("/my")
+    @PreAuthorize("hasAuthority('EVALUATION_READ')")
+    public List<MethodologyResponse> listMine(@RequestParam UUID projectId) {
+        List<MethodologyJpaEntity> rows = queries.findMyMethodologiesInProject(projectId);
+        List<UUID> ids = rows.stream().map(MethodologyJpaEntity::getId).toList();
+        Map<UUID, List<MethodologyVersionJpaEntity>> versionsById =
+                queries.versionsByMethodologyIds(ids);
+        return rows.stream()
+                .map(e -> MethodologyResponse.fromList(
+                        e, versionsById.getOrDefault(e.getId(), List.of())))
+                .toList();
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public MethodologyResponse getById(@PathVariable UUID id) {
@@ -143,6 +169,26 @@ public class MethodologyController {
     public MethodologyResponse archive(@PathVariable UUID id,
                                        @Valid @RequestBody ReasonRequest req) {
         return MethodologyResponse.from(archiveUseCase.archive(id, req.reason()));
+    }
+
+    /** Restore an ARCHIVED methodology container (status → ACTIVE). Mirrors archive. */
+    @PostMapping("/{id}/restore")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    public MethodologyResponse restore(@PathVariable UUID id,
+                                       @Valid @RequestBody ReasonRequest req) {
+        return MethodologyResponse.from(restoreUseCase.restore(id, req.reason()));
+    }
+
+    /**
+     * In-progress (not-yet-submitted) evaluation count for the deactivate/archive
+     * confirmation dialog. Counts DRAFT / INCOMPLETE / COMPLETE evaluations across
+     * every version of the methodology. {@code METHODOLOGY_EDIT}-gated (the same
+     * admin permission as archive/restore).
+     */
+    @GetMapping("/{id}/in-progress-count")
+    @PreAuthorize("hasAuthority('METHODOLOGY_EDIT')")
+    public InProgressEvaluationCountResponse inProgressCount(@PathVariable UUID id) {
+        return new InProgressEvaluationCountResponse(queries.countInProgressEvaluations(id));
     }
 
     /**

@@ -40,6 +40,69 @@ public interface EvaluationRepository
     List<EvaluationJpaEntity> findAllByTenantIdAndEvaluatorUserIdOrderByUpdatedAtDesc(
             UUID tenantId, UUID evaluatorUserId);
 
+    /**
+     * "My evaluations" inbox (self-scoped) EXCLUDING sheets whose methodology
+     * version belongs to an ARCHIVED methodology container. Same self-scoping
+     * contract as {@link #findAllByTenantIdAndEvaluatorUserIdOrderByUpdatedAtDesc}
+     * (tenant + evaluator BOTH pinned — never another user's / tenant's row), but
+     * the version-in-active-container subquery drops rows of methodologies that
+     * have since been archived so the inbox does not deep-link a scorer into a
+     * retired methodology.
+     *
+     * <p>SCOPE: this active-methodology filter is for the SELF inbox
+     * ({@code EvaluationQueries.listMine}) ONLY. The project-level evaluation list
+     * (managers) must NOT inherit it.
+     */
+    @Query("""
+           SELECT e FROM EvaluationJpaEntity e
+           WHERE e.tenantId = :tenantId
+             AND e.evaluatorUserId = :evaluatorUserId
+             AND e.methodologyVersionId IN (
+                   SELECT v.id FROM uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity v
+                   WHERE v.tenantId = :tenantId
+                     AND v.methodologyId IN (
+                           SELECT m.id FROM uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity m
+                           WHERE m.tenantId = :tenantId
+                             AND m.status = uz.hrlab.grading.methodology.domain.MethodologyStatus.ACTIVE
+                     )
+             )
+           ORDER BY e.updatedAt DESC
+           """)
+    List<EvaluationJpaEntity> findActiveMethodologyEvaluationsByEvaluator(
+            @Param("tenantId") UUID tenantId,
+            @Param("evaluatorUserId") UUID evaluatorUserId);
+
+    /**
+     * PART B — distinct methodology-version ids the caller has at least one OWN,
+     * non-ARCHIVED evaluation under, within a project. Drives the evaluator-scoped
+     * methodology list ({@code GET /api/v1/methodologies/my}). Tenant + project +
+     * evaluator are all pinned in the predicate; ARCHIVED sheets are excluded so a
+     * cancelled assignment does not surface its methodology.
+     */
+    @Query("""
+           SELECT DISTINCT e.methodologyVersionId FROM EvaluationJpaEntity e
+           WHERE e.tenantId = :tenantId
+             AND e.projectId = :projectId
+             AND e.evaluatorUserId = :evaluatorUserId
+             AND e.status <> :excludedStatus
+           """)
+    List<UUID> findDistinctMethodologyVersionIdsByEvaluatorInProject(
+            @Param("tenantId") UUID tenantId,
+            @Param("projectId") UUID projectId,
+            @Param("evaluatorUserId") UUID evaluatorUserId,
+            @Param("excludedStatus") EvaluationStatus excludedStatus);
+
+    /**
+     * PART D — in-progress (not-yet-submitted) evaluation count for a set of
+     * methodology versions (the versions of one methodology container). Backs the
+     * deactivate/archive confirmation dialog. Tenant-scoped; statuses are the
+     * pre-submission set (DRAFT / INCOMPLETE / COMPLETE — see
+     * {@code EvaluationStatus.isPreSubmission}).
+     */
+    long countByTenantIdAndMethodologyVersionIdInAndStatusIn(
+            UUID tenantId, Collection<UUID> methodologyVersionIds,
+            Collection<EvaluationStatus> statuses);
+
     List<EvaluationJpaEntity> findAllByTenantIdAndPositionIdAndMethodologyVersionId(
             UUID tenantId, UUID positionId, UUID methodologyVersionId);
 

@@ -54,6 +54,9 @@ const version: MethodologyVersion = {
 
 vi.mock('@/features/methodology/hooks/useMethodology', () => ({
   useMethodologies: () => ({ data: { items: [methodology] }, isLoading: false }),
+  // Called unconditionally (Rules of Hooks) even on the manager path; return
+  // an inert empty result. /my returns a plain array in `data`, not {items}.
+  useMyMethodologies: () => ({ data: [], isLoading: false }),
   useMethodologyVersion: () => ({ data: version, isLoading: false }),
 }));
 

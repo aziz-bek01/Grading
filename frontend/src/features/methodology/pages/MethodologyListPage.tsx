@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, Pencil, Archive, FilePlus2, BookmarkPlus } from 'lucide-react';
+import { Plus, Pencil, Archive, FilePlus2, BookmarkPlus, RotateCcw } from 'lucide-react';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { DataTable } from '@/shared/components/data-table/DataTable';
 import { FilterBar } from '@/shared/components/data-table/FilterBar';
@@ -13,6 +13,7 @@ import { PERMISSIONS } from '@/shared/types/permissions';
 import { useAuthStore } from '@/features/auth/authStore';
 import { MethodologyTypeBadge } from '../components/MethodologyTypeBadge';
 import { MethodologyStatusBadge } from '../components/MethodologyStatusBadge';
+import { MethodologyContainerStatusBadge } from '../components/MethodologyContainerStatusBadge';
 import {
   MethodologyTemplatePicker,
   type TemplateSelection,
@@ -29,7 +30,9 @@ import {
   useArchiveMethodology,
   useCreateMethodology,
   useCreateMethodologyFromTemplate,
+  useInProgressCount,
   useMethodologies,
+  useRestoreMethodology,
   useSaveMethodologyAsTemplate,
   useUpdateCustomTemplate,
   useUpdateMethodology,
@@ -58,10 +61,12 @@ export function MethodologyListPage() {
   const items = useMemo(() => query.data?.items ?? [], [query.data]);
 
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Methodology | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Methodology | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<Methodology | null>(null);
   // Epic E — save-as-template + manage custom templates.
   const [saveTemplateTarget, setSaveTemplateTarget] = useState<Methodology | null>(null);
   const [renameTemplateTarget, setRenameTemplateTarget] = useState<MethodologyTemplate | null>(null);
@@ -72,9 +77,15 @@ export function MethodologyListPage() {
   const createFromScratchMut = useCreateMethodology(projectId);
   const updateMut = useUpdateMethodology(editTarget?.id ?? '', projectId);
   const archiveMut = useArchiveMethodology(archiveTarget?.id ?? '', projectId);
+  const restoreMut = useRestoreMethodology(restoreTarget?.id ?? '', projectId);
   const saveTemplateMut = useSaveMethodologyAsTemplate(saveTemplateTarget?.id ?? '');
   const renameTemplateMut = useUpdateCustomTemplate(renameTemplateTarget?.id ?? '');
   const archiveTemplateMut = useArchiveCustomTemplate(archiveTemplateTarget?.id ?? '');
+
+  // Lazy in-progress count query — only fetches when the deactivate dialog opens.
+  const inProgressCountQuery = useInProgressCount(archiveTarget?.id, {
+    enabled: !!archiveTarget,
+  });
 
   // Auto-dismiss the success banner so it behaves like a transient toast.
   useEffect(() => {
@@ -84,10 +95,11 @@ export function MethodologyListPage() {
   }, [successMessage]);
 
   const filtered = useMemo(() => {
-    // Archived containers are soft-deleted — keep them out of the active list (F6).
-    const active = items.filter((m) => m.status !== 'ARCHIVED');
-    return typeFilter ? active.filter((m) => m.methodology_type === typeFilter) : active;
-  }, [items, typeFilter]);
+    // Managers can toggle to see archived (ARCHIVED) methodologies for reactivation.
+    // By default, only ACTIVE methodologies are shown.
+    const scoped = showArchived ? items : items.filter((m) => m.status !== 'ARCHIVED');
+    return typeFilter ? scoped.filter((m) => m.methodology_type === typeFilter) : scoped;
+  }, [items, typeFilter, showArchived]);
 
   const deepLinkToVersion = (created: Methodology) => {
     if (created.latest_version_id) {
@@ -175,8 +187,20 @@ export function MethodologyListPage() {
             {successMessage}
           </div>
         ) : null}
-        <PermissionGate permission={PERMISSIONS.METHODOLOGY_CREATE}>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <PermissionGate permission={PERMISSIONS.METHODOLOGY_EDIT}>
+            <label className="inline-flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                data-testid="methodology-show-archived"
+                className="h-4 w-4 accent-primary-500"
+              />
+              {t('methodology.show_inactive')}
+            </label>
+          </PermissionGate>
+          <PermissionGate permission={PERMISSIONS.METHODOLOGY_CREATE}>
             <Button
               variant="secondary"
               onClick={() => setCreateOpen(true)}
@@ -192,8 +216,8 @@ export function MethodologyListPage() {
             >
               {t('methodology.new_methodology')}
             </Button>
-          </div>
-        </PermissionGate>
+          </PermissionGate>
+        </div>
       </header>
 
       <DataTable<Methodology>
@@ -229,7 +253,7 @@ export function MethodologyListPage() {
             key: 'code',
             header: t('common.code'),
             render: (m) => <span className="font-mono text-xs text-text-secondary">{m.code}</span>,
-            width: '12%',
+            width: '10%',
             sortable: true,
             sortAccessor: (m) => m.code,
           },
@@ -248,7 +272,13 @@ export function MethodologyListPage() {
             key: 'type',
             header: t('common.type'),
             render: (m) => <MethodologyTypeBadge type={m.methodology_type} />,
-            width: '16%',
+            width: '14%',
+          },
+          {
+            key: 'container_status',
+            header: t('common.status'),
+            render: (m) => <MethodologyContainerStatusBadge status={m.status} />,
+            width: '10%',
           },
           {
             key: 'active_version',
@@ -264,7 +294,7 @@ export function MethodologyListPage() {
               ) : (
                 <span className="text-text-muted text-xs">{t('methodology.no_active_version')}</span>
               ),
-            width: '22%',
+            width: '18%',
           },
           {
             key: 'updated_at',
@@ -277,7 +307,7 @@ export function MethodologyListPage() {
                 </span>
               );
             },
-            width: '12%',
+            width: '10%',
             sortable: true,
             sortAccessor: (m) => m.updated_at ?? m.created_at ?? '',
           },
@@ -287,53 +317,75 @@ export function MethodologyListPage() {
             render: (m) => (
               <div className="flex items-center justify-end gap-1">
                 <PermissionGate permission={PERMISSIONS.METHODOLOGY_CREATE}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={t('methodology.save_as_template.action')}
-                    title={t('methodology.save_as_template.action')}
-                    data-testid={`methodology-${m.code}-save-template`}
-                    onClick={() => setSaveTemplateTarget(m)}
-                  >
-                    <BookmarkPlus size={14} />
-                  </Button>
+                  {m.status !== 'ARCHIVED' ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={t('methodology.save_as_template.action')}
+                      title={t('methodology.save_as_template.action')}
+                      data-testid={`methodology-${m.code}-save-template`}
+                      onClick={() => setSaveTemplateTarget(m)}
+                    >
+                      <BookmarkPlus size={14} />
+                    </Button>
+                  ) : null}
                 </PermissionGate>
                 <PermissionGate permission={PERMISSIONS.METHODOLOGY_EDIT}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={t('common.edit')}
-                    data-testid={`methodology-${m.code}-edit`}
-                    onClick={() => setEditTarget(m)}
-                  >
-                    <Pencil size={14} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={t('common.archive')}
-                    data-testid={`methodology-${m.code}-archive`}
-                    onClick={() => setArchiveTarget(m)}
-                  >
-                    <Archive size={14} className="text-danger-700" />
-                  </Button>
+                  {m.status !== 'ARCHIVED' ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t('common.edit')}
+                        data-testid={`methodology-${m.code}-edit`}
+                        onClick={() => setEditTarget(m)}
+                      >
+                        <Pencil size={14} />
+                      </Button>
+                      {/* Deactivate (ACTIVE → ARCHIVED) */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t('methodology.deactivate.action')}
+                        title={t('methodology.deactivate.action')}
+                        data-testid={`methodology-${m.code}-deactivate`}
+                        onClick={() => setArchiveTarget(m)}
+                      >
+                        <Archive size={14} className="text-danger-700" />
+                      </Button>
+                    </>
+                  ) : (
+                    /* Reactivate (ARCHIVED → ACTIVE) */
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={t('methodology.reactivate.action')}
+                      title={t('methodology.reactivate.action')}
+                      data-testid={`methodology-${m.code}-reactivate`}
+                      onClick={() => setRestoreTarget(m)}
+                    >
+                      <RotateCcw size={14} className="text-success-700" />
+                    </Button>
+                  )}
                 </PermissionGate>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  data-testid={`methodology-${m.code}-open`}
-                  onClick={() =>
-                    m.latest_version_id &&
-                    navigate(
-                      `/app/projects/${projectId}/methodology/${m.id}/versions/${m.latest_version_id}/edit`,
-                    )
-                  }
-                >
-                  {t('methodology.open')}
-                </Button>
+                {m.status !== 'ARCHIVED' ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid={`methodology-${m.code}-open`}
+                    onClick={() =>
+                      m.latest_version_id &&
+                      navigate(
+                        `/app/projects/${projectId}/methodology/${m.id}/versions/${m.latest_version_id}/edit`,
+                      )
+                    }
+                  >
+                    {t('methodology.open')}
+                  </Button>
+                ) : null}
               </div>
             ),
-            width: '22%',
+            width: '24%',
             className: 'text-right',
           },
         ]}
@@ -367,15 +419,47 @@ export function MethodologyListPage() {
         onSubmit={handleUpdateMetadata}
       />
 
+      {/* PART 2 — Deactivate (ACTIVE → ARCHIVED) methodology dialog */}
       <ReasonRequiredDialog
         open={!!archiveTarget}
-        title={t('methodology.confirm.archive_methodology_title')}
-        body={t('methodology.confirm.archive_methodology_body')}
+        title={
+          archiveTarget
+            ? t('methodology.deactivate.title', {
+                name: nameInLocale(archiveTarget.name_i18n, currentUserLocale),
+              })
+            : ''
+        }
+        body={
+          inProgressCountQuery.isLoading
+            ? t('common.loading')
+            : t('methodology.deactivate.body', {
+                count: inProgressCountQuery.data ?? 0,
+              })
+        }
         onCancel={() => setArchiveTarget(null)}
         onConfirm={async (reason) => {
           const target = archiveTarget;
           setArchiveTarget(null);
           if (target) await archiveMut.mutateAsync({ reason });
+        }}
+      />
+
+      {/* PART 2 — Reactivate (ARCHIVED → ACTIVE) methodology dialog */}
+      <ReasonRequiredDialog
+        open={!!restoreTarget}
+        title={
+          restoreTarget
+            ? t('methodology.reactivate.title', {
+                name: nameInLocale(restoreTarget.name_i18n, currentUserLocale),
+              })
+            : ''
+        }
+        body={t('methodology.reactivate.body')}
+        onCancel={() => setRestoreTarget(null)}
+        onConfirm={async (reason) => {
+          const target = restoreTarget;
+          setRestoreTarget(null);
+          if (target) await restoreMut.mutateAsync({ reason });
         }}
       />
 

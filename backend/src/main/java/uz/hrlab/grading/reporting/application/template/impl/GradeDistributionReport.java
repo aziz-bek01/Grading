@@ -9,6 +9,7 @@ import uz.hrlab.grading.reporting.application.template.DocxBuilder;
 import uz.hrlab.grading.reporting.application.template.PdfBuilder;
 import uz.hrlab.grading.reporting.application.template.ReportDataPort;
 import uz.hrlab.grading.reporting.application.template.ReportGenerationContext;
+import uz.hrlab.grading.reporting.application.template.ReportLabels;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
 import java.io.OutputStream;
@@ -20,11 +21,12 @@ import java.util.Map;
 
 /**
  * Bar chart of positions per grade (architecture §17). Fully implemented for
- * PDF, DOCX, XLSX.
+ * PDF, DOCX, XLSX. The bar chart X-axis uses the localized grade NAME (not the
+ * synthetic {@code G<n>} code); meta lines show the project NAME (not the UUID).
  */
 @Component
 public class GradeDistributionReport
-        extends AbstractReportTemplate<List<ReportDataPort.GradeCountRow>> {
+        extends AbstractReportTemplate<GradeDistributionReport.Model> {
 
     private final ReportDataPort data;
     private final ExcelWriter excel;
@@ -36,30 +38,49 @@ public class GradeDistributionReport
 
     @Override public ReportType reportType() { return ReportType.GRADE_DISTRIBUTION; }
 
+    /** Carries the rows plus the resolved project name so meta lines avoid the UUID. */
+    record Model(String projectName, List<ReportDataPort.GradeCountRow> rows) { }
+
     @Override
-    protected List<ReportDataPort.GradeCountRow> loadData(ReportGenerationContext ctx) {
-        return data.gradeDistribution(ctx.tenantId(), ctx.projectId());
+    protected Model loadData(ReportGenerationContext ctx) {
+        return new Model(
+                data.projectName(ctx.tenantId(), ctx.projectId(), ctx.locale()),
+                data.gradeDistribution(ctx.tenantId(), ctx.projectId(), ctx.locale()));
+    }
+
+    private static List<String> detailHeaders(String locale) {
+        return List.of(
+                ReportLabels.label("col.grade", locale),
+                ReportLabels.label("col.gradeName", locale),
+                ReportLabels.label("col.positions", locale));
     }
 
     @Override
-    protected void renderPdf(ReportGenerationContext ctx, OutputStream out,
-                             List<ReportDataPort.GradeCountRow> rows) {
+    protected void renderPdf(ReportGenerationContext ctx, OutputStream out, Model model) {
+        String locale = ctx.locale();
+        List<ReportDataPort.GradeCountRow> rows = model.rows();
         Document doc = PdfBuilder.open(out);
         try {
             PdfBuilder.heading(doc, ctx.title());
-            PdfBuilder.metaLine(doc, "Project", ctx.projectId().toString());
-            PdfBuilder.metaLine(doc, "Locale", ctx.locale());
-            PdfBuilder.subheading(doc, "Distribution");
+            PdfBuilder.metaLine(doc, ReportLabels.label("meta.project", locale), nz(model.projectName()));
+            PdfBuilder.metaLine(doc, ReportLabels.label("meta.locale", locale), locale);
+            if (rows.isEmpty()) {
+                PdfBuilder.paragraph(doc, ReportLabels.label("empty.grades", locale));
+                PdfBuilder.footer(doc, OffsetDateTime.now(), null);
+                return;
+            }
+            PdfBuilder.subheading(doc, ReportLabels.label("section.distribution", locale));
             PdfBuilder.barChart(doc,
-                    rows.stream().map(ReportDataPort.GradeCountRow::gradeCode).toList(),
+                    rows.stream().map(r -> r.gradeName() == null || r.gradeName().isBlank()
+                            ? r.gradeCode() : r.gradeName()).toList(),
                     rows.stream().map(ReportDataPort.GradeCountRow::positionCount).toList());
-            PdfBuilder.subheading(doc, "Detail");
+            PdfBuilder.subheading(doc, ReportLabels.label("section.detail", locale));
             List<List<String>> table = rows.stream()
                     .map(r -> List.of(r.gradeCode(),
                             r.gradeName() == null ? "" : r.gradeName(),
                             String.valueOf(r.positionCount())))
                     .toList();
-            PdfBuilder.table(doc, List.of("Grade", "Name", "Positions"), table);
+            PdfBuilder.table(doc, detailHeaders(locale), table);
             PdfBuilder.footer(doc, OffsetDateTime.now(), null);
         } finally {
             PdfBuilder.close(doc);
@@ -67,36 +88,43 @@ public class GradeDistributionReport
     }
 
     @Override
-    protected void renderDocx(ReportGenerationContext ctx, OutputStream out,
-                              List<ReportDataPort.GradeCountRow> rows) {
+    protected void renderDocx(ReportGenerationContext ctx, OutputStream out, Model model) {
+        String locale = ctx.locale();
+        List<ReportDataPort.GradeCountRow> rows = model.rows();
         WordprocessingMLPackage pkg = DocxBuilder.create();
         DocxBuilder.heading(pkg.getMainDocumentPart(), ctx.title());
-        DocxBuilder.metaLine(pkg.getMainDocumentPart(), "Project", ctx.projectId().toString());
-        DocxBuilder.subheading(pkg.getMainDocumentPart(), "Detail");
-        List<List<String>> table = new ArrayList<>();
-        table.add(List.of("Grade", "Name", "Positions"));
+        DocxBuilder.metaLine(pkg.getMainDocumentPart(),
+                ReportLabels.label("meta.project", locale), nz(model.projectName()));
+        if (rows.isEmpty()) {
+            DocxBuilder.paragraph(pkg.getMainDocumentPart(),
+                    ReportLabels.label("empty.grades", locale));
+            DocxBuilder.write(pkg, out);
+            return;
+        }
+        DocxBuilder.subheading(pkg.getMainDocumentPart(), ReportLabels.label("section.detail", locale));
+        List<List<String>> body = new ArrayList<>();
         for (ReportDataPort.GradeCountRow r : rows) {
-            table.add(List.of(r.gradeCode(),
+            body.add(List.of(r.gradeCode(),
                     r.gradeName() == null ? "" : r.gradeName(),
                     String.valueOf(r.positionCount())));
         }
-        DocxBuilder.table(pkg.getMainDocumentPart(),
-                table.get(0), table.subList(1, table.size()));
+        DocxBuilder.table(pkg.getMainDocumentPart(), detailHeaders(locale), body);
         DocxBuilder.write(pkg, out);
     }
 
     @Override
-    protected void renderXlsx(ReportGenerationContext ctx, OutputStream out,
-                              List<ReportDataPort.GradeCountRow> rows) {
+    protected void renderXlsx(ReportGenerationContext ctx, OutputStream out, Model model) {
+        String locale = ctx.locale();
+        List<String> displayHeaders = detailHeaders(locale);
+        List<String> dataKeys = List.of("grade_code", "grade_name", "positions");
         List<Map<String, String>> dataRows = new ArrayList<>();
-        for (ReportDataPort.GradeCountRow r : rows) {
+        for (ReportDataPort.GradeCountRow r : model.rows()) {
             Map<String, String> m = new LinkedHashMap<>();
             m.put("grade_code", r.gradeCode());
             m.put("grade_name", r.gradeName() == null ? "" : r.gradeName());
             m.put("positions", String.valueOf(r.positionCount()));
             dataRows.add(m);
         }
-        writeXlsx(out, excel.write("GradeDistribution",
-                List.of("grade_code", "grade_name", "positions"), dataRows));
+        writeXlsx(out, excel.write("GradeDistribution", displayHeaders, dataKeys, dataRows));
     }
 }

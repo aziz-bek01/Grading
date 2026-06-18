@@ -111,22 +111,22 @@ class ExportContentGeneratorTest {
     /** Deterministic fixture — one row carries a formula-injection payload. */
     private static final class StubPort implements ReportDataPort {
         @Override
-        public List<PositionRow> positions(UUID tenantId, UUID projectId) {
+        public List<PositionRow> positions(UUID tenantId, UUID projectId, String locale) {
             return List.of(
-                    new PositionRow("POS-1", "Engineer", "IT", "Eng", "L3", "ACTIVE"),
-                    new PositionRow("=cmd|'/c calc'!A1", "Injected", "X", "Y", "Z", "ACTIVE"));
+                    new PositionRow("POS-1", "Engineer", "IT", "Eng", "L3", "Active"),
+                    new PositionRow("=cmd|'/c calc'!A1", "Injected", "X", "Y", "Z", "Active"));
         }
 
         @Override
-        public List<GradeCountRow> gradeDistribution(UUID tenantId, UUID projectId) {
+        public List<GradeCountRow> gradeDistribution(UUID tenantId, UUID projectId, String locale) {
             return List.of(new GradeCountRow("G3", "Operational", 12),
                     new GradeCountRow("G4", "Senior", 7));
         }
 
         @Override
         public MethodologySpec methodologySpec(UUID tenantId, UUID projectId, String locale) {
-            return new MethodologySpec("M", "v1", "APPROVED", List.of(
-                    new FactorRow("KNOWLEDGE", "Knowledge", 20, 100, "WEIGHTED",
+            return new MethodologySpec("M (v1)", "v1", "Approved", List.of(
+                    new FactorRow("KNOWLEDGE", "Knowledge", 20, 100, "Weighted points",
                             List.of(Map.of("code", "L1")))));
         }
 
@@ -137,17 +137,28 @@ class ExportContentGeneratorTest {
         }
 
         @Override
-        public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId) {
-            return new EvaluationMatrix("Proj", "M v1", 1, 1,
-                    List.of("KNOWLEDGE", "PROBLEM_SOLVING"),
-                    List.of(new EvaluationRow("POS-1", "Engineer", "APPROVED",
-                            Map.of("KNOWLEDGE", "60", "PROBLEM_SOLVING", "40"), "100", "G3")));
+        public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale) {
+            return new EvaluationMatrix("Proj", "M (v1)", 1, 1,
+                    List.of(new FactorRef("KNOWLEDGE", "Knowledge"),
+                            new FactorRef("PROBLEM_SOLVING", "Problem solving")),
+                    List.of(new EvaluationRow("POS-1", "Engineer", "IT", "Approved",
+                            Map.of("KNOWLEDGE", "60", "PROBLEM_SOLVING", "40"), "100", "G3", "Operational")));
         }
 
         @Override
-        public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId) {
-            return new ExecutiveKpi("Proj", "ACTIVE", "2026-01-01", "2026-12-31",
+        public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale) {
+            return new ExecutiveKpi("Proj", "Active", "2026-01-01", "2026-12-31",
                     10, 8, 6, 3, 100, List.of());
+        }
+
+        @Override
+        public String projectName(UUID tenantId, UUID projectId, String locale) {
+            return "Proj";
+        }
+
+        @Override
+        public String tenantName(UUID tenantId, String locale) {
+            return "Tenant";
         }
     }
 }

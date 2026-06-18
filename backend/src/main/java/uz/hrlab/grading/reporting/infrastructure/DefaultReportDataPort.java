@@ -2,6 +2,8 @@ package uz.hrlab.grading.reporting.infrastructure;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
+import uz.hrlab.grading.access.infrastructure.UserJpaEntity;
+import uz.hrlab.grading.access.infrastructure.UserRepository;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogJpaEntity;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogRepository;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
@@ -18,13 +20,19 @@ import uz.hrlab.grading.methodology.infrastructure.FactorJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.FactorLevelJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.FactorLevelRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.MethodologyRepository;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
+import uz.hrlab.grading.organization.infrastructure.DepartmentJpaEntity;
+import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.project.infrastructure.ProjectJpaEntity;
 import uz.hrlab.grading.project.infrastructure.ProjectRepository;
 import uz.hrlab.grading.reporting.application.template.ReportDataPort;
+import uz.hrlab.grading.reporting.application.template.ReportLabels;
+import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -41,17 +49,28 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 /**
- * Default port implementation. The position query is fully wired to the
- * tenant-aware {@link PositionRepository}; audit summary, evaluation matrix and
- * executive KPI read from the corresponding module repositories.
+ * Default port implementation. Every human-facing string is resolved to the
+ * caller's locale INSIDE this port, so report templates never receive (and
+ * therefore never leak) machine values — raw UUIDs, Java enum names, factor
+ * codes, or synthetic grade keys. Cross-module name resolution is batch-loaded
+ * and tenant-scoped:
  *
- * <p>Batch-2 wiring: {@link #gradeDistribution} now aggregates approved/locked
- * evaluations per assigned grade (tenant + project scoped) and resolves grade
- * display names from the project's active grade structure; {@link
- * #methodologySpec} resolves the project's active methodology version and reads
- * its factors + levels (tenant-scoped). Both fall back to a correct
- * empty/placeholder result when the project has no grade structure / methodology
- * yet — the template still renders.
+ * <ul>
+ *   <li>methodology name ← {@link MethodologyRepository} (version → methodology
+ *       {@code name_i18n} + version number);</li>
+ *   <li>department name ← {@link DepartmentRepository} (batch id → localized
+ *       name);</li>
+ *   <li>actor display ← {@link UserRepository} (batch id → full name / email,
+ *       fallback to first-8-chars+ellipsis — never a full UUID);</li>
+ *   <li>project / tenant name ← {@link ProjectRepository} / {@link
+ *       TenantRepository};</li>
+ *   <li>grade name ← active grade structure (LOCKED preferred, else APPROVED),
+ *       fallback {@code "G"+number}.</li>
+ * </ul>
+ *
+ * <p>Statuses and scoring modes are localized via {@link ReportLabels}. All
+ * methods fall back to a correct empty/placeholder result when the project has
+ * no grade structure / methodology yet — the template still renders.
  */
 @Component
 public class DefaultReportDataPort implements ReportDataPort {
@@ -66,8 +85,12 @@ public class DefaultReportDataPort implements ReportDataPort {
     private final FactorRepository factors;
     private final FactorLevelRepository factorLevels;
     private final MethodologyVersionRepository methodologyVersions;
+    private final MethodologyRepository methodologies;
     private final GradeStructureRepository gradeStructures;
     private final GradeRepository grades;
+    private final DepartmentRepository departments;
+    private final UserRepository users;
+    private final TenantRepository tenants;
     private final SystemAuditLogRepository auditLog;
 
     public DefaultReportDataPort(PositionRepository positions,
@@ -77,8 +100,12 @@ public class DefaultReportDataPort implements ReportDataPort {
                                  FactorRepository factors,
                                  FactorLevelRepository factorLevels,
                                  MethodologyVersionRepository methodologyVersions,
+                                 MethodologyRepository methodologies,
                                  GradeStructureRepository gradeStructures,
                                  GradeRepository grades,
+                                 DepartmentRepository departments,
+                                 UserRepository users,
+                                 TenantRepository tenants,
                                  SystemAuditLogRepository auditLog) {
         this.positions = positions;
         this.projects = projects;
@@ -87,35 +114,41 @@ public class DefaultReportDataPort implements ReportDataPort {
         this.factors = factors;
         this.factorLevels = factorLevels;
         this.methodologyVersions = methodologyVersions;
+        this.methodologies = methodologies;
         this.gradeStructures = gradeStructures;
         this.grades = grades;
+        this.departments = departments;
+        this.users = users;
+        this.tenants = tenants;
         this.auditLog = auditLog;
     }
 
     @Override
-    public List<PositionRow> positions(UUID tenantId, UUID projectId) {
+    public List<PositionRow> positions(UUID tenantId, UUID projectId, String locale) {
         var page = positions.search(tenantId, projectId, null, null, null,
                 PageRequest.of(0, MAX_POSITIONS));
+        Map<UUID, String> deptNames = resolveDepartmentNames(tenantId,
+                collectDepartmentIds(page.getContent()), locale);
         List<PositionRow> rows = new ArrayList<>(page.getNumberOfElements());
         for (PositionJpaEntity p : page.getContent()) {
             rows.add(new PositionRow(
                     p.getCode(),
-                    titleFor(p),
-                    "",                       // departmentName — joined in MVP 3
+                    titleFor(p, locale),
+                    deptNames.getOrDefault(p.getDepartmentId(), ""),
                     nz(p.getJobFamily()),
                     nz(p.getJobLevel()),
-                    p.getStatus() == null ? "" : p.getStatus().name()));
+                    p.getStatus() == null ? "" : ReportLabels.localizeStatus(p.getStatus().name(), locale)));
         }
         return rows;
     }
 
     @Override
-    public List<GradeCountRow> gradeDistribution(UUID tenantId, UUID projectId) {
+    public List<GradeCountRow> gradeDistribution(UUID tenantId, UUID projectId, String locale) {
         if (tenantId == null || projectId == null) return List.of();
 
         // Resolve the active grade structure (LOCKED preferred, else APPROVED) so
         // grade numbers carry a human display name. Tenant + project scoped.
-        Map<Integer, String> gradeNames = resolveGradeNames(tenantId, projectId);
+        Map<Integer, String> gradeNames = resolveGradeNames(tenantId, projectId, locale);
 
         // Count assigned grades across the project's evaluations (tenant-scoped).
         var page = evaluations.findAllByTenantIdAndProjectId(tenantId, projectId,
@@ -138,15 +171,15 @@ public class DefaultReportDataPort implements ReportDataPort {
         return rows;
     }
 
-    /** Active grade structure grade-number → display name (tenant + project scoped). */
-    private Map<Integer, String> resolveGradeNames(UUID tenantId, UUID projectId) {
+    /** Active grade structure grade-number → localized display name (tenant + project scoped). */
+    private Map<Integer, String> resolveGradeNames(UUID tenantId, UUID projectId, String locale) {
         GradeStructureJpaEntity structure = activeGradeStructure(tenantId, projectId);
         if (structure == null) return Map.of();
         Map<Integer, String> names = new HashMap<>();
         for (GradeJpaEntity g :
                 grades.findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(
                         tenantId, structure.getId())) {
-            names.put(g.getGradeNumber(), gradeName(g));
+            names.put(g.getGradeNumber(), gradeName(g, locale));
         }
         return names;
     }
@@ -179,9 +212,11 @@ public class DefaultReportDataPort implements ReportDataPort {
         }
 
         String scoringMode = version.getScoringMode() == null
-                ? "" : version.getScoringMode().name();
+                ? "" : ReportLabels.localizeScoringMode(version.getScoringMode().name(), locale);
         String versionLabel = "v" + version.getVersionNumber();
-        String status = version.getStatus() == null ? "" : version.getStatus().name();
+        String status = version.getStatus() == null
+                ? "" : ReportLabels.localizeStatus(version.getStatus().name(), locale);
+        String methodologyName = resolveMethodologyName(tenantId, version, locale);
 
         List<FactorRow> factorRows = new ArrayList<>();
         for (FactorJpaEntity f :
@@ -206,21 +241,29 @@ public class DefaultReportDataPort implements ReportDataPort {
                     scoringMode,
                     levels));
         }
-        // Methodology display name not modelled on the version row; use version label.
-        return new MethodologySpec("methodology " + versionLabel, versionLabel, status, factorRows);
+        return new MethodologySpec(methodologyName, versionLabel, status, factorRows);
     }
 
-    private static String gradeName(GradeJpaEntity g) {
-        Map<String, String> i18n = g.getNameI18n();
-        if (i18n == null || i18n.isEmpty()) return "G" + g.getGradeNumber();
-        return i18n.getOrDefault("ru-RU",
-                i18n.values().stream().findFirst().orElse("G" + g.getGradeNumber()));
+    /** Real methodology display name + version number (was "methodology vN"). */
+    private String resolveMethodologyName(UUID tenantId, MethodologyVersionJpaEntity version, String locale) {
+        String fallback = "v" + version.getVersionNumber();
+        if (version.getMethodologyId() == null) return fallback;
+        MethodologyJpaEntity m = methodologies
+                .findByIdAndTenantId(version.getMethodologyId(), tenantId).orElse(null);
+        if (m == null) return fallback;
+        String name = i18n(m.getNameI18n(), locale, nz(m.getCode()));
+        return name + " (v" + version.getVersionNumber() + ")";
+    }
+
+    private static String gradeName(GradeJpaEntity g, String locale) {
+        return i18n(g.getNameI18n(), locale, "G" + g.getGradeNumber());
     }
 
     private static String i18n(Map<String, String> map, String locale, String fallback) {
         if (map == null || map.isEmpty()) return fallback;
         if (locale != null && map.containsKey(locale)) return map.get(locale);
-        return map.getOrDefault("ru-RU", map.values().stream().findFirst().orElse(fallback));
+        return map.getOrDefault(ReportLabels.DEFAULT_LOCALE,
+                map.values().stream().findFirst().orElse(fallback));
     }
 
     @Override
@@ -230,7 +273,9 @@ public class DefaultReportDataPort implements ReportDataPort {
         if (tenantId == null || limit <= 0) return List.of();
         var page = auditLog.search(tenantId, null, null, null, null,
                 from, to, PageRequest.of(0, Math.min(limit, 200)));
-        List<AuditEventRow> rows = new ArrayList<>(page.getNumberOfElements());
+
+        List<SystemAuditLogJpaEntity> events = new ArrayList<>();
+        Set<UUID> actorIds = new LinkedHashSet<>();
         for (SystemAuditLogJpaEntity e : page.getContent()) {
             // Project filter applied in-memory: most tenants will not have
             // millions of events per tenant and search() is page-bounded.
@@ -238,10 +283,17 @@ public class DefaultReportDataPort implements ReportDataPort {
                     && !projectId.equals(e.getProjectId())) {
                 continue;
             }
+            events.add(e);
+            if (e.getActorUserId() != null) actorIds.add(e.getActorUserId());
+        }
+        Map<UUID, String> actorNames = resolveActorDisplays(actorIds);
+
+        List<AuditEventRow> rows = new ArrayList<>(events.size());
+        for (SystemAuditLogJpaEntity e : events) {
             rows.add(new AuditEventRow(
                     e.getCreatedAt(),
                     nz(e.getAction()),
-                    e.getActorUserId() == null ? "" : e.getActorUserId().toString(),
+                    actorDisplay(actorNames, e.getActorUserId()),
                     nz(e.getEntityType()),
                     e.getEntityId() == null ? "" : e.getEntityId().toString(),
                     nz(e.getReason()),
@@ -251,24 +303,26 @@ public class DefaultReportDataPort implements ReportDataPort {
     }
 
     @Override
-    public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId) {
+    public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale) {
         String projectName = projects.findByIdAndTenantId(projectId, tenantId)
-                .map(DefaultReportDataPort::titleForProject)
-                .orElse(projectId == null ? "" : projectId.toString());
+                .map(p -> titleForProject(p, locale))
+                .orElse("—");
 
         var page = evaluations.findAllByTenantIdAndProjectId(tenantId, projectId,
                 PageRequest.of(0, MAX_EVALUATIONS));
 
         // Collect distinct methodology version ids; build the column order
-        // (factor codes) by walking through the factors of each version in
-        // sortOrder. Factors that recur across versions deduplicate by code.
+        // (FactorRef: code + localized name) by walking through the factors of
+        // each version in sortOrder. Factors that recur across versions
+        // deduplicate by code. The first version drives the methodology label.
         Set<UUID> methodologyVersionIds = new LinkedHashSet<>();
         for (EvaluationJpaEntity e : page.getContent()) {
             methodologyVersionIds.add(e.getMethodologyVersionId());
         }
         LinkedHashMap<UUID, String> factorCodeById = new LinkedHashMap<>();
-        List<String> factorColumnOrder = new ArrayList<>();
-        String methodologyLabel = "";
+        LinkedHashMap<String, FactorRef> factorByCode = new LinkedHashMap<>();
+        String methodologyName = "—";
+        boolean methodologyResolved = false;
         for (UUID mvId : methodologyVersionIds) {
             List<FactorJpaEntity> fs =
                     factors.findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(
@@ -276,21 +330,23 @@ public class DefaultReportDataPort implements ReportDataPort {
             for (FactorJpaEntity f : fs) {
                 if (!factorCodeById.containsKey(f.getId())) {
                     factorCodeById.put(f.getId(), f.getCode());
-                    if (!factorColumnOrder.contains(f.getCode())) {
-                        factorColumnOrder.add(f.getCode());
-                    }
+                    factorByCode.putIfAbsent(f.getCode(),
+                            new FactorRef(f.getCode(), i18n(f.getNameI18n(), locale, nz(f.getCode()))));
                 }
             }
-            if (methodologyLabel.isEmpty() && !fs.isEmpty()) {
-                methodologyLabel = "methodology_version=" + mvId;
+            if (!methodologyResolved) {
+                MethodologyVersionJpaEntity version =
+                        methodologyVersions.findByIdAndTenantId(mvId, tenantId).orElse(null);
+                if (version != null) {
+                    methodologyName = resolveMethodologyName(tenantId, version, locale);
+                    methodologyResolved = true;
+                }
             }
         }
+        List<FactorRef> factorColumns = new ArrayList<>(factorByCode.values());
 
         // PERF (P1) — batch-load every score for the whole page of evaluations in
-        // ONE tenant-scoped query (was one findAllByTenantIdAndEvaluationId per
-        // evaluation → up to MAX_EVALUATIONS round-trips). Grouped by evaluation
-        // id in memory; ordering within an evaluation is irrelevant because the
-        // row map is keyed by factor code, matching the per-evaluation loop below.
+        // ONE tenant-scoped query. Grouped by evaluation id in memory.
         Set<UUID> evaluationIds = new LinkedHashSet<>();
         for (EvaluationJpaEntity ev : page.getContent()) {
             evaluationIds.add(ev.getId());
@@ -303,19 +359,23 @@ public class DefaultReportDataPort implements ReportDataPort {
             }
         }
 
-        // PERF (P1) — batch-load every referenced position in ONE tenant-scoped
-        // query (was one findByIdAndTenantId per evaluation row → N+1). Built into
-        // a map so positionLabel() resolves from memory; tenant_id stays pinned.
+        // PERF (P1) — batch-load every referenced position in ONE tenant-scoped query.
         Set<UUID> positionIds = new LinkedHashSet<>();
         for (EvaluationJpaEntity ev : page.getContent()) {
             if (ev.getPositionId() != null) positionIds.add(ev.getPositionId());
         }
         Map<UUID, PositionJpaEntity> positionById = new HashMap<>();
+        Set<UUID> departmentIds = new LinkedHashSet<>();
         if (!positionIds.isEmpty()) {
             for (PositionJpaEntity p : positions.findAllByTenantIdAndIdIn(tenantId, positionIds)) {
                 positionById.put(p.getId(), p);
+                if (p.getDepartmentId() != null) departmentIds.add(p.getDepartmentId());
             }
         }
+        Map<UUID, String> deptNames = resolveDepartmentNames(tenantId, departmentIds, locale);
+
+        // Grade names — resolve once for the project (active grade structure).
+        Map<Integer, String> gradeNames = resolveGradeNames(tenantId, projectId, locale);
 
         int approved = 0;
         List<EvaluationRow> rows = new ArrayList<>(page.getNumberOfElements());
@@ -333,31 +393,42 @@ public class DefaultReportDataPort implements ReportDataPort {
                 scoresByCode.put(code, v == null ? "" : v.toPlainString());
             }
 
-            // Position label — resolve from the batch-loaded map (tenant-scoped).
-            PositionRow label = positionLabel(positionById, ev.getPositionId());
-            String gradeCode = ev.getAssignedGradeNumber() == null
-                    ? "" : "G" + ev.getAssignedGradeNumber();
+            PositionJpaEntity p = ev.getPositionId() == null
+                    ? null : positionById.get(ev.getPositionId());
+            String posCode = p == null
+                    ? (ev.getPositionId() == null ? "" : truncate(ev.getPositionId())) : p.getCode();
+            String posTitle = p == null ? "" : titleFor(p, locale);
+            String deptName = p == null || p.getDepartmentId() == null
+                    ? "" : deptNames.getOrDefault(p.getDepartmentId(), "");
+
+            Integer gradeNum = ev.getAssignedGradeNumber();
+            String gradeCode = gradeNum == null ? "" : "G" + gradeNum;
+            String gradeName = gradeNum == null
+                    ? "" : gradeNames.getOrDefault(gradeNum, "G" + gradeNum);
+
             rows.add(new EvaluationRow(
-                    label.code(),
-                    label.title(),
-                    ev.getStatus() == null ? "" : ev.getStatus().name(),
+                    posCode,
+                    posTitle,
+                    deptName,
+                    ev.getStatus() == null ? "" : ReportLabels.localizeStatus(ev.getStatus().name(), locale),
                     scoresByCode,
                     ev.getDisplayedTotalScore() == null
                             ? "0" : ev.getDisplayedTotalScore().toPlainString(),
-                    gradeCode));
+                    gradeCode,
+                    gradeName));
         }
 
         return new EvaluationMatrix(
                 projectName,
-                methodologyLabel,
+                methodologyName,
                 page.getNumberOfElements(),
                 approved,
-                factorColumnOrder,
+                factorColumns,
                 rows);
     }
 
     @Override
-    public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId) {
+    public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale) {
         String projectName;
         String projectStatus = "";
         String periodFrom = "";
@@ -365,12 +436,13 @@ public class DefaultReportDataPort implements ReportDataPort {
         Optional<ProjectJpaEntity> project = projects.findByIdAndTenantId(projectId, tenantId);
         if (project.isPresent()) {
             ProjectJpaEntity p = project.get();
-            projectName = titleForProject(p);
-            projectStatus = p.getStatus() == null ? "" : p.getStatus().name();
+            projectName = titleForProject(p, locale);
+            projectStatus = p.getStatus() == null
+                    ? "" : ReportLabels.localizeStatus(p.getStatus().name(), locale);
             periodFrom = p.getStartDate() == null ? "" : p.getStartDate().toString();
             periodTo = p.getEndDate() == null ? "" : p.getEndDate().toString();
         } else {
-            projectName = projectId == null ? "" : projectId.toString();
+            projectName = "—";
         }
 
         int positionCount = (int) positions.search(tenantId, projectId, null, null, null,
@@ -391,11 +463,14 @@ public class DefaultReportDataPort implements ReportDataPort {
             }
         }
 
+        // TODO(reports-p2): scope the executive audit-event count to the project
+        // instead of the whole tenant (currently tenant-wide totalElements).
         var auditPage = auditLog.search(tenantId, null, null, null, null, null, null,
                 PageRequest.of(0, 200));
         int auditCount = (int) auditPage.getTotalElements();
 
-        List<RecentApprovalRow> recent = new ArrayList<>();
+        List<SystemAuditLogJpaEntity> recentEvents = new ArrayList<>();
+        Set<UUID> actorIds = new LinkedHashSet<>();
         for (SystemAuditLogJpaEntity e : auditPage.getContent()) {
             String action = nz(e.getAction());
             if (!action.endsWith("_APPROVED") && !action.endsWith("_LOCKED")
@@ -406,13 +481,20 @@ public class DefaultReportDataPort implements ReportDataPort {
                     && !projectId.equals(e.getProjectId())) {
                 continue;
             }
+            recentEvents.add(e);
+            if (e.getActorUserId() != null) actorIds.add(e.getActorUserId());
+            if (recentEvents.size() >= 5) break;
+        }
+        Map<UUID, String> actorNames = resolveActorDisplays(actorIds);
+
+        List<RecentApprovalRow> recent = new ArrayList<>(recentEvents.size());
+        for (SystemAuditLogJpaEntity e : recentEvents) {
             recent.add(new RecentApprovalRow(
                     e.getCreatedAt(),
-                    action,
+                    nz(e.getAction()),
                     nz(e.getEntityType()),
                     e.getEntityId() == null ? "" : e.getEntityId().toString(),
-                    e.getActorUserId() == null ? "" : e.getActorUserId().toString()));
-            if (recent.size() >= 5) break;
+                    actorDisplay(actorNames, e.getActorUserId())));
         }
         recent.sort(Comparator.comparing(RecentApprovalRow::timestamp,
                 Comparator.nullsLast(Comparator.reverseOrder())));
@@ -422,39 +504,84 @@ public class DefaultReportDataPort implements ReportDataPort {
                 auditCount, recent);
     }
 
+    @Override
+    public String projectName(UUID tenantId, UUID projectId, String locale) {
+        if (tenantId == null || projectId == null) return "—";
+        return projects.findByIdAndTenantId(projectId, tenantId)
+                .map(p -> titleForProject(p, locale))
+                .orElse("—");
+    }
+
+    @Override
+    public String tenantName(UUID tenantId, String locale) {
+        if (tenantId == null) return "—";
+        return tenants.findById(tenantId)
+                .map(t -> t.getDisplayName() == null || t.getDisplayName().isBlank()
+                        ? nzOrDash(t.getSlug()) : t.getDisplayName())
+                .orElse("—");
+    }
+
+    // ── cross-module name resolution (batch, tenant-scoped) ─────────────────
+
+    private static Set<UUID> collectDepartmentIds(List<PositionJpaEntity> ps) {
+        Set<UUID> ids = new LinkedHashSet<>();
+        for (PositionJpaEntity p : ps) {
+            if (p.getDepartmentId() != null) ids.add(p.getDepartmentId());
+        }
+        return ids;
+    }
+
+    /** Batch-resolve department id → localized name (tenant-scoped, no N+1). */
+    private Map<UUID, String> resolveDepartmentNames(UUID tenantId, Set<UUID> ids, String locale) {
+        if (tenantId == null || ids == null || ids.isEmpty()) return Map.of();
+        Map<UUID, String> names = new HashMap<>();
+        for (DepartmentJpaEntity d : departments.findAllByTenantIdAndIdIn(tenantId, ids)) {
+            names.put(d.getId(), i18n(d.getNameI18n(), locale, nz(d.getCode())));
+        }
+        return names;
+    }
+
     /**
-     * Resolve a position's label row from the page-level batch map (PERF P1 — no
-     * per-row DB hit). Output is byte-identical to the prior per-row lookup:
-     * null id ⇒ empty row; an id with no batch-loaded (tenant-scoped) position ⇒
-     * the id string as code with empty rest; otherwise the full code+title row.
+     * Batch-resolve actor user id → display (full name, else email). Users are
+     * control-plane (no tenant_id), so {@code findAllById} is permitted here.
      */
-    private static PositionRow positionLabel(Map<UUID, PositionJpaEntity> positionById,
-                                             UUID positionId) {
-        if (positionId == null) return new PositionRow("", "", "", "", "", "");
-        PositionJpaEntity p = positionById.get(positionId);
-        if (p == null) return new PositionRow(positionId.toString(), "", "", "", "", "");
-        return new PositionRow(p.getCode(), titleFor(p), "", nz(p.getJobFamily()),
-                nz(p.getJobLevel()), p.getStatus() == null ? "" : p.getStatus().name());
+    private Map<UUID, String> resolveActorDisplays(Set<UUID> ids) {
+        if (ids == null || ids.isEmpty()) return Map.of();
+        Map<UUID, String> names = new HashMap<>();
+        for (UserJpaEntity u : users.findAllById(ids)) {
+            String display = u.getFullName() != null && !u.getFullName().isBlank()
+                    ? u.getFullName()
+                    : nz(u.getEmail());
+            names.put(u.getId(), display);
+        }
+        return names;
     }
 
-    private static String titleFor(PositionJpaEntity p) {
-        Map<String, String> i18n = p.getTitleI18n();
-        if (i18n == null || i18n.isEmpty()) return p.getCode();
-        return i18n.getOrDefault("ru-RU",
-                i18n.values().stream().findFirst().orElse(p.getCode()));
+    /**
+     * Actor display column — resolved name, else a privacy-safe first-8-chars
+     * truncation of the id (NEVER a full UUID in a human report column).
+     */
+    private static String actorDisplay(Map<UUID, String> names, UUID actorUserId) {
+        if (actorUserId == null) return "";
+        String resolved = names.get(actorUserId);
+        if (resolved != null && !resolved.isBlank()) return resolved;
+        return truncate(actorUserId);
     }
 
-    private static String titleForProject(ProjectJpaEntity p) {
-        Map<String, String> i18n = p.getNameI18n();
-        if (i18n == null || i18n.isEmpty()) return p.getCode();
-        return i18n.getOrDefault("ru-RU",
-                i18n.values().stream().findFirst().orElse(p.getCode()));
+    private static String truncate(UUID id) {
+        String s = id.toString();
+        return (s.length() <= 8 ? s : s.substring(0, 8)) + "…";
+    }
+
+    private static String titleFor(PositionJpaEntity p, String locale) {
+        return i18n(p.getTitleI18n(), locale, p.getCode());
+    }
+
+    private static String titleForProject(ProjectJpaEntity p, String locale) {
+        return i18n(p.getNameI18n(), locale, p.getCode());
     }
 
     private static String nz(String s) { return s == null ? "" : s; }
 
-    // Suppress IDE warning — kept for test seam compatibility with the older
-    // single-arg constructor signature.
-    @SuppressWarnings("unused")
-    private static HashMap<String, String> emptyMap() { return new HashMap<>(); }
+    private static String nzOrDash(String s) { return s == null || s.isBlank() ? "—" : s; }
 }

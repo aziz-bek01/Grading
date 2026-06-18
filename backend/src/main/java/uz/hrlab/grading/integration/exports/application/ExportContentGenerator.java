@@ -91,11 +91,11 @@ public class ExportContentGenerator {
 
     private Table buildTable(ExportType type, UUID tenantId, UUID projectId, String locale) {
         return switch (type) {
-            case POSITION_CATALOG -> positionCatalog(tenantId, projectId);
-            case GRADE_STRUCTURE, GRADE_PYRAMID -> gradeDistribution(tenantId, projectId);
-            case EVALUATION_MATRIX -> evaluationMatrix(tenantId, projectId);
+            case POSITION_CATALOG -> positionCatalog(tenantId, projectId, locale);
+            case GRADE_STRUCTURE, GRADE_PYRAMID -> gradeDistribution(tenantId, projectId, locale);
+            case EVALUATION_MATRIX -> evaluationMatrix(tenantId, projectId, locale);
             case METHODOLOGY -> methodology(tenantId, projectId, locale);
-            case REPORT_EXECUTIVE -> executive(tenantId, projectId);
+            case REPORT_EXECUTIVE -> executive(tenantId, projectId, locale);
             // Structurally-stubbed: no tenant-scoped salary/job-profile data source
             // exists yet. Emit a valid header-only document (NOT a fake placeholder).
             case JOB_PROFILES -> new Table("JobProfiles",
@@ -109,8 +109,8 @@ public class ExportContentGenerator {
         };
     }
 
-    private Table positionCatalog(UUID tenantId, UUID projectId) {
-        List<ReportDataPort.PositionRow> src = data.positions(tenantId, projectId);
+    private Table positionCatalog(UUID tenantId, UUID projectId, String locale) {
+        List<ReportDataPort.PositionRow> src = data.positions(tenantId, projectId, locale);
         List<List<String>> rows = new ArrayList<>(src.size());
         for (ReportDataPort.PositionRow r : src) {
             rows.add(List.of(nz(r.code()), nz(r.title()), nz(r.departmentName()),
@@ -120,8 +120,8 @@ public class ExportContentGenerator {
                 List.of("code", "title", "department", "job_family", "job_level", "status"), rows);
     }
 
-    private Table gradeDistribution(UUID tenantId, UUID projectId) {
-        List<ReportDataPort.GradeCountRow> src = data.gradeDistribution(tenantId, projectId);
+    private Table gradeDistribution(UUID tenantId, UUID projectId, String locale) {
+        List<ReportDataPort.GradeCountRow> src = data.gradeDistribution(tenantId, projectId, locale);
         List<List<String>> rows = new ArrayList<>(src.size());
         for (ReportDataPort.GradeCountRow r : src) {
             rows.add(List.of(nz(r.gradeCode()), nz(r.gradeName()), String.valueOf(r.positionCount())));
@@ -130,13 +130,17 @@ public class ExportContentGenerator {
                 List.of("grade_code", "grade_name", "position_count"), rows);
     }
 
-    private Table evaluationMatrix(UUID tenantId, UUID projectId) {
-        ReportDataPort.EvaluationMatrix m = data.loadEvaluations(tenantId, projectId);
+    private Table evaluationMatrix(UUID tenantId, UUID projectId, String locale) {
+        ReportDataPort.EvaluationMatrix m = data.loadEvaluations(tenantId, projectId, locale);
+        // Header label keeps the factor code for export-sheet stability; the
+        // score lookup is keyed by code.
         List<String> headers = new ArrayList<>();
         headers.add("position_code");
         headers.add("position_title");
         headers.add("status");
-        headers.addAll(m.factorCodes());
+        for (ReportDataPort.FactorRef f : m.factors()) {
+            headers.add(f.code());
+        }
         headers.add("total_score");
         headers.add("grade");
         List<List<String>> rows = new ArrayList<>(m.rows().size());
@@ -145,8 +149,8 @@ public class ExportContentGenerator {
             row.add(nz(r.positionCode()));
             row.add(nz(r.positionTitle()));
             row.add(nz(r.status()));
-            for (String code : m.factorCodes()) {
-                row.add(nz(r.scoresByFactorCode().get(code)));
+            for (ReportDataPort.FactorRef f : m.factors()) {
+                row.add(nz(r.scoresByFactorCode().get(f.code())));
             }
             row.add(nz(r.totalScore()));
             row.add(nz(r.gradeCode()));
@@ -168,8 +172,8 @@ public class ExportContentGenerator {
                         "scoring_mode", "level_count"), rows);
     }
 
-    private Table executive(UUID tenantId, UUID projectId) {
-        ReportDataPort.ExecutiveKpi kpi = data.loadExecutiveKpi(tenantId, projectId);
+    private Table executive(UUID tenantId, UUID projectId, String locale) {
+        ReportDataPort.ExecutiveKpi kpi = data.loadExecutiveKpi(tenantId, projectId, locale);
         List<List<String>> rows = new ArrayList<>();
         rows.add(List.of("Project", nz(kpi.projectName())));
         rows.add(List.of("Status", nz(kpi.projectStatus())));

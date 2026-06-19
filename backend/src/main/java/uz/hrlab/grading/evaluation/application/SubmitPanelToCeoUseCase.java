@@ -125,4 +125,96 @@ public class SubmitPanelToCeoUseCase {
                 .build());
         return panel.toDomain();
     }
+
+    /**
+     * SYSTEM variant of {@link #submit(UUID)} — the consolidated panel flow:
+     * invoked automatically by {@link PanelCompletionWatcher} the moment a panel
+     * reaches {@code AVERAGED} (the last required evaluator completed), so the CEO
+     * approval is opened with NO manual button.
+     *
+     * <p>Differs from {@link #submit(UUID)} ONLY by skipping the user-facing gates
+     * (the {@code EVALUATION_PANEL_MANAGE} permission check and the ABAC
+     * department write-gate): this is system-initiated inside the last evaluator's
+     * transaction, not a manager action, so requiring a manager permission would
+     * wrongly fail an ordinary evaluator's submit. Everything else is identical to
+     * {@link #submit(UUID)} — the {@code status == AVERAGED} guard, the defensive
+     * min-evaluators re-check, the {@code AVERAGED -> SUBMITTED} transition with
+     * {@code submittedAt/By}, the EXISTING single-step
+     * {@link CreateApprovalRequestUseCase#createSystem} for the CEO
+     * ({@link ApprovalEntityType#EVALUATION_PANEL} + {@code EVALUATION_PANEL_APPROVE})
+     * with the {@code ANOTHER_PENDING_REQUEST_EXISTS} idempotency swallow, and the
+     * {@code EVALUATION_PANEL_SUBMITTED_TO_CEO} audit.
+     *
+     * <p>Idempotent: if a CEO request already exists (re-run / reopen race) the
+     * approval-create swallows {@code ANOTHER_PENDING_REQUEST_EXISTS} and the panel
+     * simply stays {@code SUBMITTED}. The caller (watcher) additionally runs this
+     * fail-soft so a non-fatal failure here never breaks the evaluator's submit —
+     * averaging has already succeeded.
+     *
+     * <p>Runs in the caller's (watcher's) transaction ({@code REQUIRED}).
+     * {@code noRollbackFor = RuntimeException} so the watcher's defensive
+     * fail-soft catch does not poison the shared transaction (mark it
+     * rollback-only) on a non-fatal auto-submit failure — the already-persisted
+     * averaging must survive.
+     *
+     * @param panelId     the panel that just averaged (tenant-resolved from the
+     *                    active context, anti-BOLA)
+     * @param actorUserId the acting user (the last evaluator) for submittedBy + audit
+     */
+    @Transactional(noRollbackFor = RuntimeException.class)
+    public EvaluationPanel submitSystem(UUID panelId, UUID actorUserId) {
+        TenantContext ctx = TenantContextHolder.requireActive();
+        EvaluationPanelJpaEntity panel = loader.requirePanel(panelId, ctx.tenantId());
+
+        if (panel.getStatus() != EvaluationPanelStatus.AVERAGED) {
+            throw new ValidationException(
+                    "PANEL_NOT_AVERAGED: panel can only be submitted to CEO from AVERAGED");
+        }
+        // Defensive min-evaluators re-check on the COMPLETED contributing seats.
+        long completed = assignments.findAllByTenantIdAndPanelId(ctx.tenantId(), panelId).stream()
+                .filter(a -> a.getAssignmentStatus()
+                        == uz.hrlab.grading.evaluation.domain.PanelAssignmentStatus.COMPLETED)
+                .count();
+        if (completed < panel.getMinEvaluators()) {
+            throw new ValidationException(
+                    "ROSTER_BELOW_FLOOR: fewer than " + panel.getMinEvaluators()
+                            + " completed evaluations");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        panel.setStatus(EvaluationPanelStatus.SUBMITTED);
+        panel.setSubmittedAt(now);
+        panel.setSubmittedBy(actorUserId);
+        panels.save(panel);
+
+        // Reuse the existing single-step approval-request path — CEO gate.
+        UUID approvalRequestId = null;
+        try {
+            var req = createApprovalRequest.createSystem(
+                    CreateApprovalRequestCommand.singleStep(
+                            panel.getProjectId(),
+                            ApprovalEntityType.EVALUATION_PANEL,
+                            panel.getId(),
+                            PermissionCodes.EVALUATION_PANEL_APPROVE));
+            approvalRequestId = req == null ? null : req.id();
+        } catch (RuntimeException openExisting) {
+            if (!"ANOTHER_PENDING_REQUEST_EXISTS".equals(
+                    openExisting instanceof BaseDomainException b ? b.getCode() : null)) {
+                throw openExisting;
+            }
+        }
+
+        audit.record(AuditEvent.builder()
+                .tenantId(ctx.tenantId())
+                .projectId(panel.getProjectId())
+                .actorUserId(actorUserId)
+                .action(AuditAction.EVALUATION_PANEL_SUBMITTED_TO_CEO)
+                .entityType("EvaluationPanel")
+                .entityId(panelId)
+                .reason(approvalRequestId == null
+                        ? "approvalRequest=existing"
+                        : "approvalRequest=" + approvalRequestId)
+                .build());
+        return panel.toDomain();
+    }
 }

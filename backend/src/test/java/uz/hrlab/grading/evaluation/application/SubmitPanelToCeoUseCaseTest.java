@@ -151,7 +151,103 @@ class SubmitPanelToCeoUseCaseTest {
         assertThat(audited.getValue().reason()).contains(approvalId.toString());
     }
 
+    // ---------------------------------------------- system (auto) submit path
+
+    @Test
+    void submitSystemSkipsManagePermissionAndAbacGate() {
+        // Last evaluator's context — NO EVALUATION_PANEL_MANAGE, no department scope.
+        setContext(Set.of("EVALUATION_EDIT"));
+        EvaluationPanelJpaEntity panel = stubPanelForSystem(EvaluationPanelStatus.AVERAGED);
+        when(assignments.findAllByTenantIdAndPanelId(tenantId, panelId)).thenReturn(List.of(
+                completedSeat(), completedSeat(), completedSeat()));
+        UUID approvalId = UUID.randomUUID();
+        when(createApprovalRequest.createSystem(any())).thenReturn(approvalRequest(approvalId));
+        UUID actor = UUID.randomUUID();
+
+        useCase.submitSystem(panelId, actor);
+
+        assertThat(panel.getStatus()).isEqualTo(EvaluationPanelStatus.SUBMITTED);
+        assertThat(panel.getSubmittedBy()).isEqualTo(actor);
+        verify(panels).save(panel);
+        // System path must NOT touch the ABAC department write-gate or require
+        // the manager position lookup.
+        verify(abacGate, never()).enforceCanWriteInDepartment(any(), any(), any());
+        verify(loader, never()).requirePosition(any(), any());
+
+        ArgumentCaptor<CreateApprovalRequestCommand> cmd =
+                ArgumentCaptor.forClass(CreateApprovalRequestCommand.class);
+        verify(createApprovalRequest).createSystem(cmd.capture());
+        assertThat(cmd.getValue().entityType()).isEqualTo(ApprovalEntityType.EVALUATION_PANEL);
+        assertThat(cmd.getValue().entityId()).isEqualTo(panelId);
+        assertThat(cmd.getValue().steps()).hasSize(1);
+        assertThat(cmd.getValue().steps().get(0).requiredPermission())
+                .isEqualTo("EVALUATION_PANEL_APPROVE");
+
+        ArgumentCaptor<AuditEvent> audited = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit).record(audited.capture());
+        assertThat(audited.getValue().action())
+                .isEqualTo(AuditAction.EVALUATION_PANEL_SUBMITTED_TO_CEO);
+        assertThat(audited.getValue().actorUserId()).isEqualTo(actor);
+        assertThat(audited.getValue().reason()).contains(approvalId.toString());
+    }
+
+    @Test
+    void submitSystemBeforeAveragedIsRejected() {
+        setContext(Set.of("EVALUATION_EDIT"));
+        stubPanelForSystem(EvaluationPanelStatus.AWAITING_EVALUATIONS);
+
+        assertThatThrownBy(() -> useCase.submitSystem(panelId, UUID.randomUUID()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("PANEL_NOT_AVERAGED");
+        verify(createApprovalRequest, never()).createSystem(any());
+    }
+
+    @Test
+    void submitSystemReChecksMinEvaluators() {
+        setContext(Set.of("EVALUATION_EDIT"));
+        stubPanelForSystem(EvaluationPanelStatus.AVERAGED);
+        when(assignments.findAllByTenantIdAndPanelId(tenantId, panelId)).thenReturn(List.of(
+                completedSeat(), completedSeat())); // below min of 3
+
+        assertThatThrownBy(() -> useCase.submitSystem(panelId, UUID.randomUUID()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("ROSTER_BELOW_FLOOR");
+        verify(createApprovalRequest, never()).createSystem(any());
+    }
+
+    @Test
+    void submitSystemIsIdempotentWhenCeoRequestAlreadyExists() {
+        setContext(Set.of("EVALUATION_EDIT"));
+        EvaluationPanelJpaEntity panel = stubPanelForSystem(EvaluationPanelStatus.AVERAGED);
+        when(assignments.findAllByTenantIdAndPanelId(tenantId, panelId)).thenReturn(List.of(
+                completedSeat(), completedSeat(), completedSeat()));
+        // A pending CEO request already exists — the swallow must keep us SUBMITTED.
+        when(createApprovalRequest.createSystem(any())).thenThrow(
+                new uz.hrlab.grading.approval.domain.ApprovalTransitionRejectedException(
+                        "ANOTHER_PENDING_REQUEST_EXISTS", "already pending"));
+
+        useCase.submitSystem(panelId, UUID.randomUUID());
+
+        assertThat(panel.getStatus()).isEqualTo(EvaluationPanelStatus.SUBMITTED);
+        ArgumentCaptor<AuditEvent> audited = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit).record(audited.capture());
+        assertThat(audited.getValue().action())
+                .isEqualTo(AuditAction.EVALUATION_PANEL_SUBMITTED_TO_CEO);
+        assertThat(audited.getValue().reason()).contains("existing");
+    }
+
     // --------------------------------------------------------------- helpers
+
+    /**
+     * System path only loads the panel (no position lookup, no ABAC), so stub just
+     * the panel — using a position stub here would be an unused-mock error.
+     */
+    private EvaluationPanelJpaEntity stubPanelForSystem(EvaluationPanelStatus status) {
+        EvaluationPanelJpaEntity panel = new EvaluationPanelJpaEntity(
+                panelId, tenantId, projectId, positionId, versionId, status, 3);
+        when(loader.requirePanel(panelId, tenantId)).thenReturn(panel);
+        return panel;
+    }
 
     private EvaluationPanelJpaEntity stubPanelAndPosition(EvaluationPanelStatus status) {
         EvaluationPanelJpaEntity panel = new EvaluationPanelJpaEntity(

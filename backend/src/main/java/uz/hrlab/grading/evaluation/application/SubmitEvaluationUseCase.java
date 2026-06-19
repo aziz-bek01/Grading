@@ -122,19 +122,28 @@ public class SubmitEvaluationUseCase {
                 .afterJson(snapshot.of(evaluation))
                 .build());
 
-        // MVP 2 Phase 1 — open single-step approval request requiring EVALUATION_APPROVE.
-        try {
-            createApprovalRequest.createSystem(
-                    CreateApprovalRequestCommand.singleStep(
-                            evaluation.getProjectId(),
-                            ApprovalEntityType.EVALUATION,
-                            evaluation.getId(),
-                            PermissionCodes.EVALUATION_APPROVE));
-        } catch (RuntimeException openExisting) {
-            if (!"ANOTHER_PENDING_REQUEST_EXISTS".equals(
-                    openExisting instanceof uz.hrlab.grading.common.exception.BaseDomainException b
-                            ? b.getCode() : null)) {
-                throw openExisting;
+        // Consolidated panel flow — a panel member's submit must NOT open its own
+        // per-EVALUATION approval request. A panel carries a SINGLE CEO approval on
+        // the PANEL (opened automatically once the panel averages, see
+        // PanelCompletionWatcher -> SubmitPanelToCeoUseCase.submitSystem), so the
+        // member's sheet only contributes to that panel: it still transitions to
+        // SUBMITTED and writes its EVALUATION_SUBMITTED audit above, but opens no
+        // approval. Only a NON-panel (single-evaluator) evaluation opens the
+        // per-EVALUATION approval requiring EVALUATION_APPROVE (unchanged).
+        if (evaluation.getPanelId() == null) {
+            try {
+                createApprovalRequest.createSystem(
+                        CreateApprovalRequestCommand.singleStep(
+                                evaluation.getProjectId(),
+                                ApprovalEntityType.EVALUATION,
+                                evaluation.getId(),
+                                PermissionCodes.EVALUATION_APPROVE));
+            } catch (RuntimeException openExisting) {
+                if (!"ANOTHER_PENDING_REQUEST_EXISTS".equals(
+                        openExisting instanceof uz.hrlab.grading.common.exception.BaseDomainException b
+                                ? b.getCode() : null)) {
+                    throw openExisting;
+                }
             }
         }
         return evaluation.toDomain();

@@ -43,6 +43,7 @@ class PanelCompletionWatcherTest {
     @Mock PanelRepository panels;
     @Mock PanelAssignmentRepository assignments;
     @Mock ComputePanelAverageUseCase computeAverage;
+    @Mock SubmitPanelToCeoUseCase submitToCeo;
     @Mock AuditService audit;
 
     PanelCompletionWatcher watcher;
@@ -54,7 +55,8 @@ class PanelCompletionWatcherTest {
 
     @BeforeEach
     void setUp() {
-        watcher = new PanelCompletionWatcher(panels, assignments, computeAverage, audit);
+        watcher = new PanelCompletionWatcher(
+                panels, assignments, computeAverage, submitToCeo, audit);
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         panelId = UUID.randomUUID();
@@ -114,6 +116,30 @@ class PanelCompletionWatcherTest {
         assertThat(captor.getValue().action())
                 .isEqualTo(AuditAction.EVALUATION_PANEL_EVALUATOR_COMPLETED);
         verify(computeAverage).compute(eq(tenantId), eq(panelId), eq(actor));
+        // Consolidated panel flow — auto-submit the averaged panel to the CEO.
+        verify(submitToCeo).submitSystem(eq(panelId), eq(actor));
+    }
+
+    @Test
+    void averagingFollowedByAutoSubmitIsFailSoftWhenSubmitThrows() {
+        EvaluationJpaEntity eval = evaluation(EvaluationStatus.COMPLETE, panelId);
+        stubPanel(EvaluationPanelStatus.AWAITING_EVALUATIONS);
+        PanelAssignmentJpaEntity me = seat(eval.getId(), PanelAssignmentStatus.IN_PROGRESS);
+        when(assignments.findByTenantIdAndEvaluationId(tenantId, eval.getId()))
+                .thenReturn(Optional.of(me));
+        when(assignments.findAllByTenantIdAndPanelId(tenantId, panelId)).thenReturn(List.of(
+                me,
+                seat(UUID.randomUUID(), PanelAssignmentStatus.COMPLETED),
+                seat(UUID.randomUUID(), PanelAssignmentStatus.COMPLETED)));
+        // Averaging succeeded; the auto CEO submit blows up for a non-fatal reason.
+        org.mockito.Mockito.doThrow(new RuntimeException("boom"))
+                .when(submitToCeo).submitSystem(eq(panelId), eq(actor));
+
+        // Must NOT propagate — averaging already persisted; submit is fail-soft.
+        watcher.onEvaluationStatusRecomputed(eval, actor);
+
+        verify(computeAverage).compute(eq(tenantId), eq(panelId), eq(actor));
+        verify(submitToCeo).submitSystem(eq(panelId), eq(actor));
     }
 
     @Test
@@ -132,6 +158,7 @@ class PanelCompletionWatcherTest {
 
         assertThat(me.getAssignmentStatus()).isEqualTo(PanelAssignmentStatus.COMPLETED);
         verify(computeAverage, never()).compute(any(), any(), any());
+        verify(submitToCeo, never()).submitSystem(any(), any());
     }
 
     @Test
@@ -150,6 +177,7 @@ class PanelCompletionWatcherTest {
         watcher.onEvaluationStatusRecomputed(eval, actor);
 
         verify(computeAverage).compute(eq(tenantId), eq(panelId), eq(actor));
+        verify(submitToCeo).submitSystem(eq(panelId), eq(actor));
     }
 
     @Test

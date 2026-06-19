@@ -1,5 +1,7 @@
 package uz.hrlab.grading.evaluation.application;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
@@ -40,18 +42,23 @@ import java.util.UUID;
 @Service
 public class PanelCompletionWatcher {
 
+    private static final Logger log = LoggerFactory.getLogger(PanelCompletionWatcher.class);
+
     private final PanelRepository panels;
     private final PanelAssignmentRepository assignments;
     private final ComputePanelAverageUseCase computeAverage;
+    private final SubmitPanelToCeoUseCase submitToCeo;
     private final AuditService audit;
 
     public PanelCompletionWatcher(PanelRepository panels,
                                   PanelAssignmentRepository assignments,
                                   ComputePanelAverageUseCase computeAverage,
+                                  SubmitPanelToCeoUseCase submitToCeo,
                                   AuditService audit) {
         this.panels = panels;
         this.assignments = assignments;
         this.computeAverage = computeAverage;
+        this.submitToCeo = submitToCeo;
         this.audit = audit;
     }
 
@@ -108,6 +115,26 @@ public class PanelCompletionWatcher {
         if (allActiveComplete(tenantId, panelId)) {
             // AWAITING_EVALUATIONS -> AVERAGED happens inside the compute use case.
             computeAverage.compute(tenantId, panelId, actorUserId);
+            // Consolidated panel flow — the moment a panel averages, open the
+            // single CEO approval automatically (AVERAGED -> SUBMITTED), so panel
+            // members no longer need a manual "submit to CEO" button.
+            //
+            // Wired HERE (watcher) rather than inside ComputePanelAverageUseCase to
+            // avoid a circular bean dependency (compute is the lowest layer, reused
+            // by reopen too) and to keep this in the SAME transaction as the last
+            // evaluator's submit.
+            //
+            // Fail-soft + idempotent: averaging already succeeded; a CEO request
+            // that already exists is swallowed inside submitSystem
+            // (ANOTHER_PENDING_REQUEST_EXISTS) leaving the panel SUBMITTED, and any
+            // other non-fatal failure here must NOT roll back / break the
+            // evaluator's submit, so it is logged and swallowed.
+            try {
+                submitToCeo.submitSystem(panelId, actorUserId);
+            } catch (RuntimeException autoSubmitFailed) {
+                log.warn("Auto-submit of averaged panel {} to CEO failed; panel left AVERAGED, "
+                                + "manual submit still available", panelId, autoSubmitFailed);
+            }
         }
     }
 

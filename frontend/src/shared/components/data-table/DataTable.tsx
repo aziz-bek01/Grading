@@ -142,7 +142,10 @@ export function DataTable<T>({
         <div className="ml-auto flex items-center gap-2">{toolbarRight}</div>
       </div>
 
-      <div className="bg-surface border border-border rounded-lg overflow-hidden">
+      {/* overflow-x-auto (not hidden): wide tables — e.g. the Position Catalog with
+          its trailing row-actions column — must stay horizontally scrollable, else
+          the rightmost columns (Edit / Archive) are clipped off-screen and unreachable. */}
+      <div className="bg-surface border border-border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           {caption ? <caption className="sr-only">{caption}</caption> : null}
           <thead className="bg-divider text-text-secondary text-xs uppercase tracking-wide">

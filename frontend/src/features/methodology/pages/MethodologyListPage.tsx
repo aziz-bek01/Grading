@@ -438,9 +438,17 @@ export function MethodologyListPage() {
         }
         onCancel={() => setArchiveTarget(null)}
         onConfirm={async (reason) => {
-          const target = archiveTarget;
-          setArchiveTarget(null);
-          if (target) await archiveMut.mutateAsync({ reason });
+          // Do NOT clear archiveTarget before the mutation: archiveMut is bound to
+          // archiveTarget?.id at render time, so resetting first re-renders the hook
+          // with an empty id and the POST goes to /methodologies//archive (401).
+          // Mutate first (target id still set), then close on success.
+          if (!archiveTarget) return;
+          try {
+            await archiveMut.mutateAsync({ reason });
+            setArchiveTarget(null);
+          } catch {
+            // Keep the dialog open so the failure is not silent.
+          }
         }}
       />
 
@@ -457,9 +465,15 @@ export function MethodologyListPage() {
         body={t('methodology.reactivate.body')}
         onCancel={() => setRestoreTarget(null)}
         onConfirm={async (reason) => {
-          const target = restoreTarget;
-          setRestoreTarget(null);
-          if (target) await restoreMut.mutateAsync({ reason });
+          // Same fix as deactivate: restoreMut is bound to restoreTarget?.id, so
+          // mutate BEFORE clearing the target (else the POST hits /methodologies//restore).
+          if (!restoreTarget) return;
+          try {
+            await restoreMut.mutateAsync({ reason });
+            setRestoreTarget(null);
+          } catch {
+            // Keep the dialog open so the failure is not silent.
+          }
         }}
       />
 

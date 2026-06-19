@@ -195,6 +195,7 @@ public interface EvaluationRepository
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
+             AND e.panelId IS NOT NULL
              AND (:status IS NULL OR e.status = :status)
              AND (:departmentId IS NULL OR e.positionId IN (
                    SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
@@ -223,6 +224,7 @@ public interface EvaluationRepository
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
+             AND e.panelId IS NOT NULL
              AND e.evaluatorUserId = :ownEvaluatorUserId
              AND (:status IS NULL OR e.status = :status)
              AND (:departmentId IS NULL OR e.positionId IN (
@@ -293,6 +295,7 @@ public interface EvaluationRepository
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
+             AND e.panelId IS NOT NULL
              AND (:status IS NULL OR e.status = :status)
              AND e.positionId IN (
                    SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
@@ -322,6 +325,7 @@ public interface EvaluationRepository
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
+             AND e.panelId IS NOT NULL
              AND e.evaluatorUserId = :ownEvaluatorUserId
              AND (:status IS NULL OR e.status = :status)
              AND e.positionId IN (

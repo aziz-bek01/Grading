@@ -191,14 +191,24 @@ export function EvaluationByFactorView({
   const activeMethodologiesQuery = canMethodologyRead ? methodologiesQuery : myMethodologiesQuery;
 
   /**
-   * Methodologies the user may switch between in the K-sheet: every
+   * Methodologies the user may switch between in the K-sheet: every ACTIVE
    * methodology that owns an active version. Ordered by the methodology
    * list itself (stable). A selector is only RENDERED when this has >1
    * entry — single-methodology projects keep the original chrome.
+   *
+   * ARCHIVED (deactivated) methodologies are excluded for EVERYONE here: the
+   * evaluator path (`/methodologies/my`) already drops them server-side, but
+   * the manager path (`useMethodologies`, full list) returns archived
+   * containers too — without this filter a deactivated methodology (and, once
+   * selected, its positions) would still appear on the scoring grid. Managers
+   * still manage archived methodologies from the Methodology list ("show
+   * inactive").
    */
   const selectableMethodologies = useMemo(
     () =>
-      (activeMethodologiesQuery.data?.items ?? []).filter((m) => m.active_version_id),
+      (activeMethodologiesQuery.data?.items ?? []).filter(
+        (m) => m.active_version_id && m.status !== 'ARCHIVED',
+      ),
     [activeMethodologiesQuery.data],
   );
 

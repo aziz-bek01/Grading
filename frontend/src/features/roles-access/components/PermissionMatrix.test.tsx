@@ -1,9 +1,11 @@
 /**
- * PermissionMatrix — grouping, restricted-lock, read-only and toggle behavior.
+ * PermissionMatrix — grouping, restricted-lock, read-only, not-held-lock,
+ * and toggle behavior.
  *
  * Pure presentational test: no network. Verifies the matrix groups by resource,
- * locks restricted rows, disables everything in read-only mode, and reports the
- * right code on toggle (the page owns the replace-set; this just emits events).
+ * locks restricted rows, locks rows the caller does not hold, disables everything
+ * in read-only mode, and reports the right code on toggle (the page owns the
+ * replace-set; this just emits events).
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -85,5 +87,59 @@ describe('<PermissionMatrix />', () => {
     expect((screen.getByTestId('permission-checkbox-PROJECT_READ') as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByTestId('permission-checkbox-PROJECT_EDIT') as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByTestId('permission-group-toggle-PROJECT') as HTMLInputElement).disabled).toBe(true);
+  });
+
+  // -----------------------------------------------------------------------
+  // "Caller does not hold" locking
+  // -----------------------------------------------------------------------
+
+  it('locks a row when callerPermissions does not include its code', () => {
+    // Caller holds PROJECT_READ but NOT PROJECT_EDIT.
+    setup({ callerPermissions: new Set(['PROJECT_READ', 'AUDIT_READ']) });
+    const unheld = screen.getByTestId('permission-checkbox-PROJECT_EDIT') as HTMLInputElement;
+    expect(unheld.disabled).toBe(true);
+    // The not-held hint badge should be visible.
+    expect(screen.getByTestId('permission-not-held-PROJECT_EDIT')).toBeInTheDocument();
+    // The restricted badge should NOT appear (different lock reason).
+    expect(screen.queryByTestId('permission-restricted-PROJECT_EDIT')).not.toBeInTheDocument();
+  });
+
+  it('not-held locked row mirrors its granted state, not selected', () => {
+    // PROJECT_EDIT has granted=false; it should render unchecked even if we
+    // somehow put it in selected (which the parent's init logic prevents).
+    const selectedWithUnheld = new Set(['PROJECT_READ', 'AUDIT_READ', 'PROJECT_EDIT']);
+    setup(
+      { callerPermissions: new Set(['PROJECT_READ', 'AUDIT_READ']) },
+      selectedWithUnheld,
+    );
+    // PROJECT_EDIT is not held → locked → reflects granted=false, ignores selected.
+    const cb = screen.getByTestId('permission-checkbox-PROJECT_EDIT') as HTMLInputElement;
+    expect(cb.checked).toBe(false);
+    expect(cb.disabled).toBe(true);
+  });
+
+  it('module select-all excludes not-held codes', async () => {
+    const user = userEvent.setup();
+    // Caller holds PROJECT_READ but not PROJECT_EDIT.
+    const { onToggleGroup } = setup({ callerPermissions: new Set(['PROJECT_READ', 'AUDIT_READ']) });
+    await user.click(screen.getByTestId('permission-group-toggle-PROJECT'));
+    // Only PROJECT_READ should be in the togglable set — PROJECT_EDIT is excluded.
+    const [codes] = onToggleGroup.mock.calls[0];
+    expect(codes).toContain('PROJECT_READ');
+    expect(codes).not.toContain('PROJECT_EDIT');
+  });
+
+  it('module select-all header is disabled when all togglable codes are held but none remain', () => {
+    // Caller holds nothing in PROJECT → toggle should be disabled (no togglable rows).
+    setup({ callerPermissions: new Set(['AUDIT_READ']) });
+    const header = screen.getByTestId('permission-group-toggle-PROJECT') as HTMLInputElement;
+    expect(header.disabled).toBe(true);
+  });
+
+  it('when callerPermissions is omitted all rows are treated as held (backward compat)', () => {
+    // No callerPermissions prop → all non-restricted rows are togglable.
+    setup();
+    expect((screen.getByTestId('permission-checkbox-PROJECT_EDIT') as HTMLInputElement).disabled).toBe(false);
+    expect(screen.queryByTestId('permission-not-held-PROJECT_EDIT')).not.toBeInTheDocument();
   });
 });

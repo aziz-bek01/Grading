@@ -2137,7 +2137,9 @@
       "selectAll": "Select all",
       "selectAllInModule": "Select all module permissions",
       "restricted": "Locked",
-      "restrictedHint": "This permission cannot be granted through this form."
+      "restrictedHint": "This permission cannot be granted through this form.",
+      "notHeld": "Not held",
+      "notHeldHint": "You don't hold this permission, so you can't grant it."
     },
     "error": {
       "permissionRestricted": "This permission cannot be granted to the role.",

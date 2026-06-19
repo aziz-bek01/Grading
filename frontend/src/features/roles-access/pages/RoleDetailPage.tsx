@@ -33,6 +33,7 @@ import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { NoAccessState } from '@/shared/components/feedback/NoAccessState';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { usePermission } from '@/features/auth/usePermission';
+import { useAuthStore } from '@/features/auth/authStore';
 import { ApiError } from '@/shared/api/apiError';
 import { routes } from '@/shared/config/routes';
 import { SUPPORTED_LOCALES } from '@/shared/i18n';
@@ -279,14 +280,31 @@ function RolePermissionEditor({
   const { t } = useTranslation();
   const mutation = useSetRolePermissions(roleCode);
 
+  // Raw permission codes the CURRENT caller holds on the active tenant.
+  // Read user.permissions DIRECTLY — NOT can() / usePermission() — because those
+  // short-circuit to true for HRLAB_SUPER_ADMIN even when the backend has not
+  // actually granted the code (e.g. PAYROLL_IMPORT, CLIENT_VIEW, CLIENT_LIST,
+  // CLIENT_UPDATE). The matrix uses this set to lock uncallable rows, and the
+  // save handler uses it as a final filter before the PUT payload is built.
+  const rawPermissions = useAuthStore((s) => s.user?.permissions);
+  const callerPermissions = useMemo(
+    () => new Set<string>(rawPermissions ?? []),
+    [rawPermissions],
+  );
+
   // Baseline = granted, non-restricted codes from the server snapshot.
+  // Unheld-but-granted codes are also excluded from the togglable baseline so the
+  // working copy never drifts beyond what the caller can actually send.
   const baseline = useMemo(() => {
     const s = new Set<string>();
     for (const item of data.items) {
-      if (item.granted && !item.restricted) s.add(item.code);
+      if (item.granted && !item.restricted && callerPermissions.has(item.code)) s.add(item.code);
     }
     return s;
-  }, [data.items]);
+    // callerPermissions is derived from rawPermissions which is a stable reference
+    // per render cycle; including it keeps exhaustive-deps lint happy.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.items, rawPermissions]);
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set(baseline));
 
@@ -327,10 +345,13 @@ function RolePermissionEditor({
   };
 
   const save = () => {
-    // REPLACE-set: send exactly the checked non-restricted codes. (`selected`
-    // can only ever hold non-restricted codes; we still belt-and-braces filter.)
+    // REPLACE-set: send exactly the checked non-restricted, caller-held codes.
+    // `selected` can only contain togglable codes (matrix locks the rest), but
+    // we belt-and-braces filter to guarantee the 422 is never hit.
     const restricted = new Set(data.items.filter((i) => i.restricted).map((i) => i.code));
-    const payload = [...selected].filter((c) => !restricted.has(c)).sort();
+    const payload = [...selected]
+      .filter((c) => !restricted.has(c) && callerPermissions.has(c))
+      .sort();
     mutation.mutate(payload, { onSuccess: () => onSaved() });
   };
 
@@ -368,6 +389,7 @@ function RolePermissionEditor({
         items={data.items}
         selected={selected}
         readOnly={readOnly}
+        callerPermissions={callerPermissions}
         onToggle={toggle}
         onToggleGroup={toggleGroup}
       />

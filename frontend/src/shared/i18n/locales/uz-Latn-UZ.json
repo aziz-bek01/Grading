@@ -2137,7 +2137,9 @@
       "selectAll": "Barchasini tanlash",
       "selectAllInModule": "Modul ruxsatlarini tanlash",
       "restricted": "Qulflangan",
-      "restrictedHint": "Bu ruxsatni ushbu forma orqali berib boʻlmaydi."
+      "restrictedHint": "Bu ruxsatni ushbu forma orqali berib boʻlmaydi.",
+      "notHeld": "Mavjud emas",
+      "notHeldHint": "Sizda bu ruxsat yoʻq, shuning uchun uni bera olmaysiz."
     },
     "error": {
       "permissionRestricted": "Bu ruxsatni rolga berib bo'lmaydi",

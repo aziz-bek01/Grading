@@ -25,6 +25,7 @@ import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { ApiError } from '@/shared/api/apiError';
 import { SUPPORTED_LOCALES } from '@/shared/i18n';
 import type { LocalizedString } from '@/shared/types/common';
+import { useAuthStore } from '@/features/auth/authStore';
 import { useCreateRole, usePermissionCatalogTemplate } from '../hooks/useRolePermissions';
 import { PermissionMatrix } from './PermissionMatrix';
 import { mapRolePermissionError } from '../lib/rolePermissionError';
@@ -45,6 +46,18 @@ export function CreateRoleDrawer({ open, onClose, onCreated }: CreateRoleDrawerP
   const { t } = useTranslation();
   const create = useCreateRole();
   const { data: catalog, isLoading, error, refetch } = usePermissionCatalogTemplate(open);
+
+  // Raw permission codes the CURRENT caller holds on the active tenant.
+  // We read user.permissions DIRECTLY (not via can() / usePermission()) because
+  // can() short-circuits to true for HRLAB_SUPER_ADMIN even when the backend has
+  // NOT actually granted a code (e.g. PAYROLL_IMPORT, CLIENT_VIEW, CLIENT_LIST,
+  // CLIENT_UPDATE). The matrix uses this set to lock rows the caller cannot grant,
+  // preventing a 422 PERMISSION_NOT_HELD_BY_CALLER on submit.
+  const rawPermissions = useAuthStore((s) => s.user?.permissions);
+  const callerPermissions = useMemo(
+    () => new Set<string>(rawPermissions ?? []),
+    [rawPermissions],
+  );
 
   // Working set of CHECKED (granted) non-restricted codes for the new role.
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -98,8 +111,11 @@ export function CreateRoleDrawer({ open, onClose, onCreated }: CreateRoleDrawerP
       const v = (data.name_i18n as Record<string, string | undefined>)[loc]?.trim();
       if (v) name_i18n[loc] = v;
     }
-    // Belt-and-braces: never send restricted codes (matrix already excludes them).
-    const permission_codes = [...selected].filter((c) => !restricted.has(c)).sort();
+    // Belt-and-braces: never send restricted codes or codes the caller doesn't
+    // hold (the matrix already excludes them via locking; this is a final guard).
+    const permission_codes = [...selected]
+      .filter((c) => !restricted.has(c) && callerPermissions.has(c))
+      .sort();
 
     create.mutate(
       { code: data.code.trim(), name_i18n, permission_codes },
@@ -214,6 +230,7 @@ export function CreateRoleDrawer({ open, onClose, onCreated }: CreateRoleDrawerP
             items={catalog ?? []}
             selected={selected}
             readOnly={false}
+            callerPermissions={callerPermissions}
             onToggle={toggle}
             onToggleGroup={toggleGroup}
           />

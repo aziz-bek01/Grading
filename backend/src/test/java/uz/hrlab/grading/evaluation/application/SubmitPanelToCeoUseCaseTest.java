@@ -75,8 +75,15 @@ class SubmitPanelToCeoUseCaseTest {
 
     @BeforeEach
     void setUp() {
+        // The CEO-approval-open logic now lives in the shared CeoPanelApprovalOpener
+        // (called by BOTH this use case and the one-time backfill migration). It is
+        // constructed here from the SAME createApprovalRequest/approvalQueries mocks
+        // so every existing assertion on those mocks still holds — proving the
+        // extraction is behaviour-preserving.
+        CeoPanelApprovalOpener ceoApprovalOpener =
+                new CeoPanelApprovalOpener(createApprovalRequest, approvalQueries);
         useCase = new SubmitPanelToCeoUseCase(
-                loader, panels, assignments, createApprovalRequest, approvalQueries, abacGate, audit);
+                loader, panels, assignments, ceoApprovalOpener, abacGate, audit);
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         positionId = UUID.randomUUID();

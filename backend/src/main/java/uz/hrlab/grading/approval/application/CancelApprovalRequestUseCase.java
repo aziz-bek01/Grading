@@ -64,16 +64,67 @@ public class CancelApprovalRequestUseCase {
                     "REQUEST_NOT_PENDING",
                     "Only pending requests can be cancelled");
         }
+        return applyCancellation(req, ctx.userId(), null);
+    }
+
+    /**
+     * SYSTEM variant of {@link #cancel(UUID)} — used by automated, server-initiated
+     * flows (e.g. the one-time {@code BackfillPanelApprovalsMigration} that retires
+     * stale per-{@code EVALUATION} approvals whose evaluation is now panel-wrapped).
+     *
+     * <p>Differs from {@link #cancel(UUID)} ONLY by skipping the user-facing gates
+     * (the {@code APPROVAL_REQUEST_CANCEL} permission, the ABAC project write-gate
+     * and the own-request/Project-Manager ownership check): a system migration has
+     * no acting user and cannot satisfy those — but the active tenant context IS
+     * required (the request is resolved {@code findByIdAndTenantId}, anti-BOLA, and
+     * the RLS GUC is bound by the surrounding {@code @Transactional}). Everything
+     * else is identical to {@link #cancel(UUID)} — the {@code PENDING}-only guard,
+     * the {@code PENDING -> CANCELLED} transition, and the
+     * {@code APPROVAL_REQUEST_CANCELLED} audit (here carrying the supplied
+     * {@code reason}) — via the shared {@link #applyCancellation} path. Mirrors the
+     * {@code create}/{@code createSystem} pattern on
+     * {@link uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase}.
+     *
+     * <p>Idempotent: a request that is no longer {@code PENDING} (already cancelled
+     * on a prior run / decided) is a no-op (returns {@code null}); the caller need
+     * not pre-check.
+     *
+     * @param requestId the request to cancel (tenant-resolved from the active context)
+     * @param reason    audit reason recorded on the cancellation
+     * @return the cancelled request, or {@code null} if it was not PENDING (no-op)
+     */
+    @Transactional
+    public ApprovalRequest cancelSystem(UUID requestId, String reason) {
+        TenantContext ctx = TenantContextHolder.requireActive();
+        ApprovalRequestJpaEntity req = requests.findByIdAndTenantId(requestId, ctx.tenantId())
+                .orElseThrow(TenantAccessDeniedException::new);
+        if (req.getCurrentStatus() != ApprovalRequestStatus.PENDING) {
+            // Idempotent: already cancelled/decided on a prior run — nothing to do.
+            return null;
+        }
+        return applyCancellation(req, ctx.userId(), reason);
+    }
+
+    /**
+     * Shared cancellation body for {@link #cancel(UUID)} and
+     * {@link #cancelSystem(UUID, String)} — flips {@code PENDING -> CANCELLED},
+     * persists, and writes the standard {@code APPROVAL_REQUEST_CANCELLED} audit.
+     * The caller has already loaded the tenant-scoped request and asserted it is
+     * {@code PENDING}; no security re-check here (each caller applies its own).
+     */
+    private ApprovalRequest applyCancellation(ApprovalRequestJpaEntity req,
+                                              UUID actorUserId, String reason) {
         req.setCurrentStatus(ApprovalRequestStatus.CANCELLED);
         requests.save(req);
 
         audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+                .tenantId(req.getTenantId())
                 .projectId(req.getProjectId())
-                .actorUserId(ctx.userId())
+                .actorUserId(actorUserId)
                 .action(AuditAction.APPROVAL_REQUEST_CANCELLED)
                 .entityType("ApprovalRequest")
                 .entityId(req.getId())
+                .reason(reason)
                 .build());
 
         return queries.hydrate(req);

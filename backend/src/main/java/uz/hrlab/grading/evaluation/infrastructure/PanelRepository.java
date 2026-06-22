@@ -41,6 +41,15 @@ public interface PanelRepository
             UUID tenantId, UUID projectId, EvaluationPanelStatus status);
 
     /**
+     * All panels in one status for a tenant (project-agnostic). Tenant-scoped
+     * (defense-in-depth on top of forced RLS). Backs the one-time
+     * {@code BackfillPanelApprovalsMigration} sweep that opens the missing CEO
+     * approval for every {@code SUBMITTED} panel lacking one.
+     */
+    List<EvaluationPanelJpaEntity> findAllByTenantIdAndStatus(
+            UUID tenantId, EvaluationPanelStatus status);
+
+    /**
      * Tenant-scoped hard delete (Defect-2 BE). Mirrors
      * {@code EvaluationRepository.deleteByIdAndTenantId}: {@link TenantAwareRepository}
      * intentionally hides the BOLA-prone single-arg {@code deleteById(id)}; this

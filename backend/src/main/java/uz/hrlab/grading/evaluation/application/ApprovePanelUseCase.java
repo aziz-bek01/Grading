@@ -75,8 +75,13 @@ public class ApprovePanelUseCase {
 
         // Immutability symmetry — lock the contributing sheets so a late edit
         // cannot silently change an already-CEO-approved average (REQ-AVG-4).
+        // Covers SUBMITTED sheets too (a panel evaluator who hit the per-sheet
+        // "Submit"), not only COMPLETE — otherwise a submitted sheet would stay
+        // editable after the panel is CEO-approved. Already-LOCKED sheets are
+        // skipped; single source: contributesToPanelResult().
         for (EvaluationJpaEntity sheet : evaluations.findAllByTenantIdAndPanelId(tenantId, panelId)) {
-            if (sheet.getStatus() == EvaluationStatus.COMPLETE) {
+            if (sheet.getStatus().contributesToPanelResult()
+                    && sheet.getStatus() != EvaluationStatus.LOCKED) {
                 sheet.setStatus(EvaluationStatus.LOCKED);
                 sheet.setLockedAt(now);
                 sheet.setLockedBy(actorUserId);

@@ -119,6 +119,30 @@ class ComputePanelAverageUseCaseTest {
     }
 
     @Test
+    void submittedSheetsStillCountTowardTheAverage() {
+        // Regression: a panel evaluator (e.g. the department director) who scored
+        // their sheet to COMPLETE and then hit the per-sheet "Submit" (→ SUBMITTED)
+        // must NOT drop out of the average. Before the fix the SUBMITTED sheet was
+        // filtered out, so the CEO saw a result computed over fewer evaluators.
+        EvaluationPanelJpaEntity panel = stubPanel(EvaluationPanelStatus.AWAITING_EVALUATIONS);
+        EvaluationJpaEntity complete = sheet(EvaluationStatus.COMPLETE);
+        EvaluationJpaEntity submitted = sheet(EvaluationStatus.SUBMITTED); // must STILL count
+        EvaluationJpaEntity incomplete = sheet(EvaluationStatus.INCOMPLETE); // must NOT count
+        when(evaluations.findAllByTenantIdAndPanelId(tenantId, panelId))
+                .thenReturn(List.of(complete, submitted, incomplete));
+        stubScores(complete, 10, 4);
+        stubScores(submitted, 20, 6);
+
+        PanelAverageResult result = useCase.compute(tenantId, panelId, actor);
+
+        assertThat(result.evaluatorCount()).isEqualTo(2); // COMPLETE + SUBMITTED, incomplete excluded
+        assertThat(result.avgByFactor().get(factorA)).isEqualByComparingTo("15.0000");
+        assertThat(result.avgByFactor().get(factorB)).isEqualByComparingTo("5.0000");
+        assertThat(panel.getRawTotalScore()).isEqualByComparingTo("20.0000");
+        assertThat(panel.getStatus()).isEqualTo(EvaluationPanelStatus.AVERAGED);
+    }
+
+    @Test
     void clearsStaleAveragesBeforePersistingFreshOnes_idempotentRecompute() {
         stubPanel(EvaluationPanelStatus.AWAITING_EVALUATIONS);
         EvaluationJpaEntity s1 = sheet(EvaluationStatus.COMPLETE);

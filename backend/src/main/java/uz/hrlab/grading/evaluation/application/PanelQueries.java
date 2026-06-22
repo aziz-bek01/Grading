@@ -19,7 +19,6 @@ import uz.hrlab.grading.evaluation.api.PanelResultResponse;
 import uz.hrlab.grading.evaluation.api.RosterSuggestionResponse;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
-import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.domain.PanelAssignmentStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
@@ -308,12 +307,14 @@ public class PanelQueries {
         List<PanelFactorAverageJpaEntity> avgRows = averages
                 .findAllByTenantIdAndPanelId(tenant, panelId);
 
-        // Per-evaluator breakdown: COMPLETED/LOCKED contributing sheets' per-factor scores.
+        // Per-evaluator breakdown: every done-scoring contributing sheet (COMPLETE,
+        // SUBMITTED, APPROVED or LOCKED). SUBMITTED must be included — a panel
+        // evaluator who hit the per-sheet "Submit" otherwise vanishes from the
+        // breakdown the CEO reviews, so the result would not match the averaged
+        // denominator. Single source: contributesToPanelResult().
         List<EvaluationJpaEntity> sheets = evaluations
                 .findAllByTenantIdAndPanelId(tenant, panelId).stream()
-                .filter(e -> e.getStatus() == EvaluationStatus.COMPLETE
-                        || e.getStatus() == EvaluationStatus.LOCKED
-                        || e.getStatus() == EvaluationStatus.APPROVED)
+                .filter(e -> e.getStatus().contributesToPanelResult())
                 .toList();
         // factor_id -> list of (evaluator, role, score)
         Map<UUID, List<PanelResultResponse.PerEvaluator>> perFactor = new HashMap<>();

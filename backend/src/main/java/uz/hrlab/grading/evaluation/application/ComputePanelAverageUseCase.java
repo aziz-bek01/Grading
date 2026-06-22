@@ -7,7 +7,6 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
-import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.domain.EvaluatorFactorScores;
 import uz.hrlab.grading.evaluation.domain.PanelAverageResult;
 import uz.hrlab.grading.evaluation.domain.PanelAveragingService;
@@ -80,12 +79,16 @@ public class ComputePanelAverageUseCase {
         EvaluationPanelJpaEntity panel = panels.findByIdAndTenantId(panelId, tenantId)
                 .orElseThrow(() -> new ValidationException("PANEL_NOT_FOUND"));
 
-        // COMPLETED contributing sheets only (REQ-AVG-3). ARCHIVED / WITHDRAWN
-        // sheets are excluded; an incomplete sheet (DRAFT/INCOMPLETE) does not
-        // contribute and would have blocked the AVERAGED transition upstream.
+        // Done-scoring contributing sheets only (REQ-AVG-3): COMPLETE or SUBMITTED
+        // (and APPROVED/LOCKED defensively, e.g. a re-average). A panel evaluator
+        // who finished scoring AND hit the per-sheet "Submit" (→ SUBMITTED) must
+        // still count — otherwise their score silently drops out of the average and
+        // the CEO sees a result computed over fewer evaluators. DRAFT/INCOMPLETE do
+        // not contribute and would have blocked the AVERAGED transition upstream;
+        // ARCHIVED / WITHDRAWN are excluded. Single source: contributesToPanelResult().
         List<EvaluationJpaEntity> sheets = evaluations
                 .findAllByTenantIdAndPanelId(tenantId, panelId).stream()
-                .filter(e -> e.getStatus() == EvaluationStatus.COMPLETE)
+                .filter(e -> e.getStatus().contributesToPanelResult())
                 .toList();
         if (sheets.isEmpty()) {
             throw new ValidationException(

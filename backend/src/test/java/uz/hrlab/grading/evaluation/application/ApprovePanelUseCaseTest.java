@@ -109,6 +109,31 @@ class ApprovePanelUseCaseTest {
     }
 
     @Test
+    void locksSubmittedSheetsToo_notOnlyComplete() {
+        // Regression: a panel evaluator who hit the per-sheet "Submit" (→ SUBMITTED)
+        // must still be frozen when the CEO approves the panel — otherwise their
+        // sheet stays editable after approval (immutability gap). An already-LOCKED
+        // sheet is left untouched.
+        EvaluationPanelJpaEntity panel = panel(EvaluationPanelStatus.SUBMITTED);
+        panel.setRawTotalScore(new BigDecimal("20.0000"));
+        when(panels.findByIdAndTenantId(panelId, tenantId)).thenReturn(Optional.of(panel));
+
+        EvaluationJpaEntity submitted = sheet(EvaluationStatus.SUBMITTED);
+        EvaluationJpaEntity complete = sheet(EvaluationStatus.COMPLETE);
+        EvaluationJpaEntity alreadyLocked = sheet(EvaluationStatus.LOCKED);
+        when(evaluations.findAllByTenantIdAndPanelId(tenantId, panelId))
+                .thenReturn(List.of(submitted, complete, alreadyLocked));
+
+        useCase.onApproved(tenantId, panelId, ceo);
+
+        assertThat(submitted.getStatus()).isEqualTo(EvaluationStatus.LOCKED);
+        assertThat(complete.getStatus()).isEqualTo(EvaluationStatus.LOCKED);
+        assertThat(submitted.getLockedBy()).isEqualTo(ceo);
+        // Already-LOCKED sheet is not re-saved.
+        verify(evaluations, never()).save(alreadyLocked);
+    }
+
+    @Test
     void doesNotLockNonCompleteSheets() {
         EvaluationPanelJpaEntity panel = panel(EvaluationPanelStatus.SUBMITTED);
         when(panels.findByIdAndTenantId(panelId, tenantId)).thenReturn(Optional.of(panel));

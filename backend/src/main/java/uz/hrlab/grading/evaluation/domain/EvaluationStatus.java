@@ -41,4 +41,24 @@ public enum EvaluationStatus {
     public boolean isDeletable() {
         return isPreSubmission();
     }
+
+    /**
+     * Done-scoring statuses that count toward a panel's averaged result and its
+     * per-evaluator breakdown. A panel evaluator's sheet contributes once scoring
+     * is finished ({@code COMPLETE}), regardless of whether the evaluator also
+     * hit the per-sheet "Submit" button ({@code SUBMITTED}) — in the consolidated
+     * one-submit panel→CEO flow that button no longer opens a per-sheet approval,
+     * so a submitted sheet must NOT silently drop out of the average. Sheets frozen
+     * with the panel on CEO approval ({@code APPROVED}/{@code LOCKED}) still count.
+     * {@code DRAFT}/{@code INCOMPLETE} (not finished) and {@code ARCHIVED}
+     * (withdrawn) never contribute.
+     *
+     * <p>Single source of truth for {@code ComputePanelAverageUseCase} (averaging),
+     * {@code PanelQueries.getResult} (the CEO-facing per-evaluator breakdown) and
+     * {@code ApprovePanelUseCase} (the approval-time lock sweep) — do NOT inline a
+     * status list in any of them.
+     */
+    public boolean contributesToPanelResult() {
+        return this == COMPLETE || this == SUBMITTED || this == APPROVED || this == LOCKED;
+    }
 }

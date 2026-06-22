@@ -1,0 +1,180 @@
+package uz.hrlab.grading.evaluation.application;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import uz.hrlab.grading.approval.application.CancelApprovalRequestUseCase;
+import uz.hrlab.grading.approval.domain.ApprovalEntityType;
+import uz.hrlab.grading.approval.domain.ApprovalRequest;
+import uz.hrlab.grading.approval.domain.ApprovalRequestStatus;
+import uz.hrlab.grading.approval.infrastructure.ApprovalRequestJpaEntity;
+import uz.hrlab.grading.approval.infrastructure.ApprovalRequestRepository;
+import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
+import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
+import uz.hrlab.grading.tenancy.application.TenantContext;
+import uz.hrlab.grading.tenancy.application.TenantContextHolder;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/**
+ * One-time CEO-approval reconciliation migration (Defect: CEO inbox shows stale
+ * per-EVALUATION cards / panels stuck SUBMITTED with no panel approval). Pins:
+ * <ul>
+ *   <li>branch (1) cancels a PENDING EVALUATION approval ONLY when its evaluation
+ *       is now panel-wrapped (panel_id != null), via the shared
+ *       {@code CancelApprovalRequestUseCase.cancelSystem};</li>
+ *   <li>a PENDING EVALUATION approval on a NON-panel evaluation is left untouched;</li>
+ *   <li>branch (2) opens the missing CEO approval for a SUBMITTED panel via the
+ *       shared {@code CeoPanelApprovalOpener} (same collaborator the live submit
+ *       flow uses — no duplication);</li>
+ *   <li>idempotency: a no-op cancel ({@code null}) / opener ({@code null}) is not
+ *       counted, so a re-run does nothing;</li>
+ *   <li>anti-BOLA: a tenant-context mismatch is rejected.</li>
+ * </ul>
+ */
+@ExtendWith(MockitoExtension.class)
+class BackfillPanelApprovalsMigrationTest {
+
+    @Mock ApprovalRequestRepository approvalRequests;
+    @Mock EvaluationRepository evaluations;
+    @Mock PanelRepository panels;
+    @Mock CancelApprovalRequestUseCase cancelApprovalRequest;
+    @Mock CeoPanelApprovalOpener ceoApprovalOpener;
+
+    BackfillPanelApprovalsMigration migration;
+    UUID tenantId;
+
+    @BeforeEach
+    void setUp() {
+        migration = new BackfillPanelApprovalsMigration(
+                approvalRequests, evaluations, panels, cancelApprovalRequest, ceoApprovalOpener);
+        tenantId = UUID.randomUUID();
+        setContext(tenantId);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContextHolder.clear();
+    }
+
+    @Test
+    void cancelsLegacyApprovalWhenEvaluationIsPanelWrapped() {
+        UUID evalId = UUID.randomUUID();
+        UUID reqId = UUID.randomUUID();
+        ApprovalRequestJpaEntity req = mock(ApprovalRequestJpaEntity.class);
+        when(req.getEntityId()).thenReturn(evalId);
+        when(req.getId()).thenReturn(reqId);
+        when(approvalRequests.findAllByTenantIdAndEntityTypeAndCurrentStatus(
+                tenantId, ApprovalEntityType.EVALUATION, ApprovalRequestStatus.PENDING))
+                .thenReturn(List.of(req));
+        EvaluationJpaEntity eval = mock(EvaluationJpaEntity.class);
+        when(eval.getPanelId()).thenReturn(UUID.randomUUID()); // panel-wrapped
+        when(evaluations.findByIdAndTenantId(evalId, tenantId)).thenReturn(Optional.of(eval));
+        when(cancelApprovalRequest.cancelSystem(reqId, BackfillPanelApprovalsMigration.CANCEL_REASON))
+                .thenReturn(mock(ApprovalRequest.class));
+
+        BackfillPanelApprovalsMigration.Result result = migration.runForTenant(tenantId);
+
+        assertThat(result.cancelledLegacyApprovals()).isEqualTo(1);
+        assertThat(result.openedPanelApprovals()).isZero();
+        verify(cancelApprovalRequest)
+                .cancelSystem(reqId, BackfillPanelApprovalsMigration.CANCEL_REASON);
+    }
+
+    @Test
+    void leavesNonPanelEvaluationApprovalUntouched() {
+        UUID evalId = UUID.randomUUID();
+        ApprovalRequestJpaEntity req = mock(ApprovalRequestJpaEntity.class);
+        when(req.getEntityId()).thenReturn(evalId);
+        when(approvalRequests.findAllByTenantIdAndEntityTypeAndCurrentStatus(
+                tenantId, ApprovalEntityType.EVALUATION, ApprovalRequestStatus.PENDING))
+                .thenReturn(List.of(req));
+        EvaluationJpaEntity eval = mock(EvaluationJpaEntity.class);
+        when(eval.getPanelId()).thenReturn(null); // genuine single-evaluator — keep it
+        when(evaluations.findByIdAndTenantId(evalId, tenantId)).thenReturn(Optional.of(eval));
+
+        BackfillPanelApprovalsMigration.Result result = migration.runForTenant(tenantId);
+
+        assertThat(result.cancelledLegacyApprovals()).isZero();
+        verify(cancelApprovalRequest, never()).cancelSystem(any(), any());
+    }
+
+    @Test
+    void opensMissingPanelApprovalForSubmittedPanel() {
+        EvaluationPanelJpaEntity panel = mock(EvaluationPanelJpaEntity.class);
+        when(panels.findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.SUBMITTED))
+                .thenReturn(List.of(panel));
+        when(ceoApprovalOpener.openIfAbsent(tenantId, panel)).thenReturn(UUID.randomUUID());
+
+        BackfillPanelApprovalsMigration.Result result = migration.runForTenant(tenantId);
+
+        assertThat(result.openedPanelApprovals()).isEqualTo(1);
+        verify(ceoApprovalOpener).openIfAbsent(tenantId, panel);
+    }
+
+    @Test
+    void idempotentWhenOpenerReportsExistingRequest() {
+        EvaluationPanelJpaEntity panel = mock(EvaluationPanelJpaEntity.class);
+        when(panels.findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.SUBMITTED))
+                .thenReturn(List.of(panel));
+        when(ceoApprovalOpener.openIfAbsent(tenantId, panel)).thenReturn(null); // already pending
+
+        BackfillPanelApprovalsMigration.Result result = migration.runForTenant(tenantId);
+
+        assertThat(result.openedPanelApprovals()).isZero();
+    }
+
+    @Test
+    void idempotentWhenLegacyApprovalAlreadyCancelled() {
+        UUID evalId = UUID.randomUUID();
+        UUID reqId = UUID.randomUUID();
+        ApprovalRequestJpaEntity req = mock(ApprovalRequestJpaEntity.class);
+        when(req.getEntityId()).thenReturn(evalId);
+        when(req.getId()).thenReturn(reqId);
+        when(approvalRequests.findAllByTenantIdAndEntityTypeAndCurrentStatus(
+                tenantId, ApprovalEntityType.EVALUATION, ApprovalRequestStatus.PENDING))
+                .thenReturn(List.of(req));
+        EvaluationJpaEntity eval = mock(EvaluationJpaEntity.class);
+        when(eval.getPanelId()).thenReturn(UUID.randomUUID());
+        when(evaluations.findByIdAndTenantId(evalId, tenantId)).thenReturn(Optional.of(eval));
+        // cancelSystem returns null when the request is no longer PENDING (no-op).
+        when(cancelApprovalRequest.cancelSystem(reqId, BackfillPanelApprovalsMigration.CANCEL_REASON))
+                .thenReturn(null);
+
+        BackfillPanelApprovalsMigration.Result result = migration.runForTenant(tenantId);
+
+        assertThat(result.cancelledLegacyApprovals()).isZero();
+    }
+
+    @Test
+    void tenantContextMismatchIsRejected() {
+        UUID otherTenant = UUID.randomUUID();
+        assertThatThrownBy(() -> migration.runForTenant(otherTenant))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("tenant context mismatch");
+    }
+
+    // --------------------------------------------------------------- helpers
+
+    private void setContext(UUID tenant) {
+        TenantContextHolder.set(new TenantContext(
+                null, tenant, Set.of(), Set.of(), Set.of(), Set.of(), false, null));
+    }
+}

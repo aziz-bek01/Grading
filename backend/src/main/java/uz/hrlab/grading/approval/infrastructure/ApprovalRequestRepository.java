@@ -26,6 +26,15 @@ public interface ApprovalRequestRepository
                     UUID tenantId, ApprovalEntityType entityType, UUID entityId,
                     ApprovalRequestStatus currentStatus);
 
+    /**
+     * All requests of one {@code entityType} in a given status for a tenant.
+     * Tenant-scoped (defense-in-depth on top of forced RLS). Backs the one-time
+     * {@code BackfillPanelApprovalsMigration} sweep that finds every PENDING
+     * legacy {@code EVALUATION} approval to retire.
+     */
+    List<ApprovalRequestJpaEntity> findAllByTenantIdAndEntityTypeAndCurrentStatus(
+            UUID tenantId, ApprovalEntityType entityType, ApprovalRequestStatus currentStatus);
+
     @Query("""
             SELECT a FROM ApprovalRequestJpaEntity a
              WHERE a.tenantId = :tenantId

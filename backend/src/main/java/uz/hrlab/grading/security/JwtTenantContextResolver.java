@@ -274,14 +274,35 @@ public class JwtTenantContextResolver {
     }
 
     /**
-     * Read the {@code X-Active-Tenant-Id} header from the current request via
-     * {@link RequestContextHolder}. Both the security-filter (converter) path and
-     * the {@code TenantContextFilter} path run on the request thread, so both see
-     * the same header — keeping the two paths in agreement. When no request is
-     * bound (e.g. async/background resolution), returns null and the next
-     * precedence rule applies.
+     * Read the {@code X-Active-Tenant-Id} header for the current request.
+     *
+     * <h3>Why the ThreadLocal is read FIRST (BE-AUTH-MT-001)</h3>
+     * This method is invoked from {@link GradingJwtAuthenticationConverter} INSIDE
+     * the OAuth2 resource-server authentication filter, which runs BEFORE Spring's
+     * {@code DispatcherServlet} binds {@link RequestContextHolder}. At that point
+     * {@code RequestContextHolder.getRequestAttributes()} is intermittently
+     * {@code null} (it is not bound, or is bound non-inheritably and cleared), so
+     * the header was unreadable — a multi-membership Super Admin then fell through
+     * to AMBIGUOUS → no active tenant → 404 on tenant-scoped by-id reads.
+     *
+     * <p>{@link ActiveTenantHeaderFilter} runs at HIGHEST precedence (before the
+     * security chain) and binds the parsed header on {@link ActiveTenantHeaderHolder}
+     * deterministically, so we read THAT first. We fall back to
+     * {@link RequestContextHolder} only for code paths where the early filter did
+     * not run (e.g. a bare unit test or async re-resolution), preserving the
+     * previous behaviour as a safety net. When neither source has a value, returns
+     * {@code null} and the next precedence rule (claim / single membership /
+     * fail-closed) applies — the fail-closed safety is unchanged.
      */
     private static UUID readActiveTenantHeader() {
+        // 1) Reliable per-request ThreadLocal, set by ActiveTenantHeaderFilter
+        //    before the security chain runs.
+        UUID fromHolder = ActiveTenantHeaderHolder.get();
+        if (fromHolder != null) {
+            return fromHolder;
+        }
+        // 2) Fallback: RequestContextHolder, for paths where the early filter did
+        //    not run. May be null at JWT-auth time — that is exactly why (1) exists.
         try {
             RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
             if (attrs instanceof ServletRequestAttributes servletAttrs) {

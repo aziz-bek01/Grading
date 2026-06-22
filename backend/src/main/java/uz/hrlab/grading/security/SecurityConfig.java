@@ -3,9 +3,11 @@ package uz.hrlab.grading.security;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -110,6 +112,35 @@ public class SecurityConfig {
         http.addFilterAfter(tenantContextFilter, org.springframework.security.web.authentication.AnonymousAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    /**
+     * Register {@link ActiveTenantHeaderFilter} at {@link Ordered#HIGHEST_PRECEDENCE}
+     * (BE-AUTH-MT-001).
+     *
+     * <p>The Spring Security {@code springSecurityFilterChain} {@code DelegatingFilterProxy}
+     * is registered by Spring Boot at {@code SecurityProperties.DEFAULT_FILTER_ORDER}
+     * ({@code -100}). Registering this filter at {@code Integer.MIN_VALUE} guarantees
+     * it runs BEFORE the security chain — so by the time
+     * {@code BearerTokenAuthenticationFilter} invokes
+     * {@link GradingJwtAuthenticationConverter} (which calls
+     * {@link JwtTenantContextResolver#resolve}), the {@code X-Active-Tenant-Id}
+     * header is already bound on {@link ActiveTenantHeaderHolder}. We pin the order
+     * explicitly instead of relying on {@code @Order}/component-scan so the
+     * guarantee cannot silently regress.
+     *
+     * <p>Disabling the auto dispatcher-type registration is unnecessary; the
+     * filter is a {@link org.springframework.web.filter.OncePerRequestFilter} so a
+     * second pass (e.g. forwards) is a harmless no-op that re-binds the same value.
+     */
+    @Bean
+    public FilterRegistrationBean<ActiveTenantHeaderFilter> activeTenantHeaderFilterRegistration() {
+        FilterRegistrationBean<ActiveTenantHeaderFilter> registration =
+                new FilterRegistrationBean<>(new ActiveTenantHeaderFilter());
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        registration.addUrlPatterns("/*");
+        registration.setName("activeTenantHeaderFilter");
+        return registration;
     }
 
     private DevAuthFilter devAuthFilterIfActive(Environment env, DevUserAuthorityResolver authorityResolver) {

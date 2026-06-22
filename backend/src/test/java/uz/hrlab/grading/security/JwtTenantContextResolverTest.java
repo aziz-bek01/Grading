@@ -240,4 +240,189 @@ class JwtTenantContextResolverTest extends AbstractIntegrationTest {
                 .as("a member-resolvable active_tenant_id claim must select that tenant")
                 .isEqualTo(tenantB);
     }
+
+    // =====================================================================
+    // BE-AUTH-MT-001 — the X-Active-Tenant-Id HEADER path.
+    //
+    // PROD BUG: a multi-membership Super Admin (asr) sent a valid
+    // X-Active-Tenant-Id for a tenant he ACTIVELY belongs to, but the resolver
+    // could not read the header at JWT-auth time (RequestContextHolder was not
+    // bound inside the security filter chain), so pickActiveMembership fell
+    // through to AMBIGUOUS -> null -> 404 on tenant-scoped by-id reads.
+    //
+    // The fix makes the header reliably readable via ActiveTenantHeaderHolder
+    // (set by ActiveTenantHeaderFilter at HIGHEST precedence). These tests bind
+    // the holder EXACTLY as the production filter does, then assert the resolver
+    // behaviour. The token here carries NO active_tenant_id claim, so ONLY the
+    // header path can rescue the multi-membership user.
+    // =====================================================================
+
+    /**
+     * A multi-membership user WITH a valid {@code X-Active-Tenant-Id} header (a
+     * tenant they ACTIVELY belong to) and NO {@code active_tenant_id} claim
+     * resolves to THAT tenant — no longer ambiguous. This is the regression that
+     * caused the prod 404s on the approval-request detail read.
+     */
+    @Test
+    void multipleActiveTenantsWithValidHeaderResolvesToHeaderTenant() {
+        UUID tenantA = seedTenant(UUID.randomUUID());
+        UUID tenantB = seedTenant(UUID.randomUUID());
+        UUID userId = UUID.randomUUID();
+        String email = "hdr-valid+" + userId + "@hrlab.uz";
+
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'en-US', 0)",
+                userId, email, "Header Multi");
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                UUID.randomUUID(), userId, tenantA);
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                UUID.randomUUID(), userId, tenantB);
+
+        Jwt jwt = emailOnlyToken(email);
+
+        // The production filter binds the parsed header here, before auth runs.
+        ActiveTenantHeaderHolder.set(tenantB);
+        try {
+            TenantContext ctx = resolver.resolve(jwt);
+
+            assertThat(ctx.userId()).isEqualTo(userId);
+            assertThat(ctx.tenantId())
+                    .as("a valid X-Active-Tenant-Id header for a member tenant must select it "
+                            + "(no longer AMBIGUOUS -> null)")
+                    .isEqualTo(tenantB);
+        } finally {
+            ActiveTenantHeaderHolder.clear();
+        }
+    }
+
+    /**
+     * SECURITY: the SAME header mechanism for a tenant the user does NOT belong to
+     * must NOT resolve to it. With no claim and >1 ACTIVE membership, the
+     * non-member header is ignored and the resolver falls through to fail-closed
+     * (null) — no cross-tenant leak via a forged/stale header.
+     */
+    @Test
+    void multipleActiveTenantsWithHeaderForNonMemberTenantDoesNotLeak() {
+        UUID tenantA = seedTenant(UUID.randomUUID());
+        UUID tenantB = seedTenant(UUID.randomUUID());
+        UUID strangerTenant = seedTenant(UUID.randomUUID()); // user is NOT a member
+        UUID userId = UUID.randomUUID();
+        String email = "hdr-nonmember+" + userId + "@hrlab.uz";
+
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'en-US', 0)",
+                userId, email, "Header Stranger");
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                UUID.randomUUID(), userId, tenantA);
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                UUID.randomUUID(), userId, tenantB);
+
+        Jwt jwt = emailOnlyToken(email);
+
+        ActiveTenantHeaderHolder.set(strangerTenant);
+        try {
+            TenantContext ctx = resolver.resolve(jwt);
+
+            assertThat(ctx.userId()).isEqualTo(userId);
+            assertThat(ctx.tenantId())
+                    .as("a header pointing at a NON-member tenant must NOT resolve to it — "
+                            + "fall through to fail-closed, never leak")
+                    .isNull();
+            assertThat(ctx.tenantId()).isNotEqualTo(strangerTenant);
+        } finally {
+            ActiveTenantHeaderHolder.clear();
+        }
+    }
+
+    /**
+     * The header path NEVER overrides the membership cross-check even when it
+     * matches a real member tenant: a single-membership user is unaffected (the
+     * one membership wins) and remains correct whether or not a header is present.
+     */
+    @Test
+    void singleMembershipUserIsUnaffectedByHeader() {
+        UUID tenant = seedTenant(UUID.randomUUID());
+        UUID otherTenant = seedTenant(UUID.randomUUID());
+        UUID userId = UUID.randomUUID();
+        String email = "single+" + userId + "@hrlab.uz";
+
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'en-US', 0)",
+                userId, email, "Single Membership");
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                UUID.randomUUID(), userId, tenant);
+
+        Jwt jwt = emailOnlyToken(email);
+
+        // A header for a tenant the single-membership user does NOT belong to must
+        // not move them; their one membership stays authoritative.
+        ActiveTenantHeaderHolder.set(otherTenant);
+        try {
+            TenantContext ctx = resolver.resolve(jwt);
+            assertThat(ctx.tenantId())
+                    .as("single-membership user must resolve to their one tenant regardless of "
+                            + "a non-member header")
+                    .isEqualTo(tenant);
+        } finally {
+            ActiveTenantHeaderHolder.clear();
+        }
+    }
+
+    /**
+     * Fail-closed is UNCHANGED: multi-membership, NO header bound, NO claim →
+     * still null. This pins that the fix only makes a PRESENT header readable and
+     * does not auto-pick a default tenant.
+     */
+    @Test
+    void multipleActiveTenantsWithNoHeaderAndNoClaimStillFailsClosed() {
+        UUID tenantA = seedTenant(UUID.randomUUID());
+        UUID tenantB = seedTenant(UUID.randomUUID());
+        UUID userId = UUID.randomUUID();
+        String email = "noheader+" + userId + "@hrlab.uz";
+
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'en-US', 0)",
+                userId, email, "No Header Multi");
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                UUID.randomUUID(), userId, tenantA);
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                UUID.randomUUID(), userId, tenantB);
+
+        // Ensure NO header is bound for this thread.
+        ActiveTenantHeaderHolder.clear();
+        TenantContext ctx = resolver.resolve(emailOnlyToken(email));
+
+        assertThat(ctx.userId()).isEqualTo(userId);
+        assertThat(ctx.tenantId())
+                .as("no header + >1 membership + no claim must still fail closed (null)")
+                .isNull();
+    }
+
+    private static Jwt emailOnlyToken(String email) {
+        return Jwt.withTokenValue("token")
+                .header("alg", "RS256")
+                .subject("zitadel-" + UUID.randomUUID())
+                .claim("email", email)
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .build();
+    }
 }

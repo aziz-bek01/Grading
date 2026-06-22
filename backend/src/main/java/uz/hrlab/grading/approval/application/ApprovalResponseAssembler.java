@@ -1,6 +1,7 @@
 package uz.hrlab.grading.approval.application;
 
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.ActorNameResolver;
 import uz.hrlab.grading.approval.api.ApprovalRequestResponse;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
@@ -31,6 +32,23 @@ import java.util.function.Function;
  * The {@code tenantId} is server-derived. The resolvers themselves are
  * membership-aware / tenant-scoped and fail-soft (null → field omitted on the
  * wire by {@code @JsonInclude(NON_NULL)}).
+ *
+ * <h2>RLS / transaction boundary (prod fix — "Номсиз объект")</h2>
+ * The label resolver ({@link ApprovalEntityLabelResolver}) and name resolver
+ * ({@link ActorNameResolver}) read RLS-protected tables (evaluations, positions,
+ * methodology_versions/methodologies, grade_structures, job_profiles, users) via
+ * {@code findByIdAndTenantId}. Under the deployed {@code grading_runtime} role
+ * (FORCE ROW LEVEL SECURITY), those reads return ZERO rows unless the
+ * {@code app.tenant_id} RLS GUC is bound on the connection — which
+ * {@code RlsTenantSessionAspect} does with {@code SET LOCAL} ONLY inside an
+ * aspect-advised {@code @Transactional} method. The controller used to call
+ * {@code enrich}/{@code enrichAll} OUTSIDE any such transaction, so the GUC was
+ * unset and every label resolved to {@code null} ("Номсиз объект"). Marking
+ * these methods {@code @Transactional(readOnly = true)} makes the aspect bind the
+ * GUC for the resolver reads in EVERY caller (create/decide/cancel write
+ * responses included). When invoked from within a read service's transaction
+ * (getById / search), this simply joins that transaction (REQUIRED) — the GUC is
+ * already bound, so the join is a harmless re-bind of the same tenant id.
  */
 @Component
 public class ApprovalResponseAssembler {
@@ -45,6 +63,7 @@ public class ApprovalResponseAssembler {
     }
 
     /** Enrich a single already-tenant-loaded request (getById detail path). */
+    @Transactional(readOnly = true)
     public ApprovalRequestResponse enrich(UUID tenantId, ApprovalRequest request) {
         return enrichAll(tenantId, List.of(request)).get(0);
     }
@@ -56,6 +75,7 @@ public class ApprovalResponseAssembler {
      * distinct entity-type's id set (BE-6, currently sequential per id within a
      * type — kept tenant-scoped and fail-soft; page sizes are small).
      */
+    @Transactional(readOnly = true)
     public List<ApprovalRequestResponse> enrichAll(UUID tenantId, List<ApprovalRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             return List.of();

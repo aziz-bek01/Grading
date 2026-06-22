@@ -1,7 +1,6 @@
 package uz.hrlab.grading.approval.api;
 
 import jakarta.validation.Valid;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import uz.hrlab.grading.approval.application.ApprovalQueries;
+import uz.hrlab.grading.approval.application.ApprovalReadService;
 import uz.hrlab.grading.approval.application.ApprovalResponseAssembler;
 import uz.hrlab.grading.approval.application.ApproveStepUseCase;
 import uz.hrlab.grading.approval.application.CancelApprovalRequestUseCase;
@@ -25,10 +24,7 @@ import uz.hrlab.grading.approval.application.RejectStepUseCase;
 import uz.hrlab.grading.approval.application.RequestChangesUseCase;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.approval.domain.ApprovalRequestStatus;
-import uz.hrlab.grading.approval.infrastructure.ApprovalRequestJpaEntity;
-import uz.hrlab.grading.approval.infrastructure.ApprovalRequestRepository;
 import uz.hrlab.grading.common.api.PageResponse;
-import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.List;
@@ -45,8 +41,7 @@ public class ApprovalController {
     private final CancelApprovalRequestUseCase cancelUseCase;
     private final ListMyPendingApprovalsQuery inboxQuery;
     private final FindApprovalRequestByEntityQuery findByEntity;
-    private final ApprovalRequestRepository requests;
-    private final ApprovalQueries queries;
+    private final ApprovalReadService readService;
     private final ApprovalResponseAssembler assembler;
 
     public ApprovalController(CreateApprovalRequestUseCase createUseCase,
@@ -56,8 +51,7 @@ public class ApprovalController {
                               CancelApprovalRequestUseCase cancelUseCase,
                               ListMyPendingApprovalsQuery inboxQuery,
                               FindApprovalRequestByEntityQuery findByEntity,
-                              ApprovalRequestRepository requests,
-                              ApprovalQueries queries,
+                              ApprovalReadService readService,
                               ApprovalResponseAssembler assembler) {
         this.createUseCase = createUseCase;
         this.approveUseCase = approveUseCase;
@@ -66,8 +60,7 @@ public class ApprovalController {
         this.cancelUseCase = cancelUseCase;
         this.inboxQuery = inboxQuery;
         this.findByEntity = findByEntity;
-        this.requests = requests;
-        this.queries = queries;
+        this.readService = readService;
         this.assembler = assembler;
     }
 
@@ -104,34 +97,33 @@ public class ApprovalController {
         UUID tenantId = TenantContextHolder.requireActive().tenantId();
         if (entityType != null && entityId != null) {
             // Entity-scoped: return all (typically a small number) as a single page.
-            // Enriched (BE-5) — batch name + label resolution over the small set.
-            List<ApprovalRequestResponse> rows = assembler.enrichAll(tenantId,
+            // The find + batch enrich run inside ApprovalReadService's read
+            // transaction so the RLS GUC is bound for the request AND label reads.
+            return readService.searchByEntity(tenantId,
                     findByEntity.findAll(entityType, entityId));
-            return new PageResponse<>(rows, 0, Math.max(rows.size(), 1), rows.size(), 1);
         }
-        Page<ApprovalRequestJpaEntity> page = requests.search(tenantId, projectId,
-                entityType, status, pageable);
-        // Hydrate the page then batch-enrich (one user-name + per-type label pass).
-        List<ApprovalRequestResponse> enriched = assembler.enrichAll(tenantId,
-                page.getContent().stream().map(queries::hydrate).toList());
-        return new PageResponse<>(enriched, page.getNumber(), page.getSize(),
-                page.getTotalElements(), page.getTotalPages());
+        // Page + hydrate + batch-enrich in ONE read transaction (RLS GUC bound).
+        return readService.search(tenantId, projectId, entityType, status, pageable);
     }
 
     @GetMapping("/my-inbox")
     @PreAuthorize("hasAuthority('APPROVAL_REQUEST_DECIDE')")
     public List<ApprovalRequestResponse> inbox() {
         UUID tenantId = TenantContextHolder.requireActive().tenantId();
-        return assembler.enrichAll(tenantId, inboxQuery.list());
+        // enrichInbox runs the label/name resolution under a read transaction so
+        // the inbox cards resolve their labels (not "Номсиз объект").
+        return readService.enrichInbox(tenantId, inboxQuery.list());
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('APPROVAL_REQUEST_CREATE') or hasAuthority('APPROVAL_REQUEST_DECIDE')")
     public ApprovalRequestResponse getById(@PathVariable UUID id) {
         UUID tenantId = TenantContextHolder.requireActive().tenantId();
-        var req = requests.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(TenantAccessDeniedException::new);
-        return assembler.enrich(tenantId, queries.hydrate(req));
+        // The find + hydrate + enrich all execute inside ApprovalReadService's
+        // @Transactional(readOnly) method (a different bean → the RLS aspect
+        // fires, no self-invocation), so app.tenant_id is bound and the row +
+        // its entity label resolve under FORCE RLS (fixes 404 + "Номсиз объект").
+        return readService.getById(tenantId, id);
     }
 
     @PostMapping("/{id}/steps/{stepId}/approve")

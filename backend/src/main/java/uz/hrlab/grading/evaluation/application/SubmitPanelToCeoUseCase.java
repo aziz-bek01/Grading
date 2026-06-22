@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
+import uz.hrlab.grading.approval.application.ApprovalQueries;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestCommand;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
@@ -46,6 +47,7 @@ public class SubmitPanelToCeoUseCase {
     private final PanelRepository panels;
     private final PanelAssignmentRepository assignments;
     private final CreateApprovalRequestUseCase createApprovalRequest;
+    private final ApprovalQueries approvalQueries;
     private final AbacGate abacGate;
     private final AuditService audit;
 
@@ -53,12 +55,14 @@ public class SubmitPanelToCeoUseCase {
                                    PanelRepository panels,
                                    PanelAssignmentRepository assignments,
                                    CreateApprovalRequestUseCase createApprovalRequest,
+                                   ApprovalQueries approvalQueries,
                                    AbacGate abacGate,
                                    AuditService audit) {
         this.loader = loader;
         this.panels = panels;
         this.assignments = assignments;
         this.createApprovalRequest = createApprovalRequest;
+        this.approvalQueries = approvalQueries;
         this.abacGate = abacGate;
         this.audit = audit;
     }
@@ -95,22 +99,7 @@ public class SubmitPanelToCeoUseCase {
         panel.setSubmittedBy(ctx.userId());
         panels.save(panel);
 
-        // Reuse the existing single-step approval-request path — CEO gate.
-        UUID approvalRequestId = null;
-        try {
-            var req = createApprovalRequest.createSystem(
-                    CreateApprovalRequestCommand.singleStep(
-                            panel.getProjectId(),
-                            ApprovalEntityType.EVALUATION_PANEL,
-                            panel.getId(),
-                            PermissionCodes.EVALUATION_PANEL_APPROVE));
-            approvalRequestId = req == null ? null : req.id();
-        } catch (RuntimeException openExisting) {
-            if (!"ANOTHER_PENDING_REQUEST_EXISTS".equals(
-                    openExisting instanceof BaseDomainException b ? b.getCode() : null)) {
-                throw openExisting;
-            }
-        }
+        UUID approvalRequestId = openCeoApprovalIfAbsent(ctx.tenantId(), panel);
 
         audit.record(AuditEvent.builder()
                 .tenantId(ctx.tenantId())
@@ -187,22 +176,7 @@ public class SubmitPanelToCeoUseCase {
         panel.setSubmittedBy(actorUserId);
         panels.save(panel);
 
-        // Reuse the existing single-step approval-request path — CEO gate.
-        UUID approvalRequestId = null;
-        try {
-            var req = createApprovalRequest.createSystem(
-                    CreateApprovalRequestCommand.singleStep(
-                            panel.getProjectId(),
-                            ApprovalEntityType.EVALUATION_PANEL,
-                            panel.getId(),
-                            PermissionCodes.EVALUATION_PANEL_APPROVE));
-            approvalRequestId = req == null ? null : req.id();
-        } catch (RuntimeException openExisting) {
-            if (!"ANOTHER_PENDING_REQUEST_EXISTS".equals(
-                    openExisting instanceof BaseDomainException b ? b.getCode() : null)) {
-                throw openExisting;
-            }
-        }
+        UUID approvalRequestId = openCeoApprovalIfAbsent(ctx.tenantId(), panel);
 
         audit.record(AuditEvent.builder()
                 .tenantId(ctx.tenantId())
@@ -216,5 +190,51 @@ public class SubmitPanelToCeoUseCase {
                         : "approvalRequest=" + approvalRequestId)
                 .build());
         return panel.toDomain();
+    }
+
+    /**
+     * Open the single-step CEO approval ({@code EVALUATION_PANEL} +
+     * {@code EVALUATION_PANEL_APPROVE}) for the panel — idempotently and WITHOUT
+     * poisoning the caller's transaction.
+     *
+     * <h3>Why the pre-check (not a try/catch)</h3>
+     * A panel can already carry a PENDING {@code EVALUATION_PANEL} request — e.g.
+     * after a reopen→re-average, or a manual+auto submit race. The previous code
+     * called {@code createSystem} and CAUGHT {@code ANOTHER_PENDING_REQUEST_EXISTS}.
+     * But {@code createSystem} is itself {@code @Transactional} (REQUIRED): when it
+     * throws, the Spring tx interceptor marks the SHARED transaction rollback-only
+     * BEFORE the catch runs, so the swallow could not save it — the outer
+     * evaluator-score-save then failed with {@code UnexpectedRollbackException}
+     * (the reopen re-average regression). Pre-checking for an existing PENDING
+     * request and SKIPPING the create when present means no nested {@code @Transactional}
+     * ever throws, so the transaction is never marked rollback-only.
+     *
+     * @return the new approval request id, or {@code null} when an existing PENDING
+     *         request was reused (idempotent no-op)
+     */
+    private UUID openCeoApprovalIfAbsent(UUID tenantId, EvaluationPanelJpaEntity panel) {
+        if (approvalQueries.findActivePendingForEntity(
+                tenantId, ApprovalEntityType.EVALUATION_PANEL, panel.getId()) != null) {
+            // A CEO request is already pending for this panel — reuse it.
+            return null;
+        }
+        try {
+            var req = createApprovalRequest.createSystem(
+                    CreateApprovalRequestCommand.singleStep(
+                            panel.getProjectId(),
+                            ApprovalEntityType.EVALUATION_PANEL,
+                            panel.getId(),
+                            PermissionCodes.EVALUATION_PANEL_APPROVE));
+            return req == null ? null : req.id();
+        } catch (RuntimeException openExisting) {
+            // Defense-in-depth for a concurrent insert that slipped past the
+            // pre-check: only the idempotency code is tolerated, anything else
+            // propagates (and legitimately rolls back).
+            if ("ANOTHER_PENDING_REQUEST_EXISTS".equals(
+                    openExisting instanceof BaseDomainException b ? b.getCode() : null)) {
+                return null;
+            }
+            throw openExisting;
+        }
     }
 }

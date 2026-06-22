@@ -15,7 +15,6 @@ import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
 import uz.hrlab.grading.evaluation.application.PanelQueries;
 import uz.hrlab.grading.evaluation.application.ReopenApprovedPanelForExpertUseCase;
-import uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCase;
 import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreCommand;
 import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
@@ -102,7 +101,6 @@ class PanelReopenForExpertIntegrationTest extends AbstractIntegrationTest {
     @Autowired AssignEvaluatorUseCase assignEvaluatorUseCase;
     @Autowired LockRosterUseCase lockRosterUseCase;
     @Autowired UpsertEvaluationScoreUseCase upsertUseCase;
-    @Autowired SubmitPanelToCeoUseCase submitPanelToCeoUseCase;
     @Autowired ApprovePanelUseCase approvePanelUseCase;
     @Autowired ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
     @Autowired PanelQueries panelQueries;
@@ -224,9 +222,13 @@ class PanelReopenForExpertIntegrationTest extends AbstractIntegrationTest {
 
         EvaluationPanelJpaEntity panel = panels.findByIdAndTenantId(panelId, fx.tenantId)
                 .orElseThrow();
+        // Consolidated one-submit flow (48f0350): completing the expert re-averages
+        // (denominator 3 -> 4) AND auto-submits to the CEO in the same transaction,
+        // so the panel lands on SUBMITTED. The re-average is still proven by the
+        // raw total + averagedAt being (re)populated and the contributing count = 4.
         assertThat(panel.getStatus())
-                .as("once the expert completes, the panel re-averages")
-                .isEqualTo(EvaluationPanelStatus.AVERAGED);
+                .as("once the expert completes, the panel re-averages and auto-submits to the CEO")
+                .isEqualTo(EvaluationPanelStatus.SUBMITTED);
         assertThat(panel.getRawTotalScore()).isNotNull();
         assertThat(panel.getAveragedAt()).isNotNull();
         long completed = assignments.findAllByTenantIdAndPanelId(fx.tenantId, panelId).stream()
@@ -300,16 +302,14 @@ class PanelReopenForExpertIntegrationTest extends AbstractIntegrationTest {
                         seat.getEvaluationId(), factorId, fx.firstLevelFor(factorId), "score"));
             }
         }
-        EvaluationPanelJpaEntity averaged = panels.findByIdAndTenantId(panelId, fx.tenantId)
-                .orElseThrow();
-        assertThat(averaged.getStatus()).isEqualTo(EvaluationPanelStatus.AVERAGED);
-
-        // Drive the panel to SUBMITTED first: ApprovePanelUseCase.onApproved is a
-        // SUBMITTED -> APPROVED transition (it fail-softs on any other status), so
-        // an AVERAGED panel would otherwise be left untouched and stay AVERAGED.
-        // This mirrors the production flow AVERAGED -> SUBMITTED (submit to CEO)
-        // -> APPROVED (approval decision -> PanelApprovalOutcomeListener -> onApproved).
-        submitPanelToCeoUseCase.submit(panelId);
+        // Consolidated one-submit panel→CEO flow (48f0350): scoring the LAST
+        // required evaluator auto-averages (AWAITING_EVALUATIONS -> AVERAGED) AND
+        // auto-submits to the CEO (AVERAGED -> SUBMITTED, opening the single
+        // EVALUATION_PANEL approval) inside the same transaction via
+        // PanelCompletionWatcher. So the panel is already SUBMITTED here — there is
+        // no separate manual "submit to CEO" step, and asserting an intermediate
+        // AVERAGED state is stale. ApprovePanelUseCase.onApproved then performs the
+        // SUBMITTED -> APPROVED transition (it fail-softs on any other status).
         EvaluationPanelJpaEntity submitted = panels.findByIdAndTenantId(panelId, fx.tenantId)
                 .orElseThrow();
         assertThat(submitted.getStatus()).isEqualTo(EvaluationPanelStatus.SUBMITTED);

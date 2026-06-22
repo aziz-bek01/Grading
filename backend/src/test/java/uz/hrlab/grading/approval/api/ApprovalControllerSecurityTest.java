@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import uz.hrlab.grading.access.application.ActorNameResolver;
 import uz.hrlab.grading.approval.application.ApprovalEntityLabelResolver;
 import uz.hrlab.grading.approval.application.ApprovalQueries;
+import uz.hrlab.grading.approval.application.ApprovalReadService;
 import uz.hrlab.grading.approval.application.ApprovalResponseAssembler;
 import uz.hrlab.grading.approval.application.ApproveStepUseCase;
 import uz.hrlab.grading.approval.application.CancelApprovalRequestUseCase;
@@ -64,7 +65,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 type = FilterType.REGEX,
                 pattern = "uz\\.hrlab\\.grading\\.security\\..*"))
 @Import({WebMvcSecurityTestConfig.class, GlobalExceptionHandler.class,
-        ApprovalResponseAssembler.class})
+        ApprovalResponseAssembler.class, ApprovalReadService.class})
 class ApprovalControllerSecurityTest {
 
     @Autowired MockMvc mvc;

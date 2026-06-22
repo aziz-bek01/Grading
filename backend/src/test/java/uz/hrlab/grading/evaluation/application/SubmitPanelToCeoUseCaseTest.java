@@ -8,11 +8,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import uz.hrlab.grading.access.application.AbacGate;
+import uz.hrlab.grading.approval.application.ApprovalQueries;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestCommand;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.approval.domain.ApprovalRequest;
 import uz.hrlab.grading.approval.domain.ApprovalRequestStatus;
+import uz.hrlab.grading.approval.infrastructure.ApprovalRequestJpaEntity;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
@@ -39,6 +41,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -57,6 +60,7 @@ class SubmitPanelToCeoUseCaseTest {
     @Mock PanelRepository panels;
     @Mock PanelAssignmentRepository assignments;
     @Mock CreateApprovalRequestUseCase createApprovalRequest;
+    @Mock ApprovalQueries approvalQueries;
     @Mock AbacGate abacGate;
     @Mock AuditService audit;
 
@@ -72,7 +76,7 @@ class SubmitPanelToCeoUseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new SubmitPanelToCeoUseCase(
-                loader, panels, assignments, createApprovalRequest, abacGate, audit);
+                loader, panels, assignments, createApprovalRequest, approvalQueries, abacGate, audit);
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         positionId = UUID.randomUUID();
@@ -221,14 +225,20 @@ class SubmitPanelToCeoUseCaseTest {
         EvaluationPanelJpaEntity panel = stubPanelForSystem(EvaluationPanelStatus.AVERAGED);
         when(assignments.findAllByTenantIdAndPanelId(tenantId, panelId)).thenReturn(List.of(
                 completedSeat(), completedSeat(), completedSeat()));
-        // A pending CEO request already exists — the swallow must keep us SUBMITTED.
-        when(createApprovalRequest.createSystem(any())).thenThrow(
-                new uz.hrlab.grading.approval.domain.ApprovalTransitionRejectedException(
-                        "ANOTHER_PENDING_REQUEST_EXISTS", "already pending"));
+        // A pending CEO request already exists. The PRE-CHECK (not a try/catch over
+        // a nested @Transactional) detects it and SKIPS createSystem entirely, so
+        // no nested transaction can mark the shared tx rollback-only (the reopen
+        // re-average regression). The panel still ends SUBMITTED, audited as reused.
+        when(approvalQueries.findActivePendingForEntity(
+                tenantId, ApprovalEntityType.EVALUATION_PANEL, panelId))
+                .thenReturn(mock(ApprovalRequestJpaEntity.class));
 
         useCase.submitSystem(panelId, UUID.randomUUID());
 
         assertThat(panel.getStatus()).isEqualTo(EvaluationPanelStatus.SUBMITTED);
+        // createSystem is NEVER invoked when a pending request already exists —
+        // this is what keeps the transaction clean (no rollback-only mark).
+        verify(createApprovalRequest, never()).createSystem(any());
         ArgumentCaptor<AuditEvent> audited = ArgumentCaptor.forClass(AuditEvent.class);
         verify(audit).record(audited.capture());
         assertThat(audited.getValue().action())

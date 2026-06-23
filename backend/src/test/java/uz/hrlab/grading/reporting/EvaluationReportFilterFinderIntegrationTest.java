@@ -235,9 +235,15 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
         }
 
         UUID version(UUID methodology, int number) {
+            // The methodology_versions trigger prevent_mv_status_regression() (tenant
+            // schema 014) rejects a direct INSERT with status != DRAFT — new versions
+            // must be created DRAFT and only reach APPROVED via the UPDATE workflow.
+            // findForEvaluationReport filters evaluations by methodology_version_id,
+            // never by the version's status, and evaluations only FK the version (no
+            // approved-status requirement), so DRAFT is sufficient for this finder test.
             MethodologyVersionJpaEntity v = methodologyVersions.save(new MethodologyVersionJpaEntity(
                     UUID.randomUUID(), tenantId, methodology, number,
-                    MethodologyVersionStatus.APPROVED, ScoringMode.DIRECT_POINTS, null, null));
+                    MethodologyVersionStatus.DRAFT, ScoringMode.DIRECT_POINTS, null, null));
             return v.getId();
         }
 

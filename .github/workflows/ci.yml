@@ -339,6 +339,50 @@ jobs:
           retention-days: 7
 
   # ===========================================================================
+  # Stage 7c — BLOCKING: Liquibase migration gate (LiquibaseMigrationTest).
+  #
+  # Applies the FULL changelog incl. the `seeds` context against a real
+  # Testcontainers Postgres. Catches 046-class errors (bad ON CONFLICT clause
+  # after a partial-unique-index redesign) at PR time, before images are built.
+  #
+  # Runs ONLY LiquibaseMigrationTest (-Dgroups=migration) — NOT the full
+  # integration suite — to stay fast and honour the team's decision to keep
+  # heavy integration tests out of the default PR gate.
+  #
+  # The test profile (application-test.yml) activates Liquibase contexts
+  # `control-plane,seeds,test-roles,mode-shared` — includes `seeds`, so any
+  # bad changeset in the seeds context (e.g. 046) is caught here.
+  # ===========================================================================
+  backend-migration-gate:
+    name: "07c · migration-gate [BLOCKING]"
+    runs-on: ubuntu-22.04
+    needs: [backend-unit-test]
+    timeout-minutes: 15
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: "Liquibase migration gate (LiquibaseMigrationTest)"
+        working-directory: backend
+        env:
+          GRADING_REQUIRE_DOCKER: "true"
+        run: ./mvnw ${{ env.MAVEN_CLI_OPTS }} test -Dgroups=migration
+
+      - name: Upload Surefire reports
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-migration
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  # ===========================================================================
   # Stage 8 — Backend integration tests (Testcontainers). PR-from-fork skipped.
   # ===========================================================================
   backend-integration-test:
@@ -466,6 +510,7 @@ jobs:
       - backend-audit
       - backend-salary
       - backend-arch
+      - backend-migration-gate
       - backend-deps-scan
       - secret-scan
     timeout-minutes: 30

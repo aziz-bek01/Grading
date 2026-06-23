@@ -128,12 +128,73 @@ jobs:
           cache-to: type=gha,scope=frontend,mode=max
 
   # ---------------------------------------------------------------------------
+  # Migration gate — apply the FULL Liquibase changelog (including the `seeds`
+  # context) against a real Postgres BEFORE any production VPS roll.
+  #
+  # WHY HERE (not only in ci.yml):
+  #   deploy.yml runs independently of ci.yml on every push to main. Putting
+  #   the gate here is the only way to guarantee the VPS roll cannot proceed
+  #   on a bad migration regardless of whether ci.yml is green.
+  #
+  # IMPLEMENTATION — reuse LiquibaseMigrationTest (@Tag("migration")):
+  #   The existing test boots a full Spring context via Testcontainers against
+  #   a real Postgres-16 container. AbstractIntegrationTest activates the
+  #   `test` Spring profile, which sets Liquibase contexts to
+  #   `control-plane,seeds,test-roles,mode-shared` — a SUPERSET of the
+  #   production `control-plane,seeds,mode-shared` set, explicitly including
+  #   `seeds`. The full changelog (db.changelog-master.yaml) therefore runs,
+  #   including changeset 046-seed-client-ceo-role.yaml (context: seeds).
+  #   Any changeset error (like the 046 ON CONFLICT incident) surfaces as a
+  #   Spring context initialisation failure → Surefire test failure → this job
+  #   fails → `deploy` is blocked before the VPS roll begins.
+  #
+  # SCOPE — targeted, not the whole integration suite:
+  #   -Dgroups=migration runs ONLY LiquibaseMigrationTest (the single class
+  #   annotated @Tag("migration")). The broader integration suite (tenant-
+  #   isolation, audit, etc.) is deliberately excluded so this gate stays fast
+  #   (~3–4 min) and does not reintroduce the quality-debt that motivated
+  #   the split in ci.yml.
+  # ---------------------------------------------------------------------------
+  migrate-gate:
+    name: "migrate-gate [BLOCKING]"
+    runs-on: ubuntu-22.04
+    needs: build-images
+    timeout-minutes: 15
+    env:
+      JAVA_VERSION: "21"
+      JAVA_DIST: temurin
+      MAVEN_CLI_OPTS: "-B -ntp -e -Dstyle.color=always"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DIST }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: "Liquibase migration gate (LiquibaseMigrationTest)"
+        working-directory: backend
+        env:
+          GRADING_REQUIRE_DOCKER: "true"
+        run: ./mvnw ${{ env.MAVEN_CLI_OPTS }} test -Dgroups=migration
+
+      - name: Upload Surefire reports
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrate-gate-surefire-${{ github.sha }}
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
   # Gate — only deploy when the VPS secrets are configured.
   # ---------------------------------------------------------------------------
   gate:
     name: gate · deploy?
     runs-on: ubuntu-22.04
-    needs: build-images
+    needs: [build-images, migrate-gate]
     timeout-minutes: 2
     outputs:
       should_deploy: ${{ steps.decide.outputs.should_deploy }}

@@ -1,17 +1,23 @@
 package uz.hrlab.grading.reporting.application;
 
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.reporting.domain.ReportFormat;
+import uz.hrlab.grading.reporting.domain.ReportStatus;
 import uz.hrlab.grading.reporting.domain.ReportType;
 import uz.hrlab.grading.reporting.infrastructure.ReportGenerationJob;
+import uz.hrlab.grading.reporting.infrastructure.ReportJpaEntity;
 import uz.hrlab.grading.reporting.infrastructure.ReportRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -31,6 +37,8 @@ class RequestReportUseCaseAuditTest {
     private final ReportRepository reports = mock(ReportRepository.class);
     private final ReportGenerationJob worker = mock(ReportGenerationJob.class);
     private final AuditService audit = mock(AuditService.class);
+    private final CancelReportUseCase cancelUseCase = mock(CancelReportUseCase.class);
+    private final EntityManager em = mock(EntityManager.class);
 
     private RequestReportUseCase newUseCase() {
         EvaluationReportFilterValidator validator =
@@ -40,7 +48,10 @@ class RequestReportUseCaseAuditTest {
         when(validator.validate(any(), any(), any())).thenAnswer(inv ->
                 uz.hrlab.grading.reporting.application.template.EvaluationReportFilter
                         .parse(inv.getArgument(2), new com.fasterxml.jackson.databind.ObjectMapper()));
-        return new RequestReportUseCase(reports, worker, audit, validator);
+        RequestReportUseCase useCase =
+                new RequestReportUseCase(reports, worker, audit, validator, cancelUseCase);
+        ReflectionTestUtils.setField(useCase, "em", em);
+        return useCase;
     }
 
     @AfterEach
@@ -66,6 +77,30 @@ class RequestReportUseCaseAuditTest {
         assertThat(cap.getValue().reason())
                 .isEqualTo("type=EVALUATION_SUMMARY format=PDF")
                 .doesNotContain("filters=");
+    }
+
+    @Test
+    void supersedesAnOrphanedInFlightReportBeforeInserting() {
+        actWithReportCreate();
+        UUID projectId = UUID.randomUUID();
+        UUID staleId = UUID.randomUUID();
+        ReportJpaEntity stale = new ReportJpaEntity(
+                staleId, UUID.randomUUID(), projectId,
+                ReportType.EVALUATION_SUMMARY, ReportFormat.PDF,
+                ReportStatus.REQUESTED, "stale", UUID.randomUUID(),
+                OffsetDateTime.now(), null, "ru-RU", false, false);
+        // An orphaned in-flight report exists for this (tenant, requestor, type, project).
+        when(reports.findAllByTenantIdAndRequestedByAndReportTypeAndProjectIdAndStatusIn(
+                any(), any(), any(), any(), any()))
+                .thenReturn(List.of(stale));
+
+        newUseCase().request(ReportType.EVALUATION_SUMMARY, ReportFormat.PDF, projectId, null);
+
+        // The stale row is cancelled and the cancel is flushed BEFORE the new insert.
+        verify(cancelUseCase).cancel(staleId);
+        verify(em).flush();
+        // The new report is still persisted (the request succeeds, not rejected).
+        verify(reports).save(any(ReportJpaEntity.class));
     }
 
     @Test

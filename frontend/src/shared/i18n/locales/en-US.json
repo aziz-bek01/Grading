@@ -1765,7 +1765,8 @@
       "request_failed": "Couldn't create the report request (code: {{code}}). Reference: {{ref}}.",
       "invalid_methodology": "One or more selected methodology versions aren't available here. Clear the methodology filter and try again.",
       "malformed_filter": "The report filter couldn't be read. Clear the filters and try again.",
-      "permission_denied": "You don't have permission to request reports."
+      "permission_denied": "You don't have permission to request reports.",
+      "validation_blocked": "Couldn't submit the request — some fields are invalid: {{fields}}. Please check your inputs and try again."
     }
   },
   "users": {

@@ -84,36 +84,49 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
 
   if (!open) return null;
 
-  const onSubmit = form.handleSubmit(async (vals) => {
-    setSubmitting(true);
-    setServerError(null);
-    try {
-      const report = await mutation.mutateAsync({
-        ...vals,
-        filterParams: vals.filterParams || null,
-        evaluationFilter:
-          supportsEvaluationFilter(vals.reportType)
-            ? {
-                methodology_version_ids: vals.evaluationFilter?.methodologyVersionIds ?? [],
-                date_from: vals.evaluationFilter?.dateFrom ?? '',
-                date_to: vals.evaluationFilter?.dateTo ?? '',
-                evaluator_user_ids: vals.evaluationFilter?.evaluatorUserIds ?? [],
-              }
-            : null,
-      });
-      onCreated?.(report);
-      onClose();
-    } catch (err) {
-      // Surface the failure instead of swallowing it — a request that 4xx/5xx'd
-      // previously left the dialog open with NO feedback (looked like "nothing
-      // happened"). Map the known request-time filter codes to friendly copy;
-      // fall back to a generic message that carries the code + correlation id so
-      // the failure is reportable.
-      setServerError(describeRequestError(err, t));
-    } finally {
-      setSubmitting(false);
-    }
-  });
+  const onSubmit = form.handleSubmit(
+    async (vals) => {
+      setSubmitting(true);
+      setServerError(null);
+      try {
+        const report = await mutation.mutateAsync({
+          ...vals,
+          filterParams: vals.filterParams || null,
+          evaluationFilter:
+            supportsEvaluationFilter(vals.reportType)
+              ? {
+                  methodology_version_ids: vals.evaluationFilter?.methodologyVersionIds ?? [],
+                  date_from: vals.evaluationFilter?.dateFrom ?? '',
+                  date_to: vals.evaluationFilter?.dateTo ?? '',
+                  evaluator_user_ids: vals.evaluationFilter?.evaluatorUserIds ?? [],
+                }
+              : null,
+        });
+        onCreated?.(report);
+        onClose();
+      } catch (err) {
+        // Surface the failure instead of swallowing it — a request that 4xx/5xx'd
+        // previously left the dialog open with NO feedback (looked like "nothing
+        // happened"). Map the known request-time filter codes to friendly copy;
+        // fall back to a generic message that carries the code + correlation id so
+        // the failure is reportable.
+        setServerError(describeRequestError(err, t));
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    (errors) => {
+      // Client-side validation blocked the submit BEFORE any network call, so the
+      // catch above never runs. Without this the click was a silent no-op when an
+      // invalid field has no inline message (e.g. projectId) — which reads exactly
+      // as "the request isn't even being created". Name the offending field(s) so
+      // the block is visible and reportable.
+      const fields = Object.keys(errors);
+      setServerError(
+        t('report.error.validation_blocked', { fields: fields.join(', ') || '—' }),
+      );
+    },
+  );
 
   return (
     <div

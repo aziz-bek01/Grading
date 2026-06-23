@@ -389,6 +389,25 @@ describe('ReportRequestDialog — EVALUATION_SUMMARY filter panel', () => {
     expect(screen.getByTestId('report-request-dialog')).toBeInTheDocument();
   });
 
+  it('surfaces a validation-blocked submit (no network call) instead of a silent no-op', async () => {
+    stubFilterPanelData();
+    const postSpy = vi.spyOn(httpClient, 'post');
+    // An invalid projectId fails the Zod `projectId.uuid()` rule, which has NO
+    // inline field message in the dialog — previously the click did nothing.
+    render(
+      renderWithProviders(
+        <ReportRequestDialog open projectId="not-a-uuid" onClose={() => {}} />,
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId('report-request-submit'));
+
+    const banner = await screen.findByTestId('report-request-error');
+    expect(banner.textContent ?? '').not.toHaveLength(0);
+    // Validation blocked it BEFORE any network call.
+    expect(postSpy).not.toHaveBeenCalled();
+  });
+
   it('shows the backend error code + reference for an unmapped failure', async () => {
     stubFilterPanelData();
     vi.spyOn(httpClient, 'post').mockRejectedValue(

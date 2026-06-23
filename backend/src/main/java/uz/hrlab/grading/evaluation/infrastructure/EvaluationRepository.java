@@ -2,6 +2,7 @@ package uz.hrlab.grading.evaluation.infrastructure;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import uz.hrlab.grading.common.infrastructure.TenantAwareRepository;
@@ -14,7 +15,8 @@ import java.util.UUID;
 
 /** Evaluation repository — tenant-aware. */
 public interface EvaluationRepository
-        extends TenantAwareRepository<EvaluationJpaEntity, UUID> {
+        extends TenantAwareRepository<EvaluationJpaEntity, UUID>,
+                JpaSpecificationExecutor<EvaluationJpaEntity> {
 
     Page<EvaluationJpaEntity> findAllByTenantIdAndProjectId(
             UUID tenantId, UUID projectId, Pageable pageable);
@@ -375,21 +377,10 @@ public interface EvaluationRepository
      * methodology-container filter: reports are an audit/history tool and must
      * include archived-container history (PRD AC-1.3).
      */
-    @Query("""
-           SELECT e FROM EvaluationJpaEntity e
-           WHERE e.tenantId = :tenantId
-             AND e.projectId = :projectId
-             AND (:methodologyVersionIds IS NULL OR e.methodologyVersionId IN (:methodologyVersionIds))
-             AND (:evaluatorUserIds IS NULL OR e.evaluatorUserId IN (:evaluatorUserIds))
-             AND (:dateFrom IS NULL OR e.submittedAt >= :dateFrom)
-             AND (:dateTo IS NULL OR e.submittedAt <= :dateTo)
-           """)
-    Page<EvaluationJpaEntity> findForEvaluationReport(
-            @Param("tenantId") UUID tenantId,
-            @Param("projectId") UUID projectId,
-            @Param("methodologyVersionIds") Collection<UUID> methodologyVersionIds,
-            @Param("evaluatorUserIds") Collection<UUID> evaluatorUserIds,
-            @Param("dateFrom") java.time.OffsetDateTime dateFrom,
-            @Param("dateTo") java.time.OffsetDateTime dateTo,
-            Pageable pageable);
+    // The evaluation-report filter is built dynamically as a JPA Specification
+    // (EvaluationReportSpecifications.forReport) and executed via the inherited
+    // JpaSpecificationExecutor.findAll(Specification, Pageable). A static @Query
+    // with the (:param IS NULL OR ...) idiom bound untyped NULLs that PostgreSQL
+    // rejects ("could not determine data type of parameter"); the Specification
+    // adds a predicate only when its dimension is present, so no null is ever bound.
 }

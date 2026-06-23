@@ -9,6 +9,7 @@ import uz.hrlab.grading.audit.infrastructure.SystemAuditLogJpaEntity;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogRepository;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationReportSpecifications;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
@@ -315,15 +316,16 @@ public class DefaultReportDataPort implements ReportDataPort {
                 .map(p -> titleForProject(p, locale))
                 .orElse("—");
 
-        // Apply every filter dimension in the JPQL WHERE (NOT in-memory), so the
-        // page cap caps the FILTERED set (PRD §5 EC-5). Empty collections are
-        // normalized to null because portable JPQL has no `IN ()`; the finder's
-        // `(:list IS NULL OR ...)` guard then disables that dimension.
-        var page = evaluations.findForEvaluationReport(
-                tenantId, projectId,
-                emptyToNull(activeFilter.methodologyVersionIds()),
-                emptyToNull(activeFilter.evaluatorUserIds()),
-                activeFilter.dateFrom(), activeFilter.dateTo(),
+        // Apply every filter dimension in the DB WHERE (NOT in-memory), so the page
+        // cap caps the FILTERED set (PRD §5 EC-5). Built as a dynamic Specification
+        // (a predicate per PRESENT dimension) so an absent dimension binds no NULL —
+        // PostgreSQL rejects untyped NULL binds in the `(:param IS NULL OR ...)` idiom.
+        var page = evaluations.findAll(
+                EvaluationReportSpecifications.forReport(
+                        tenantId, projectId,
+                        activeFilter.methodologyVersionIds(),
+                        activeFilter.evaluatorUserIds(),
+                        activeFilter.dateFrom(), activeFilter.dateTo()),
                 PageRequest.of(0, MAX_EVALUATIONS));
 
         // Collect distinct methodology version ids; build the column order
@@ -493,11 +495,6 @@ public class DefaultReportDataPort implements ReportDataPort {
         return new FilterEcho(period, evaluators, methodologies);
     }
 
-    /** Normalize an empty/null collection to {@code null} for the null-safe IN-list guard. */
-    private static <T> java.util.Collection<T> emptyToNull(java.util.Collection<T> c) {
-        return (c == null || c.isEmpty()) ? null : c;
-    }
-
     @Override
     public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale,
                                          EvaluationReportFilter filter) {
@@ -531,11 +528,12 @@ public class DefaultReportDataPort implements ReportDataPort {
         var evalPage = activeFilter.isEmpty()
                 ? evaluations.findAllByTenantIdAndProjectId(tenantId, projectId,
                         PageRequest.of(0, MAX_EVALUATIONS))
-                : evaluations.findForEvaluationReport(
-                        tenantId, projectId,
-                        emptyToNull(activeFilter.methodologyVersionIds()),
-                        emptyToNull(activeFilter.evaluatorUserIds()),
-                        activeFilter.dateFrom(), activeFilter.dateTo(),
+                : evaluations.findAll(
+                        EvaluationReportSpecifications.forReport(
+                                tenantId, projectId,
+                                activeFilter.methodologyVersionIds(),
+                                activeFilter.evaluatorUserIds(),
+                                activeFilter.dateFrom(), activeFilter.dateTo()),
                         PageRequest.of(0, MAX_EVALUATIONS));
         int evaluatedCount = (int) evalPage.getTotalElements();
         int approved = 0;

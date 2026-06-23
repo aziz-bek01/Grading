@@ -12,6 +12,7 @@
 import { httpClient } from '@/shared/api/httpClient';
 import { downloadAuthenticatedFile } from '@/shared/api/downloadFile';
 import { mapPageEnvelope, pick, pickBool, type Raw } from '@/shared/api/wireAdapter';
+import { supportsEvaluationFilter } from '../schemas/reportSchemas';
 import type {
   EvaluationReportFilter,
   Report,
@@ -108,7 +109,7 @@ export async function requestReport(payload: ReportRequestPayload): Promise<Repo
   // MUST use snake_case keys. Posting the camelCase payload directly made
   // `report_type` / `project_id` deserialize to null -> 400 VALIDATION_FAILED.
   const filterParams =
-    payload.reportType === 'EVALUATION_SUMMARY' && payload.evaluationFilter
+    supportsEvaluationFilter(payload.reportType) && payload.evaluationFilter
       ? serializeEvaluationReportFilter(payload.evaluationFilter)
       : payload.filterParams ?? null;
   const body = {

@@ -141,9 +141,10 @@ describe('ReportRequestDialog — EVALUATION_SUMMARY filter panel', () => {
     vi.restoreAllMocks();
   });
 
-  it('does not render the filter panel for non-EVALUATION_SUMMARY types', () => {
+  it('does not render the filter panel for GRADE_DISTRIBUTION (non-filterable type)', () => {
     stubFilterPanelData();
     openDialog();
+    // Default type is GRADE_DISTRIBUTION — panel must be absent.
     expect(screen.queryByTestId('report-request-evaluation-filters')).toBeNull();
   });
 
@@ -253,5 +254,107 @@ describe('ReportRequestDialog — EVALUATION_SUMMARY filter panel', () => {
     const [, body] = postSpy.mock.calls[0] as [string, Record<string, unknown>];
     // No filters selected -> filter_params is null, not '{}' or an empty-array JSON blob.
     expect(body.filter_params).toBeNull();
+  });
+
+  // -----------------------------------------------------------------------
+  // EXECUTIVE_SUMMARY — same filter panel, same serializer, no duplication
+  // -----------------------------------------------------------------------
+
+  it('renders the filter panel for EXECUTIVE_SUMMARY', async () => {
+    stubFilterPanelData();
+    openDialog();
+    fireEvent.change(screen.getByTestId('report-request-type'), {
+      target: { value: 'EXECUTIVE_SUMMARY' },
+    });
+
+    expect(screen.getByTestId('report-request-evaluation-filters')).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`report-filter-methodology-version-${VERSION_ID}`),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('report-filter-date-from')).toBeInTheDocument();
+    expect(screen.getByTestId('report-filter-date-to')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`report-filter-evaluator-${EVALUATOR_ID}`),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it('does NOT render the filter panel when switching from EXECUTIVE_SUMMARY to GRADE_DISTRIBUTION', () => {
+    stubFilterPanelData();
+    openDialog();
+    fireEvent.change(screen.getByTestId('report-request-type'), {
+      target: { value: 'EXECUTIVE_SUMMARY' },
+    });
+    expect(screen.getByTestId('report-request-evaluation-filters')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('report-request-type'), {
+      target: { value: 'GRADE_DISTRIBUTION' },
+    });
+    expect(screen.queryByTestId('report-request-evaluation-filters')).toBeNull();
+  });
+
+  it('serializes filter_params with snake_case keys for EXECUTIVE_SUMMARY', async () => {
+    stubFilterPanelData();
+    const postSpy = vi.spyOn(httpClient, 'post').mockResolvedValue({
+      data: {
+        id: 'report-3',
+        project_id: VALID_PROJECT_UUID,
+        report_type: 'EXECUTIVE_SUMMARY',
+        format: 'PDF',
+        status: 'REQUESTED',
+        requested_at: '2026-06-23T00:00:00Z',
+      },
+    } as unknown as Awaited<ReturnType<typeof httpClient.post>>);
+
+    openDialog();
+    fireEvent.change(screen.getByTestId('report-request-type'), {
+      target: { value: 'EXECUTIVE_SUMMARY' },
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`report-filter-methodology-version-${VERSION_ID}`),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId(`report-filter-methodology-version-${VERSION_ID}`));
+
+    fireEvent.change(screen.getByTestId('report-filter-date-from'), {
+      target: { value: '2026-04-01' },
+    });
+    fireEvent.change(screen.getByTestId('report-filter-date-to'), {
+      target: { value: '2026-06-30' },
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`report-filter-evaluator-${EVALUATOR_ID}`),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId(`report-filter-evaluator-${EVALUATOR_ID}`));
+
+    fireEvent.click(screen.getByTestId('report-request-submit'));
+
+    await waitFor(() => expect(postSpy).toHaveBeenCalled());
+
+    const [, body] = postSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body.report_type).toBe('EXECUTIVE_SUMMARY');
+    expect(typeof body.filter_params).toBe('string');
+
+    const parsed = JSON.parse(body.filter_params as string) as Record<string, unknown>;
+    // Wire contract: same snake_case keys as EVALUATION_SUMMARY — unchanged shape.
+    expect(parsed).toEqual({
+      methodology_version_ids: [VERSION_ID],
+      date_from: '2026-04-01',
+      date_to: '2026-06-30',
+      evaluator_user_ids: [EVALUATOR_ID],
+    });
+    expect(parsed.methodologyVersionIds).toBeUndefined();
+    expect(parsed.dateFrom).toBeUndefined();
+    expect(parsed.dateTo).toBeUndefined();
+    expect(parsed.evaluatorUserIds).toBeUndefined();
   });
 });

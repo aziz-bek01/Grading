@@ -21,6 +21,7 @@ import { EvaluatorPicker } from '@/features/evaluation/components/panel/Evaluato
 import { useRequestReport } from '../hooks/useReports';
 import {
   RequestReportSchema,
+  supportsEvaluationFilter,
   type RequestReportFormValues,
 } from '../schemas/reportSchemas';
 import type { Report, ReportFormat, ReportType } from '../types';
@@ -69,7 +70,7 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
   const watchedType = form.watch('reportType');
   const watchedFormat = form.watch('format');
   const availableFormats = REPORT_FORMAT_AVAILABILITY[watchedType] ?? [];
-  const isEvaluationSummary = watchedType === 'EVALUATION_SUMMARY';
+  const showEvaluationFilter = supportsEvaluationFilter(watchedType);
 
   // Auto-correct an unsupported format when the type changes.
   useEffect(() => {
@@ -88,7 +89,7 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
         ...vals,
         filterParams: vals.filterParams || null,
         evaluationFilter:
-          vals.reportType === 'EVALUATION_SUMMARY'
+          supportsEvaluationFilter(vals.reportType)
             ? {
                 methodology_version_ids: vals.evaluationFilter?.methodologyVersionIds ?? [],
                 date_from: vals.evaluationFilter?.dateFrom ?? '',
@@ -161,7 +162,7 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
               </span>
             ) : null}
           </label>
-          {isEvaluationSummary ? (
+          {showEvaluationFilter ? (
             <div
               className="space-y-3 border border-border rounded-md p-3"
               data-testid="report-request-evaluation-filters"

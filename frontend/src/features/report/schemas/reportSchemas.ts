@@ -1,5 +1,21 @@
 import { z } from 'zod';
 import { REPORT_FORMAT_AVAILABILITY } from '../types';
+import type { ReportType } from '../types';
+
+/**
+ * Report types that expose the evaluation filter panel (methodology version,
+ * date range, evaluator). Add types here — not scattered as `=== 'X'` literals
+ * — to extend the gate without touching component or API code individually.
+ */
+export const REPORT_TYPES_WITH_EVALUATION_FILTER = new Set<ReportType>([
+  'EVALUATION_SUMMARY',
+  'EXECUTIVE_SUMMARY',
+]);
+
+/** Returns true when `type` supports the evaluation filter panel. */
+export function supportsEvaluationFilter(type: ReportType | null | undefined): boolean {
+  return type != null && REPORT_TYPES_WITH_EVALUATION_FILTER.has(type);
+}
 
 export const ReportTypeSchema = z.enum([
   'GRADE_DISTRIBUTION',
@@ -42,7 +58,7 @@ export const RequestReportSchema = z
     format: ReportFormatSchema,
     projectId: z.string().uuid({ message: 'report.error.project_required' }),
     filterParams: z.string().optional().nullable(),
-    /** Only read/validated when reportType === 'EVALUATION_SUMMARY'. */
+    /** Only read/validated when supportsEvaluationFilter(reportType) is true. */
     evaluationFilter: EvaluationReportFilterSchema.optional(),
   })
   .refine(
@@ -54,7 +70,7 @@ export const RequestReportSchema = z
   )
   .refine(
     (val) =>
-      val.reportType !== 'EVALUATION_SUMMARY' ||
+      !supportsEvaluationFilter(val.reportType) ||
       !val.evaluationFilter?.dateFrom ||
       !val.evaluationFilter?.dateTo ||
       val.evaluationFilter.dateFrom <= val.evaluationFilter.dateTo,

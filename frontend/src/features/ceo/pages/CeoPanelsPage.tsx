@@ -167,7 +167,8 @@ export function CeoPanelsPage() {
   // The hook is enabled because status.length > 0.
   const panelsQuery = useCeoPanels(ALL_CEO_STATUSES);
 
-  const allPanels = panelsQuery.data?.items ?? [];
+  const queryItems = panelsQuery.data?.items;
+  const allPanels = useMemo(() => queryItems ?? [], [queryItems]);
 
   // Filter client-side by selected group (data already loaded).
   const visiblePanels = useMemo(() => {

@@ -16,6 +16,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
+import { ApiError } from '@/shared/api/apiError';
 import { DateRangeFields } from '@/shared/components/form/DateRangeFields';
 import { EvaluatorPicker } from '@/features/evaluation/components/panel/EvaluatorPicker';
 import { useRequestReport } from '../hooks/useReports';
@@ -49,6 +50,7 @@ const ALL_FORMATS: ReportFormat[] = ['PDF', 'DOCX', 'XLSX'];
 export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Props) {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
   const mutation = useRequestReport();
 
   const form = useForm<RequestReportFormValues>({
@@ -84,6 +86,7 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
 
   const onSubmit = form.handleSubmit(async (vals) => {
     setSubmitting(true);
+    setServerError(null);
     try {
       const report = await mutation.mutateAsync({
         ...vals,
@@ -100,6 +103,13 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
       });
       onCreated?.(report);
       onClose();
+    } catch (err) {
+      // Surface the failure instead of swallowing it — a request that 4xx/5xx'd
+      // previously left the dialog open with NO feedback (looked like "nothing
+      // happened"). Map the known request-time filter codes to friendly copy;
+      // fall back to a generic message that carries the code + correlation id so
+      // the failure is reportable.
+      setServerError(describeRequestError(err, t));
     } finally {
       setSubmitting(false);
     }
@@ -249,6 +259,16 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
             </div>
           ) : null}
 
+          {serverError ? (
+            <p
+              className="text-sm text-danger-700 border border-danger-200 bg-danger-50 rounded-md px-3 py-2"
+              role="alert"
+              data-testid="report-request-error"
+            >
+              {serverError}
+            </p>
+          ) : null}
+
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -271,4 +291,34 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
       </div>
     </div>
   );
+}
+
+/**
+ * Map a failed report-request to localized copy. Known request-time filter
+ * codes (mirrors {@code EvaluationReportFilterValidator}) get friendly,
+ * actionable messages; everything else falls back to a generic message that
+ * still carries the backend error code + correlation id so the failure is
+ * reportable (the dialog previously swallowed all of this).
+ */
+function describeRequestError(
+  err: unknown,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (err instanceof ApiError) {
+    if (err.isForbidden()) return t('report.error.permission_denied');
+    if (err.code === 'REPORT_FILTER_INVALID_METHODOLOGY') {
+      return t('report.error.invalid_methodology');
+    }
+    if (err.code === 'REPORT_FILTER_INVALID_DATE_RANGE') {
+      return t('report.error.invalid_date_range');
+    }
+    if (err.code === 'REPORT_FILTER_MALFORMED') {
+      return t('report.error.malformed_filter');
+    }
+    return t('report.error.request_failed', {
+      code: err.code,
+      ref: err.correlationId ?? err.traceId ?? '—',
+    });
+  }
+  return t('report.error.request_failed', { code: 'NETWORK', ref: '—' });
 }

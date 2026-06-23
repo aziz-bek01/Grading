@@ -3,10 +3,13 @@ package uz.hrlab.grading.reporting;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import uz.hrlab.grading.AbstractIntegrationTest;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationReportSpecifications;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.methodology.domain.MethodologyStatus;
 import uz.hrlab.grading.methodology.domain.MethodologyType;
@@ -29,6 +32,7 @@ import uz.hrlab.grading.project.infrastructure.ProjectRepository;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -70,13 +74,26 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
         return OffsetDateTime.of(y, m, d, 23, 59, 59, 999_999_999, ZoneOffset.UTC);
     }
 
+    // Drop-in over the former repository finder: build the dynamic report
+    // Specification and run it via JpaSpecificationExecutor — exactly the
+    // production path DefaultReportDataPort now uses (PostgreSQL-safe, no null binds).
+    private Page<EvaluationJpaEntity> findForEvaluationReport(
+            UUID tenantId, UUID projectId, Collection<UUID> methodologyVersionIds,
+            Collection<UUID> evaluatorUserIds, OffsetDateTime dateFrom, OffsetDateTime dateTo,
+            Pageable pageable) {
+        return evaluations.findAll(
+                EvaluationReportSpecifications.forReport(tenantId, projectId,
+                        methodologyVersionIds, evaluatorUserIds, dateFrom, dateTo),
+                pageable);
+    }
+
     @Test
     void emptyFilterReturnsAllProjectEvaluations_unfilteredRegression() {
         Fixture f = new Fixture();
         UUID e1 = f.evaluation(f.versionA, f.evaluator1, day(2026, 4, 10));
         UUID e2 = f.evaluation(f.versionB, f.evaluator2, day(2026, 5, 10));
 
-        var page = evaluations.findForEvaluationReport(
+        var page = findForEvaluationReport(
                 f.tenantId, f.projectId, null, null, null, null, PAGE);
 
         assertThat(page.getContent()).extracting(EvaluationJpaEntity::getId)
@@ -89,7 +106,7 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
         UUID eA = f.evaluation(f.versionA, f.evaluator1, day(2026, 4, 10));
         f.evaluation(f.versionB, f.evaluator2, day(2026, 5, 10));
 
-        var page = evaluations.findForEvaluationReport(
+        var page = findForEvaluationReport(
                 f.tenantId, f.projectId, List.of(f.versionA), null, null, null, PAGE);
 
         assertThat(page.getContent()).extracting(EvaluationJpaEntity::getId)
@@ -102,7 +119,7 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
         f.evaluation(f.versionA, f.evaluator1, day(2026, 4, 10));
         UUID e2 = f.evaluation(f.versionB, f.evaluator2, day(2026, 5, 10));
 
-        var page = evaluations.findForEvaluationReport(
+        var page = findForEvaluationReport(
                 f.tenantId, f.projectId, null, List.of(f.evaluator2), null, null, PAGE);
 
         assertThat(page.getContent()).extracting(EvaluationJpaEntity::getId)
@@ -118,7 +135,7 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
         UUID before = f.evaluation(f.versionB, f.evaluator2, day(2026, 3, 31));
         UUID after = f.evaluation(f.versionA, f.evaluator1, day(2026, 7, 1));
 
-        var page = evaluations.findForEvaluationReport(
+        var page = findForEvaluationReport(
                 f.tenantId, f.projectId, null, null,
                 startOf(2026, 4, 1), endOf(2026, 6, 30), PAGE);
 
@@ -134,7 +151,7 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
         UUID neverSubmitted = f.evaluation(f.versionB, f.evaluator1, null);
 
         // With a date bound the null-submitted row is excluded.
-        var bounded = evaluations.findForEvaluationReport(
+        var bounded = findForEvaluationReport(
                 f.tenantId, f.projectId, null, null,
                 startOf(2026, 1, 1), endOf(2026, 12, 31), PAGE);
         assertThat(bounded.getContent()).extracting(EvaluationJpaEntity::getId)
@@ -142,7 +159,7 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
                 .doesNotContain(neverSubmitted);
 
         // With no date filter both rows are present.
-        var unbounded = evaluations.findForEvaluationReport(
+        var unbounded = findForEvaluationReport(
                 f.tenantId, f.projectId, null, null, null, null, PAGE);
         assertThat(unbounded.getContent()).extracting(EvaluationJpaEntity::getId)
                 .containsExactlyInAnyOrder(submitted, neverSubmitted);
@@ -157,7 +174,7 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
         UUID wrongEvaluator = f.evaluation(f.versionA, f.evaluator2, day(2026, 5, 1));
         UUID wrongDate = f.evaluation(f.versionA, f.evaluator1, day(2026, 1, 1));
 
-        var page = evaluations.findForEvaluationReport(
+        var page = findForEvaluationReport(
                 f.tenantId, f.projectId,
                 List.of(f.versionA), List.of(f.evaluator1),
                 startOf(2026, 4, 1), endOf(2026, 6, 30), PAGE);
@@ -174,7 +191,7 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
         // A foreign tenant's version id passed into THIS tenant's query → 0 rows.
         Fixture other = new Fixture();
 
-        var page = evaluations.findForEvaluationReport(
+        var page = findForEvaluationReport(
                 f.tenantId, f.projectId, List.of(other.versionA), null, null, null, PAGE);
 
         assertThat(page.getContent()).isEmpty();
@@ -190,7 +207,7 @@ class EvaluationReportFilterFinderIntegrationTest extends AbstractIntegrationTes
         UUID otherPos = f.position(otherProject, otherDept);
         f.evaluationIn(otherProject, otherPos, f.versionA, f.evaluator1, day(2026, 5, 1));
 
-        var page = evaluations.findForEvaluationReport(
+        var page = findForEvaluationReport(
                 f.tenantId, f.projectId, null, List.of(f.evaluator1), null, null, PAGE);
 
         assertThat(page.getContent()).extracting(EvaluationJpaEntity::getId)

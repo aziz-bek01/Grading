@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import uz.hrlab.grading.access.application.ActorNameResolver;
 import uz.hrlab.grading.access.infrastructure.UserRepository;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogJpaEntity;
@@ -99,10 +100,9 @@ class DefaultReportDataPortExecutiveKpiTest {
         assertThat(kpi.activeFilters().hasEvaluators()).isFalse();
         assertThat(kpi.activeFilters().hasMethodologies()).isFalse();
 
-        // The unfiltered legacy path is used; the filtered finder is NEVER called.
+        // The unfiltered legacy path is used; the filtered Specification finder is NEVER called.
         verify(evaluations, times(1)).findAllByTenantIdAndProjectId(eq(tenantId), eq(projectId), any());
-        verify(evaluations, never()).findForEvaluationReport(
-                any(), any(), any(), any(), any(), any(), any());
+        verify(evaluations, never()).findAll(any(Specification.class), any(Pageable.class));
     }
 
     @Test
@@ -114,8 +114,7 @@ class DefaultReportDataPortExecutiveKpiTest {
         Page<EvaluationJpaEntity> filteredSet = page(
                 ev(EvaluationStatus.APPROVED, 4),
                 ev(EvaluationStatus.SUBMITTED, 4));
-        when(evaluations.findForEvaluationReport(
-                eq(tenantId), eq(projectId), any(), any(), any(), any(), any()))
+        when(evaluations.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(filteredSet);
 
         OffsetDateTime from = OffsetDateTime.of(2026, 4, 1, 0, 0, 0, 0, ZoneOffset.UTC);
@@ -138,9 +137,8 @@ class DefaultReportDataPortExecutiveKpiTest {
         assertThat(kpi.activeFilters().period()).isEqualTo("2026-04-01 – 2026-06-30");
         assertThat(kpi.activeFilters().hasEvaluators()).isTrue();
 
-        // Only the FILTERED finder is used; the legacy unfiltered finder is NOT.
-        verify(evaluations, times(1)).findForEvaluationReport(
-                eq(tenantId), eq(projectId), any(), any(), any(), any(), any());
+        // Only the FILTERED Specification finder is used; the legacy unfiltered finder is NOT.
+        verify(evaluations, times(1)).findAll(any(Specification.class), any(Pageable.class));
         verify(evaluations, never()).findAllByTenantIdAndProjectId(any(), any(), any());
     }
 

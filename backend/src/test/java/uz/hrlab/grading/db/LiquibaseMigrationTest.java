@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Verifies all Liquibase changesets and seeds run cleanly. */
 @Tag("integration")
+@Tag("migration")
 class LiquibaseMigrationTest extends AbstractIntegrationTest {
 
     @Autowired

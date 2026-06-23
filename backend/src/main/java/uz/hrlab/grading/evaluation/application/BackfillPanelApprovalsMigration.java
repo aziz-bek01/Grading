@@ -85,17 +85,26 @@ public class BackfillPanelApprovalsMigration {
     private final PanelRepository panels;
     private final CancelApprovalRequestUseCase cancelApprovalRequest;
     private final CeoPanelApprovalOpener ceoApprovalOpener;
+    private final PanelCompletionChecker completionChecker;
+    private final ComputePanelAverageUseCase computeAverage;
+    private final SubmitPanelToCeoUseCase submitToCeo;
 
     public BackfillPanelApprovalsMigration(ApprovalRequestRepository approvalRequests,
                                            EvaluationRepository evaluations,
                                            PanelRepository panels,
                                            CancelApprovalRequestUseCase cancelApprovalRequest,
-                                           CeoPanelApprovalOpener ceoApprovalOpener) {
+                                           CeoPanelApprovalOpener ceoApprovalOpener,
+                                           PanelCompletionChecker completionChecker,
+                                           ComputePanelAverageUseCase computeAverage,
+                                           SubmitPanelToCeoUseCase submitToCeo) {
         this.approvalRequests = approvalRequests;
         this.evaluations = evaluations;
         this.panels = panels;
         this.cancelApprovalRequest = cancelApprovalRequest;
         this.ceoApprovalOpener = ceoApprovalOpener;
+        this.completionChecker = completionChecker;
+        this.computeAverage = computeAverage;
+        this.submitToCeo = submitToCeo;
     }
 
     /** Counts of the two actions performed (for the run log + tests). */
@@ -112,13 +121,14 @@ public class BackfillPanelApprovalsMigration {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Result runForTenant(UUID tenantId) {
         // Anti-BOLA: the context tenant is authoritative; ignore any mismatch.
-        UUID active = TenantContextHolder.requireActive().tenantId();
+        var ctx = TenantContextHolder.requireActive();
+        UUID active = ctx.tenantId();
         if (!active.equals(tenantId)) {
             throw new IllegalStateException("tenant context mismatch in panel-approval migration");
         }
 
         int cancelled = cancelLegacyEvaluationApprovals(active);
-        int opened = openMissingPanelApprovals(active);
+        int opened = advanceFullyEvaluatedPanels(active, ctx.userId());
 
         if (cancelled > 0 || opened > 0) {
             log.info("PanelApprovalReconciliation tenant={} cancelledLegacy={} openedPanel={}",
@@ -153,18 +163,61 @@ public class BackfillPanelApprovalsMigration {
     }
 
     /**
-     * Branch (2): open the missing single-step CEO approval for every
-     * {@code SUBMITTED} panel that has none. Reuses {@link CeoPanelApprovalOpener}
-     * (the same idempotency guard + {@code createSystem} as the live submit flow).
+     * Branch (2): advance EVERY panel that is fully evaluated but never reached the
+     * CEO to a PENDING {@code EVALUATION_PANEL} approval — reusing the SAME services
+     * the live completion flow uses (no duplication):
+     * <ol>
+     *   <li>{@code AWAITING_EVALUATIONS} whose roster is fully complete
+     *       ({@link PanelCompletionChecker#allActiveComplete}) →
+     *       {@link ComputePanelAverageUseCase#compute} (→ {@code AVERAGED}) →
+     *       {@link SubmitPanelToCeoUseCase#submitSystem} (→ {@code SUBMITTED} +
+     *       approval). Covers panels whose averaging never fired — the watcher only
+     *       runs on a score recompute, so a panel completed via another path stays
+     *       stuck.</li>
+     *   <li>{@code AVERAGED} → {@code submitSystem} (→ {@code SUBMITTED} + approval).
+     *       Covers panels whose auto-submit was swallowed fail-soft.</li>
+     *   <li>{@code SUBMITTED} with no PENDING request →
+     *       {@link CeoPanelApprovalOpener#openIfAbsent}.</li>
+     * </ol>
+     * Per-panel fail-soft (one panel cannot abort the tenant sweep) and idempotent
+     * (each step's guard makes a re-run a no-op). Lists are re-queried per status so
+     * a panel advanced in (1)/(2) is simply a no-op when (3) revisits it.
      */
-    private int openMissingPanelApprovals(UUID tenantId) {
-        int opened = 0;
+    private int advanceFullyEvaluatedPanels(UUID tenantId, UUID actorUserId) {
+        int advanced = 0;
+        // (1) fully scored but never averaged.
+        for (EvaluationPanelJpaEntity panel : panels
+                .findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.AWAITING_EVALUATIONS)) {
+            if (!completionChecker.allActiveComplete(tenantId, panel.getId())) {
+                continue;
+            }
+            try {
+                computeAverage.compute(tenantId, panel.getId(), actorUserId);
+                submitToCeo.submitSystem(panel.getId(), actorUserId);
+                advanced++;
+            } catch (RuntimeException e) {
+                log.warn("PanelApprovalReconciliation: advance AWAITING panel {} failed: {}",
+                        panel.getId(), e.getClass().getSimpleName(), e);
+            }
+        }
+        // (2) averaged but never submitted (auto-submit fail-soft swallow).
+        for (EvaluationPanelJpaEntity panel : panels
+                .findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.AVERAGED)) {
+            try {
+                submitToCeo.submitSystem(panel.getId(), actorUserId);
+                advanced++;
+            } catch (RuntimeException e) {
+                log.warn("PanelApprovalReconciliation: submit AVERAGED panel {} failed: {}",
+                        panel.getId(), e.getClass().getSimpleName(), e);
+            }
+        }
+        // (3) submitted but the CEO approval was never opened.
         for (EvaluationPanelJpaEntity panel : panels
                 .findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.SUBMITTED)) {
             if (ceoApprovalOpener.openIfAbsent(tenantId, panel) != null) {
-                opened++;
+                advanced++;
             }
         }
-        return opened;
+        return advanced;
     }
 }

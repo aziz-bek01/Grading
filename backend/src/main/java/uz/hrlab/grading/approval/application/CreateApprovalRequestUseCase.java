@@ -68,7 +68,7 @@ public class CreateApprovalRequestUseCase {
         if (!ctx.hasPermission(PermissionCodes.APPROVAL_REQUEST_CREATE)) {
             throw new PermissionDeniedException();
         }
-        return createInternal(ctx, cmd);
+        return createInternal(ctx, cmd, true);
     }
 
     /**
@@ -80,7 +80,7 @@ public class CreateApprovalRequestUseCase {
     @Transactional
     public ApprovalRequest createSystem(CreateApprovalRequestCommand cmd) {
         TenantContext ctx = TenantContextHolder.requireActive();
-        return createInternal(ctx, cmd);
+        return createInternal(ctx, cmd, false);
     }
 
     /**
@@ -105,7 +105,7 @@ public class CreateApprovalRequestUseCase {
             return null;
         }
         try {
-            ApprovalRequest created = createInternal(ctx, cmd);
+            ApprovalRequest created = createInternal(ctx, cmd, false);
             // Mark the single step APPROVED.
             List<ApprovalStepJpaEntity> stepRows = steps
                     .findAllByTenantIdAndApprovalRequestIdOrderByStepOrderAsc(
@@ -147,7 +147,8 @@ public class CreateApprovalRequestUseCase {
         }
     }
 
-    private ApprovalRequest createInternal(TenantContext ctx, CreateApprovalRequestCommand cmd) {
+    private ApprovalRequest createInternal(TenantContext ctx, CreateApprovalRequestCommand cmd,
+                                           boolean enforceProjectAbac) {
         if (cmd == null || cmd.projectId() == null || cmd.entityType() == null
                 || cmd.entityId() == null) {
             throw new ValidationException("MISSING_FIELDS");
@@ -157,7 +158,19 @@ public class CreateApprovalRequestUseCase {
         }
         projects.findByIdAndTenantId(cmd.projectId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
-        abacGate.enforceCanWriteInProject(ctx, cmd.projectId());
+        // Project-membership ABAC is a USER-action gate: enforced ONLY on the public
+        // create() path. The createSystem* / internal variants run AFTER the
+        // originating action already authorized the caller (their javadoc contract),
+        // or are trusted system sweeps that run under a permission-less system
+        // context (the startup CEO-approval reconciliation) — they must NOT be
+        // denied by project-membership ABAC. Tenant isolation is still enforced for
+        // ALL paths by findByIdAndTenantId above, so a cross-tenant project still
+        // 404s. (Without this, the reconciliation's system context — no roles, no
+        // projectIds — was denied by ProjectMembershipPolicy and silently opened
+        // zero approvals, leaving fully-evaluated panels invisible to the CEO.)
+        if (enforceProjectAbac) {
+            abacGate.enforceCanWriteInProject(ctx, cmd.projectId());
+        }
 
         // Reject if another request is already PENDING for this entity.
         if (queries.findActivePendingForEntity(ctx.tenantId(), cmd.entityType(), cmd.entityId())

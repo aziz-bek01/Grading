@@ -28,6 +28,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -57,6 +59,9 @@ class BackfillPanelApprovalsMigrationTest {
     @Mock PanelRepository panels;
     @Mock CancelApprovalRequestUseCase cancelApprovalRequest;
     @Mock CeoPanelApprovalOpener ceoApprovalOpener;
+    @Mock PanelCompletionChecker completionChecker;
+    @Mock ComputePanelAverageUseCase computeAverage;
+    @Mock SubmitPanelToCeoUseCase submitToCeo;
 
     BackfillPanelApprovalsMigration migration;
     UUID tenantId;
@@ -64,9 +69,15 @@ class BackfillPanelApprovalsMigrationTest {
     @BeforeEach
     void setUp() {
         migration = new BackfillPanelApprovalsMigration(
-                approvalRequests, evaluations, panels, cancelApprovalRequest, ceoApprovalOpener);
+                approvalRequests, evaluations, panels, cancelApprovalRequest, ceoApprovalOpener,
+                completionChecker, computeAverage, submitToCeo);
         tenantId = UUID.randomUUID();
         setContext(tenantId);
+        // The advance sweep queries panels in THREE statuses (AWAITING/AVERAGED/
+        // SUBMITTED). Default every status to empty (lenient); each test overrides
+        // only the status it exercises.
+        lenient().when(panels.findAllByTenantIdAndStatus(eq(tenantId), any()))
+                .thenReturn(List.of());
     }
 
     @AfterEach
@@ -169,6 +180,58 @@ class BackfillPanelApprovalsMigrationTest {
         assertThatThrownBy(() -> migration.runForTenant(otherTenant))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("tenant context mismatch");
+    }
+
+    @Test
+    void advancesFullyCompleteAwaitingPanel() {
+        // Regression: a panel whose roster is fully complete but that never averaged
+        // (the watcher only fires on a score recompute) must be averaged + submitted
+        // so the CEO sees it.
+        UUID panelId = UUID.randomUUID();
+        EvaluationPanelJpaEntity panel = mock(EvaluationPanelJpaEntity.class);
+        when(panel.getId()).thenReturn(panelId);
+        when(panels.findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.AWAITING_EVALUATIONS))
+                .thenReturn(List.of(panel));
+        when(completionChecker.allActiveComplete(tenantId, panelId)).thenReturn(true);
+
+        BackfillPanelApprovalsMigration.Result result = migration.runForTenant(tenantId);
+
+        assertThat(result.openedPanelApprovals()).isEqualTo(1);
+        verify(computeAverage).compute(tenantId, panelId, null);
+        verify(submitToCeo).submitSystem(panelId, null);
+    }
+
+    @Test
+    void skipsIncompleteAwaitingPanel() {
+        UUID panelId = UUID.randomUUID();
+        EvaluationPanelJpaEntity panel = mock(EvaluationPanelJpaEntity.class);
+        when(panel.getId()).thenReturn(panelId);
+        when(panels.findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.AWAITING_EVALUATIONS))
+                .thenReturn(List.of(panel));
+        when(completionChecker.allActiveComplete(tenantId, panelId)).thenReturn(false);
+
+        BackfillPanelApprovalsMigration.Result result = migration.runForTenant(tenantId);
+
+        assertThat(result.openedPanelApprovals()).isZero();
+        verify(computeAverage, never()).compute(any(), any(), any());
+        verify(submitToCeo, never()).submitSystem(any(), any());
+    }
+
+    @Test
+    void submitsStuckAveragedPanel() {
+        // Regression: a panel averaged but never submitted (auto-submit fail-soft
+        // swallow) must be submitted so the CEO approval opens.
+        UUID panelId = UUID.randomUUID();
+        EvaluationPanelJpaEntity panel = mock(EvaluationPanelJpaEntity.class);
+        when(panel.getId()).thenReturn(panelId);
+        when(panels.findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.AVERAGED))
+                .thenReturn(List.of(panel));
+
+        BackfillPanelApprovalsMigration.Result result = migration.runForTenant(tenantId);
+
+        assertThat(result.openedPanelApprovals()).isEqualTo(1);
+        verify(submitToCeo).submitSystem(panelId, null);
+        verify(computeAverage, never()).compute(any(), any(), any()); // already averaged
     }
 
     // --------------------------------------------------------------- helpers

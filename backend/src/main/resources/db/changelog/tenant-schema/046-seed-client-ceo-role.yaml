@@ -1,14 +1,26 @@
 # CLIENT_CEO role (REQ-CEO) — org-wide oversight + the dedicated panel sign-off
-# authority, DISTINCT from CLIENT_HR_DIRECTOR. Mirrors the seed conventions of
-# 002 (INSERT INTO public.roles), 004 / 038 (role_permissions via WITH
-# role_perm_map JOIN + ON CONFLICT DO NOTHING). Does NOT edit 002/004/038
-# (already applied / immutable) — this is the additive forward-only changeset.
+# authority, DISTINCT from CLIENT_HR_DIRECTOR. Additive forward-only changeset;
+# does NOT edit 002/004/038 (already applied / immutable).
 #
 # Ordered AFTER 038 in db.changelog-tenant.yaml so that:
 #   * every catalogue permission code the CEO is granted already exists in
 #     public.permissions (001/013/016/023/038 ran first), and
 #   * the strict-routing DELETE below removes the CLIENT_HR_DIRECTOR ->
 #     EVALUATION_PANEL_APPROVE row that 038 line ~56 inserted.
+#
+# IMPORTANT — public.roles uniqueness (control-plane/008-roles-custom-tenant.yaml):
+# 008 DROPPED the global unique constraint uq_roles_code and replaced it with TWO
+# PARTIAL unique indexes:
+#     uq_roles_system_code  ON (code)            WHERE tenant_id IS NULL
+#     uq_roles_tenant_code  ON (tenant_id, code) WHERE tenant_id IS NOT NULL
+# A bare "ON CONFLICT (code)" therefore matches NO constraint and errors
+# ("there is no unique or exclusion constraint matching the ON CONFLICT
+# specification"). CLIENT_CEO is a SYSTEM role (is_system=true, tenant_id=NULL),
+# so we insert idempotently via INSERT ... SELECT ... WHERE NOT EXISTS (scoped to
+# the system namespace, tenant_id IS NULL) instead of ON CONFLICT, and set the
+# is_system/tenant_id invariant explicitly so chk_roles_system_tenant holds. The
+# role lookups in the grant/revoke below are likewise scoped to tenant_id IS NULL
+# so they only ever touch the SYSTEM roles, never a tenant custom role.
 #
 # Permissions granted to CLIENT_CEO (oversight + approval only — NO write/MANAGE,
 # NOT EVALUATION_PANEL_MANAGE, NOT per-sheet EVALUATION_APPROVE):
@@ -33,14 +45,17 @@ databaseChangeLog:
             splitStatements: true
             stripComments: true
             sql: |
-              INSERT INTO public.roles (id, code, name, scope, description) VALUES
-                (gen_random_uuid(), 'CLIENT_CEO', 'Client CEO', 'TENANT',
-                 'Org-wide oversight + dedicated evaluation-panel sign-off authority (distinct from HR Director)')
-              ON CONFLICT (code) DO NOTHING;
+              INSERT INTO public.roles (id, code, name, scope, description, is_system, tenant_id)
+              SELECT gen_random_uuid(), 'CLIENT_CEO', 'Client CEO', 'TENANT',
+                     'Org-wide oversight + dedicated evaluation-panel sign-off authority (distinct from HR Director)',
+                     true, NULL
+              WHERE NOT EXISTS (
+                SELECT 1 FROM public.roles WHERE code = 'CLIENT_CEO' AND tenant_id IS NULL
+              );
       rollback:
         - sql:
             sql: |
-              DELETE FROM public.roles WHERE code = 'CLIENT_CEO';
+              DELETE FROM public.roles WHERE code = 'CLIENT_CEO' AND tenant_id IS NULL;
 
   - changeSet:
       id: tenant-046-seed-client-ceo-role-permissions
@@ -70,7 +85,7 @@ databaseChangeLog:
               INSERT INTO public.role_permissions (role_id, permission_id)
               SELECT r.id, p.id
                 FROM role_perm_map m
-                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.roles       r ON r.code = m.role_code AND r.tenant_id IS NULL
                 JOIN public.permissions p ON p.code = m.permission_code
               ON CONFLICT (role_id, permission_id) DO NOTHING;
       rollback:
@@ -81,6 +96,7 @@ databaseChangeLog:
                 WHERE rp.role_id = r.id
                   AND rp.permission_id = p.id
                   AND r.code = 'CLIENT_CEO'
+                  AND r.tenant_id IS NULL
                   AND p.code IN (
                     'EVALUATION_PANEL_APPROVE','CAMPAIGN_RESULTS_VIEW','APPROVAL_REQUEST_DECIDE',
                     'EVALUATION_READ','PROJECT_READ','ORG_READ','POSITION_READ','JOB_PROFILE_READ',
@@ -96,8 +112,7 @@ databaseChangeLog:
         # Remove the CLIENT_HR_DIRECTOR -> EVALUATION_PANEL_APPROVE grant that 038
         # seeded. Panel approval steps route by requiredPermission, so dropping
         # this row reroutes the sign-off to the CEO without any routing-code change.
-        # Tenant-safe DELETE joining roles + permissions by code (mirrors the 038
-        # rollback DELETE shape).
+        # Scoped to the SYSTEM role (tenant_id IS NULL).
         - sql:
             splitStatements: true
             stripComments: true
@@ -107,6 +122,7 @@ databaseChangeLog:
                 WHERE rp.role_id = r.id
                   AND rp.permission_id = p.id
                   AND r.code = 'CLIENT_HR_DIRECTOR'
+                  AND r.tenant_id IS NULL
                   AND p.code = 'EVALUATION_PANEL_APPROVE';
       rollback:
         - sql:
@@ -115,5 +131,6 @@ databaseChangeLog:
               SELECT r.id, p.id
                 FROM public.roles r, public.permissions p
                 WHERE r.code = 'CLIENT_HR_DIRECTOR'
+                  AND r.tenant_id IS NULL
                   AND p.code = 'EVALUATION_PANEL_APPROVE'
               ON CONFLICT (role_id, permission_id) DO NOTHING;

@@ -25,6 +25,7 @@ import {
   Download,
   PanelLeftClose,
   PanelLeft,
+  BarChart2,
 } from 'lucide-react';
 import { useAuthStore } from '@/features/auth/authStore';
 import { PERMISSIONS, type PermissionCode } from '@/shared/types/permissions';
@@ -118,6 +119,15 @@ export function Sidebar({ className }: SidebarProps = {}) {
       label: t('nav.my_evaluations'),
       icon: <ClipboardCheck size={18} aria-hidden />,
       permission: PERMISSIONS.EVALUATION_READ,
+    },
+    {
+      // CEO org-wide panel overview — gated EVALUATION_PANEL_APPROVE. Shows
+      // all panels across the tenant; sign-off queue links to the existing
+      // approvals inbox. No active project required.
+      to: routes.ceoPanels,
+      label: t('nav.ceo_panels'),
+      icon: <BarChart2 size={18} aria-hidden />,
+      permission: PERMISSIONS.EVALUATION_PANEL_APPROVE,
     },
     {
       to: routes.approvalsInbox,

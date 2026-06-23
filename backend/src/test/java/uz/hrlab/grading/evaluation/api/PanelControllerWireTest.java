@@ -562,7 +562,7 @@ class PanelControllerWireTest {
 
     @Test
     void listReturnsPageResponseWithItemsKey() throws Exception {
-        given(queries.list(any(), any(), any()))
+        given(queries.list(any(), any(), any(), any()))
                 .willReturn(new PageImpl<>(List.of(
                         PanelResponse.from(panel(UUID.randomUUID(), EvaluationPanelStatus.AVERAGED),
                                 Map.of("ru-RU", "Кассир"), 3, 3))));

@@ -197,3 +197,14 @@ databaseChangeLog:
   - include:
       file: 045-worker-retry-dead-letter.yaml
       relativeToChangelogFile: true
+
+  # REQ-CEO — CLIENT_CEO role: org-wide oversight + the dedicated evaluation-panel
+  # sign-off authority, DISTINCT from CLIENT_HR_DIRECTOR. Additive forward-only seed
+  # (002/004/038 stay immutable). MUST run AFTER 038 because it (a) grants catalogue
+  # codes that 038 + earlier seeds inserted into public.permissions, and (b) performs
+  # the STRICT-ROUTING DELETE of the CLIENT_HR_DIRECTOR -> EVALUATION_PANEL_APPROVE
+  # row that 038 line ~56 seeded, so panel sign-off reroutes to the CEO (by
+  # requiredPermission — no routing-code change).
+  - include:
+      file: 046-seed-client-ceo-role.yaml
+      relativeToChangelogFile: true

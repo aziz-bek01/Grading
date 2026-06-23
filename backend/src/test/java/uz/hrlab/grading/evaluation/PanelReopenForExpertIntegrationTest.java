@@ -260,7 +260,7 @@ class PanelReopenForExpertIntegrationTest extends AbstractIntegrationTest {
 
         // LIST surface — the "experts" count = the 3 contributing sheets (the
         // materialized average denominator), not just the currently-active seats.
-        var listRow = panelQueries.list(fx.projectId, fx.positionId, PageRequest.of(0, 20))
+        var listRow = panelQueries.list(fx.projectId, fx.positionId, null, PageRequest.of(0, 20))
                 .getContent().stream()
                 .filter(r -> r.id().equals(panelId))
                 .findFirst()

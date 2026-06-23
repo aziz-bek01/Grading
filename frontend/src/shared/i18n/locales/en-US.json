@@ -74,7 +74,8 @@
     "approvals": "Approvals",
     "imports": "Imports",
     "exports": "Exports",
-    "roles": "Roles"
+    "roles": "Roles",
+    "ceo_panels": "CEO Panel Overview"
   },
   "status": {
     "draft": "Draft",
@@ -2197,6 +2198,26 @@
       "USER_LIST": "List users",
       "USER_INVITE": "Invite users",
       "USER_ROLE_ASSIGN": "Assign roles"
+    }
+  },
+  "ceo": {
+    "panels": {
+      "title": "Panel Overview",
+      "subtitle": "All evaluation panels across the organisation.",
+      "filter_all": "All",
+      "filter_pending": "Awaiting sign-off",
+      "filter_inflight": "In flight",
+      "filter_history": "History",
+      "filter_aria": "Filter panels by status",
+      "go_to_inbox": "My sign-off queue",
+      "empty_title": "No panels found",
+      "empty_body": "No evaluation panels match the selected filter."
+    },
+    "dashboard_card": {
+      "title": "Panels awaiting sign-off",
+      "pending_label": "panels pending my approval",
+      "view_all": "View all panels",
+      "go_inbox": "Go to sign-off queue"
     }
   }
 }

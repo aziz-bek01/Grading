@@ -136,6 +136,9 @@ const RoleDetailPage = lazy(() =>
 const AuditListPage = lazy(() =>
   import('@/features/audit/pages/AuditListPage').then((m) => ({ default: m.AuditListPage })),
 );
+const CeoPanelsPage = lazy(() =>
+  import('@/features/ceo/pages/CeoPanelsPage').then((m) => ({ default: m.CeoPanelsPage })),
+);
 
 // E2E-ONLY harness route (salary-masking invariant). The `lazy()` + its
 // dynamic `import()` are created ONLY when the harness is enabled
@@ -320,6 +323,13 @@ export function AppRouter() {
 
           <Route element={<RequireAuditPermission />}>
             <Route path="audit" element={<AuditListPage />} />
+          </Route>
+
+          {/* CEO org-wide panel overview. Global (no project scope) — gated
+              EVALUATION_PANEL_APPROVE. The sign-off queue links back to the
+              existing /app/approvals inbox (no new approval routes). */}
+          <Route element={<RequirePermission permissions={PERMISSIONS.EVALUATION_PANEL_APPROVE} />}>
+            <Route path="ceo/panels" element={<CeoPanelsPage />} />
           </Route>
 
           <Route

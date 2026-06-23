@@ -66,6 +66,8 @@ export const routes = {
   approvalsInbox: '/app/approvals',
   approvalDetails: (approvalId: string) => `/app/approvals/${approvalId}`,
   projectApprovals: (projectId: string) => `/app/projects/${projectId}/approvals`,
+  // CEO org-wide panel overview (EVALUATION_PANEL_APPROVE gated)
+  ceoPanels: '/app/ceo/panels',
   // MVP 2 Phase 2 — Imports & Exports
   projectImports: (projectId: string) => `/app/projects/${projectId}/imports`,
   projectImportNew: (projectId: string) => `/app/projects/${projectId}/imports/new`,

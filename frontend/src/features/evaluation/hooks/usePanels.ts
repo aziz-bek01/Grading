@@ -40,8 +40,24 @@ export function usePanels(filters: PanelListFilters = {}) {
   return useQuery({
     queryKey: panelKeys.list(filters),
     queryFn: () => fetchPanels(filters),
-    enabled: !!filters.projectId || !!filters.positionId,
+    // Org-wide CEO pull: no project/position scope but status filter present
+    // — fire without projectId. Otherwise keep the existing guard so
+    // project-scoped callers never accidentally fire without a context.
+    enabled:
+      !!filters.projectId ||
+      !!filters.positionId ||
+      (!!filters.status && filters.status.length > 0),
   });
+}
+
+/**
+ * CEO org-wide panel list — all panels in the tenant filtered by one or more
+ * statuses. Wraps `usePanels` with an explicit name so callers are clear
+ * about the intent (no projectId, status required). The query fires only when
+ * at least one status value is supplied.
+ */
+export function useCeoPanels(status: string[]) {
+  return usePanels({ status });
 }
 
 export function usePanelDetail(id: string | undefined) {

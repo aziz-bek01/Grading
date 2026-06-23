@@ -42,6 +42,12 @@ export const panelKeys = {
 export interface PanelListFilters {
   projectId?: string;
   positionId?: string;
+  /**
+   * CEO org-wide status filter (repeatable). Only honoured by the backend when
+   * no projectId/positionId is supplied — i.e. a tenant-wide pull. The values
+   * mirror the PanelStatus enum. Passed as repeated `status=` query params.
+   */
+  status?: string[];
 }
 
 export async function createPanel(payload: CreatePanelPayload): Promise<Panel> {
@@ -122,12 +128,23 @@ export async function fetchRosterSuggestions(
 export async function fetchPanels(
   filters: PanelListFilters = {},
 ): Promise<PanelPageResponse> {
-  const res = await httpClient.get<unknown>(endpoints.panels.list, {
-    params: {
-      project_id: filters.projectId,
-      position_id: filters.positionId,
-    },
-  });
+  // Build params object; omit undefined values so axios does not send them.
+  // status is a repeatable param — pass as an array so axios serialises it as
+  // ?status=X&status=Y (the backend repeatable enum contract).
+  const params: Record<string, unknown> = {};
+  if (filters.projectId) params.project_id = filters.projectId;
+  if (filters.positionId) params.position_id = filters.positionId;
+  // CEO org-wide: status filter is only sent when there is no project/position
+  // scope (backend contract — combined with project/position it is ignored).
+  if (
+    filters.status &&
+    filters.status.length > 0 &&
+    !filters.projectId &&
+    !filters.positionId
+  ) {
+    params.status = filters.status;
+  }
+  const res = await httpClient.get<unknown>(endpoints.panels.list, { params });
   const env = (res.data ?? {}) as Partial<PanelPageResponse> & {
     items?: unknown[];
   };

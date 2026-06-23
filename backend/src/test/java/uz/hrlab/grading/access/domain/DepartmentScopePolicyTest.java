@@ -90,6 +90,20 @@ class DepartmentScopePolicyTest {
     }
 
     @Test
+    void clientCeoIsTenantWideBypassNotDepartmentScoped() {
+        // REQ-CEO — the CEO reads panels / positions / results across EVERY
+        // department (same treatment as the HR Director); they are never confined
+        // to a department subtree.
+        TenantContext ctx = ctxWithRoles(Set.of(RoleCodes.CLIENT_CEO), Set.of());
+        assertThat(DepartmentScopePolicy.isTenantWideBypass(ctx)).isTrue();
+        assertThat(DepartmentScopePolicy.isDepartmentScoped(ctx)).isFalse();
+
+        UUID dept = UUID.randomUUID();
+        AbacRequest req = new AbacRequest(ctx, "Position", dept, null, dept, null);
+        assertThat(policy.evaluate(req)).isEqualTo(PolicyDecision.PERMIT);
+    }
+
+    @Test
     void departmentScopedRolesAreClassifiedScoped() {
         assertThat(DepartmentScopePolicy.isDepartmentScoped(
                 ctxWithRoles(Set.of(RoleCodes.DEPARTMENT_MANAGER), Set.of()))).isTrue();

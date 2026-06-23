@@ -115,7 +115,7 @@ class PanelQueriesCountIntegrityTest {
         when(averages.findEvaluatorCountsByPanelIds(eq(tenantId), any()))
                 .thenReturn(List.of(view(panelId, 3)));
 
-        Page<PanelResponse> page = queries.list(projectId, null, pageable);
+        Page<PanelResponse> page = queries.list(projectId, null, null, pageable);
 
         PanelResponse row = page.getContent().get(0);
         assertThat(row.evaluatorCount()).isEqualTo(3);   // contributing denominator
@@ -138,7 +138,7 @@ class PanelQueriesCountIntegrityTest {
         when(averages.findEvaluatorCountsByPanelIds(eq(tenantId), any()))
                 .thenReturn(List.of());
 
-        Page<PanelResponse> page = queries.list(projectId, null, pageable);
+        Page<PanelResponse> page = queries.list(projectId, null, null, pageable);
 
         PanelResponse row = page.getContent().get(0);
         assertThat(row.evaluatorCount()).isEqualTo(2);   // live roster
@@ -162,9 +162,81 @@ class PanelQueriesCountIntegrityTest {
         when(averages.findEvaluatorCountsByPanelIds(eq(tenantId), any()))
                 .thenReturn(List.of()); // no average row
 
-        Page<PanelResponse> page = queries.list(projectId, null, pageable);
+        Page<PanelResponse> page = queries.list(projectId, null, null, pageable);
 
         assertThat(page.getContent().get(0).evaluatorCount()).isEqualTo(3);
+    }
+
+    // ---- REQ-CEO: optional status filter for the org-wide list (statuses-only) ----
+
+    @Test
+    void statusFilterSourcesPageFromStatusInAndReusesMapping() {
+        // CEO org pull: ?status=SUBMITTED with NO project/position scope must source
+        // the page from findAllByTenantIdAndStatusIn and reuse the SAME batched
+        // mapping (contributing-denominator correction included).
+        EvaluationPanelJpaEntity panel = panel(EvaluationPanelStatus.SUBMITTED);
+        when(panels.findAllByTenantIdAndStatusIn(
+                eq(tenantId), eq(List.of(EvaluationPanelStatus.SUBMITTED)), any()))
+                .thenReturn(new PageImpl<>(List.of(panel)));
+        stubPositionTitle();
+        when(assignments.findAllByTenantIdAndPanelIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(seat(PanelAssignmentStatus.COMPLETED)));
+        when(averages.findEvaluatorCountsByPanelIds(eq(tenantId), any()))
+                .thenReturn(List.of(view(panelId, 3)));
+
+        Page<PanelResponse> page = queries.list(
+                null, null, List.of(EvaluationPanelStatus.SUBMITTED), pageable);
+
+        // Mapping was reused (contributing denominator wins for a non-collecting panel).
+        PanelResponse row = page.getContent().get(0);
+        assertThat(row.status()).isEqualTo(EvaluationPanelStatus.SUBMITTED);
+        assertThat(row.evaluatorCount()).isEqualTo(3);
+        // The status-filtered query was the source; the unfiltered tenant query was not.
+        org.mockito.Mockito.verify(panels).findAllByTenantIdAndStatusIn(
+                eq(tenantId), eq(List.of(EvaluationPanelStatus.SUBMITTED)), any());
+        org.mockito.Mockito.verify(panels, org.mockito.Mockito.never())
+                .findAllByTenantId(eq(tenantId), any());
+    }
+
+    @Test
+    void statusFilterIgnoredWhenProjectScopedKeepingExistingPath() {
+        // A status filter combined with a projectId is intentionally ignored — the
+        // existing project-scoped path runs unchanged (no findAllByTenantIdAndStatusIn).
+        EvaluationPanelJpaEntity panel = panel(EvaluationPanelStatus.AVERAGED);
+        when(panels.findAllByTenantIdAndProjectId(eq(tenantId), eq(projectId), any()))
+                .thenReturn(new PageImpl<>(List.of(panel)));
+        stubPositionTitle();
+        when(assignments.findAllByTenantIdAndPanelIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(seat(PanelAssignmentStatus.COMPLETED)));
+        when(averages.findEvaluatorCountsByPanelIds(eq(tenantId), any()))
+                .thenReturn(List.of(view(panelId, 3)));
+
+        queries.list(projectId, null, List.of(EvaluationPanelStatus.AVERAGED), pageable);
+
+        org.mockito.Mockito.verify(panels).findAllByTenantIdAndProjectId(
+                eq(tenantId), eq(projectId), any());
+        org.mockito.Mockito.verify(panels, org.mockito.Mockito.never())
+                .findAllByTenantIdAndStatusIn(eq(tenantId), any(), any());
+    }
+
+    @Test
+    void nullStatusUsesUnfilteredTenantPathUnchanged() {
+        // Backward compatibility: statuses == null + no scope falls through to the
+        // pre-existing findAllByTenantId path (behavior byte-identical to before).
+        EvaluationPanelJpaEntity panel = panel(EvaluationPanelStatus.COLLECTING);
+        when(panels.findAllByTenantId(eq(tenantId), any()))
+                .thenReturn(new PageImpl<>(List.of(panel)));
+        stubPositionTitle();
+        when(assignments.findAllByTenantIdAndPanelIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(seat(PanelAssignmentStatus.ASSIGNED)));
+        when(averages.findEvaluatorCountsByPanelIds(eq(tenantId), any()))
+                .thenReturn(List.of());
+
+        queries.list(null, null, null, pageable);
+
+        org.mockito.Mockito.verify(panels).findAllByTenantId(eq(tenantId), any());
+        org.mockito.Mockito.verify(panels, org.mockito.Mockito.never())
+                .findAllByTenantIdAndStatusIn(eq(tenantId), any(), any());
     }
 
     // --------------------------------------------------------------- helpers

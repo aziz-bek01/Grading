@@ -14,9 +14,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Request-time validation for the EVALUATION_SUMMARY structured filter (PRD
- * §4.2 AC-2.4, §6-D-validation). Fails fast at request time so a clearly
- * invalid filter never reaches the async worker:
+ * Request-time validation for the structured evaluation filter shared by the
+ * EVALUATION_SUMMARY and EXECUTIVE_SUMMARY report types (PRD §4.2 AC-2.4,
+ * §6-D-validation). Fails fast at request time so a clearly invalid filter
+ * never reaches the async worker:
  *
  * <ul>
  *   <li>{@code date_from > date_to} ⇒ {@code REPORT_FILTER_INVALID_DATE_RANGE}
@@ -49,12 +50,17 @@ public class EvaluationReportFilterValidator {
     /**
      * Parse + validate the {@code filterParams} for the given report type and
      * tenant. Returns the parsed filter (for reuse, e.g. audit cardinality).
-     * Filters are only meaningful for EVALUATION_SUMMARY; for other report types
-     * the raw string is left opaque and no structured validation runs.
+     * Filters are only meaningful for the evaluation-bearing report types
+     * (EVALUATION_SUMMARY, EXECUTIVE_SUMMARY); for other report types the raw
+     * string is left opaque and no structured validation runs.
      */
     public EvaluationReportFilter validate(ReportType type, UUID tenantId, String filterParams) {
         EvaluationReportFilter filter = EvaluationReportFilter.parse(filterParams, objectMapper);
-        if (type != ReportType.EVALUATION_SUMMARY || filter.isEmpty()) {
+        // Structured validation runs for the two evaluation-bearing report types
+        // that consume the filter: EVALUATION_SUMMARY and EXECUTIVE_SUMMARY. Other
+        // report types leave the raw string opaque (no structured validation).
+        if ((type != ReportType.EVALUATION_SUMMARY && type != ReportType.EXECUTIVE_SUMMARY)
+                || filter.isEmpty()) {
             return filter;
         }
 

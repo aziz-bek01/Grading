@@ -53,8 +53,18 @@ public interface ReportDataPort {
     /**
      * Aggregated KPIs for the project — pre-computed numbers for one-page
      * executive summary. Used by EXECUTIVE_SUMMARY report.
+     *
+     * <p>The {@code filter} narrows ONLY the evaluation-scoped KPIs
+     * ({@code evaluatedCount}, the APPROVED/LOCKED count, the distinct
+     * assigned-grade set) via the SAME tenant+project-scoped finder
+     * {@code loadEvaluations} uses ({@code EvaluationRepository
+     * .findForEvaluationReport}). The non-evaluation KPIs (position count,
+     * audit-event count, recent approvals, project meta) stay project-wide —
+     * they are not evaluation-scoped. {@link EvaluationReportFilter#none()} (or
+     * an empty filter) preserves the legacy unfiltered behaviour byte-for-byte.
      */
-    ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale);
+    ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale,
+                                  EvaluationReportFilter filter);
 
     /**
      * Localized display NAME of a project (tenant-scoped). Falls back to the
@@ -173,6 +183,12 @@ public interface ReportDataPort {
     /**
      * KPI snapshot for the executive summary. Numbers are pre-computed; the
      * template does no further aggregation.
+     *
+     * <p>{@code activeFilters} is the localized, name-resolved echo of the
+     * applied evaluation filters (REUSES the EVALUATION_SUMMARY {@link
+     * FilterEcho} + {@code DefaultReportDataPort.buildFilterEcho}). It is blank
+     * ({@link FilterEcho#empty()}) when the report was requested unfiltered, so
+     * the renderer omits the corresponding meta lines.
      */
     record ExecutiveKpi(
             String projectName,
@@ -184,7 +200,18 @@ public interface ReportDataPort {
             int approvedEvaluationCount,
             int gradeCount,
             int auditEventCount,
-            List<RecentApprovalRow> recentApprovals) { }
+            List<RecentApprovalRow> recentApprovals,
+            FilterEcho activeFilters) {
+
+        public ExecutiveKpi(String projectName, String projectStatus, String periodFrom,
+                            String periodTo, int positionCount, int evaluatedCount,
+                            int approvedEvaluationCount, int gradeCount, int auditEventCount,
+                            List<RecentApprovalRow> recentApprovals) {
+            this(projectName, projectStatus, periodFrom, periodTo, positionCount, evaluatedCount,
+                    approvedEvaluationCount, gradeCount, auditEventCount, recentApprovals,
+                    FilterEcho.empty());
+        }
+    }
 
     record RecentApprovalRow(
             OffsetDateTime timestamp,

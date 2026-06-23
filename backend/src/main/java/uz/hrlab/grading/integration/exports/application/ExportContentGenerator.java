@@ -176,7 +176,10 @@ public class ExportContentGenerator {
     }
 
     private Table executive(UUID tenantId, UUID projectId, String locale) {
-        ReportDataPort.ExecutiveKpi kpi = data.loadExecutiveKpi(tenantId, projectId, locale);
+        // Exports stay unfiltered (out of scope) — pass the no-op filter, exactly
+        // as this generator already does for loadEvaluations.
+        ReportDataPort.ExecutiveKpi kpi = data.loadExecutiveKpi(tenantId, projectId, locale,
+                uz.hrlab.grading.reporting.application.template.EvaluationReportFilter.none());
         List<List<String>> rows = new ArrayList<>();
         rows.add(List.of("Project", nz(kpi.projectName())));
         rows.add(List.of("Status", nz(kpi.projectStatus())));

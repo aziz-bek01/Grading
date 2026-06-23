@@ -1,11 +1,13 @@
 package uz.hrlab.grading.reporting.application.template.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lowagie.text.Document;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.springframework.stereotype.Component;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
 import uz.hrlab.grading.reporting.application.template.AbstractReportTemplate;
 import uz.hrlab.grading.reporting.application.template.DocxBuilder;
+import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
 import uz.hrlab.grading.reporting.application.template.PdfBuilder;
 import uz.hrlab.grading.reporting.application.template.ReportDataPort;
 import uz.hrlab.grading.reporting.application.template.ReportGenerationContext;
@@ -38,10 +40,12 @@ public class ExecutiveSummaryReport
 
     private final ReportDataPort data;
     private final ExcelWriter excel;
+    private final ObjectMapper objectMapper;
 
-    public ExecutiveSummaryReport(ReportDataPort data, ExcelWriter excel) {
+    public ExecutiveSummaryReport(ReportDataPort data, ExcelWriter excel, ObjectMapper objectMapper) {
         this.data = data;
         this.excel = excel;
+        this.objectMapper = objectMapper;
     }
 
     @Override public ReportType reportType() { return ReportType.EXECUTIVE_SUMMARY; }
@@ -51,9 +55,13 @@ public class ExecutiveSummaryReport
 
     @Override
     protected Model loadData(ReportGenerationContext ctx) {
+        // REUSE the EVALUATION_SUMMARY filter parser — same JSON wire shape; the
+        // executive evaluation KPIs are then scoped to the filtered set in the port.
+        EvaluationReportFilter filter =
+                EvaluationReportFilter.parse(ctx.filterParams(), objectMapper);
         return new Model(
                 data.tenantName(ctx.tenantId(), ctx.locale()),
-                data.loadExecutiveKpi(ctx.tenantId(), ctx.projectId(), ctx.locale()));
+                data.loadExecutiveKpi(ctx.tenantId(), ctx.projectId(), ctx.locale(), filter));
     }
 
     private static List<String> recentHeaders(String locale) {
@@ -77,6 +85,22 @@ public class ExecutiveSummaryReport
             PdfBuilder.metaLine(doc, ReportLabels.label("meta.status", locale), nz(kpi.projectStatus()));
             PdfBuilder.metaLine(doc, ReportLabels.label("meta.period", locale),
                     nz(kpi.periodFrom()) + " → " + nz(kpi.periodTo()));
+
+            // Applied evaluation-filter echo (REUSE FilterEcho + ReportLabels keys
+            // shared with EVALUATION_SUMMARY) — only when the report was filtered.
+            ReportDataPort.FilterEcho filters = kpi.activeFilters();
+            if (filters.hasMethodologies()) {
+                PdfBuilder.metaLine(doc, ReportLabels.label("meta.filterMethodologies", locale),
+                        filters.methodologies());
+            }
+            if (filters.hasPeriod()) {
+                PdfBuilder.metaLine(doc, ReportLabels.label("meta.filterPeriod", locale),
+                        filters.period());
+            }
+            if (filters.hasEvaluators()) {
+                PdfBuilder.metaLine(doc, ReportLabels.label("meta.filterEvaluators", locale),
+                        filters.evaluators());
+            }
 
             int approvedPct = approvalPercent(kpi);
             String approvedSuffix = ReportLabels.label("kpi.approvedSuffix", locale);
@@ -127,6 +151,22 @@ public class ExecutiveSummaryReport
         DocxBuilder.metaLine(pkg.getMainDocumentPart(),
                 ReportLabels.label("meta.period", locale),
                 nz(kpi.periodFrom()) + " → " + nz(kpi.periodTo()));
+
+        // Applied evaluation-filter echo (REUSE FilterEcho + ReportLabels keys
+        // shared with EVALUATION_SUMMARY) — only when the report was filtered.
+        ReportDataPort.FilterEcho filters = kpi.activeFilters();
+        if (filters.hasMethodologies()) {
+            DocxBuilder.metaLine(pkg.getMainDocumentPart(),
+                    ReportLabels.label("meta.filterMethodologies", locale), filters.methodologies());
+        }
+        if (filters.hasPeriod()) {
+            DocxBuilder.metaLine(pkg.getMainDocumentPart(),
+                    ReportLabels.label("meta.filterPeriod", locale), filters.period());
+        }
+        if (filters.hasEvaluators()) {
+            DocxBuilder.metaLine(pkg.getMainDocumentPart(),
+                    ReportLabels.label("meta.filterEvaluators", locale), filters.evaluators());
+        }
 
         DocxBuilder.subheading(pkg.getMainDocumentPart(),
                 ReportLabels.label("section.keyIndicators", locale));

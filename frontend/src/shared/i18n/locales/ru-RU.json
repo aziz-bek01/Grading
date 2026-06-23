@@ -1699,6 +1699,18 @@
     "field_format": "Формат",
     "field_filter_params": "Параметры фильтрации (JSON)",
     "filter_placeholder": "{}",
+    "filter": {
+      "section_title": "Фильтры сводки оценки",
+      "methodology_label": "Методология (версии)",
+      "methodology_empty_hint": "Версии не выбраны — будут включены все версии методологии.",
+      "methodology_load_error": "Не удалось загрузить версии методологии.",
+      "no_methodologies": "Для этого проекта нет методологий.",
+      "date_label": "Период (дата отправки)",
+      "date_from": "С даты",
+      "date_to": "По дату",
+      "evaluator_label": "Оценщики",
+      "evaluator_empty_hint": "Оценщики не выбраны — будут включены все оценщики."
+    },
     "filter_status": "Статус",
     "filter_status_all": "Все статусы",
     "filter_type": "Тип",
@@ -1748,7 +1760,8 @@
     },
     "error": {
       "project_required": "Проект обязателен.",
-      "format_not_supported": "Выбранный формат недоступен для этого типа отчёта."
+      "format_not_supported": "Выбранный формат недоступен для этого типа отчёта.",
+      "invalid_date_range": "Дата «по» не может быть раньше даты «с»."
     }
   },
   "users": {

@@ -1699,6 +1699,18 @@
     "field_format": "Format",
     "field_filter_params": "Filter parameters (JSON)",
     "filter_placeholder": "{}",
+    "filter": {
+      "section_title": "Evaluation summary filters",
+      "methodology_label": "Methodology (versions)",
+      "methodology_empty_hint": "No versions selected — all methodology versions will be included.",
+      "methodology_load_error": "Failed to load methodology versions.",
+      "no_methodologies": "No methodologies in this project.",
+      "date_label": "Period (submitted date)",
+      "date_from": "From",
+      "date_to": "To",
+      "evaluator_label": "Evaluators",
+      "evaluator_empty_hint": "No evaluators selected — all evaluators will be included."
+    },
     "filter_status": "Status",
     "filter_status_all": "All statuses",
     "filter_type": "Type",
@@ -1748,7 +1760,8 @@
     },
     "error": {
       "project_required": "Project is required.",
-      "format_not_supported": "Selected format is not supported for this report type."
+      "format_not_supported": "Selected format is not supported for this report type.",
+      "invalid_date_range": "The \"to\" date cannot be earlier than the \"from\" date."
     }
   },
   "users": {

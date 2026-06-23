@@ -12,10 +12,12 @@
  *     availability matrix) — defence in depth.
  */
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
+import { DateRangeFields } from '@/shared/components/form/DateRangeFields';
+import { EvaluatorPicker } from '@/features/evaluation/components/panel/EvaluatorPicker';
 import { useRequestReport } from '../hooks/useReports';
 import {
   RequestReportSchema,
@@ -23,6 +25,7 @@ import {
 } from '../schemas/reportSchemas';
 import type { Report, ReportFormat, ReportType } from '../types';
 import { REPORT_FORMAT_AVAILABILITY } from '../types';
+import { MethodologyVersionMultiSelect } from './MethodologyVersionMultiSelect';
 
 interface Props {
   projectId: string;
@@ -54,12 +57,19 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
       reportType: 'GRADE_DISTRIBUTION',
       format: 'PDF',
       filterParams: '',
+      evaluationFilter: {
+        methodologyVersionIds: [],
+        dateFrom: '',
+        dateTo: '',
+        evaluatorUserIds: [],
+      },
     },
   });
 
   const watchedType = form.watch('reportType');
   const watchedFormat = form.watch('format');
   const availableFormats = REPORT_FORMAT_AVAILABILITY[watchedType] ?? [];
+  const isEvaluationSummary = watchedType === 'EVALUATION_SUMMARY';
 
   // Auto-correct an unsupported format when the type changes.
   useEffect(() => {
@@ -77,6 +87,15 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
       const report = await mutation.mutateAsync({
         ...vals,
         filterParams: vals.filterParams || null,
+        evaluationFilter:
+          vals.reportType === 'EVALUATION_SUMMARY'
+            ? {
+                methodology_version_ids: vals.evaluationFilter?.methodologyVersionIds ?? [],
+                date_from: vals.evaluationFilter?.dateFrom ?? '',
+                date_to: vals.evaluationFilter?.dateTo ?? '',
+                evaluator_user_ids: vals.evaluationFilter?.evaluatorUserIds ?? [],
+              }
+            : null,
       });
       onCreated?.(report);
       onClose();
@@ -142,17 +161,92 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
               </span>
             ) : null}
           </label>
-          <label className="block text-sm">
-            <span className="block mb-1 text-text-secondary">
-              {t('report.field_filter_params')}
-            </span>
-            <textarea
-              {...form.register('filterParams')}
-              rows={2}
-              className="w-full border border-border rounded px-2 py-1.5 bg-surface text-sm"
-              placeholder={t('report.filter_placeholder')}
-            />
-          </label>
+          {isEvaluationSummary ? (
+            <div
+              className="space-y-3 border border-border rounded-md p-3"
+              data-testid="report-request-evaluation-filters"
+            >
+              <h3 className="text-sm font-medium text-text-primary">
+                {t('report.filter.section_title')}
+              </h3>
+
+              <div>
+                <span className="block mb-1 text-xs text-text-secondary">
+                  {t('report.filter.methodology_label')}
+                </span>
+                <Controller
+                  control={form.control}
+                  name="evaluationFilter.methodologyVersionIds"
+                  render={({ field }) => (
+                    <MethodologyVersionMultiSelect
+                      projectId={projectId}
+                      value={field.value ?? []}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+                <p className="text-xs text-text-muted mt-1">
+                  {t('report.filter.methodology_empty_hint')}
+                </p>
+              </div>
+
+              <div>
+                <span className="block mb-1 text-xs text-text-secondary">
+                  {t('report.filter.date_label')}
+                </span>
+                <Controller
+                  control={form.control}
+                  name="evaluationFilter"
+                  render={({ field }) => (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <DateRangeFields
+                        value={{
+                          from: field.value?.dateFrom || undefined,
+                          to: field.value?.dateTo || undefined,
+                        }}
+                        onChange={(next) =>
+                          field.onChange({
+                            ...field.value,
+                            dateFrom: next.from ?? '',
+                            dateTo: next.to ?? '',
+                          })
+                        }
+                        testIdPrefix="report-filter-date"
+                        fromLabelKey="report.filter.date_from"
+                        toLabelKey="report.filter.date_to"
+                      />
+                    </div>
+                  )}
+                />
+                {form.formState.errors.evaluationFilter?.dateTo?.message ? (
+                  <span className="block text-xs text-danger-700 mt-1" role="alert">
+                    {t(form.formState.errors.evaluationFilter.dateTo.message)}
+                  </span>
+                ) : null}
+              </div>
+
+              <div>
+                <span className="block mb-1 text-xs text-text-secondary">
+                  {t('report.filter.evaluator_label')}
+                </span>
+                <Controller
+                  control={form.control}
+                  name="evaluationFilter.evaluatorUserIds"
+                  render={({ field }) => (
+                    <EvaluatorPicker
+                      mode="multi"
+                      testIdPrefix="report-filter-evaluator"
+                      value={field.value ?? []}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+                <p className="text-xs text-text-muted mt-1">
+                  {t('report.filter.evaluator_empty_hint')}
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

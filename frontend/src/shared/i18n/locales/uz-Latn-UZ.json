@@ -1699,6 +1699,18 @@
     "field_format": "Format",
     "field_filter_params": "Saralash parametrlari (JSON)",
     "filter_placeholder": "{}",
+    "filter": {
+      "section_title": "Baholash xulosasi filtrlari",
+      "methodology_label": "Metodologiya (versiyalar)",
+      "methodology_empty_hint": "Versiya tanlanmadi — barcha metodologiya versiyalari kiritiladi.",
+      "methodology_load_error": "Metodologiya versiyalarini yuklab bo'lmadi.",
+      "no_methodologies": "Bu loyihada metodologiyalar yo'q.",
+      "date_label": "Davr (topshirilgan sana)",
+      "date_from": "Sanadan",
+      "date_to": "Sanagacha",
+      "evaluator_label": "Baholovchilar",
+      "evaluator_empty_hint": "Baholovchi tanlanmadi — barcha baholovchilar kiritiladi."
+    },
     "filter_status": "Holat",
     "filter_status_all": "Barcha holatlar",
     "filter_type": "Tur",
@@ -1748,7 +1760,8 @@
     },
     "error": {
       "project_required": "Loyiha talab qilinadi.",
-      "format_not_supported": "Tanlangan format ushbu hisobot turi uchun mavjud emas."
+      "format_not_supported": "Tanlangan format ushbu hisobot turi uchun mavjud emas.",
+      "invalid_date_range": "\"Sanagacha\" sanasi \"sanadan\" sanasidan oldin bo'lishi mumkin emas."
     }
   },
   "users": {

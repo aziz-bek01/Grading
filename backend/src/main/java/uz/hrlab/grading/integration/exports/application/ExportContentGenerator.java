@@ -131,7 +131,10 @@ public class ExportContentGenerator {
     }
 
     private Table evaluationMatrix(UUID tenantId, UUID projectId, String locale) {
-        ReportDataPort.EvaluationMatrix m = data.loadEvaluations(tenantId, projectId, locale);
+        // Exports are unfiltered (the structured report filter is EVALUATION_SUMMARY
+        // report-only, out of scope for the export path) — pass the no-op filter.
+        ReportDataPort.EvaluationMatrix m = data.loadEvaluations(tenantId, projectId, locale,
+                uz.hrlab.grading.reporting.application.template.EvaluationReportFilter.none());
         // Header label keeps the factor code for export-sheet stability; the
         // score lookup is keyed by code.
         List<String> headers = new ArrayList<>();

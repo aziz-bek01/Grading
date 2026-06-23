@@ -40,8 +40,15 @@ public interface ReportDataPort {
      * the canonical (position, methodology version, evaluator, status) plus a
      * pre-rendered factor-code → score map keyed by factor code. Used by
      * EVALUATION_SUMMARY report.
+     *
+     * <p>The {@code filter} narrows the ALREADY-tenant+project-scoped data set
+     * (methodology version / submitted-date range / evaluator), AND-combined,
+     * applied in the JPQL WHERE. {@link EvaluationReportFilter#none()} (or an
+     * empty filter) preserves the legacy unfiltered behaviour. The filter NEVER
+     * widens visibility — it only narrows the already-authorized project rows.
      */
-    EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale);
+    EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale,
+                                     EvaluationReportFilter filter);
 
     /**
      * Aggregated KPIs for the project — pre-computed numbers for one-page
@@ -113,6 +120,12 @@ public interface ReportDataPort {
      * {@code factors} provides the canonical column order — rendering keeps the
      * same column order across PDF/DOCX/XLSX so cross-referencing works. Each
      * {@link FactorRef} pairs the lookup code with its localized display name.
+     *
+     * <p>{@code activeFilters} is the human-readable, localized echo of the
+     * applied EVALUATION_SUMMARY filters (PRD AC-4.3) so a downloaded PDF/DOCX is
+     * self-describing — name resolution happens INSIDE the port (single source of
+     * truth) so the rendering side never sees raw UUIDs. Each value is blank when
+     * its dimension was not filtered.
      */
     record EvaluationMatrix(
             String projectName,
@@ -120,7 +133,32 @@ public interface ReportDataPort {
             int totalPositions,
             int approvedCount,
             List<FactorRef> factors,
-            List<EvaluationRow> rows) { }
+            List<EvaluationRow> rows,
+            FilterEcho activeFilters) {
+
+        public EvaluationMatrix(String projectName, String methodologyName, int totalPositions,
+                                int approvedCount, List<FactorRef> factors, List<EvaluationRow> rows) {
+            this(projectName, methodologyName, totalPositions, approvedCount, factors, rows,
+                    FilterEcho.empty());
+        }
+    }
+
+    /**
+     * Localized, name-resolved echo of the applied EVALUATION_SUMMARY filters for
+     * the report meta block. All three fields are already human strings (no raw
+     * UUIDs / ISO timestamps); a blank string means "this dimension not filtered"
+     * and the renderer omits the corresponding meta line.
+     */
+    record FilterEcho(String period, String evaluators, String methodologies) {
+
+        public static FilterEcho empty() {
+            return new FilterEcho("", "", "");
+        }
+
+        public boolean hasPeriod() { return period != null && !period.isBlank(); }
+        public boolean hasEvaluators() { return evaluators != null && !evaluators.isBlank(); }
+        public boolean hasMethodologies() { return methodologies != null && !methodologies.isBlank(); }
+    }
 
     record EvaluationRow(
             String positionCode,

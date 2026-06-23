@@ -344,4 +344,52 @@ public interface EvaluationRepository
             @Param("scope") Collection<UUID> scopeDepartmentIds,
             @Param("ownEvaluatorUserId") UUID ownEvaluatorUserId,
             Pageable pageable);
+
+    /**
+     * EVALUATION_SUMMARY report filter (MVP2). Tenant + project scoped base, plus
+     * three OPTIONAL, AND-combined narrowing predicates applied in the JPQL WHERE
+     * (never in-memory after the page load — correctness requirement so the page
+     * cap caps the FILTERED set, PRD §5 EC-5):
+     *
+     * <ul>
+     *   <li>methodology VERSION (D1, multi): {@code e.methodologyVersionId IN
+     *       (:methodologyVersionIds)} — collection variant of the null-safe
+     *       optional-predicate idiom in {@link #findInDepartments};</li>
+     *   <li>submitted-date range (D2): {@code e.submittedAt} between
+     *       {@code :dateFrom} (inclusive) and {@code :dateTo} (inclusive). A row
+     *       with {@code submittedAt IS NULL} can never satisfy a bounded
+     *       comparison, so it is naturally EXCLUDED whenever a date bound is set
+     *       and naturally INCLUDED when both bounds are null (PRD AC-2.3);</li>
+     *   <li>evaluator (D3, multi): {@code e.evaluatorUserId IN
+     *       (:evaluatorUserIds)} — same collection idiom.</li>
+     * </ul>
+     *
+     * <p>EACH collection predicate is guarded by {@code (:list IS NULL OR ...)} —
+     * the SAME null-safe shape used throughout this repository. Callers pass
+     * {@code null} (NOT an empty collection) to disable a dimension; an empty
+     * collection in {@code IN ()} is not portable SQL. So a cross-tenant /
+     * cross-project / stale id in the list simply contributes zero rows (the base
+     * tenant+project predicate already pins scope) — never an error (NFR-2, EC-2).
+     *
+     * <p>This deliberately does NOT inherit the {@code listMine} ACTIVE-only
+     * methodology-container filter: reports are an audit/history tool and must
+     * include archived-container history (PRD AC-1.3).
+     */
+    @Query("""
+           SELECT e FROM EvaluationJpaEntity e
+           WHERE e.tenantId = :tenantId
+             AND e.projectId = :projectId
+             AND (:methodologyVersionIds IS NULL OR e.methodologyVersionId IN (:methodologyVersionIds))
+             AND (:evaluatorUserIds IS NULL OR e.evaluatorUserId IN (:evaluatorUserIds))
+             AND (:dateFrom IS NULL OR e.submittedAt >= :dateFrom)
+             AND (:dateTo IS NULL OR e.submittedAt <= :dateTo)
+           """)
+    Page<EvaluationJpaEntity> findForEvaluationReport(
+            @Param("tenantId") UUID tenantId,
+            @Param("projectId") UUID projectId,
+            @Param("methodologyVersionIds") Collection<UUID> methodologyVersionIds,
+            @Param("evaluatorUserIds") Collection<UUID> evaluatorUserIds,
+            @Param("dateFrom") java.time.OffsetDateTime dateFrom,
+            @Param("dateTo") java.time.OffsetDateTime dateTo,
+            Pageable pageable);
 }

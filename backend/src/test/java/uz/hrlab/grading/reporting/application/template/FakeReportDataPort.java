@@ -66,11 +66,17 @@ final class FakeReportDataPort implements ReportDataPort {
     }
 
     @Override
-    public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale) {
+    public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale,
+                                            EvaluationReportFilter filter) {
         List<FactorRef> factors = List.of(
                 new FactorRef("KNOWLEDGE", "Knowledge"),
                 new FactorRef("PROBLEM_SOLVING", "Problem solving"),
                 new FactorRef("ACCOUNTABILITY", "Accountability"));
+        // Mirror the real port: when a filter is supplied, echo a name-resolved
+        // FilterEcho so the template's meta lines can be asserted.
+        FilterEcho echo = (filter == null || filter.isEmpty())
+                ? FilterEcho.empty()
+                : new FilterEcho("2026-04-01 – 2026-06-30", "Aliyev A.", "Classic 8-factor (v2)");
         return new EvaluationMatrix(
                 "Fixture project",
                 "Classic 8-factor (v2)",
@@ -88,7 +94,8 @@ final class FakeReportDataPort implements ReportDataPort {
                                 "170", "G4", "Senior"),
                         new EvaluationRow("POS-003", "Head of HR", "HR department", "Draft",
                                 Map.of("KNOWLEDGE", "70"),
-                                "70", "", "")));
+                                "70", "", "")),
+                echo);
     }
 
     @Override

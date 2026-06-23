@@ -90,6 +90,30 @@ export interface ReportRequestPayload {
   format: ReportFormat;
   projectId: string;
   filterParams?: string | null;
+  /**
+   * Structured EVALUATION_SUMMARY filter (PRD: reports-evaluation-filters).
+   * Only meaningful when `reportType === 'EVALUATION_SUMMARY'`. Serialized by
+   * `reportApi.requestReport` into the single existing `filter_params` wire
+   * field as a JSON string — NOT sent as separate top-level request fields
+   * (keeps the wire contract for `POST /reports/request` unchanged in shape).
+   */
+  evaluationFilter?: EvaluationReportFilter | null;
+}
+
+/**
+ * Structured filter for the EVALUATION_SUMMARY report (methodology version,
+ * submitted-date range, evaluator). Mirrors the backend `EvaluationReportFilter`
+ * record (reporting/application/template). Own keys are snake_case because
+ * this object is JSON-stringified verbatim into `filter_params` — the backend
+ * parses it directly with the project's snake_case Jackson convention.
+ * Empty arrays / empty date strings are omitted before serialization (absent
+ * key = no filter, never an explicit empty-array narrowing).
+ */
+export interface EvaluationReportFilter {
+  methodology_version_ids?: string[];
+  date_from?: string;
+  date_to?: string;
+  evaluator_user_ids?: string[];
 }
 
 /**

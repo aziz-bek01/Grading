@@ -20,7 +20,8 @@ import static uz.hrlab.grading.reporting.application.template.ReportXlsxTestSupp
 class EvaluationSummaryReportTest {
 
     private final EvaluationSummaryReport template =
-            new EvaluationSummaryReport(new FakeReportDataPort(), new ExcelWriter());
+            new EvaluationSummaryReport(new FakeReportDataPort(), new ExcelWriter(),
+                    new com.fasterxml.jackson.databind.ObjectMapper());
 
     @Test
     void typeAndFormats() {
@@ -64,6 +65,38 @@ class EvaluationSummaryReportTest {
         assertThat(text).contains("Fixture project");
         assertThat(text).contains("Classic 8-factor (v2)");
         assertThat(text).doesNotContain("methodology_version=");
+    }
+
+    @Test
+    void docxOmitsFilterMetaLinesWhenNoFilter() {
+        String text = docxText(render(template, ctx(ReportFormat.DOCX, "en-US")));
+        // No applied filter ⇒ no Period / Evaluators / Methodologies meta lines.
+        assertThat(text).doesNotContain("Evaluators", "Methodologies");
+    }
+
+    @Test
+    void docxRendersLocalizedFilterMetaLinesWhenFilterApplied() {
+        // A non-empty filter_params drives FilterEcho → meta lines must render
+        // with localized labels (AC-4.3). Note these labels also collide with the
+        // factor "Knowledge" etc — assert the specific filter LABELS + VALUES.
+        ReportGenerationContext ctx = ReportGenerationContext.builder()
+                .reportId(UUID.randomUUID())
+                .tenantId(UUID.randomUUID())
+                .projectId(UUID.randomUUID())
+                .reportType(ReportType.EVALUATION_SUMMARY)
+                .format(ReportFormat.DOCX)
+                .locale("en-US")
+                .filterParams("{\"date_from\":\"2026-04-01\",\"date_to\":\"2026-06-30\","
+                        + "\"evaluator_user_ids\":[\"" + UUID.randomUUID() + "\"]}")
+                .requestedBy(UUID.randomUUID())
+                .requestedAt(OffsetDateTime.now())
+                .title("Evaluation summary")
+                .build();
+
+        String text = docxText(render(template, ctx));
+        assertThat(text).contains("Period", "2026-04-01 – 2026-06-30");
+        assertThat(text).contains("Evaluators", "Aliyev A.");
+        assertThat(text).contains("Methodologies");
     }
 
     private ReportGenerationContext ctx(ReportFormat format, String locale) {

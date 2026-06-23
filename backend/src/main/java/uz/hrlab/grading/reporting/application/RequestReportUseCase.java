@@ -10,6 +10,7 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
+import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
 import uz.hrlab.grading.reporting.application.template.ReportTitleResolver;
 import uz.hrlab.grading.reporting.domain.ReportFormat;
 import uz.hrlab.grading.reporting.domain.ReportStatus;
@@ -35,13 +36,16 @@ public class RequestReportUseCase {
     private final ReportRepository reports;
     private final ReportGenerationJob worker;
     private final AuditService audit;
+    private final EvaluationReportFilterValidator filterValidator;
 
     public RequestReportUseCase(ReportRepository reports,
                                 ReportGenerationJob worker,
-                                AuditService audit) {
+                                AuditService audit,
+                                EvaluationReportFilterValidator filterValidator) {
         this.reports = reports;
         this.worker = worker;
         this.audit = audit;
+        this.filterValidator = filterValidator;
     }
 
     @Transactional
@@ -53,6 +57,12 @@ public class RequestReportUseCase {
         if (!ctx.hasPermission(PermissionCodes.REPORT_CREATE)) {
             throw new PermissionDeniedException();
         }
+
+        // Parse + validate the structured filter at REQUEST time (fail fast).
+        // Throws REPORT_FILTER_MALFORMED / REPORT_FILTER_INVALID_DATE_RANGE /
+        // REPORT_FILTER_INVALID_METHODOLOGY before the row is ever persisted.
+        EvaluationReportFilter filter =
+                filterValidator.validate(type, ctx.tenantId(), filterParams);
 
         UUID id = UUID.randomUUID();
         String title = ReportTitleResolver.resolve(type, ctx.locale());
@@ -73,7 +83,7 @@ public class RequestReportUseCase {
                 .action(AuditAction.REPORT_REQUESTED)
                 .entityType("Report")
                 .entityId(id)
-                .reason("type=" + type + " format=" + format)
+                .reason("type=" + type + " format=" + format + filterCardinality(filter))
                 .build());
 
         // PERF/CORRECTNESS (P1) — dispatch the @Async worker only AFTER commit so
@@ -92,5 +102,19 @@ public class RequestReportUseCase {
             worker.generate(id, tenantId);
         }
         return id;
+    }
+
+    /**
+     * Append filter CARDINALITY COUNTS only (decision D5 / NFR-5) to the audit
+     * reason — never raw ids or names (no PII in the forensic reason string).
+     * Empty filter ⇒ empty suffix (no regression to the legacy reason shape).
+     */
+    private static String filterCardinality(EvaluationReportFilter filter) {
+        if (filter == null || filter.isEmpty()) {
+            return "";
+        }
+        return " filters={methodologyVersions:" + filter.methodologyVersionIds().size()
+                + ",evaluators:" + filter.evaluatorUserIds().size()
+                + ",dateRange:" + (filter.dateFrom() != null || filter.dateTo() != null) + "}";
     }
 }

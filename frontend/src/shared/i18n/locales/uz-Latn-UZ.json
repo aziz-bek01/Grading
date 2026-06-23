@@ -1765,7 +1765,8 @@
       "request_failed": "Hisobot so'rovini yaratib bo'lmadi (kod: {{code}}). Havola: {{ref}}.",
       "invalid_methodology": "Tanlangan metodologiya versiyalaridan biri yoki bir nechtasi bu yerda mavjud emas. Metodologiya filtrini tozalab, qayta urinib ko'ring.",
       "malformed_filter": "Hisobot filtrini o'qib bo'lmadi. Filtrlarni tozalab, qayta urinib ko'ring.",
-      "permission_denied": "Hisobot so'rash uchun ruxsatingiz yo'q."
+      "permission_denied": "Hisobot so'rash uchun ruxsatingiz yo'q.",
+      "validation_blocked": "So'rovni yuborib bo'lmadi — ba'zi maydonlar noto'g'ri: {{fields}}. Ma'lumotlarni tekshirib, qayta urinib ko'ring."
     }
   },
   "users": {

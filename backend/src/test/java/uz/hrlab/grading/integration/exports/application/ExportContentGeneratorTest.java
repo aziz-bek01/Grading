@@ -137,7 +137,8 @@ class ExportContentGeneratorTest {
         }
 
         @Override
-        public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale) {
+        public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale,
+                uz.hrlab.grading.reporting.application.template.EvaluationReportFilter filter) {
             return new EvaluationMatrix("Proj", "M (v1)", 1, 1,
                     List.of(new FactorRef("KNOWLEDGE", "Knowledge"),
                             new FactorRef("PROBLEM_SOLVING", "Problem solving")),

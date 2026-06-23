@@ -2,6 +2,7 @@ package uz.hrlab.grading.reporting.infrastructure;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
+import uz.hrlab.grading.access.application.ActorNameResolver;
 import uz.hrlab.grading.access.infrastructure.UserJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserRepository;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogJpaEntity;
@@ -30,6 +31,7 @@ import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.project.infrastructure.ProjectJpaEntity;
 import uz.hrlab.grading.project.infrastructure.ProjectRepository;
+import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
 import uz.hrlab.grading.reporting.application.template.ReportDataPort;
 import uz.hrlab.grading.reporting.application.template.ReportLabels;
 import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
@@ -92,6 +94,7 @@ public class DefaultReportDataPort implements ReportDataPort {
     private final UserRepository users;
     private final TenantRepository tenants;
     private final SystemAuditLogRepository auditLog;
+    private final ActorNameResolver actorNames;
 
     public DefaultReportDataPort(PositionRepository positions,
                                  ProjectRepository projects,
@@ -106,7 +109,8 @@ public class DefaultReportDataPort implements ReportDataPort {
                                  DepartmentRepository departments,
                                  UserRepository users,
                                  TenantRepository tenants,
-                                 SystemAuditLogRepository auditLog) {
+                                 SystemAuditLogRepository auditLog,
+                                 ActorNameResolver actorNames) {
         this.positions = positions;
         this.projects = projects;
         this.evaluations = evaluations;
@@ -121,6 +125,7 @@ public class DefaultReportDataPort implements ReportDataPort {
         this.users = users;
         this.tenants = tenants;
         this.auditLog = auditLog;
+        this.actorNames = actorNames;
     }
 
     @Override
@@ -303,12 +308,22 @@ public class DefaultReportDataPort implements ReportDataPort {
     }
 
     @Override
-    public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale) {
+    public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale,
+                                            EvaluationReportFilter filter) {
+        EvaluationReportFilter activeFilter = filter == null ? EvaluationReportFilter.none() : filter;
         String projectName = projects.findByIdAndTenantId(projectId, tenantId)
                 .map(p -> titleForProject(p, locale))
                 .orElse("—");
 
-        var page = evaluations.findAllByTenantIdAndProjectId(tenantId, projectId,
+        // Apply every filter dimension in the JPQL WHERE (NOT in-memory), so the
+        // page cap caps the FILTERED set (PRD §5 EC-5). Empty collections are
+        // normalized to null because portable JPQL has no `IN ()`; the finder's
+        // `(:list IS NULL OR ...)` guard then disables that dimension.
+        var page = evaluations.findForEvaluationReport(
+                tenantId, projectId,
+                emptyToNull(activeFilter.methodologyVersionIds()),
+                emptyToNull(activeFilter.evaluatorUserIds()),
+                activeFilter.dateFrom(), activeFilter.dateTo(),
                 PageRequest.of(0, MAX_EVALUATIONS));
 
         // Collect distinct methodology version ids; build the column order
@@ -424,7 +439,63 @@ public class DefaultReportDataPort implements ReportDataPort {
                 page.getNumberOfElements(),
                 approved,
                 factorColumns,
-                rows);
+                rows,
+                buildFilterEcho(tenantId, activeFilter, locale));
+    }
+
+    /**
+     * Build the localized, name-resolved echo of the applied filters for the
+     * report meta block (PRD AC-4.3). Name resolution stays INSIDE the port:
+     * methodology version → "Name (vN)" via {@link #resolveMethodologyName}
+     * (reuse anchor), evaluator user id → display name via
+     * {@link ActorNameResolver#resolveAll} (single source of truth — no third
+     * resolver). Dates are rendered as inclusive calendar days.
+     */
+    private FilterEcho buildFilterEcho(UUID tenantId, EvaluationReportFilter f, String locale) {
+        if (f == null || f.isEmpty()) return FilterEcho.empty();
+
+        String period = "";
+        if (f.dateFrom() != null || f.dateTo() != null) {
+            String from = f.dateFrom() == null ? "…" : f.dateFrom().toLocalDate().toString();
+            String to = f.dateTo() == null ? "…" : f.dateTo().toLocalDate().toString();
+            period = from + " – " + to;
+        }
+
+        String methodologies = "";
+        if (!f.methodologyVersionIds().isEmpty()) {
+            List<String> names = new ArrayList<>();
+            for (UUID mvId : new LinkedHashSet<>(f.methodologyVersionIds())) {
+                MethodologyVersionJpaEntity version =
+                        methodologyVersions.findByIdAndTenantId(mvId, tenantId).orElse(null);
+                // Tenant-scoped: a foreign id resolves to null and is shown as a
+                // privacy-safe truncation (never a full UUID), consistent with the
+                // zero-rows outcome from the filtered query.
+                names.add(version == null
+                        ? truncate(mvId) : resolveMethodologyName(tenantId, version, locale));
+            }
+            methodologies = String.join(", ", names);
+        }
+
+        String evaluators = "";
+        if (!f.evaluatorUserIds().isEmpty()) {
+            // Reuse ActorNameResolver (Item 4 — NO DUPLICATION). TODO(reports):
+            // consolidate the pre-existing ad-hoc resolveActorDisplays() onto this
+            // resolver for the audit/executive reports too.
+            Map<UUID, String> resolved = actorNames.resolveAll(tenantId, f.evaluatorUserIds());
+            List<String> names = new ArrayList<>();
+            for (UUID uid : new LinkedHashSet<>(f.evaluatorUserIds())) {
+                String name = resolved.get(uid);
+                names.add(name != null && !name.isBlank() ? name : truncate(uid));
+            }
+            evaluators = String.join(", ", names);
+        }
+
+        return new FilterEcho(period, evaluators, methodologies);
+    }
+
+    /** Normalize an empty/null collection to {@code null} for the null-safe IN-list guard. */
+    private static <T> java.util.Collection<T> emptyToNull(java.util.Collection<T> c) {
+        return (c == null || c.isEmpty()) ? null : c;
     }
 
     @Override

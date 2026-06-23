@@ -1,11 +1,13 @@
 package uz.hrlab.grading.reporting.application.template.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lowagie.text.Document;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.springframework.stereotype.Component;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
 import uz.hrlab.grading.reporting.application.template.AbstractReportTemplate;
 import uz.hrlab.grading.reporting.application.template.DocxBuilder;
+import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
 import uz.hrlab.grading.reporting.application.template.PdfBuilder;
 import uz.hrlab.grading.reporting.application.template.ReportDataPort;
 import uz.hrlab.grading.reporting.application.template.ReportGenerationContext;
@@ -41,17 +43,21 @@ public class EvaluationSummaryReport
 
     private final ReportDataPort data;
     private final ExcelWriter excel;
+    private final ObjectMapper objectMapper;
 
-    public EvaluationSummaryReport(ReportDataPort data, ExcelWriter excel) {
+    public EvaluationSummaryReport(ReportDataPort data, ExcelWriter excel, ObjectMapper objectMapper) {
         this.data = data;
         this.excel = excel;
+        this.objectMapper = objectMapper;
     }
 
     @Override public ReportType reportType() { return ReportType.EVALUATION_SUMMARY; }
 
     @Override
     protected ReportDataPort.EvaluationMatrix loadData(ReportGenerationContext ctx) {
-        return data.loadEvaluations(ctx.tenantId(), ctx.projectId(), ctx.locale());
+        EvaluationReportFilter filter =
+                EvaluationReportFilter.parse(ctx.filterParams(), objectMapper);
+        return data.loadEvaluations(ctx.tenantId(), ctx.projectId(), ctx.locale(), filter);
     }
 
     private static List<String> condensedHeaders(String locale) {
@@ -78,6 +84,19 @@ public class EvaluationSummaryReport
                     String.valueOf(matrix.totalPositions()));
             PdfBuilder.metaLine(doc, ReportLabels.label("meta.approved", locale),
                     String.valueOf(matrix.approvedCount()));
+            ReportDataPort.FilterEcho filters = matrix.activeFilters();
+            if (filters.hasMethodologies()) {
+                PdfBuilder.metaLine(doc, ReportLabels.label("meta.filterMethodologies", locale),
+                        filters.methodologies());
+            }
+            if (filters.hasPeriod()) {
+                PdfBuilder.metaLine(doc, ReportLabels.label("meta.filterPeriod", locale),
+                        filters.period());
+            }
+            if (filters.hasEvaluators()) {
+                PdfBuilder.metaLine(doc, ReportLabels.label("meta.filterEvaluators", locale),
+                        filters.evaluators());
+            }
             if (matrix.rows().isEmpty()) {
                 PdfBuilder.paragraph(doc, ReportLabels.label("empty.evaluations", locale));
             } else {
@@ -115,6 +134,19 @@ public class EvaluationSummaryReport
         DocxBuilder.metaLine(pkg.getMainDocumentPart(),
                 ReportLabels.label("meta.approved", locale),
                 String.valueOf(matrix.approvedCount()));
+        ReportDataPort.FilterEcho filters = matrix.activeFilters();
+        if (filters.hasMethodologies()) {
+            DocxBuilder.metaLine(pkg.getMainDocumentPart(),
+                    ReportLabels.label("meta.filterMethodologies", locale), filters.methodologies());
+        }
+        if (filters.hasPeriod()) {
+            DocxBuilder.metaLine(pkg.getMainDocumentPart(),
+                    ReportLabels.label("meta.filterPeriod", locale), filters.period());
+        }
+        if (filters.hasEvaluators()) {
+            DocxBuilder.metaLine(pkg.getMainDocumentPart(),
+                    ReportLabels.label("meta.filterEvaluators", locale), filters.evaluators());
+        }
         if (matrix.rows().isEmpty()) {
             DocxBuilder.paragraph(pkg.getMainDocumentPart(),
                     ReportLabels.label("empty.evaluations", locale));

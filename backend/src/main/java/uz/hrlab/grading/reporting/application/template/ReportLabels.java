@@ -43,6 +43,11 @@ public final class ReportLabels {
             entry("meta.positionCount", "Количество позиций", "Лавозимлар сони", "Lavozimlar soni", "Position count"),
             entry("meta.totalEvents", "Всего событий", "Жами ҳодисалар", "Jami hodisalar", "Total events"),
             entry("meta.period", "Период", "Давр", "Davr", "Period"),
+            // EVALUATION_SUMMARY applied-filter meta lines (self-describing export)
+            entry("meta.filterPeriod", "Период", "Давр", "Davr", "Period"),
+            entry("meta.filterEvaluators", "Оценщики", "Баҳоловчилар", "Baholovchilar", "Evaluators"),
+            entry("meta.filterMethodologies", "Методологии", "Методологиялар",
+                    "Metodologiyalar", "Methodologies"),
             entry("meta.weight", "Вес", "Вазн", "Vazn", "Weight"),
             entry("meta.maxPoints", "Макс. баллы", "Макс. балл", "Maks. ball", "Max points"),
             entry("meta.scoringMode", "Режим оценки", "Баҳолаш режими", "Baholash rejimi", "Scoring mode"),

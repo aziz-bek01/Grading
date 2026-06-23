@@ -50,6 +50,17 @@ public interface PanelRepository
             UUID tenantId, EvaluationPanelStatus status);
 
     /**
+     * REQ-CEO — tenant-wide, project-agnostic page of panels filtered to a SET of
+     * statuses. Backs the {@code GET /api/v1/panels?status=...} org-view filter so
+     * the CEO can pull e.g. only SUBMITTED panels awaiting sign-off across every
+     * department in one page. Tenant-scoped in the predicate (defense-in-depth on
+     * top of forced RLS); reuses the same {@link EvaluationPanelJpaEntity} -> batched
+     * {@code PanelQueries.list} mapping (no duplicate mapping path).
+     */
+    Page<EvaluationPanelJpaEntity> findAllByTenantIdAndStatusIn(
+            UUID tenantId, java.util.Collection<EvaluationPanelStatus> statuses, Pageable pageable);
+
+    /**
      * Tenant-scoped hard delete (Defect-2 BE). Mirrors
      * {@code EvaluationRepository.deleteByIdAndTenantId}: {@link TenantAwareRepository}
      * intentionally hides the BOLA-prone single-arg {@code deleteById(id)}; this

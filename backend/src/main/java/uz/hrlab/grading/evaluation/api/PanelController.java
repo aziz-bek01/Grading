@@ -30,6 +30,7 @@ import uz.hrlab.grading.evaluation.application.ReopenPanelUseCase;
 import uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCase;
 import uz.hrlab.grading.evaluation.application.WithdrawEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
+import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.domain.PanelAssignment;
 
 import java.util.List;
@@ -229,12 +230,21 @@ public class PanelController {
                 null, 0, 0);
     }
 
+    /**
+     * REQ-CEO — optional {@code status} multi-filter for the org-wide view (e.g.
+     * {@code ?status=SUBMITTED} to pull every panel awaiting the CEO's sign-off
+     * across all departments). The filter is honored only as a tenant-wide pull
+     * (no projectId/positionId); when combined with a project/position scope the
+     * status param is ignored and the existing scoped behavior applies. Still gated
+     * on {@code EVALUATION_READ} (blind-safe — status only, never scores).
+     */
     @GetMapping
     @PreAuthorize("hasAuthority('EVALUATION_READ')")
     public PageResponse<PanelResponse> list(@RequestParam(required = false) UUID projectId,
                                             @RequestParam(required = false) UUID positionId,
+                                            @RequestParam(required = false) List<EvaluationPanelStatus> status,
                                             Pageable pageable) {
-        Page<PanelResponse> page = queries.list(projectId, positionId, clampPageSize(pageable));
+        Page<PanelResponse> page = queries.list(projectId, positionId, status, clampPageSize(pageable));
         return PageResponse.from(page);
     }
 

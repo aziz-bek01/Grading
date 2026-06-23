@@ -16,6 +16,16 @@ public final class RoleCodes {
     public static final String HRLAB_ANALYST              = "HRLAB_ANALYST";
     public static final String CLIENT_COMPANY_ADMIN       = "CLIENT_COMPANY_ADMIN";
     public static final String CLIENT_HR_DIRECTOR         = "CLIENT_HR_DIRECTOR";
+    /**
+     * REQ-CEO — the company-client CEO. Org-wide oversight + the dedicated
+     * evaluation-panel sign-off authority ({@code EVALUATION_PANEL_APPROVE}),
+     * held by THIS role only (strict routing — removed from
+     * {@code CLIENT_HR_DIRECTOR}). Tenant-wide read bypass (see
+     * {@code DepartmentScopePolicy#isTenantWideBypass}); oversight + approval
+     * only, no write/MANAGE permissions. Seeded by changeset
+     * {@code tenant-046-seed-client-ceo-role}.
+     */
+    public static final String CLIENT_CEO                 = "CLIENT_CEO";
     public static final String CLIENT_HR_SPECIALIST       = "CLIENT_HR_SPECIALIST";
     public static final String EVALUATION_COMMITTEE_MEMBER = "EVALUATION_COMMITTEE_MEMBER";
     public static final String DEPARTMENT_MANAGER         = "DEPARTMENT_MANAGER";

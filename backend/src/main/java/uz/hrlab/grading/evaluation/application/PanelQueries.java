@@ -39,6 +39,7 @@ import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -146,12 +147,32 @@ public class PanelQueries {
         return new RosterSuggestionResponse(departmentId, candidates);
     }
 
+    /**
+     * REQ-CEO — optional {@code statuses} filter for the org-wide view. When
+     * {@code statuses} is non-empty AND no projectId/positionId is given (the CEO's
+     * tenant-wide "what's awaiting me" pull), the page is sourced from
+     * {@link PanelRepository#findAllByTenantIdAndStatusIn}. In EVERY other case the
+     * behavior is byte-identical to before (statuses null/empty, or scoped by
+     * project/position). The downstream batched mapping is UNCHANGED and shared —
+     * status filtering only swaps which repository query produces the source page.
+     *
+     * <p>Combining a status filter with projectId/positionId is intentionally NOT
+     * supported here: the project/position-scoped paths already narrow the page to a
+     * handful of panels, so an in-memory status post-filter would be the simpler add
+     * but would silently break paging totals. The CEO org view is statuses-only;
+     * project/position-scoped callers keep the existing unfiltered paths.
+     */
     @Transactional(readOnly = true)
-    public Page<PanelResponse> list(UUID projectId, UUID positionId, Pageable pageable) {
+    public Page<PanelResponse> list(UUID projectId, UUID positionId,
+                                    Collection<EvaluationPanelStatus> statuses, Pageable pageable) {
         TenantContext ctx = requireRead();
         UUID tenant = ctx.tenantId();
+        boolean filterByStatus = statuses != null && !statuses.isEmpty()
+                && projectId == null && positionId == null;
         Page<EvaluationPanelJpaEntity> page;
-        if (projectId != null && positionId != null) {
+        if (filterByStatus) {
+            page = panels.findAllByTenantIdAndStatusIn(tenant, statuses, pageable);
+        } else if (projectId != null && positionId != null) {
             page = panels.findAllByTenantIdAndProjectIdAndPositionId(
                     tenant, projectId, positionId, pageable);
         } else if (positionId != null) {

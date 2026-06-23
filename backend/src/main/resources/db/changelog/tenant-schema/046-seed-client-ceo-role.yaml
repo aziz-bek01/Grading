@@ -1,0 +1,119 @@
+# CLIENT_CEO role (REQ-CEO) — org-wide oversight + the dedicated panel sign-off
+# authority, DISTINCT from CLIENT_HR_DIRECTOR. Mirrors the seed conventions of
+# 002 (INSERT INTO public.roles), 004 / 038 (role_permissions via WITH
+# role_perm_map JOIN + ON CONFLICT DO NOTHING). Does NOT edit 002/004/038
+# (already applied / immutable) — this is the additive forward-only changeset.
+#
+# Ordered AFTER 038 in db.changelog-tenant.yaml so that:
+#   * every catalogue permission code the CEO is granted already exists in
+#     public.permissions (001/013/016/023/038 ran first), and
+#   * the strict-routing DELETE below removes the CLIENT_HR_DIRECTOR ->
+#     EVALUATION_PANEL_APPROVE row that 038 line ~56 inserted.
+#
+# Permissions granted to CLIENT_CEO (oversight + approval only — NO write/MANAGE,
+# NOT EVALUATION_PANEL_MANAGE, NOT per-sheet EVALUATION_APPROVE):
+#   EVALUATION_PANEL_APPROVE  — the dedicated CEO panel sign-off step (routed here
+#                               via approval step requiredPermission; moving the
+#                               grant reroutes approvals automatically).
+#   CAMPAIGN_RESULTS_VIEW     — averaged totals + per-evaluator breakdown.
+#   APPROVAL_REQUEST_DECIDE   — decide the panel approval request (approve/reject).
+#   EVALUATION_READ           — read panels/evaluations (list/detail surface).
+#   PROJECT_READ / ORG_READ / POSITION_READ / JOB_PROFILE_READ /
+#   METHODOLOGY_READ / GRADE_READ / REPORT_READ / FILE_DOWNLOAD
+#                             — org-wide read across the grading artifacts.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-046-seed-client-ceo-role
+      author: backend-engineer
+      context: seeds
+      labels: req-ceo
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              INSERT INTO public.roles (id, code, name, scope, description) VALUES
+                (gen_random_uuid(), 'CLIENT_CEO', 'Client CEO', 'TENANT',
+                 'Org-wide oversight + dedicated evaluation-panel sign-off authority (distinct from HR Director)')
+              ON CONFLICT (code) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.roles WHERE code = 'CLIENT_CEO';
+
+  - changeSet:
+      id: tenant-046-seed-client-ceo-role-permissions
+      author: backend-engineer
+      context: seeds
+      labels: req-ceo
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              WITH role_perm_map(role_code, permission_code) AS (
+                VALUES
+                  ('CLIENT_CEO', 'EVALUATION_PANEL_APPROVE'),
+                  ('CLIENT_CEO', 'CAMPAIGN_RESULTS_VIEW'),
+                  ('CLIENT_CEO', 'APPROVAL_REQUEST_DECIDE'),
+                  ('CLIENT_CEO', 'EVALUATION_READ'),
+                  ('CLIENT_CEO', 'PROJECT_READ'),
+                  ('CLIENT_CEO', 'ORG_READ'),
+                  ('CLIENT_CEO', 'POSITION_READ'),
+                  ('CLIENT_CEO', 'JOB_PROFILE_READ'),
+                  ('CLIENT_CEO', 'METHODOLOGY_READ'),
+                  ('CLIENT_CEO', 'GRADE_READ'),
+                  ('CLIENT_CEO', 'REPORT_READ'),
+                  ('CLIENT_CEO', 'FILE_DOWNLOAD')
+              )
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM role_perm_map m
+                JOIN public.roles       r ON r.code = m.role_code
+                JOIN public.permissions p ON p.code = m.permission_code
+              ON CONFLICT (role_id, permission_id) DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.roles r, public.permissions p
+                WHERE rp.role_id = r.id
+                  AND rp.permission_id = p.id
+                  AND r.code = 'CLIENT_CEO'
+                  AND p.code IN (
+                    'EVALUATION_PANEL_APPROVE','CAMPAIGN_RESULTS_VIEW','APPROVAL_REQUEST_DECIDE',
+                    'EVALUATION_READ','PROJECT_READ','ORG_READ','POSITION_READ','JOB_PROFILE_READ',
+                    'METHODOLOGY_READ','GRADE_READ','REPORT_READ','FILE_DOWNLOAD');
+
+  - changeSet:
+      id: tenant-046-revoke-hr-director-panel-approve
+      author: backend-engineer
+      context: seeds
+      labels: req-ceo
+      changes:
+        # STRICT ROUTING: EVALUATION_PANEL_APPROVE must live ONLY on CLIENT_CEO.
+        # Remove the CLIENT_HR_DIRECTOR -> EVALUATION_PANEL_APPROVE grant that 038
+        # seeded. Panel approval steps route by requiredPermission, so dropping
+        # this row reroutes the sign-off to the CEO without any routing-code change.
+        # Tenant-safe DELETE joining roles + permissions by code (mirrors the 038
+        # rollback DELETE shape).
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              DELETE FROM public.role_permissions rp
+                USING public.roles r, public.permissions p
+                WHERE rp.role_id = r.id
+                  AND rp.permission_id = p.id
+                  AND r.code = 'CLIENT_HR_DIRECTOR'
+                  AND p.code = 'EVALUATION_PANEL_APPROVE';
+      rollback:
+        - sql:
+            sql: |
+              INSERT INTO public.role_permissions (role_id, permission_id)
+              SELECT r.id, p.id
+                FROM public.roles r, public.permissions p
+                WHERE r.code = 'CLIENT_HR_DIRECTOR'
+                  AND p.code = 'EVALUATION_PANEL_APPROVE'
+              ON CONFLICT (role_id, permission_id) DO NOTHING;

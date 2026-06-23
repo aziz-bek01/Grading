@@ -109,6 +109,12 @@ public class DepartmentScopePolicy implements ScopePolicy {
                 || ctx.hasRole(RoleCodes.HRLAB_CONSULTANT)
                 || ctx.hasRole(RoleCodes.HRLAB_ANALYST)
                 || ctx.hasRole(RoleCodes.CLIENT_COMPANY_ADMIN)
-                || ctx.hasRole(RoleCodes.CLIENT_HR_DIRECTOR));
+                || ctx.hasRole(RoleCodes.CLIENT_HR_DIRECTOR)
+                // REQ-CEO — the CEO has org-wide oversight: read panels / positions
+                // / results across EVERY department (same treatment as the HR
+                // Director). They are NOT a panel evaluator, so this read bypass does
+                // not affect the panel bias blind (which is the separate
+                // RoleCodes.PANEL_OVERSIGHT_ROLES set).
+                || ctx.hasRole(RoleCodes.CLIENT_CEO));
     }
 }

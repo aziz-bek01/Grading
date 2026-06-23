@@ -1761,7 +1761,11 @@
     "error": {
       "project_required": "Project is required.",
       "format_not_supported": "Selected format is not supported for this report type.",
-      "invalid_date_range": "The \"to\" date cannot be earlier than the \"from\" date."
+      "invalid_date_range": "The \"to\" date cannot be earlier than the \"from\" date.",
+      "request_failed": "Couldn't create the report request (code: {{code}}). Reference: {{ref}}.",
+      "invalid_methodology": "One or more selected methodology versions aren't available here. Clear the methodology filter and try again.",
+      "malformed_filter": "The report filter couldn't be read. Clear the filters and try again.",
+      "permission_denied": "You don't have permission to request reports."
     }
   },
   "users": {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/test/testUtils';
 import { httpClient } from '@/shared/api/httpClient';
+import { ApiError } from '@/shared/api/apiError';
 import { ReportRequestDialog } from '../components/ReportRequestDialog';
 
 const VALID_PROJECT_UUID = '11111111-1111-4111-8111-111111111111';
@@ -356,5 +357,57 @@ describe('ReportRequestDialog — EVALUATION_SUMMARY filter panel', () => {
     expect(parsed.dateFrom).toBeUndefined();
     expect(parsed.dateTo).toBeUndefined();
     expect(parsed.evaluatorUserIds).toBeUndefined();
+  });
+
+  // -----------------------------------------------------------------------
+  // Error surfacing — a failed request must be VISIBLE, not swallowed
+  // -----------------------------------------------------------------------
+
+  it('surfaces a failed request inline and keeps the dialog open (does not swallow the error)', async () => {
+    stubFilterPanelData();
+    // Backend rejects the request (e.g. a filter-validation 422). Previously the
+    // dialog had no catch -> the rejection vanished and nothing changed on screen.
+    vi.spyOn(httpClient, 'post').mockRejectedValue(
+      new ApiError(422, { code: 'REPORT_FILTER_INVALID_METHODOLOGY' }),
+    );
+    const onClose = vi.fn();
+    render(
+      renderWithProviders(
+        <ReportRequestDialog open projectId={VALID_PROJECT_UUID} onClose={onClose} />,
+      ),
+    );
+    fireEvent.change(screen.getByTestId('report-request-type'), {
+      target: { value: 'EVALUATION_SUMMARY' },
+    });
+
+    fireEvent.click(screen.getByTestId('report-request-submit'));
+
+    const banner = await screen.findByTestId('report-request-error');
+    expect(banner.textContent ?? '').not.toHaveLength(0);
+    // The dialog stays open so the user can correct and retry.
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('report-request-dialog')).toBeInTheDocument();
+  });
+
+  it('shows the backend error code + reference for an unmapped failure', async () => {
+    stubFilterPanelData();
+    vi.spyOn(httpClient, 'post').mockRejectedValue(
+      new ApiError(500, { code: 'INTERNAL_ERROR', correlation_id: 'corr-xyz' }),
+    );
+    render(
+      renderWithProviders(
+        <ReportRequestDialog open projectId={VALID_PROJECT_UUID} onClose={() => {}} />,
+      ),
+    );
+    fireEvent.change(screen.getByTestId('report-request-type'), {
+      target: { value: 'GRADE_DISTRIBUTION' },
+    });
+
+    fireEvent.click(screen.getByTestId('report-request-submit'));
+
+    const banner = await screen.findByTestId('report-request-error');
+    // The generic fallback carries the code + correlation id so the failure is reportable.
+    expect(banner.textContent).toContain('INTERNAL_ERROR');
+    expect(banner.textContent).toContain('corr-xyz');
   });
 });

@@ -1699,6 +1699,18 @@
     "field_format": "Формат",
     "field_filter_params": "Филтрлаш параметрлари (JSON)",
     "filter_placeholder": "{}",
+    "filter": {
+      "section_title": "Баҳолаш хулосаси филтрлари",
+      "methodology_label": "Методология (версиялар)",
+      "methodology_empty_hint": "Версия танланмади — барча методология версиялари киритилади.",
+      "methodology_load_error": "Методология версияларини юклаб бўлмади.",
+      "no_methodologies": "Бу лойиҳада методологиялар йўқ.",
+      "date_label": "Давр (топширилган сана)",
+      "date_from": "Санадан",
+      "date_to": "Санагача",
+      "evaluator_label": "Баҳоловчилар",
+      "evaluator_empty_hint": "Баҳоловчи танланмади — барча баҳоловчилар киритилади."
+    },
     "filter_status": "Ҳолат",
     "filter_status_all": "Барча ҳолатлар",
     "filter_type": "Тур",
@@ -1748,7 +1760,8 @@
     },
     "error": {
       "project_required": "Лойиҳа талаб қилинади.",
-      "format_not_supported": "Танланган формат ушбу ҳисобот тури учун мавжуд эмас."
+      "format_not_supported": "Танланган формат ушбу ҳисобот тури учун мавжуд эмас.",
+      "invalid_date_range": "\"Санагача\" санаси \"санадан\" санасидан олдин бўлиши мумкин эмас."
     }
   },
   "users": {

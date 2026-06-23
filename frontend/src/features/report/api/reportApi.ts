@@ -13,6 +13,7 @@ import { httpClient } from '@/shared/api/httpClient';
 import { downloadAuthenticatedFile } from '@/shared/api/downloadFile';
 import { mapPageEnvelope, pick, pickBool, type Raw } from '@/shared/api/wireAdapter';
 import type {
+  EvaluationReportFilter,
   Report,
   ReportFormat,
   ReportPage,
@@ -70,15 +71,51 @@ export const reportKeys = {
   downloadUrl: (id: string) => ['reports', 'downloadUrl', id] as const,
 };
 
+/**
+ * Serializes the structured EVALUATION_SUMMARY filter into the JSON string
+ * carried by the single existing `filter_params` wire field (no new
+ * top-level request fields — see reports-evaluation-filters dispatch doc
+ * §1 call-out #5). The object's OWN keys are snake_case
+ * (`methodology_version_ids` / `date_from` / `date_to` / `evaluator_user_ids`)
+ * to match the backend's snake_case Jackson convention end-to-end (commit
+ * `a45db24`). Empty arrays and empty date strings are OMITTED, not sent as
+ * `[]`/`""` — an absent key means "no filter" (PRD AC-1.1 / AC-2.1 / AC-3.1),
+ * not an explicit empty-set narrowing that would (incorrectly) match zero rows.
+ */
+export function serializeEvaluationReportFilter(
+  filter: EvaluationReportFilter | null | undefined,
+): string | null {
+  if (!filter) return null;
+  const body: EvaluationReportFilter = {};
+  if (filter.methodology_version_ids && filter.methodology_version_ids.length > 0) {
+    body.methodology_version_ids = filter.methodology_version_ids;
+  }
+  if (filter.date_from) {
+    body.date_from = filter.date_from;
+  }
+  if (filter.date_to) {
+    body.date_to = filter.date_to;
+  }
+  if (filter.evaluator_user_ids && filter.evaluator_user_ids.length > 0) {
+    body.evaluator_user_ids = filter.evaluator_user_ids;
+  }
+  if (Object.keys(body).length === 0) return null;
+  return JSON.stringify(body);
+}
+
 export async function requestReport(payload: ReportRequestPayload): Promise<Report> {
   // The backend uses the global SNAKE_CASE Jackson strategy, so the request body
   // MUST use snake_case keys. Posting the camelCase payload directly made
   // `report_type` / `project_id` deserialize to null -> 400 VALIDATION_FAILED.
+  const filterParams =
+    payload.reportType === 'EVALUATION_SUMMARY' && payload.evaluationFilter
+      ? serializeEvaluationReportFilter(payload.evaluationFilter)
+      : payload.filterParams ?? null;
   const body = {
     report_type: payload.reportType,
     format: payload.format,
     project_id: payload.projectId,
-    filter_params: payload.filterParams ?? null,
+    filter_params: filterParams,
   };
   const res = await httpClient.post<unknown>('/reports/request', body);
   return normalizeReport(res.data);

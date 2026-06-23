@@ -10,6 +10,7 @@
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { DateRangeFields } from '@/shared/components/form/DateRangeFields';
 import type { AuditQuery } from '../types/auditTypes';
 
 interface AuditFilterBarProps {
@@ -90,28 +91,11 @@ export function AuditFilterBar({
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <label className="inline-flex items-center gap-1 text-xs text-text-secondary">
-        <span>{t('audit.filter.from')}:</span>
-        <input
-          type="date"
-          value={(value.from ?? '').slice(0, 10)}
-          onChange={(e) => merged({ from: e.target.value || undefined })}
-          aria-label={t('audit.filter.from')}
-          data-testid="audit-filter-from"
-          className="h-8 px-2 border border-border-strong rounded-md bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-        />
-      </label>
-      <label className="inline-flex items-center gap-1 text-xs text-text-secondary">
-        <span>{t('audit.filter.to')}:</span>
-        <input
-          type="date"
-          value={(value.to ?? '').slice(0, 10)}
-          onChange={(e) => merged({ to: e.target.value || undefined })}
-          aria-label={t('audit.filter.to')}
-          data-testid="audit-filter-to"
-          className="h-8 px-2 border border-border-strong rounded-md bg-surface text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-        />
-      </label>
+      <DateRangeFields
+        value={{ from: value.from, to: value.to }}
+        onChange={(next) => merged({ from: next.from, to: next.to })}
+        testIdPrefix="audit-filter"
+      />
 
       <label className="inline-flex items-center gap-1 text-xs text-text-secondary">
         <span>{t('audit.filter.action')}:</span>

@@ -15,7 +15,6 @@ import uz.hrlab.grading.evaluation.infrastructure.PanelAssignmentJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.PanelAssignmentRepository;
 import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -48,17 +47,20 @@ public class PanelCompletionWatcher {
     private final PanelAssignmentRepository assignments;
     private final ComputePanelAverageUseCase computeAverage;
     private final SubmitPanelToCeoUseCase submitToCeo;
+    private final PanelCompletionChecker completionChecker;
     private final AuditService audit;
 
     public PanelCompletionWatcher(PanelRepository panels,
                                   PanelAssignmentRepository assignments,
                                   ComputePanelAverageUseCase computeAverage,
                                   SubmitPanelToCeoUseCase submitToCeo,
+                                  PanelCompletionChecker completionChecker,
                                   AuditService audit) {
         this.panels = panels;
         this.assignments = assignments;
         this.computeAverage = computeAverage;
         this.submitToCeo = submitToCeo;
+        this.completionChecker = completionChecker;
         this.audit = audit;
     }
 
@@ -112,7 +114,7 @@ public class PanelCompletionWatcher {
                     .build());
         }
 
-        if (allActiveComplete(tenantId, panelId)) {
+        if (completionChecker.allActiveComplete(tenantId, panelId)) {
             // AWAITING_EVALUATIONS -> AVERAGED happens inside the compute use case.
             computeAverage.compute(tenantId, panelId, actorUserId);
             // Consolidated panel flow — the moment a panel averages, open the
@@ -138,24 +140,4 @@ public class PanelCompletionWatcher {
         }
     }
 
-    /**
-     * Single source of truth for "all complete": every non-WITHDRAWN assignment
-     * is COMPLETED, and there is at least one. Derived from the assignment set —
-     * never an inlined status list.
-     */
-    private boolean allActiveComplete(UUID tenantId, UUID panelId) {
-        List<PanelAssignmentJpaEntity> roster = assignments
-                .findAllByTenantIdAndPanelId(tenantId, panelId);
-        boolean anyActive = false;
-        for (PanelAssignmentJpaEntity a : roster) {
-            if (!a.getAssignmentStatus().isActive()) {
-                continue;
-            }
-            anyActive = true;
-            if (a.getAssignmentStatus() != PanelAssignmentStatus.COMPLETED) {
-                return false;
-            }
-        }
-        return anyActive;
-    }
 }

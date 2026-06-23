@@ -55,8 +55,12 @@ class PanelCompletionWatcherTest {
 
     @BeforeEach
     void setUp() {
+        // Real PanelCompletionChecker over the SAME assignments mock so the
+        // existing roster-completion stubs drive the extracted predicate unchanged
+        // (proves the extraction is behaviour-preserving).
         watcher = new PanelCompletionWatcher(
-                panels, assignments, computeAverage, submitToCeo, audit);
+                panels, assignments, computeAverage, submitToCeo,
+                new PanelCompletionChecker(assignments), audit);
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         panelId = UUID.randomUUID();

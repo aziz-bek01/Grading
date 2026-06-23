@@ -1,5 +1,7 @@
 package uz.hrlab.grading.reporting.application;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -22,6 +24,7 @@ import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -33,19 +36,33 @@ import java.util.UUID;
 @Service
 public class RequestReportUseCase {
 
+    /**
+     * In-flight statuses guarded by the {@code uq_reports_inflight} partial unique
+     * index (028-create-reports.yaml): only one report per
+     * (tenant, requestor, type, project) may sit in any of these at a time.
+     */
+    private static final List<ReportStatus> IN_FLIGHT_STATUSES =
+            List.of(ReportStatus.REQUESTED, ReportStatus.QUEUED, ReportStatus.GENERATING);
+
     private final ReportRepository reports;
     private final ReportGenerationJob worker;
     private final AuditService audit;
     private final EvaluationReportFilterValidator filterValidator;
+    private final CancelReportUseCase cancelUseCase;
+
+    @PersistenceContext
+    private EntityManager em;
 
     public RequestReportUseCase(ReportRepository reports,
                                 ReportGenerationJob worker,
                                 AuditService audit,
-                                EvaluationReportFilterValidator filterValidator) {
+                                EvaluationReportFilterValidator filterValidator,
+                                CancelReportUseCase cancelUseCase) {
         this.reports = reports;
         this.worker = worker;
         this.audit = audit;
         this.filterValidator = filterValidator;
+        this.cancelUseCase = cancelUseCase;
     }
 
     @Transactional
@@ -63,6 +80,24 @@ public class RequestReportUseCase {
         // REPORT_FILTER_INVALID_METHODOLOGY before the row is ever persisted.
         EvaluationReportFilter filter =
                 filterValidator.validate(type, ctx.tenantId(), filterParams);
+
+        // Self-heal the uq_reports_inflight partial unique index. An orphaned
+        // in-flight report — e.g. one left stuck in REQUESTED/GENERATING by an
+        // earlier failure — for the same (tenant, requestor, type, project) would
+        // otherwise make EVERY new request fail with a unique-constraint violation
+        // (surfaced to the user as "the request isn't even being created"). Supersede
+        // it: cancel the stale row(s) and FLUSH so the UPDATE lands before the new
+        // INSERT (Hibernate executes inserts before updates within a transaction,
+        // which would otherwise re-trigger the very violation we are avoiding).
+        List<ReportJpaEntity> inFlight =
+                reports.findAllByTenantIdAndRequestedByAndReportTypeAndProjectIdAndStatusIn(
+                        ctx.tenantId(), ctx.userId(), type, projectId, IN_FLIGHT_STATUSES);
+        if (!inFlight.isEmpty()) {
+            for (ReportJpaEntity stale : inFlight) {
+                cancelUseCase.cancel(stale.getId());
+            }
+            em.flush();
+        }
 
         UUID id = UUID.randomUUID();
         String title = ReportTitleResolver.resolve(type, ctx.locale());

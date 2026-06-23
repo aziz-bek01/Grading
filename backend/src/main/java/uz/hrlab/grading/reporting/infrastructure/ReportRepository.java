@@ -31,6 +31,16 @@ public interface ReportRepository
             UUID tenantId, List<ReportStatus> statuses);
 
     /**
+     * In-flight reports matching the {@code uq_reports_inflight} partial-unique-index
+     * key (tenant, requestor, type, project). Used by {@code RequestReportUseCase} to
+     * supersede an orphaned in-flight report before inserting a new one — otherwise
+     * the unique index rejects the insert with a constraint violation.
+     */
+    List<ReportJpaEntity> findAllByTenantIdAndRequestedByAndReportTypeAndProjectIdAndStatusIn(
+            UUID tenantId, UUID requestedBy, ReportType reportType, UUID projectId,
+            List<ReportStatus> statuses);
+
+    /**
      * Batch-4 re-queuer scan: retryable {@code FAILED} reports for the tenant
      * that are DUE and still under the retry bound. Tenant-scoped (RLS-bound).
      */

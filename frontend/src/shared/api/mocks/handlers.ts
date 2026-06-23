@@ -126,10 +126,19 @@ function parseUrl(url: string, params?: Record<string, unknown>): { path: string
   const query = new URLSearchParams(idx >= 0 ? url.slice(idx + 1) : '');
   // Axios passes `params` separately from `url`; merge them in so handlers can
   // read query parameters regardless of how the caller built the request.
+  // Array values (e.g. repeatable `status` params for the CEO panel filter) are
+  // appended individually so `query.getAll('status')` returns the full list.
   if (params && typeof params === 'object') {
     for (const [k, v] of Object.entries(params)) {
       if (v === undefined || v === null) continue;
-      if (!query.has(k)) query.set(k, String(v));
+      if (Array.isArray(v)) {
+        // Repeatable param — append each value so getAll() works correctly.
+        for (const item of v) {
+          query.append(k, String(item));
+        }
+      } else if (!query.has(k)) {
+        query.set(k, String(v));
+      }
     }
   }
   return { path: path.replace(/^\/api\/v1/, '').replace(/\/$/, ''), query };
@@ -3530,13 +3539,21 @@ function handlePanels(
     });
   }
 
-  // GET /panels?project_id=&position_id=  → PageResponse<PanelResponse>
+  // GET /panels?project_id=&position_id=&status=  → PageResponse<PanelResponse>
+  // CEO org-wide pull: status filter honoured ONLY when no project_id/position_id
+  // is present (mirrors the backend contract). Repeatable ?status= params.
   if (path === '/panels' && method === 'GET') {
     const projectId = query.get('project_id');
     const positionId = query.get('position_id');
+    // URLSearchParams.getAll returns all values for repeatable params.
+    const statusFilter = query.getAll('status');
     let list = mockDb.panels;
     if (projectId) list = list.filter((p) => p.project_id === projectId);
     if (positionId) list = list.filter((p) => p.position_id === positionId);
+    // Status filter only when no project/position scope (CEO org-wide).
+    if (statusFilter.length > 0 && !projectId && !positionId) {
+      list = list.filter((p) => statusFilter.includes(p.status));
+    }
     return ok({
       items: list,
       page: 0,

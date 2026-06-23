@@ -1,14 +1,18 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { Building2, FolderKanban, Scale } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Building2, FolderKanban, Scale, ClipboardCheck } from 'lucide-react';
 import { StatCard } from '@/shared/components/cards/StatCard';
 import { Card } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui/Button';
 import { EmptyState } from '@/shared/components/feedback/EmptyState';
+import { PermissionGate } from '@/shared/components/access/PermissionGate';
+import { PERMISSIONS } from '@/shared/types/permissions';
 import { routes } from '@/shared/config/routes';
 import { useAuthStore } from '@/features/auth/authStore';
 import { usePortfolioSummary } from '@/features/dashboard/hooks/usePortfolioSummary';
 import { AuditLogStatCard } from '@/features/dashboard/components/AuditLogStatCard';
+import { useMyApprovalInbox } from '@/features/approval/hooks/useApprovals';
 
 /** Inline number/skeleton for a StatCard value while the summary loads. */
 function StatValue({
@@ -29,6 +33,68 @@ function StatValue({
   }
   // Defensive: a partial/failed payload renders the neutral dash, never NaN.
   return <>{value ?? '—'}</>;
+}
+
+/**
+ * CEO sign-off summary card — permission-gated EVALUATION_PANEL_APPROVE.
+ *
+ * REUSE: useMyApprovalInbox (same hook the sidebar badge uses) — counts pending
+ * EVALUATION_PANEL approval requests without a new endpoint. Links to the existing
+ * ApprovalsInboxPage and CeoPanelsPage.
+ */
+function CeoDashboardCard() {
+  const { t } = useTranslation();
+  const inbox = useMyApprovalInbox();
+  const pendingCount = useMemo(
+    () =>
+      (inbox.data?.items ?? []).filter((r) => r.entityType === 'EVALUATION_PANEL').length,
+    [inbox.data],
+  );
+
+  return (
+    <Card
+      title={t('ceo.dashboard_card.title')}
+      action={
+        <Link
+          to={routes.ceoPanels}
+          className="text-sm text-primary-600 hover:underline"
+          data-testid="ceo-dashboard-overview-link"
+        >
+          {t('ceo.dashboard_card.view_all')}
+        </Link>
+      }
+      data-testid="ceo-dashboard-card"
+    >
+      <div className="flex items-center gap-4">
+        <ClipboardCheck size={32} className="text-primary-500 shrink-0" aria-hidden />
+        <div>
+          {inbox.isLoading ? (
+            <span
+              className="inline-block h-7 w-10 rounded bg-divider animate-pulse align-middle"
+              aria-hidden
+              data-testid="ceo-card-skeleton"
+            />
+          ) : (
+            <p className="text-3xl tabular-nums text-text-primary" data-testid="ceo-pending-count">
+              {pendingCount}
+            </p>
+          )}
+          <p className="text-sm text-text-secondary mt-0.5">
+            {t('ceo.dashboard_card.pending_label')}
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 flex gap-3">
+        <Link
+          to={routes.approvalsInbox}
+          className="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:underline"
+          data-testid="ceo-dashboard-inbox-link"
+        >
+          {t('ceo.dashboard_card.go_inbox')}
+        </Link>
+      </div>
+    </Card>
+  );
 }
 
 export function DashboardPage() {
@@ -74,6 +140,11 @@ export function DashboardPage() {
         />
         <AuditLogStatCard />
       </div>
+
+      {/* CEO sign-off card — only when the user holds EVALUATION_PANEL_APPROVE. */}
+      <PermissionGate permission={PERMISSIONS.EVALUATION_PANEL_APPROVE}>
+        <CeoDashboardCard />
+      </PermissionGate>
 
       <Card title={t('nav.projects')}>
         {isLoading ? (

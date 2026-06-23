@@ -74,7 +74,8 @@
     "approvals": "Tasdiqlar",
     "imports": "Importlar",
     "exports": "Eksportlar",
-    "roles": "Rollar"
+    "roles": "Rollar",
+    "ceo_panels": "Komissiyalar sharhi (CEO)"
   },
   "status": {
     "draft": "Qoralama",
@@ -2197,6 +2198,26 @@
       "USER_LIST": "Foydalanuvchilar roʻyxati",
       "USER_INVITE": "Foydalanuvchi taklif qilish",
       "USER_ROLE_ASSIGN": "Rollar tayinlash"
+    }
+  },
+  "ceo": {
+    "panels": {
+      "title": "Komissiyalar sharhi",
+      "subtitle": "Tashkilotdagi barcha baholash komissiyalari.",
+      "filter_all": "Barchasi",
+      "filter_pending": "Imzoni kutmoqda",
+      "filter_inflight": "Jarayonda",
+      "filter_history": "Tarix",
+      "filter_aria": "Komissiyalarni status boʻyicha filtrlash",
+      "go_to_inbox": "Mening imzo navbatim",
+      "empty_title": "Komissiyalar topilmadi",
+      "empty_body": "Tanlangan filtrga mos baholash komissiyalari yoʻq."
+    },
+    "dashboard_card": {
+      "title": "Imzo kutayotgan komissiyalar",
+      "pending_label": "ta komissiya mening tasdiqimni kutmoqda",
+      "view_all": "Barcha komissiyalar",
+      "go_inbox": "Imzo navbatiga oʻtish"
     }
   }
 }

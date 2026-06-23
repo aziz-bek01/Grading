@@ -147,7 +147,8 @@ class ExportContentGeneratorTest {
         }
 
         @Override
-        public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale) {
+        public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale,
+                uz.hrlab.grading.reporting.application.template.EvaluationReportFilter filter) {
             return new ExecutiveKpi("Proj", "Active", "2026-01-01", "2026-12-31",
                     10, 8, 6, 3, 100, List.of());
         }

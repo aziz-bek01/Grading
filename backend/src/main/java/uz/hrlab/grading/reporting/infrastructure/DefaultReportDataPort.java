@@ -499,7 +499,9 @@ public class DefaultReportDataPort implements ReportDataPort {
     }
 
     @Override
-    public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale) {
+    public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale,
+                                         EvaluationReportFilter filter) {
+        EvaluationReportFilter activeFilter = filter == null ? EvaluationReportFilter.none() : filter;
         String projectName;
         String projectStatus = "";
         String periodFrom = "";
@@ -516,11 +518,25 @@ public class DefaultReportDataPort implements ReportDataPort {
             projectName = "—";
         }
 
+        // positionCount is NOT evaluation-scoped — stays project-wide regardless
+        // of the filter.
         int positionCount = (int) positions.search(tenantId, projectId, null, null, null,
                 PageRequest.of(0, 1)).getTotalElements();
 
-        var evalPage = evaluations.findAllByTenantIdAndProjectId(tenantId, projectId,
-                PageRequest.of(0, MAX_EVALUATIONS));
+        // Evaluation-scoped KPIs (evaluatedCount, APPROVED/LOCKED count, distinct
+        // assigned-grade set). When a filter is active, derive them from the
+        // FILTERED evaluation set via the EXISTING finder loadEvaluations uses
+        // (findForEvaluationReport) — no new query. Empty filter keeps the legacy
+        // unfiltered findAllByTenantIdAndProjectId path byte-for-byte (no regression).
+        var evalPage = activeFilter.isEmpty()
+                ? evaluations.findAllByTenantIdAndProjectId(tenantId, projectId,
+                        PageRequest.of(0, MAX_EVALUATIONS))
+                : evaluations.findForEvaluationReport(
+                        tenantId, projectId,
+                        emptyToNull(activeFilter.methodologyVersionIds()),
+                        emptyToNull(activeFilter.evaluatorUserIds()),
+                        activeFilter.dateFrom(), activeFilter.dateTo(),
+                        PageRequest.of(0, MAX_EVALUATIONS));
         int evaluatedCount = (int) evalPage.getTotalElements();
         int approved = 0;
         Set<Integer> distinctGrades = new LinkedHashSet<>();
@@ -572,7 +588,8 @@ public class DefaultReportDataPort implements ReportDataPort {
 
         return new ExecutiveKpi(projectName, projectStatus, periodFrom, periodTo,
                 positionCount, evaluatedCount, approved, distinctGrades.size(),
-                auditCount, recent);
+                auditCount, recent,
+                buildFilterEcho(tenantId, activeFilter, locale));
     }
 
     @Override

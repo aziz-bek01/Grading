@@ -92,6 +92,31 @@ class EvaluationReportFilterValidatorTest {
     }
 
     @Test
+    void executiveSummaryAlsoValidatesDateRange() {
+        // The same date-range gate now applies to EXECUTIVE_SUMMARY (it consumes
+        // the same evaluation filter for its evaluation-scoped KPIs).
+        String json = "{\"date_from\":\"2026-06-30\",\"date_to\":\"2026-04-01\"}";
+        assertThatThrownBy(() ->
+                validator.validate(ReportType.EXECUTIVE_SUMMARY, tenantId, json))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("REPORT_FILTER_INVALID_DATE_RANGE");
+    }
+
+    @Test
+    void executiveSummaryValidatesMethodologyOwnership() {
+        UUID owned = UUID.randomUUID();
+        UUID foreign = UUID.randomUUID();
+        when(methodologyVersions.findAllByTenantIdAndIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(version(owned)));
+
+        String json = "{\"methodology_version_ids\":[\"%s\",\"%s\"]}".formatted(owned, foreign);
+        assertThatThrownBy(() ->
+                validator.validate(ReportType.EXECUTIVE_SUMMARY, tenantId, json))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("REPORT_FILTER_INVALID_METHODOLOGY");
+    }
+
+    @Test
     void nonEvaluationSummaryTypeSkipsStructuredValidation() {
         // Even an "invalid" date range is not validated for other report types —
         // the filter stays opaque for them.

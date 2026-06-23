@@ -99,14 +99,25 @@ final class FakeReportDataPort implements ReportDataPort {
     }
 
     @Override
-    public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale) {
+    public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale,
+                                         EvaluationReportFilter filter) {
         OffsetDateTime t = OffsetDateTime.parse("2026-05-20T10:00:00Z");
+        // Mirror the real port: the evaluation-scoped KPIs reflect the filter,
+        // while positionCount / auditEventCount stay project-wide; and a non-empty
+        // filter echoes a name-resolved FilterEcho so the meta lines can be asserted.
+        boolean filtered = filter != null && !filter.isEmpty();
+        int evaluatedCount = filtered ? 12 : 30;
+        int approvedEvaluationCount = filtered ? 9 : 21;
+        int gradeCount = filtered ? 4 : 6;
+        FilterEcho echo = filtered
+                ? new FilterEcho("2026-04-01 – 2026-06-30", "Aliyev A.", "Classic 8-factor (v2)")
+                : FilterEcho.empty();
         return new ExecutiveKpi(
                 "Fixture project",
                 "Active",
                 "2026-01-01",
                 "2026-12-31",
-                42, 30, 21, 6, 187,
+                42, evaluatedCount, approvedEvaluationCount, gradeCount, 187,
                 List.of(
                         new RecentApprovalRow(t.plusMinutes(15), "EVALUATION_APPROVED",
                                 "Evaluation",
@@ -122,7 +133,8 @@ final class FakeReportDataPort implements ReportDataPort {
                                 "00000000-0000-0000-0000-000000000004", "System"),
                         new RecentApprovalRow(t.plusMinutes(40), "EVALUATION_APPROVED",
                                 "Evaluation",
-                                "00000000-0000-0000-0000-000000000005", "Carol Approver")));
+                                "00000000-0000-0000-0000-000000000005", "Carol Approver")),
+                echo);
     }
 
     @Override

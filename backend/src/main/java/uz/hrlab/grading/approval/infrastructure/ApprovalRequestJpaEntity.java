@@ -38,7 +38,9 @@ public class ApprovalRequestJpaEntity extends AuditedJpaEntity {
     @Column(name = "entity_id", nullable = false, updatable = false)
     private UUID entityId;
 
-    @Column(name = "requested_by", nullable = false, updatable = false)
+    // Nullable: SYSTEM-opened approvals (panel reconciliation, null actor) have no
+    // human requester — mirrors the nullable created_by/updated_by on this table.
+    @Column(name = "requested_by", updatable = false)
     private UUID requestedBy;
 
     @Column(name = "requested_at", nullable = false, updatable = false)

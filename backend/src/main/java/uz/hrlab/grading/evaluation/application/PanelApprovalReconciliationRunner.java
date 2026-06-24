@@ -104,11 +104,13 @@ public class PanelApprovalReconciliationRunner implements ApplicationRunner {
      * Establish a minimal per-tenant system context (RLS binding only — carries
      * NO permissions, so ABAC stays closed and only the system-path use cases run)
      * and invoke the {@code @Transactional} migration across the Spring proxy.
-     * Restores any previously-held context afterwards. Package-private so the
-     * integration test can drive a single tenant deterministically without the
-     * {@code public.tenants} sweep.
+     * Restores any previously-held context afterwards. {@code public} so it serves
+     * both the boot sweep AND the on-demand ops endpoint
+     * ({@code POST /api/v1/panels/reconcile-approvals}), which targets one tenant
+     * directly — reconciling even a tenant the boot sweep skips (it visits only
+     * ACTIVE tenants). The integration test also drives a single tenant through it.
      */
-    BackfillPanelApprovalsMigration.Result runForTenant(UUID tenantId) {
+    public BackfillPanelApprovalsMigration.Result runForTenant(UUID tenantId) {
         TenantContext previous = TenantContextHolder.get();
         TenantContextHolder.set(systemContext(tenantId));
         try {

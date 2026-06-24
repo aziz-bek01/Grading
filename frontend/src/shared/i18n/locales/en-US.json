@@ -2213,6 +2213,11 @@
       "filter_aria": "Filter panels by status",
       "go_to_inbox": "My sign-off queue",
       "review_sign_off": "Review & sign off",
+      "reconcile": "Repair sign-offs",
+      "reconcile_running": "Repairing…",
+      "reconcile_hint": "Recompute missing averages and open any missing CEO sign-offs for backfilled panels in this tenant. Safe to run repeatedly.",
+      "reconcile_done": "Repair complete — {{opened}} sign-off(s) opened, {{cancelled}} legacy approval(s) cleared. Refreshing…",
+      "reconcile_error": "Could not run the repair. Please try again.",
       "empty_title": "No panels found",
       "empty_body": "No evaluation panels match the selected filter."
     },

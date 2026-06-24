@@ -18,12 +18,14 @@ import org.springframework.web.bind.annotation.RestController;
 import uz.hrlab.grading.common.api.PageResponse;
 import uz.hrlab.grading.evaluation.application.ArchivePanelUseCase;
 import uz.hrlab.grading.evaluation.application.AssignEvaluatorUseCase;
+import uz.hrlab.grading.evaluation.application.BackfillPanelApprovalsMigration;
 import uz.hrlab.grading.evaluation.application.BulkCreatePanelsCommand;
 import uz.hrlab.grading.evaluation.application.BulkCreatePanelsUseCase;
 import uz.hrlab.grading.evaluation.application.CreatePanelCommand;
 import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
 import uz.hrlab.grading.evaluation.application.DeletePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
+import uz.hrlab.grading.evaluation.application.PanelApprovalReconciliationRunner;
 import uz.hrlab.grading.evaluation.application.PanelQueries;
 import uz.hrlab.grading.evaluation.application.ReopenApprovedPanelForExpertUseCase;
 import uz.hrlab.grading.evaluation.application.ReopenPanelUseCase;
@@ -32,6 +34,7 @@ import uz.hrlab.grading.evaluation.application.WithdrawEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.domain.PanelAssignment;
+import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.List;
 import java.util.UUID;
@@ -61,6 +64,7 @@ public class PanelController {
     private final ArchivePanelUseCase archiveUseCase;
     private final ReopenPanelUseCase reopenUseCase;
     private final ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
+    private final PanelApprovalReconciliationRunner reconciliationRunner;
     private final PanelQueries queries;
 
     public PanelController(CreatePanelUseCase createUseCase,
@@ -73,6 +77,7 @@ public class PanelController {
                           ArchivePanelUseCase archiveUseCase,
                           ReopenPanelUseCase reopenUseCase,
                           ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase,
+                          PanelApprovalReconciliationRunner reconciliationRunner,
                           PanelQueries queries) {
         this.createUseCase = createUseCase;
         this.bulkCreateUseCase = bulkCreateUseCase;
@@ -84,6 +89,7 @@ public class PanelController {
         this.archiveUseCase = archiveUseCase;
         this.reopenUseCase = reopenUseCase;
         this.reopenForExpertUseCase = reopenForExpertUseCase;
+        this.reconciliationRunner = reconciliationRunner;
         this.queries = queries;
     }
 
@@ -228,6 +234,28 @@ public class PanelController {
         return PanelResponse.from(
                 reopenForExpertUseCase.reopen(id, req.additionalEvaluatorUserId(), req.reason()),
                 null, 0, 0);
+    }
+
+    /**
+     * Ops repair — on-demand trigger for the panel-approval reconciliation against
+     * the CALLER's tenant, without waiting for an API restart. Reuses the exact
+     * idempotent {@link PanelApprovalReconciliationRunner#runForTenant(UUID)} that
+     * runs on boot: it recomputes empty {@code panel_factor_averages} for SUBMITTED
+     * panels from their existing scores AND opens the missing {@code EVALUATION_PANEL}
+     * CEO approvals (so backfilled panels become signable + show their average).
+     *
+     * <p>Why this exists separately from the boot sweep: the startup runner visits
+     * only ACTIVE tenants, so a non-ACTIVE (e.g. pilot) tenant is silently skipped.
+     * This targets the active tenant DIRECTLY (RLS-bound — never another tenant) and
+     * is safe to call repeatedly. Gated on {@code EVALUATION_PANEL_MANAGE}.
+     */
+    @PostMapping("/reconcile-approvals")
+    @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
+    public ReconcileApprovalsResponse reconcileApprovals() {
+        UUID tenantId = TenantContextHolder.requireActive().tenantId();
+        BackfillPanelApprovalsMigration.Result r = reconciliationRunner.runForTenant(tenantId);
+        return new ReconcileApprovalsResponse(
+                tenantId, r.cancelledLegacyApprovals(), r.openedPanelApprovals());
     }
 
     /**

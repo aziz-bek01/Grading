@@ -3396,6 +3396,20 @@ function handlePanels(
   query: URLSearchParams,
   config: AxiosRequestConfig,
 ): MatchResult | null {
+  // POST /panels/reconcile-approvals → { tenant_id, cancelled_legacy_approvals,
+  // opened_panel_approvals }. Ops repair: simulate opening a CEO sign-off for
+  // every SUBMITTED panel that has none recorded (idempotent — exact-path match
+  // is checked before the /panels/:id matchers below). Demo count only.
+  if (path === '/panels/reconcile-approvals' && method === 'POST') {
+    const tenantId = resolveMockTenantId(config);
+    const opened = mockDb.panels.filter((p) => p.status === 'SUBMITTED').length;
+    return ok({
+      tenant_id: tenantId,
+      cancelled_legacy_approvals: 0,
+      opened_panel_approvals: opened,
+    });
+  }
+
   // POST /panels/bulk-create → 201 { created, failed[] }
   // ONE shared roster ⇒ one panel per position_id (NOT a mega-panel). Mirrors
   // the recorded BE shape: failed[] keys on position_id; seat_failures present

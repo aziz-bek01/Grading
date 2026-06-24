@@ -28,7 +28,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Inbox, ClipboardCheck } from 'lucide-react';
+import { Inbox, ClipboardCheck, RefreshCw } from 'lucide-react';
 import { Card } from '@/shared/components/ui/Card';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
@@ -42,7 +42,10 @@ import { useMyApprovalInbox } from '@/features/approval/hooks/useApprovals';
 import { routes } from '@/shared/config/routes';
 import { pickLocalized } from '@/shared/lib/localized';
 import { formatDateSafe } from '@/shared/lib/dates';
-import { useCeoPanels } from '@/features/evaluation/hooks/usePanels';
+import {
+  useCeoPanels,
+  useReconcilePanelApprovals,
+} from '@/features/evaluation/hooks/usePanels';
 import { PanelStatusBadge } from '@/features/evaluation/components/panel/PanelStatusBadge';
 import type { Panel, PanelStatus } from '@/features/evaluation/panelTypes';
 
@@ -172,6 +175,8 @@ export function CeoPanelsPage() {
   const { t } = useTranslation();
   const { can } = usePermission();
   const canApprove = can(PERMISSIONS.EVALUATION_PANEL_APPROVE);
+  const canManage = can(PERMISSIONS.EVALUATION_PANEL_MANAGE);
+  const reconcile = useReconcilePanelApprovals();
 
   const [activeGroup, setActiveGroup] = useState<StatusGroup>('all');
 
@@ -232,6 +237,28 @@ export function CeoPanelsPage() {
         </div>
         {/* Link to the existing approvals inbox — no duplicate approval UI. */}
         <div className="flex items-center gap-2">
+          {/* Ops repair: recompute missing averages + open missing CEO sign-offs
+              for backfilled panels (panels stuck "Awaiting CEO approval" with no
+              average / not in the inbox). Idempotent; only for panel managers. */}
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => reconcile.mutate()}
+              disabled={reconcile.isPending}
+              className="inline-flex items-center gap-2 h-10 px-4 text-sm rounded-md font-medium bg-surface text-text-primary border border-border-strong hover:bg-divider disabled:opacity-60 disabled:cursor-not-allowed"
+              data-testid="ceo-reconcile-btn"
+              title={t('ceo.panels.reconcile_hint')}
+            >
+              <RefreshCw
+                size={16}
+                aria-hidden
+                className={reconcile.isPending ? 'animate-spin' : undefined}
+              />
+              {reconcile.isPending
+                ? t('ceo.panels.reconcile_running')
+                : t('ceo.panels.reconcile')}
+            </button>
+          ) : null}
           <Link
             to={routes.approvalsInbox}
             className="inline-flex items-center gap-2 h-10 px-4 text-sm rounded-md font-medium bg-surface text-text-primary border border-border-strong hover:bg-divider"
@@ -250,6 +277,29 @@ export function CeoPanelsPage() {
           </Link>
         </div>
       </header>
+
+      {/* Reconcile outcome — inline (no toast system in this app). */}
+      {reconcile.isSuccess ? (
+        <div
+          className="rounded-md border border-success-200 bg-success-50 px-4 py-2 text-sm text-success-700"
+          role="status"
+          data-testid="ceo-reconcile-result"
+        >
+          {t('ceo.panels.reconcile_done', {
+            opened: reconcile.data.openedPanelApprovals,
+            cancelled: reconcile.data.cancelledLegacyApprovals,
+          })}
+        </div>
+      ) : null}
+      {reconcile.isError ? (
+        <div
+          className="rounded-md border border-danger-200 bg-danger-50 px-4 py-2 text-sm text-danger-700"
+          role="alert"
+          data-testid="ceo-reconcile-error"
+        >
+          {t('ceo.panels.reconcile_error')}
+        </div>
+      ) : null}
 
       {/* Status-group tabs (client-side filter — data is already loaded). */}
       <div

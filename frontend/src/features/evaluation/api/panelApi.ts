@@ -17,6 +17,7 @@
 import { httpClient } from '@/shared/api/httpClient';
 import { endpoints } from '@/shared/api/endpoints';
 import { ApiError } from '@/shared/api/apiError';
+import { pick, type Raw } from '@/shared/api/wireAdapter';
 import type {
   AssignEvaluatorPayload,
   BulkCreatePanelsPayload,
@@ -228,6 +229,36 @@ export async function archivePanel(panelId: string, reason: string): Promise<Pan
     reason,
   });
   return res.data;
+}
+
+/**
+ * Result of the on-demand panel-approval reconciliation. `openedPanelApprovals`
+ * also counts SUBMITTED panels whose empty averages were recomputed; `0` means
+ * nothing needed fixing (the operation is idempotent).
+ */
+export interface ReconcileApprovalsResult {
+  tenantId: string | null;
+  cancelledLegacyApprovals: number;
+  openedPanelApprovals: number;
+}
+
+/**
+ * Ops repair — trigger the panel-approval reconciliation for the caller's tenant
+ * without waiting for an API restart (the boot sweep skips non-ACTIVE tenants).
+ * EVALUATION_PANEL_MANAGE; reconciles ONLY the caller's tenant (RLS-bound).
+ */
+export async function reconcilePanelApprovals(): Promise<ReconcileApprovalsResult> {
+  const res = await httpClient.post<unknown>(endpoints.panels.reconcileApprovals, {});
+  const raw = (res.data ?? {}) as Raw;
+  return {
+    tenantId: pick<string>(raw, 'tenant_id', 'tenantId'),
+    cancelledLegacyApprovals: Number(
+      pick(raw, 'cancelled_legacy_approvals', 'cancelledLegacyApprovals') ?? 0,
+    ),
+    openedPanelApprovals: Number(
+      pick(raw, 'opened_panel_approvals', 'openedPanelApprovals') ?? 0,
+    ),
+  };
 }
 
 export async function reopenPanel(panelId: string): Promise<Panel> {

@@ -84,6 +84,18 @@ class ProjectMembershipPolicyTest {
     }
 
     @Test
+    void clientCeoBypassesEvenWithEmptyProjectSet() {
+        // REQ-CEO — the CEO holds no per-project assignment but must read panel
+        // detail/result in every project of its tenant to sign off. Without the
+        // bypass the averaged result + per-evaluator breakdown 404s.
+        UUID projectId = UUID.randomUUID();
+        AbacRequest req = new AbacRequest(
+                ctxRoles(Set.of(RoleCodes.CLIENT_CEO), Set.of()),
+                "Position", projectId, projectId, null, null);
+        assertThat(policy.evaluate(req)).isEqualTo(PolicyDecision.PERMIT);
+    }
+
+    @Test
     void clientCompanyAdminBypassesEvenForUnlistedProject() {
         UUID requested = UUID.randomUUID();
         UUID someOther = UUID.randomUUID();

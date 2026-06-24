@@ -21,6 +21,9 @@ import java.util.UUID;
  *   <li>{@code HRLAB_PROJECT_MANAGER} — multi-tenant by design</li>
  *   <li>{@code CLIENT_COMPANY_ADMIN} — TENANT-scoped role (F-201)</li>
  *   <li>{@code CLIENT_HR_DIRECTOR} — TENANT-scoped role (F-201)</li>
+ *   <li>{@code CLIENT_CEO} — TENANT-scoped oversight role (REQ-CEO): org-wide
+ *       sign-off authority must read panels/positions/results in EVERY project
+ *       of its tenant without an explicit per-project assignment.</li>
  * </ul>
  * Tenant boundary is still enforced upstream by the tenant filter on
  * {@code findByIdAndTenantId}, so a cross-tenant project still resolves to
@@ -65,6 +68,12 @@ public class ProjectMembershipPolicy implements ScopePolicy {
         return ctx.hasRole(RoleCodes.HRLAB_SUPER_ADMIN)
                 || ctx.hasRole(RoleCodes.HRLAB_PROJECT_MANAGER)
                 || ctx.hasRole(RoleCodes.CLIENT_COMPANY_ADMIN)
-                || ctx.hasRole(RoleCodes.CLIENT_HR_DIRECTOR);
+                || ctx.hasRole(RoleCodes.CLIENT_HR_DIRECTOR)
+                // REQ-CEO — tenant-wide oversight: the CEO holds NO per-project
+                // assignment but must read panel detail/result in every project of
+                // its tenant to sign off (mirrors CLIENT_HR_DIRECTOR). Without this
+                // the CEO is denied at the project boundary and the averaged result
+                // + per-evaluator breakdown 404s on the approval page.
+                || ctx.hasRole(RoleCodes.CLIENT_CEO);
     }
 }

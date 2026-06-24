@@ -208,3 +208,11 @@ databaseChangeLog:
   - include:
       file: 046-seed-client-ceo-role.yaml
       relativeToChangelogFile: true
+
+  # MVP2 panel-approval reconciliation — relax approval_requests.requested_by to
+  # NULLABLE so SYSTEM-opened CEO sign-offs (PanelApprovalReconciliationRunner,
+  # null actor) can be inserted. Pure constraint relaxation; existing rows valid.
+  - include:
+      file: 047-approval-requests-nullable-requested-by.yaml
+      relativeToChangelogFile: true
+

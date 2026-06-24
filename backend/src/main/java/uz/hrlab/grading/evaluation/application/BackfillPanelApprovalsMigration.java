@@ -236,8 +236,16 @@ public class BackfillPanelApprovalsMigration {
                             panel.getId(), e.getClass().getSimpleName(), e);
                 }
             }
-            if (ceoApprovalOpener.openIfAbsent(tenantId, panel) != null) {
-                advanced++;
+            // Per-panel fail-soft (mirrors the compute() guard above and branches
+            // 1/2): one panel that cannot have its approval opened must not abort
+            // the whole tenant sweep.
+            try {
+                if (ceoApprovalOpener.openIfAbsent(tenantId, panel) != null) {
+                    advanced++;
+                }
+            } catch (RuntimeException e) {
+                log.warn("PanelApprovalReconciliation: opening CEO approval for SUBMITTED panel {} failed: {}",
+                        panel.getId(), e.getClass().getSimpleName(), e);
             }
         }
         return advanced;

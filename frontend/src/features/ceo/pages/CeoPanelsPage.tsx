@@ -39,6 +39,7 @@ import { DataTable, type DataTableColumn } from '@/shared/components/data-table/
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { usePermission } from '@/features/auth/usePermission';
 import { useMyApprovalInbox } from '@/features/approval/hooks/useApprovals';
+import { ApiError } from '@/shared/api/apiError';
 import { routes } from '@/shared/config/routes';
 import { pickLocalized } from '@/shared/lib/localized';
 import { formatDateSafe } from '@/shared/lib/dates';
@@ -298,6 +299,16 @@ export function CeoPanelsPage() {
           data-testid="ceo-reconcile-error"
         >
           {t('ceo.panels.reconcile_error')}
+          {reconcile.error instanceof ApiError && reconcile.error.correlationId ? (
+            <span className="ml-1 opacity-80">
+              (
+              {t('ceo.panels.reconcile_error_ref', {
+                code: reconcile.error.code,
+                ref: reconcile.error.correlationId,
+              })}
+              )
+            </span>
+          ) : null}
         </div>
       ) : null}
 

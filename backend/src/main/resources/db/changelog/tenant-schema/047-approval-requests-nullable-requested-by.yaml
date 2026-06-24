@@ -1,0 +1,41 @@
+# Allow approval_requests.requested_by to be NULL for SYSTEM-opened approvals.
+#
+# 021 created requested_by NOT NULL, which is correct for the human-initiated
+# flow (an evaluator/owner submits → requested_by = that user). But the MVP2
+# panel reconciliation (PanelApprovalReconciliationRunner /
+# BackfillPanelApprovalsMigration) opens the missing EVALUATION_PANEL CEO
+# approvals under a permission-less SYSTEM context whose userId is null
+# (CreateApprovalRequestUseCase.createSystem → requested_by = ctx.userId() =
+# null). That INSERT hit a 23502 not-null violation and aborted the whole
+# reconcile run (the only unguarded write in the sweep), so backfilled SUBMITTED
+# panels never got their CEO sign-off opened.
+#
+# A system-opened approval legitimately has no human requester — exactly like
+# created_by / updated_by on this same table, which 021 already made nullable.
+# All consumers are already null-safe (ApprovalResponseAssembler null-checks
+# requestedBy before name resolution; CancelApprovalRequestUseCase owner check
+# is null-guarded; ApprovalRequestResponse omits the field via @JsonInclude
+# NON_NULL). The human-initiated flow still sets requested_by as before — this
+# only RELAXES the constraint, so every existing row stays valid (no data
+# migration).
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-047-approval-requests-nullable-requested-by
+      author: backend-engineer
+      context: mode-shared
+      labels: mvp2,panel-approval
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE approval_requests ALTER COLUMN requested_by DROP NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE approval_requests ALTER COLUMN requested_by SET NOT NULL;

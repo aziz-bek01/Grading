@@ -2218,6 +2218,7 @@
       "reconcile_hint": "Ushbu ijarachidagi backfill panellar uchun yetishmayotgan o'rtachalarni qayta hisoblaydi va yetishmayotgan CEO imzolarini ochadi. Qayta-qayta ishlatish xavfsiz.",
       "reconcile_done": "Tayyor — {{opened}} ta imzo ochildi, {{cancelled}} ta eski tasdiq tozalandi. Yangilanmoqda…",
       "reconcile_error": "Tiklashni bajarib bo'lmadi. Qayta urinib ko'ring.",
+      "reconcile_error_ref": "{{code}} · ref {{ref}}",
       "empty_title": "Komissiyalar topilmadi",
       "empty_body": "Tanlangan filtrga mos baholash komissiyalari yoʻq."
     },

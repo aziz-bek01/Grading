@@ -1,6 +1,7 @@
 package uz.hrlab.grading.evaluation.api;
 
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -64,7 +65,11 @@ public class PanelController {
     private final ArchivePanelUseCase archiveUseCase;
     private final ReopenPanelUseCase reopenUseCase;
     private final ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
-    private final PanelApprovalReconciliationRunner reconciliationRunner;
+    // Lazy/optional: the runner is @Profile("!migrate"), so the bean is ABSENT in
+    // the one-shot migrate JVM (which still instantiates controllers). ObjectProvider
+    // lets this controller construct there; the endpoint is only ever called under
+    // the runtime profile, where the bean exists.
+    private final ObjectProvider<PanelApprovalReconciliationRunner> reconciliationRunner;
     private final PanelQueries queries;
 
     public PanelController(CreatePanelUseCase createUseCase,
@@ -77,7 +82,7 @@ public class PanelController {
                           ArchivePanelUseCase archiveUseCase,
                           ReopenPanelUseCase reopenUseCase,
                           ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase,
-                          PanelApprovalReconciliationRunner reconciliationRunner,
+                          ObjectProvider<PanelApprovalReconciliationRunner> reconciliationRunner,
                           PanelQueries queries) {
         this.createUseCase = createUseCase;
         this.bulkCreateUseCase = bulkCreateUseCase;
@@ -253,7 +258,8 @@ public class PanelController {
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
     public ReconcileApprovalsResponse reconcileApprovals() {
         UUID tenantId = TenantContextHolder.requireActive().tenantId();
-        BackfillPanelApprovalsMigration.Result r = reconciliationRunner.runForTenant(tenantId);
+        BackfillPanelApprovalsMigration.Result r =
+                reconciliationRunner.getObject().runForTenant(tenantId);
         return new ReconcileApprovalsResponse(
                 tenantId, r.cancelledLegacyApprovals(), r.openedPanelApprovals());
     }

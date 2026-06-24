@@ -146,6 +146,13 @@ export const endpoints = {
      * PANEL_NOT_APPROVED_FOR_REOPEN if the panel is not APPROVED.
      */
     reopenForExpert: (id: string) => `/panels/${id}/reopen-for-expert`,
+    /**
+     * Ops repair — POST /panels/reconcile-approvals (EVALUATION_PANEL_MANAGE).
+     * Recomputes empty averages for SUBMITTED panels AND opens missing
+     * EVALUATION_PANEL CEO approvals for the caller's tenant. Idempotent; returns
+     * { tenant_id, cancelled_legacy_approvals, opened_panel_approvals }.
+     */
+    reconcileApprovals: '/panels/reconcile-approvals',
   },
   /**
    * Users & Access (10 endpoints — MVP 1 prompt §6).

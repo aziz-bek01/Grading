@@ -9,6 +9,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api/apiError';
 import { orgKeys } from '@/features/organization/api/organizationApi';
+import { approvalKeys } from '@/features/approval/api/approvalApi';
 import {
   archivePanel,
   assignEvaluator,
@@ -21,6 +22,7 @@ import {
   fetchRosterSuggestions,
   lockPanelRoster,
   panelKeys,
+  reconcilePanelApprovals,
   reopenPanel,
   reopenPanelForExpert,
   submitPanelToCeo,
@@ -126,6 +128,24 @@ function invalidatePanel(
     qc.invalidateQueries({ queryKey: panelKeys.detail(id) });
     qc.invalidateQueries({ queryKey: panelKeys.result(id) });
   }
+}
+
+/**
+ * Ops repair — reconcile backfilled panels (compute missing averages + open the
+ * missing CEO sign-offs) for the active tenant. On success, refresh the panel
+ * lists, org counts AND the approval inbox so the org-wide view + inbox badge
+ * pick up the newly-opened sign-offs immediately.
+ */
+export function useReconcilePanelApprovals() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => reconcilePanelApprovals(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: panelKeys.all });
+      qc.invalidateQueries({ queryKey: orgKeys.all });
+      qc.invalidateQueries({ queryKey: approvalKeys.all });
+    },
+  });
 }
 
 export function useCreatePanel() {

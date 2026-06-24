@@ -116,6 +116,29 @@ export function PanelAveragedResult({ panelId, status, result, gradeBadge }: Pro
   }
   if (!data) return null;
 
+  // Averaged, viewer is allowed, but NO per-factor averages were materialized —
+  // e.g. a backfilled panel that reached sign-off without a computed average. Show
+  // an explicit state instead of a bare "0 evaluator(s) / —" table the CEO can't act
+  // on. (With the reconciliation repair this should not occur for valid data.)
+  if (data.factor_averages.length === 0) {
+    return (
+      <div
+        data-testid="panel-result-empty"
+        className="rounded-lg border border-border bg-divider/40 p-6 flex items-start gap-3"
+      >
+        <TriangleAlert size={18} className="text-warning-700 shrink-0 mt-0.5" aria-hidden />
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">
+            {t('panel.result.no_scores_title')}
+          </h3>
+          <p className="text-sm text-text-secondary mt-1">
+            {t('panel.result.no_scores_body')}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="rounded-lg border border-border bg-surface p-4 space-y-3"

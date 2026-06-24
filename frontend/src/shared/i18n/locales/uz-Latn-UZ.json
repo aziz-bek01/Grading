@@ -795,6 +795,8 @@
       "locked_body": "O'rtacha natija barcha ekspertlar yakunlagach ko'rsatiladi.",
       "no_access_title": "Natijani ko'rish huquqi yo'q",
       "no_access_body": "O'rtacha natijani ko'rish uchun CAMPAIGN_RESULTS_VIEW huquqi kerak.",
+      "no_scores_title": "O'rtacha natija hisoblanmagan",
+      "no_scores_body": "Bu panel o'rtacha hisoblanmasdan tasdiqlash bosqichiga yetgan. U avtomatik qayta hisoblanadi; agar saqlanib qolsa, baholovchilar ballari qayta o'rtachalanishi uchun panelni qayta oching.",
       "evaluator_count": "{{count}} ekspert",
       "toggle_evaluators": "Ekspertlar bo'yicha",
       "col_factor": "Faktor",

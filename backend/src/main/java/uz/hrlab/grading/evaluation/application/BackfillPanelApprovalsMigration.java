@@ -14,6 +14,7 @@ import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
+import uz.hrlab.grading.evaluation.infrastructure.PanelFactorAverageRepository;
 import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -88,6 +89,7 @@ public class BackfillPanelApprovalsMigration {
     private final PanelCompletionChecker completionChecker;
     private final ComputePanelAverageUseCase computeAverage;
     private final SubmitPanelToCeoUseCase submitToCeo;
+    private final PanelFactorAverageRepository factorAverages;
 
     public BackfillPanelApprovalsMigration(ApprovalRequestRepository approvalRequests,
                                            EvaluationRepository evaluations,
@@ -96,7 +98,8 @@ public class BackfillPanelApprovalsMigration {
                                            CeoPanelApprovalOpener ceoApprovalOpener,
                                            PanelCompletionChecker completionChecker,
                                            ComputePanelAverageUseCase computeAverage,
-                                           SubmitPanelToCeoUseCase submitToCeo) {
+                                           SubmitPanelToCeoUseCase submitToCeo,
+                                           PanelFactorAverageRepository factorAverages) {
         this.approvalRequests = approvalRequests;
         this.evaluations = evaluations;
         this.panels = panels;
@@ -105,6 +108,7 @@ public class BackfillPanelApprovalsMigration {
         this.completionChecker = completionChecker;
         this.computeAverage = computeAverage;
         this.submitToCeo = submitToCeo;
+        this.factorAverages = factorAverages;
     }
 
     /** Counts of the two actions performed (for the run log + tests). */
@@ -214,6 +218,24 @@ public class BackfillPanelApprovalsMigration {
         // (3) submitted but the CEO approval was never opened.
         for (EvaluationPanelJpaEntity panel : panels
                 .findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.SUBMITTED)) {
+            // Repair a SUBMITTED wrapper that never got its panel_factor_averages.
+            // The 036 backfill seeded averages only for legacy APPROVED/LOCKED
+            // evaluations (036 step 4 is gated WHERE status IN ('APPROVED','LOCKED')),
+            // so a backfilled SUBMITTED panel reaches the CEO with an EMPTY average
+            // (getResult → "0 evaluator(s) / —", and approval would assign a grade
+            // from a null raw_total_score). compute() re-derives the average from the
+            // contributing sheets' scores and only flips AWAITING→AVERAGED, so it
+            // populates the averages + totals while leaving the panel SUBMITTED.
+            // Idempotent (skipped once averages exist); per-panel fail-soft so a
+            // genuinely scoreless sheet cannot abort the tenant sweep.
+            if (factorAverages.findAllByTenantIdAndPanelId(tenantId, panel.getId()).isEmpty()) {
+                try {
+                    computeAverage.compute(tenantId, panel.getId(), actorUserId);
+                } catch (RuntimeException e) {
+                    log.warn("PanelApprovalReconciliation: averaging SUBMITTED panel {} failed: {}",
+                            panel.getId(), e.getClass().getSimpleName(), e);
+                }
+            }
             if (ceoApprovalOpener.openIfAbsent(tenantId, panel) != null) {
                 advanced++;
             }

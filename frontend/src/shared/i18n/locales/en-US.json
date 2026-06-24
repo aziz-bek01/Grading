@@ -795,6 +795,8 @@
       "locked_body": "The average is shown once all evaluators finish.",
       "no_access_title": "No permission to view the result",
       "no_access_body": "Viewing the averaged result requires the CAMPAIGN_RESULTS_VIEW permission.",
+      "no_scores_title": "No averaged result recorded",
+      "no_scores_body": "This panel reached sign-off without a computed average. It will be recalculated automatically; if it persists, reopen the panel so the evaluators' scores are re-averaged.",
       "evaluator_count": "{{count}} evaluator(s)",
       "toggle_evaluators": "By evaluator",
       "col_factor": "Factor",

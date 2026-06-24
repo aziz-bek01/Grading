@@ -16,6 +16,8 @@ import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
+import uz.hrlab.grading.evaluation.infrastructure.PanelFactorAverageJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.PanelFactorAverageRepository;
 import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
@@ -62,6 +64,7 @@ class BackfillPanelApprovalsMigrationTest {
     @Mock PanelCompletionChecker completionChecker;
     @Mock ComputePanelAverageUseCase computeAverage;
     @Mock SubmitPanelToCeoUseCase submitToCeo;
+    @Mock PanelFactorAverageRepository factorAverages;
 
     BackfillPanelApprovalsMigration migration;
     UUID tenantId;
@@ -70,7 +73,7 @@ class BackfillPanelApprovalsMigrationTest {
     void setUp() {
         migration = new BackfillPanelApprovalsMigration(
                 approvalRequests, evaluations, panels, cancelApprovalRequest, ceoApprovalOpener,
-                completionChecker, computeAverage, submitToCeo);
+                completionChecker, computeAverage, submitToCeo, factorAverages);
         tenantId = UUID.randomUUID();
         setContext(tenantId);
         // The advance sweep queries panels in THREE statuses (AWAITING/AVERAGED/
@@ -78,6 +81,10 @@ class BackfillPanelApprovalsMigrationTest {
         // only the status it exercises.
         lenient().when(panels.findAllByTenantIdAndStatus(eq(tenantId), any()))
                 .thenReturn(List.of());
+        // Default: a SUBMITTED panel ALREADY has its averages (the common case), so
+        // the branch-(3) repair is skipped. The repair test overrides this to empty.
+        lenient().when(factorAverages.findAllByTenantIdAndPanelId(any(), any()))
+                .thenReturn(List.of(mock(PanelFactorAverageJpaEntity.class)));
     }
 
     @AfterEach
@@ -232,6 +239,29 @@ class BackfillPanelApprovalsMigrationTest {
         assertThat(result.openedPanelApprovals()).isEqualTo(1);
         verify(submitToCeo).submitSystem(panelId, null);
         verify(computeAverage, never()).compute(any(), any(), any()); // already averaged
+    }
+
+    @Test
+    void repairsSubmittedPanelMissingAverages() {
+        // Regression: a 036-backfilled SUBMITTED wrapper that never got
+        // panel_factor_averages (036 seeded averages only for APPROVED/LOCKED) reaches
+        // the CEO with an empty average. The sweep must re-derive it via compute()
+        // (which keeps the panel SUBMITTED) before opening the approval, so the CEO
+        // sees a real averaged result instead of "0 evaluator(s) / —".
+        UUID panelId = UUID.randomUUID();
+        EvaluationPanelJpaEntity panel = mock(EvaluationPanelJpaEntity.class);
+        when(panel.getId()).thenReturn(panelId);
+        when(panels.findAllByTenantIdAndStatus(tenantId, EvaluationPanelStatus.SUBMITTED))
+                .thenReturn(List.of(panel));
+        when(factorAverages.findAllByTenantIdAndPanelId(tenantId, panelId))
+                .thenReturn(List.of()); // no averages yet → repair
+        when(ceoApprovalOpener.openIfAbsent(tenantId, panel)).thenReturn(UUID.randomUUID());
+
+        BackfillPanelApprovalsMigration.Result result = migration.runForTenant(tenantId);
+
+        verify(computeAverage).compute(tenantId, panelId, null);
+        verify(ceoApprovalOpener).openIfAbsent(tenantId, panel);
+        assertThat(result.openedPanelApprovals()).isEqualTo(1);
     }
 
     // --------------------------------------------------------------- helpers

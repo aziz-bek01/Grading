@@ -30,6 +30,7 @@ export function PanelApprovalSummary({ panelId }: Props) {
       <PanelAveragedResult
         panelId={panel.id}
         status={panel.status}
+        defaultShowEvaluators
         gradeBadge={
           panel.assigned_grade_number != null ? (
             <AssignedGradeBadge gradeNumber={panel.assigned_grade_number} />

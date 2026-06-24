@@ -73,9 +73,12 @@ const STATUS_GROUP_MAP: Record<StatusGroup, PanelStatus[]> = {
 function CeoPanelTable({
   panels,
   loading,
+  approvalIdByPanelId,
 }: {
   panels: Panel[];
   loading?: boolean;
+  /** panelId -> pending approvalRequestId (from the CEO inbox), for sign-off routing. */
+  approvalIdByPanelId: Map<string, string>;
 }) {
   const { t, i18n } = useTranslation();
 
@@ -116,18 +119,38 @@ function CeoPanelTable({
       {
         key: 'actions',
         header: t('common.actions'),
-        render: (row) => (
-          <Link
-            to={routes.projectPanelDetail(row.project_id, row.id)}
-            className="text-primary-600 hover:underline text-sm"
-            data-testid={`ceo-open-panel-${row.id}`}
-          >
-            {t('panel.list.open')}
-          </Link>
-        ),
+        render: (row) => {
+          // A panel awaiting the CEO's decision has a pending approval request in
+          // the inbox. Route it straight to the approval detail page — that is the
+          // ONLY surface with the Approve/Reject controls AND the averaged result +
+          // per-evaluator breakdown. The read-only PanelDetailPage has no sign-off
+          // action for the CEO (no EVALUATION_PANEL_MANAGE), so linking there was a
+          // dead end. Other statuses keep the read-only panel detail link.
+          const approvalId = approvalIdByPanelId.get(row.id);
+          if (approvalId) {
+            return (
+              <Link
+                to={routes.approvalDetails(approvalId)}
+                className="text-primary-600 hover:underline text-sm font-medium"
+                data-testid={`ceo-signoff-panel-${row.id}`}
+              >
+                {t('ceo.panels.review_sign_off')}
+              </Link>
+            );
+          }
+          return (
+            <Link
+              to={routes.projectPanelDetail(row.project_id, row.id)}
+              className="text-primary-600 hover:underline text-sm"
+              data-testid={`ceo-open-panel-${row.id}`}
+            >
+              {t('panel.list.open')}
+            </Link>
+          );
+        },
       },
     ],
-    [t, i18n.language],
+    [t, i18n.language, approvalIdByPanelId],
   );
 
   return (
@@ -162,6 +185,19 @@ export function CeoPanelsPage() {
       ).length,
     [inbox.data],
   );
+
+  // Map each panel awaiting sign-off to its pending approvalRequestId, so a row can
+  // link straight to the approval page (Approve/Reject). Reuses the inbox data
+  // already fetched above — no extra request.
+  const approvalIdByPanelId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of inbox.data?.items ?? []) {
+      if (r.entityType === 'EVALUATION_PANEL' && r.entityId) {
+        m.set(r.entityId, r.id);
+      }
+    }
+    return m;
+  }, [inbox.data]);
 
   // Single org-wide fetch with all relevant statuses (ARCHIVED excluded).
   // The hook is enabled because status.length > 0.
@@ -252,7 +288,11 @@ export function CeoPanelsPage() {
         />
       ) : (
         <Card data-testid="ceo-panels-table-card">
-          <CeoPanelTable panels={visiblePanels} loading={panelsQuery.isFetching} />
+          <CeoPanelTable
+            panels={visiblePanels}
+            loading={panelsQuery.isFetching}
+            approvalIdByPanelId={approvalIdByPanelId}
+          />
         </Card>
       )}
     </div>

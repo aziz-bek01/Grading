@@ -2212,6 +2212,7 @@
       "filter_history": "History",
       "filter_aria": "Filter panels by status",
       "go_to_inbox": "My sign-off queue",
+      "review_sign_off": "Review & sign off",
       "empty_title": "No panels found",
       "empty_body": "No evaluation panels match the selected filter."
     },

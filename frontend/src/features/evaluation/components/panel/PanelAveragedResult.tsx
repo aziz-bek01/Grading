@@ -30,6 +30,12 @@ interface Props {
   result?: PanelResult;
   /** Show the assigned-grade badge slot (CEO summary). Rendered by the parent. */
   gradeBadge?: React.ReactNode;
+  /**
+   * Initial state of the per-evaluator breakdown. The CEO sign-off / summary
+   * surface passes true so "who scored what" is visible immediately (the manager
+   * panel-detail view keeps it collapsed by default).
+   */
+  defaultShowEvaluators?: boolean;
 }
 
 function fmt(n: number | null | undefined, digits = 2): string {
@@ -52,11 +58,17 @@ function fmt(n: number | null | undefined, digits = 2): string {
  * a per-evaluator mini-row (toggle), and a disagreement indicator (icon +
  * numeric range, never color-only — a11y).
  */
-export function PanelAveragedResult({ panelId, status, result, gradeBadge }: Props) {
+export function PanelAveragedResult({
+  panelId,
+  status,
+  result,
+  gradeBadge,
+  defaultShowEvaluators = false,
+}: Props) {
   const { t, i18n } = useTranslation();
   const { can } = usePermission();
   const canViewResults = can(PERMISSIONS.CAMPAIGN_RESULTS_VIEW);
-  const [showEvaluators, setShowEvaluators] = useState(false);
+  const [showEvaluators, setShowEvaluators] = useState(defaultShowEvaluators);
 
   const averaged = isPanelAveraged(status);
   const gatePasses = averaged && canViewResults;

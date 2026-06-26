@@ -144,12 +144,20 @@ public interface ReportDataPort {
             int approvedCount,
             List<FactorRef> factors,
             List<EvaluationRow> rows,
-            FilterEcho activeFilters) {
+            FilterEcho activeFilters,
+            List<PanelAverageRow> panelAverages) {
 
         public EvaluationMatrix(String projectName, String methodologyName, int totalPositions,
                                 int approvedCount, List<FactorRef> factors, List<EvaluationRow> rows) {
             this(projectName, methodologyName, totalPositions, approvedCount, factors, rows,
-                    FilterEcho.empty());
+                    FilterEcho.empty(), List.of());
+        }
+
+        public EvaluationMatrix(String projectName, String methodologyName, int totalPositions,
+                                int approvedCount, List<FactorRef> factors, List<EvaluationRow> rows,
+                                FilterEcho activeFilters) {
+            this(projectName, methodologyName, totalPositions, approvedCount, factors, rows,
+                    activeFilters, List.of());
         }
     }
 
@@ -170,12 +178,74 @@ public interface ReportDataPort {
         public boolean hasMethodologies() { return methodologies != null && !methodologies.isBlank(); }
     }
 
+    /**
+     * One evaluation row. The condensed PDF/DOCX surfaces read only the original
+     * fields ({@code positionCode}, {@code positionTitle}, {@code departmentName},
+     * {@code status}, scores, total, grade) and are UNCHANGED. The grading XLSX
+     * additionally reads the MVP2 per-evaluator enrichment:
+     *
+     * <ul>
+     *   <li>{@code divisionName} — the position's OWN (leaf) department name, set
+     *       ONLY when it differs from {@code departmentName} (the top-level
+     *       ancestor); blank otherwise ("added if exists").</li>
+     *   <li>{@code evaluatorName} — resolved evaluator full name (batch, no N+1),
+     *       blank when unresolvable.</li>
+     *   <li>{@code evaluatorRole} — PRE-localized evaluator role label.</li>
+     *   <li>{@code evaluationDate} — {@code submittedAt} as {@code yyyy-MM-dd}
+     *       (UTC calendar date), blank for DRAFT / unsubmitted.</li>
+     *   <li>{@code methodologyVersionLabel} — localized methodology name for the
+     *       row's own methodology version ("Name (vN)").</li>
+     *   <li>{@code panelId} — render-side grouping key (NOT a rendered column);
+     *       null for standalone single evaluations.</li>
+     * </ul>
+     *
+     * <p>{@code departmentName} now carries the TOP-LEVEL ancestor department name
+     * for the grading XLSX; the condensed PDF/DOCX (which only ever showed a
+     * single department column) reads the same field and is visually unchanged for
+     * top-level positions, and for nested ones simply shows the root department —
+     * consistent with the XLSX "Departament" column.
+     */
     record EvaluationRow(
             String positionCode,
             String positionTitle,
             String departmentName,
             String status,
             Map<String, String> scoresByFactorCode,
+            String totalScore,
+            String gradeCode,
+            String gradeName,
+            String divisionName,
+            String evaluatorName,
+            String evaluatorRole,
+            String evaluationDate,
+            String methodologyVersionLabel,
+            UUID panelId) {
+
+        /** Legacy 8-arg shape (condensed PDF/DOCX fixtures) — enrichment blank/null. */
+        public EvaluationRow(String positionCode, String positionTitle, String departmentName,
+                             String status, Map<String, String> scoresByFactorCode,
+                             String totalScore, String gradeCode, String gradeName) {
+            this(positionCode, positionTitle, departmentName, status, scoresByFactorCode,
+                    totalScore, gradeCode, gradeName, "", "", "", "", "", null);
+        }
+    }
+
+    /**
+     * One panel AVERAGE row (the green highlighted row rendered AFTER a panel's
+     * evaluator rows in the grading XLSX). Present ONLY for panels that reached
+     * AVERAGED+ (i.e. that have materialized {@code panel_factor_averages} rows).
+     * All human strings are pre-localized in the port. {@code avgScoresByFactorCode}
+     * is keyed by the SAME stable factor code the evaluator rows use, so it slots
+     * into the union-of-factors column order. {@code gradeCode}/{@code gradeName}
+     * are blank unless the panel is APPROVED/LOCKED (an {@code assignedGradeNumber}
+     * is set).
+     */
+    record PanelAverageRow(
+            UUID panelId,
+            String status,
+            String methodologyVersionLabel,
+            String evaluationDate,
+            Map<String, String> avgScoresByFactorCode,
             String totalScore,
             String gradeCode,
             String gradeName) { }

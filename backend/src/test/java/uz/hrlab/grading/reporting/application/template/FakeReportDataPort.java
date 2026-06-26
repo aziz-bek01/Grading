@@ -65,6 +65,12 @@ final class FakeReportDataPort implements ReportDataPort {
                         "lock requested by methodologist", "corr-2"));
     }
 
+    // Stable fixture panel ids so tests can correlate evaluator rows with their
+    // average row. PANEL_A reached AVERAGED+ (has an average row); PANEL_B is still
+    // AWAITING_EVALUATIONS (no panel_factor_averages ⇒ NO average row).
+    static final UUID PANEL_A = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
+    static final UUID PANEL_B = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
+
     @Override
     public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale,
                                             EvaluationReportFilter filter) {
@@ -77,25 +83,56 @@ final class FakeReportDataPort implements ReportDataPort {
         FilterEcho echo = (filter == null || filter.isEmpty())
                 ? FilterEcho.empty()
                 : new FilterEcho("2026-04-01 – 2026-06-30", "Aliyev A.", "Classic 8-factor (v2)");
+
+        String methodology = "Classic 8-factor (v2)";
+        List<EvaluationRow> rows = List.of(
+                // PANEL_A — POS-001, 3 evaluators (already ordered by role/name),
+                // under a CHILD department so Departament + Bo'limi both fill.
+                new EvaluationRow("POS-001", "Software engineer", "IT department", "Approved",
+                        Map.of("KNOWLEDGE", "60", "PROBLEM_SOLVING", "40", "ACCOUNTABILITY", "30"),
+                        "130", "G3", "Operational",
+                        "Backend division", "Alice Director", "HR director", "2026-05-10",
+                        methodology, PANEL_A),
+                new EvaluationRow("POS-001", "Software engineer", "IT department", "Approved",
+                        Map.of("KNOWLEDGE", "62", "PROBLEM_SOLVING", "42", "ACCOUNTABILITY", "32"),
+                        "136", "G3", "Operational",
+                        "Backend division", "Bob Manager", "Department director", "2026-05-10",
+                        methodology, PANEL_A),
+                new EvaluationRow("POS-001", "Software engineer", "IT department", "Approved",
+                        Map.of("KNOWLEDGE", "58", "PROBLEM_SOLVING", "38", "ACCOUNTABILITY", "28"),
+                        "124", "G3", "Operational",
+                        "Backend division", "Carol Expert", "External expert", "2026-05-10",
+                        methodology, PANEL_A),
+                // PANEL_B — POS-002, 1 evaluator, AWAITING (no averages ⇒ no avg row),
+                // under a TOP-LEVEL department so Bo'limi is blank.
+                new EvaluationRow("POS-002", "Senior software engineer", "IT department", "Submitted",
+                        Map.of("KNOWLEDGE", "80", "PROBLEM_SOLVING", "50", "ACCOUNTABILITY", "40"),
+                        "170", "", "",
+                        "", "Dan Reviewer", "HR director", "2026-05-12",
+                        methodology, PANEL_B),
+                // Standalone (null-panel) DRAFT evaluation — single row, no avg row,
+                // blank evaluation date.
+                new EvaluationRow("POS-003", "Head of HR", "HR department", "Draft",
+                        Map.of("KNOWLEDGE", "70"),
+                        "70", "", "",
+                        "", "Eve Drafter", "Additional evaluator", "",
+                        methodology, null));
+
+        // Only PANEL_A has a materialized average row (green); PANEL_B does not.
+        List<PanelAverageRow> averages = List.of(
+                new PanelAverageRow(PANEL_A, "Approved", methodology, "2026-05-11",
+                        Map.of("KNOWLEDGE", "60", "PROBLEM_SOLVING", "40", "ACCOUNTABILITY", "30"),
+                        "130", "G3", "Operational"));
+
         return new EvaluationMatrix(
                 "Fixture project",
-                "Classic 8-factor (v2)",
+                methodology,
+                5,
                 3,
-                2,
                 factors,
-                List.of(
-                        new EvaluationRow("POS-001", "Software engineer", "IT department", "Approved",
-                                Map.of("KNOWLEDGE", "60", "PROBLEM_SOLVING", "40",
-                                        "ACCOUNTABILITY", "30"),
-                                "130", "G3", "Operational"),
-                        new EvaluationRow("POS-002", "Senior software engineer", "IT department", "Approved",
-                                Map.of("KNOWLEDGE", "80", "PROBLEM_SOLVING", "50",
-                                        "ACCOUNTABILITY", "40"),
-                                "170", "G4", "Senior"),
-                        new EvaluationRow("POS-003", "Head of HR", "HR department", "Draft",
-                                Map.of("KNOWLEDGE", "70"),
-                                "70", "", "")),
-                echo);
+                rows,
+                echo,
+                averages);
     }
 
     @Override

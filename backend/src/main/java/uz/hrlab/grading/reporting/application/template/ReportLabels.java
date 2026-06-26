@@ -72,6 +72,15 @@ public final class ReportLabels {
             entry("col.total", "Итого", "Жами", "Jami", "Total"),
             entry("col.grade", "Грейд", "Грейд", "Greyd", "Grade"),
             entry("col.gradeName", "Название грейда", "Грейд номи", "Greyd nomi", "Grade name"),
+            // EVALUATION_SUMMARY grading XLSX (per-evaluator layout) headers
+            entry("col.division", "Бўлими", "Бўлими", "Bo‘limi", "Division"),
+            entry("col.evaluator", "Оценщик (ФИО)", "Баҳоловчи (ФИО)", "Baholovchi (FIO)", "Evaluator (full name)"),
+            entry("col.evaluatorRole", "Роль оценщика", "Баҳоловчи роли",
+                    "Baholovchi roli", "Evaluator role"),
+            entry("col.methodology", "Методология", "Методология", "Metodologiya", "Methodology"),
+            entry("col.evaluationDate", "Дата оценки", "Баҳолаш санаси",
+                    "Baholash sanasi", "Evaluation date"),
+            entry("row.panelAverage", "Среднее значение", "Ўртача баҳо", "O‘rtacha baho", "Average"),
             entry("col.positions", "Позиции", "Лавозимлар", "Lavozimlar", "Positions"),
             entry("col.level", "Уровень", "Даража", "Daraja", "Level"),
             entry("col.points", "Баллы", "Балл", "Ball", "Points"),
@@ -159,6 +168,29 @@ public final class ReportLabels {
     public static String localizeScoringMode(String enumName, String locale) {
         if (enumName == null || enumName.isBlank()) return "";
         Map<String, String> byLocale = SCORING_MODE.get(enumName);
+        if (byLocale == null) return enumName;
+        return byLocale.getOrDefault(loc(locale), byLocale.getOrDefault(DEFAULT_LOCALE, enumName));
+    }
+
+    // ── Evaluator-role localization (panel grading XLSX — never raw enum) ────
+
+    private static final Map<String, Map<String, String>> EVALUATOR_ROLE = Map.ofEntries(
+            entry("HR_DIRECTOR", "HR-директор", "HR-директор", "HR-direktor", "HR director"),
+            entry("DEPARTMENT_DIRECTOR", "Руководитель подразделения", "Бўлинма раҳбари",
+                    "Bo‘linma rahbari", "Department director"),
+            entry("EXTERNAL_EXPERT", "Внешний эксперт", "Ташқи эксперт",
+                    "Tashqi ekspert", "External expert"),
+            entry("ADDITIONAL", "Дополнительный оценщик", "Қўшимча баҳоловчи",
+                    "Qo‘shimcha baholovchi", "Additional evaluator"));
+
+    /**
+     * Localize a raw {@code EvaluatorRole} enum name reaching human output (panel
+     * grading XLSX evaluator-role column). Blank/unknown names pass through
+     * unchanged so an unexpected role never breaks the report.
+     */
+    public static String localizeEvaluatorRole(String enumName, String locale) {
+        if (enumName == null || enumName.isBlank()) return "";
+        Map<String, String> byLocale = EVALUATOR_ROLE.get(enumName);
         if (byLocale == null) return enumName;
         return byLocale.getOrDefault(loc(locale), byLocale.getOrDefault(DEFAULT_LOCALE, enumName));
     }

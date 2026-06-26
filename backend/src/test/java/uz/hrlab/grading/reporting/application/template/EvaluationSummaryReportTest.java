@@ -41,8 +41,13 @@ class EvaluationSummaryReportTest {
                 "Knowledge (KNOWLEDGE)",
                 "Problem solving (PROBLEM_SOLVING)",
                 "Accountability (ACCOUNTABILITY)");
-        // Leading columns are localized human labels, not snake_case keys.
-        assertThat(headers).startsWith("Position code", "Position", "Department", "Status");
+        // Grading layout leading columns (localized human labels, not keys):
+        // Position code · Department · Division · Position · Evaluator · Role ·
+        // Methodology · Status · Evaluation date.
+        assertThat(headers).startsWith(
+                "Position code", "Department", "Division", "Position",
+                "Evaluator (full name)", "Evaluator role", "Methodology",
+                "Status", "Evaluation date");
     }
 
     @Test
@@ -50,11 +55,101 @@ class EvaluationSummaryReportTest {
         byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
         List<List<String>> rows = cells(xlsx);
         assertThat(rows).isNotEmpty();
-        // department + grade name + status render as resolved human values.
-        assertThat(rows.get(0)).contains("IT department", "Approved", "Operational");
+        // First evaluator row: resolved department + status + evaluator name + role.
+        assertThat(rows.get(0)).contains(
+                "IT department", "Approved", "Alice Director", "HR director");
         assertThat(rows.stream().flatMap(List::stream))
                 .noneMatch(v -> v.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-.*")) // no UUID leak
-                .doesNotContain("APPROVED", "DRAFT"); // no raw enum leak
+                .doesNotContain("APPROVED", "DRAFT", "HR_DIRECTOR"); // no raw enum leak
+    }
+
+    @Test
+    void xlsxPanelOfThreeYieldsThreeRowsThenOneAverageRow() {
+        // PANEL_A has 3 evaluators + a materialized average ⇒ 3 evaluator rows then
+        // 1 average row carrying the localized "Average" label in the FIO column.
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        List<List<String>> rows = cells(xlsx);
+        // Rows 0..2 are the panel evaluators (position code POS-001 on EVERY row —
+        // no grouping/blanking), row 3 is the average.
+        assertThat(rows.get(0)).contains("POS-001", "Alice Director");
+        assertThat(rows.get(1)).contains("POS-001", "Bob Manager");
+        assertThat(rows.get(2)).contains("POS-001", "Carol Expert");
+        // Average row: FIO column carries the localized average label, position code blank.
+        assertThat(rows.get(3)).contains("Average");
+        assertThat(rows.get(3).get(0)).isEmpty(); // position code blank on the average row
+    }
+
+    @Test
+    void xlsxWithinPanelOrderedByEvaluatorRoleOrdinalThenName() {
+        // EvaluatorRole ordinal: HR_DIRECTOR(0) < DEPARTMENT_DIRECTOR(1) <
+        // EXTERNAL_EXPERT(2). The fixture is supplied in that order; the render
+        // preserves it within the panel group.
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        List<List<String>> rows = cells(xlsx);
+        assertThat(rows.get(0)).contains("HR director");
+        assertThat(rows.get(1)).contains("Department director");
+        assertThat(rows.get(2)).contains("External expert");
+    }
+
+    @Test
+    void xlsxStandaloneAndAwaitingPanelHaveNoAverageRow() {
+        // POS-002 (PANEL_B, AWAITING — no materialized average) and POS-003
+        // (null-panel DRAFT) are single rows with NO following "Average" row.
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        List<List<String>> rows = cells(xlsx);
+        // Exactly ONE average row in the whole sheet (only PANEL_A).
+        long avgRows = rows.stream()
+                .filter(r -> r.contains("Average"))
+                .count();
+        assertThat(avgRows).isEqualTo(1);
+        // POS-002 row present, immediately followed by POS-003 (no average between).
+        int pos2 = indexOfRowContaining(rows, "POS-002");
+        assertThat(pos2).isGreaterThanOrEqualTo(0);
+        assertThat(rows.get(pos2 + 1)).contains("POS-003");
+    }
+
+    @Test
+    void xlsxDraftEvaluationHasBlankEvaluationDate() {
+        // POS-003 is a DRAFT (submittedAt null in the port) ⇒ blank evaluation date.
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        List<List<String>> rows = cells(xlsx);
+        List<String> headers = headerRow(xlsx);
+        int dateCol = headers.indexOf("Evaluation date");
+        int pos3 = indexOfRowContaining(rows, "POS-003");
+        assertThat(rows.get(pos3).get(dateCol)).isEmpty();
+        // A submitted evaluator row (POS-001) carries the formatted date.
+        assertThat(rows.get(0).get(dateCol)).isEqualTo("2026-05-10");
+    }
+
+    @Test
+    void xlsxDivisionFilledWhenNestedBlankWhenTopLevel() {
+        // POS-001 sits under a child department ⇒ Bo'limi (Division) filled.
+        // POS-002 sits under a top-level department ⇒ Division blank.
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        List<List<String>> rows = cells(xlsx);
+        List<String> headers = headerRow(xlsx);
+        int divCol = headers.indexOf("Division");
+        assertThat(rows.get(0).get(divCol)).isEqualTo("Backend division");
+        int pos2 = indexOfRowContaining(rows, "POS-002");
+        assertThat(rows.get(pos2).get(divCol)).isEmpty();
+    }
+
+    @Test
+    void pdfDocxKeepCondensedColumnsUnchanged() {
+        // The condensed PDF/DOCX path must NOT gain the grading XLSX columns.
+        String docx = docxText(render(template, ctx(ReportFormat.DOCX, "en-US")));
+        // Condensed headers are present...
+        assertThat(docx).contains("Position code", "Department", "Status", "Total", "Grade");
+        // ...and the grading-only XLSX columns are NOT in PDF/DOCX.
+        assertThat(docx).doesNotContain(
+                "Evaluator (full name)", "Evaluator role", "Evaluation date", "Division");
+    }
+
+    private static int indexOfRowContaining(List<List<String>> rows, String value) {
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).contains(value)) return i;
+        }
+        return -1;
     }
 
     @Test

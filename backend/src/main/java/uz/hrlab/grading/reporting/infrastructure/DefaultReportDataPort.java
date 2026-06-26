@@ -9,10 +9,14 @@ import uz.hrlab.grading.audit.infrastructure.SystemAuditLogJpaEntity;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogRepository;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationReportSpecifications;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
+import uz.hrlab.grading.evaluation.infrastructure.PanelFactorAverageJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.PanelFactorAverageRepository;
+import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureStatus;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeJpaEntity;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeRepository;
@@ -39,6 +43,8 @@ import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -96,6 +102,8 @@ public class DefaultReportDataPort implements ReportDataPort {
     private final TenantRepository tenants;
     private final SystemAuditLogRepository auditLog;
     private final ActorNameResolver actorNames;
+    private final PanelRepository panels;
+    private final PanelFactorAverageRepository panelFactorAverages;
 
     public DefaultReportDataPort(PositionRepository positions,
                                  ProjectRepository projects,
@@ -111,7 +119,9 @@ public class DefaultReportDataPort implements ReportDataPort {
                                  UserRepository users,
                                  TenantRepository tenants,
                                  SystemAuditLogRepository auditLog,
-                                 ActorNameResolver actorNames) {
+                                 ActorNameResolver actorNames,
+                                 PanelRepository panels,
+                                 PanelFactorAverageRepository panelFactorAverages) {
         this.positions = positions;
         this.projects = projects;
         this.evaluations = evaluations;
@@ -127,6 +137,8 @@ public class DefaultReportDataPort implements ReportDataPort {
         this.tenants = tenants;
         this.auditLog = auditLog;
         this.actorNames = actorNames;
+        this.panels = panels;
+        this.panelFactorAverages = panelFactorAverages;
     }
 
     @Override
@@ -338,6 +350,11 @@ public class DefaultReportDataPort implements ReportDataPort {
         }
         LinkedHashMap<UUID, String> factorCodeById = new LinkedHashMap<>();
         LinkedHashMap<String, FactorRef> factorByCode = new LinkedHashMap<>();
+        // Per-version localized methodology label ("Name (vN)") — resolved ONCE per
+        // distinct version id (reuse anchor: resolveMethodologyName), so the grading
+        // XLSX methodology column never triggers an N+1 across rows. The first
+        // version still drives the matrix-level methodologyName (PDF/DOCX meta).
+        Map<UUID, String> methodologyLabelByVersion = new HashMap<>();
         String methodologyName = "—";
         boolean methodologyResolved = false;
         for (UUID mvId : methodologyVersionIds) {
@@ -351,13 +368,13 @@ public class DefaultReportDataPort implements ReportDataPort {
                             new FactorRef(f.getCode(), i18n(f.getNameI18n(), locale, nz(f.getCode()))));
                 }
             }
-            if (!methodologyResolved) {
-                MethodologyVersionJpaEntity version =
-                        methodologyVersions.findByIdAndTenantId(mvId, tenantId).orElse(null);
-                if (version != null) {
-                    methodologyName = resolveMethodologyName(tenantId, version, locale);
-                    methodologyResolved = true;
-                }
+            MethodologyVersionJpaEntity version =
+                    methodologyVersions.findByIdAndTenantId(mvId, tenantId).orElse(null);
+            String label = version == null ? "" : resolveMethodologyName(tenantId, version, locale);
+            methodologyLabelByVersion.put(mvId, label);
+            if (!methodologyResolved && version != null) {
+                methodologyName = label;
+                methodologyResolved = true;
             }
         }
         List<FactorRef> factorColumns = new ArrayList<>(factorByCode.values());
@@ -389,14 +406,41 @@ public class DefaultReportDataPort implements ReportDataPort {
                 if (p.getDepartmentId() != null) departmentIds.add(p.getDepartmentId());
             }
         }
-        Map<UUID, String> deptNames = resolveDepartmentNames(tenantId, departmentIds, locale);
+        // Department tree (Departament = top-level ancestor; Bo'limi = own leaf dept
+        // when it has a parent). Walk parentId up to the root via a batch-load that
+        // ALSO fetches every ancestor in the chain — one extra tenant-scoped
+        // findAllByTenantIdAndIdIn per level (org trees are shallow), no per-row N+1.
+        Map<UUID, DepartmentJpaEntity> deptById = loadDepartmentClosure(tenantId, departmentIds);
+        Map<UUID, String> deptNames = localizeDepartments(deptById, locale);
 
         // Grade names — resolve once for the project (active grade structure).
         Map<Integer, String> gradeNames = resolveGradeNames(tenantId, projectId, locale);
 
+        // PERF (P1) — batch-resolve EVERY evaluator full name in ONE membership-gated
+        // ActorNameResolver.resolveAll call (single source of truth — no N+1, no
+        // cross-tenant leak). Ids come from already-tenant-loaded evaluation rows.
+        Set<UUID> evaluatorUserIds = new LinkedHashSet<>();
+        for (EvaluationJpaEntity ev : page.getContent()) {
+            if (ev.getEvaluatorUserId() != null) evaluatorUserIds.add(ev.getEvaluatorUserId());
+        }
+        Map<UUID, String> evaluatorNames = actorNames.resolveAll(tenantId, evaluatorUserIds);
+
+        // Within-panel evaluator order: EvaluatorRole enum ordinal, then resolved
+        // evaluator name ASC (REQ — grading layout). Done HERE (we still hold the
+        // enum + resolved name) so the render-side grouping keeps this order inside
+        // each panel group. A stable sort keeps a deterministic tail order for rows
+        // with no role / equal names. Standalone rows are unaffected by grouping.
+        List<EvaluationJpaEntity> sortedRows = new ArrayList<>(page.getContent());
+        sortedRows.sort(Comparator
+                .comparingInt((EvaluationJpaEntity ev) ->
+                        ev.getEvaluatorRole() == null
+                                ? Integer.MAX_VALUE : ev.getEvaluatorRole().ordinal())
+                .thenComparing(ev -> nz(evaluatorNames.get(ev.getEvaluatorUserId())),
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+
         int approved = 0;
         List<EvaluationRow> rows = new ArrayList<>(page.getNumberOfElements());
-        for (EvaluationJpaEntity ev : page.getContent()) {
+        for (EvaluationJpaEntity ev : sortedRows) {
             if (ev.getStatus() == EvaluationStatus.APPROVED
                     || ev.getStatus() == EvaluationStatus.LOCKED) {
                 approved++;
@@ -415,25 +459,51 @@ public class DefaultReportDataPort implements ReportDataPort {
             String posCode = p == null
                     ? (ev.getPositionId() == null ? "" : truncate(ev.getPositionId())) : p.getCode();
             String posTitle = p == null ? "" : titleFor(p, locale);
-            String deptName = p == null || p.getDepartmentId() == null
-                    ? "" : deptNames.getOrDefault(p.getDepartmentId(), "");
+
+            // Departament (top-level ancestor) + Bo'limi (own leaf dept IF nested).
+            UUID leafDeptId = p == null ? null : p.getDepartmentId();
+            UUID rootDeptId = topLevelAncestor(leafDeptId, deptById);
+            String topDeptName = rootDeptId == null ? "" : deptNames.getOrDefault(rootDeptId, "");
+            // "added if exists, blank if not": a division only when the leaf differs
+            // from the top-level ancestor (i.e. the position's department has a parent).
+            String divisionName = (leafDeptId != null && rootDeptId != null
+                    && !leafDeptId.equals(rootDeptId))
+                    ? deptNames.getOrDefault(leafDeptId, "") : "";
 
             Integer gradeNum = ev.getAssignedGradeNumber();
             String gradeCode = gradeNum == null ? "" : "G" + gradeNum;
             String gradeName = gradeNum == null
                     ? "" : gradeNames.getOrDefault(gradeNum, "G" + gradeNum);
 
+            String evaluatorName = ev.getEvaluatorUserId() == null
+                    ? "" : nz(evaluatorNames.get(ev.getEvaluatorUserId()));
+            String evaluatorRole = ev.getEvaluatorRole() == null
+                    ? "" : ReportLabels.localizeEvaluatorRole(ev.getEvaluatorRole().name(), locale);
+            String evaluationDate = formatUtcDate(ev.getSubmittedAt());
+            String methodologyVersionLabel =
+                    nz(methodologyLabelByVersion.get(ev.getMethodologyVersionId()));
+
             rows.add(new EvaluationRow(
                     posCode,
                     posTitle,
-                    deptName,
+                    topDeptName,
                     ev.getStatus() == null ? "" : ReportLabels.localizeStatus(ev.getStatus().name(), locale),
                     scoresByCode,
                     ev.getDisplayedTotalScore() == null
                             ? "0" : ev.getDisplayedTotalScore().toPlainString(),
                     gradeCode,
-                    gradeName));
+                    gradeName,
+                    divisionName,
+                    evaluatorName,
+                    evaluatorRole,
+                    evaluationDate,
+                    methodologyVersionLabel,
+                    ev.getPanelId()));
         }
+
+        List<PanelAverageRow> panelAverages = loadPanelAverages(
+                tenantId, page.getContent(), factorCodeById, methodologyLabelByVersion,
+                gradeNames, locale);
 
         return new EvaluationMatrix(
                 projectName,
@@ -442,7 +512,71 @@ public class DefaultReportDataPort implements ReportDataPort {
                 approved,
                 factorColumns,
                 rows,
-                buildFilterEcho(tenantId, activeFilter, locale));
+                buildFilterEcho(tenantId, activeFilter, locale),
+                panelAverages);
+    }
+
+    /**
+     * Build one {@link PanelAverageRow} per distinct non-null panel id that has
+     * materialized {@code panel_factor_averages} rows (panel reached AVERAGED+).
+     * Panels still collecting (AWAITING_EVALUATIONS, no averages) produce NO row.
+     *
+     * <p>Batch, tenant-scoped, no N+1: the panel entities load via the page's
+     * panel-id-grouped tenant finder ({@code findAllByTenantIdAndProjectId} would
+     * over-fetch — we instead load each distinct panel once through the
+     * tenant-scoped {@code PanelRepository}). The per-factor averages load via
+     * {@code findAllByTenantIdAndPanelId} per distinct panel id (bounded by the
+     * page's panel count). Factor ids map to the SAME stable factor codes the
+     * evaluator rows use ({@code factorCodeById}).
+     */
+    private List<PanelAverageRow> loadPanelAverages(
+            UUID tenantId, List<EvaluationJpaEntity> pageRows,
+            Map<UUID, String> factorCodeById, Map<UUID, String> methodologyLabelByVersion,
+            Map<Integer, String> gradeNames, String locale) {
+
+        Set<UUID> panelIds = new LinkedHashSet<>();
+        for (EvaluationJpaEntity ev : pageRows) {
+            if (ev.getPanelId() != null) panelIds.add(ev.getPanelId());
+        }
+        if (panelIds.isEmpty()) return List.of();
+
+        List<PanelAverageRow> out = new ArrayList<>();
+        for (UUID panelId : panelIds) {
+            List<PanelFactorAverageJpaEntity> avgs =
+                    panelFactorAverages.findAllByTenantIdAndPanelId(tenantId, panelId);
+            // No materialized averages ⇒ panel has not reached AVERAGED ⇒ NO row.
+            if (avgs.isEmpty()) continue;
+
+            EvaluationPanelJpaEntity panel =
+                    panels.findByIdAndTenantId(panelId, tenantId).orElse(null);
+            if (panel == null) continue; // tenant-scoped: a foreign id yields nothing
+
+            Map<String, String> avgByCode = new LinkedHashMap<>();
+            for (PanelFactorAverageJpaEntity a : avgs) {
+                String code = factorCodeById.get(a.getFactorId());
+                if (code == null) continue;
+                BigDecimal v = a.getAvgRawFactorScore();
+                avgByCode.put(code, v == null ? "" : v.toPlainString());
+            }
+
+            Integer gradeNum = panel.getAssignedGradeNumber();
+            String gradeCode = gradeNum == null ? "" : "G" + gradeNum;
+            String gradeName = gradeNum == null
+                    ? "" : gradeNames.getOrDefault(gradeNum, "G" + gradeNum);
+
+            out.add(new PanelAverageRow(
+                    panelId,
+                    panel.getStatus() == null
+                            ? "" : ReportLabels.localizeStatus(panel.getStatus().name(), locale),
+                    nz(methodologyLabelByVersion.get(panel.getMethodologyVersionId())),
+                    formatUtcDate(panel.getAveragedAt()),
+                    avgByCode,
+                    panel.getDisplayedTotalScore() == null
+                            ? "" : panel.getDisplayedTotalScore().toPlainString(),
+                    gradeCode,
+                    gradeName));
+        }
+        return out;
     }
 
     /**
@@ -625,6 +759,79 @@ public class DefaultReportDataPort implements ReportDataPort {
             names.put(d.getId(), i18n(d.getNameI18n(), locale, nz(d.getCode())));
         }
         return names;
+    }
+
+    /**
+     * Load the department CLOSURE: the leaf departments plus every ancestor up to
+     * the root, so the grading XLSX can split "Departament" (top-level ancestor)
+     * from "Bo'limi" (own leaf, when nested). Batch + tenant-scoped, no per-row
+     * N+1: each level resolves the as-yet-unseen parent ids in ONE
+     * {@code findAllByTenantIdAndIdIn} call; org trees are shallow, so the loop
+     * runs a handful of times at most. A {@code visited} guard makes a corrupt
+     * cyclic {@code parent_id} chain terminate instead of looping forever.
+     */
+    private Map<UUID, DepartmentJpaEntity> loadDepartmentClosure(UUID tenantId, Set<UUID> leafIds) {
+        if (tenantId == null || leafIds == null || leafIds.isEmpty()) return Map.of();
+        Map<UUID, DepartmentJpaEntity> byId = new HashMap<>();
+        Set<UUID> frontier = new LinkedHashSet<>(leafIds);
+        int safety = 0;
+        while (!frontier.isEmpty() && safety++ < 64) {
+            List<DepartmentJpaEntity> loaded = departments.findAllByTenantIdAndIdIn(tenantId, frontier);
+            Set<UUID> nextParents = new LinkedHashSet<>();
+            for (DepartmentJpaEntity d : loaded) {
+                byId.put(d.getId(), d);
+            }
+            for (DepartmentJpaEntity d : loaded) {
+                UUID parent = d.getParentId();
+                if (parent != null && !byId.containsKey(parent) && !nextParents.contains(parent)) {
+                    nextParents.add(parent);
+                }
+            }
+            frontier = nextParents;
+        }
+        return byId;
+    }
+
+    /** Localize every loaded department (closure) id → localized name. */
+    private static Map<UUID, String> localizeDepartments(
+            Map<UUID, DepartmentJpaEntity> byId, String locale) {
+        Map<UUID, String> names = new HashMap<>(byId.size());
+        for (DepartmentJpaEntity d : byId.values()) {
+            names.put(d.getId(), i18n(d.getNameI18n(), locale, nz(d.getCode())));
+        }
+        return names;
+    }
+
+    /**
+     * Walk {@code parentId} up from {@code leafId} to the root within the loaded
+     * closure. Returns the top-level ancestor id (== {@code leafId} when the leaf
+     * has no parent). Null leaf or an ancestor missing from the closure (cross-tenant
+     * / pruned) stops the walk at the last resolved node. A {@code visited} guard
+     * makes a cyclic chain terminate.
+     */
+    private static UUID topLevelAncestor(UUID leafId, Map<UUID, DepartmentJpaEntity> byId) {
+        if (leafId == null) return null;
+        UUID current = leafId;
+        Set<UUID> visited = new LinkedHashSet<>();
+        while (current != null && visited.add(current)) {
+            DepartmentJpaEntity d = byId.get(current);
+            if (d == null) return current; // last resolved node is the best-known root
+            UUID parent = d.getParentId();
+            if (parent == null) return current;
+            current = parent;
+        }
+        return current;
+    }
+
+    private static final DateTimeFormatter UTC_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
+
+    /**
+     * Format a timestamp as a UTC calendar date {@code yyyy-MM-dd} (no time) for
+     * the grading XLSX evaluation-date column. Null ⇒ blank (DRAFT / unsubmitted).
+     */
+    private static String formatUtcDate(OffsetDateTime ts) {
+        if (ts == null) return "";
+        return ts.withOffsetSameInstant(ZoneOffset.UTC).toLocalDate().format(UTC_DATE);
     }
 
     /**

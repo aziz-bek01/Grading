@@ -2,7 +2,9 @@ package uz.hrlab.grading.integration.excel;
 
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.VerticalAlignment;
@@ -74,6 +76,81 @@ public class ExcelWriter {
                     String value = data.get(dataKeys.get(c));
                     Cell cell = row.createCell(c);
                     SafeCellWriter.writeString(cell, value == null ? "" : value);
+                }
+            }
+
+            wb.write(out);
+            if (wb instanceof SXSSFWorkbook s) {
+                s.dispose();
+            }
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * Per-row visual styling applied by {@link #writeWithRowStyles}. {@code
+     * NORMAL} renders with no fill; {@code AVERAGE_HIGHLIGHT} paints the whole
+     * row with a solid light-green background (the panel AVERAGE row in the
+     * evaluation grading XLSX). Kept tiny and format-agnostic so callers describe
+     * intent, not POI styling details.
+     */
+    public enum RowStyle { NORMAL, AVERAGE_HIGHLIGHT }
+
+    /**
+     * Same display-header / data-key contract as {@link #write(String, List,
+     * List, List)} (sic — the {@code displayHeaders}+{@code dataKeys} overload),
+     * with one extra parallel list of {@link RowStyle} flags — one per data row —
+     * that drives a green background fill on {@code AVERAGE_HIGHLIGHT} rows. The
+     * header row and {@code NORMAL} rows are written exactly as the unstyled
+     * overload would, so non-highlighted output is byte-compatible in layout.
+     * All data cells still route through {@link SafeCellWriter}.
+     *
+     * @param sheetName      POI sheet name (≤ 31 chars)
+     * @param displayHeaders human column titles (platform/locale-authored, safe)
+     * @param dataKeys       the map keys used to look up each column's value
+     * @param rows           data rows keyed by {@code dataKeys}; values sanitized
+     * @param rowStyles      one style per row (same size + order as {@code rows})
+     */
+    public byte[] writeWithRowStyles(String sheetName, List<String> displayHeaders,
+                                     List<String> dataKeys, List<Map<String, String>> rows,
+                                     List<RowStyle> rowStyles) {
+        if (displayHeaders.size() != dataKeys.size()) {
+            throw new IllegalArgumentException(
+                    "displayHeaders and dataKeys must be the same length");
+        }
+        if (rowStyles.size() != rows.size()) {
+            throw new IllegalArgumentException(
+                    "rowStyles and rows must be the same length");
+        }
+        try (Workbook wb = new SXSSFWorkbook(100);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet(sheetName == null ? "Sheet1" : sheetName);
+
+            // One shared green style for every highlighted row (POI caps styles).
+            CellStyle highlight = wb.createCellStyle();
+            highlight.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+            highlight.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            Row header = sheet.createRow(0);
+            for (int c = 0; c < displayHeaders.size(); c++) {
+                Cell cell = header.createCell(c);
+                cell.setCellValue(displayHeaders.get(c)); // platform/locale-authored, safe
+            }
+
+            int rIdx = 1;
+            for (int i = 0; i < rows.size(); i++) {
+                Map<String, String> data = rows.get(i);
+                boolean green = rowStyles.get(i) == RowStyle.AVERAGE_HIGHLIGHT;
+                Row row = sheet.createRow(rIdx++);
+                for (int c = 0; c < dataKeys.size(); c++) {
+                    String value = data.get(dataKeys.get(c));
+                    Cell cell = row.createCell(c);
+                    SafeCellWriter.writeString(cell, value == null ? "" : value);
+                    if (green) {
+                        cell.setCellStyle(highlight);
+                    }
                 }
             }
 

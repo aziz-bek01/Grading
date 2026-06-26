@@ -14,6 +14,8 @@ import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
+import uz.hrlab.grading.evaluation.infrastructure.PanelFactorAverageRepository;
+import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeRepository;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorLevelRepository;
@@ -66,11 +68,14 @@ class DefaultReportDataPortExecutiveKpiTest {
     private final TenantRepository tenants = mock(TenantRepository.class);
     private final SystemAuditLogRepository auditLog = mock(SystemAuditLogRepository.class);
     private final ActorNameResolver actorNames = mock(ActorNameResolver.class);
+    private final PanelRepository panels = mock(PanelRepository.class);
+    private final PanelFactorAverageRepository panelFactorAverages =
+            mock(PanelFactorAverageRepository.class);
 
     private final DefaultReportDataPort port = new DefaultReportDataPort(
             positions, projects, evaluations, evaluationScores, factors, factorLevels,
             methodologyVersions, methodologies, gradeStructures, grades, departments,
-            users, tenants, auditLog, actorNames);
+            users, tenants, auditLog, actorNames, panels, panelFactorAverages);
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID projectId = UUID.randomUUID();

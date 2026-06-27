@@ -171,6 +171,18 @@ export interface Panel {
   submitted_at?: string | null;
   approved_at?: string | null;
   created_at: string;
+  /**
+   * Department label map — resolved by the backend from the position's
+   * department association. Absent when the position has no department.
+   * Added to the panel list DTO (CEO overview feature, inline sign-off).
+   */
+  department_label_i18n?: Partial<Record<string, string>> | null;
+  /**
+   * Division (sub-department / bo'lim) label map — resolved by the backend.
+   * Absent when the position has no division association.
+   * Added to the panel list DTO (CEO overview feature, inline sign-off).
+   */
+  division_label_i18n?: Partial<Record<string, string>> | null;
 }
 
 /** GOLDEN: PanelAssignmentResponse. */

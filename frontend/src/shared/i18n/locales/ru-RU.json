@@ -2220,7 +2220,13 @@
       "reconcile_error": "Не удалось выполнить восстановление. Повторите попытку.",
       "reconcile_error_ref": "{{code}} · ref {{ref}}",
       "empty_title": "Комиссии не найдены",
-      "empty_body": "Нет оценочных комиссий, соответствующих выбранному фильтру."
+      "empty_body": "Нет оценочных комиссий, соответствующих выбранному фильтру.",
+      "action_approve": "Подтверждаю",
+      "action_request_changes": "На доработку",
+      "action_reject": "Отклонить",
+      "col_department": "Департамент",
+      "col_division": "Отдел",
+      "col_avg_score": "Средний балл"
     },
     "dashboard_card": {
       "title": "Комиссии ожидают подписи",

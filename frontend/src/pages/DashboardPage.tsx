@@ -47,7 +47,7 @@ function CeoDashboardCard() {
   const inbox = useMyApprovalInbox();
   const pendingCount = useMemo(
     () =>
-      (inbox.data?.items ?? []).filter((r) => r.entityType === 'EVALUATION_PANEL').length,
+      (inbox.data ?? []).filter((r) => r.entityType === 'EVALUATION_PANEL').length,
     [inbox.data],
   );
 

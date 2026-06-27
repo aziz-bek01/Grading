@@ -2220,7 +2220,13 @@
       "reconcile_error": "Could not run the repair. Please try again.",
       "reconcile_error_ref": "{{code}} · ref {{ref}}",
       "empty_title": "No panels found",
-      "empty_body": "No evaluation panels match the selected filter."
+      "empty_body": "No evaluation panels match the selected filter.",
+      "action_approve": "Approve",
+      "action_request_changes": "Request changes",
+      "action_reject": "Reject",
+      "col_department": "Department",
+      "col_division": "Division",
+      "col_avg_score": "Average score"
     },
     "dashboard_card": {
       "title": "Panels awaiting sign-off",

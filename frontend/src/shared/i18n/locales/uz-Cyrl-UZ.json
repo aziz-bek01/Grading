@@ -2220,7 +2220,13 @@
       "reconcile_error": "Тиклашни бажариб бўлмади. Қайта уриниб кўринг.",
       "reconcile_error_ref": "{{code}} · ref {{ref}}",
       "empty_title": "Комиссиялар топилмади",
-      "empty_body": "Танланган фильтрга мос баҳолаш комиссиялари йўқ."
+      "empty_body": "Танланган фильтрга мос баҳолаш комиссиялари йўқ.",
+      "action_approve": "Тасдиқлайман",
+      "action_request_changes": "Қайта кўриб чиқилсин",
+      "action_reject": "Бекор қилинсин",
+      "col_department": "Департамент",
+      "col_division": "Бўлими",
+      "col_avg_score": "Баҳолаш натижаси (ўртача баҳоси)"
     },
     "dashboard_card": {
       "title": "Имзо кутаётган комиссиялар",

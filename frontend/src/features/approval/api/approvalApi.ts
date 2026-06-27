@@ -238,11 +238,11 @@ export async function cancelApprovalRequest(approvalId: string): Promise<Approva
   return normalizeApprovalRequest(res.data);
 }
 
-export async function fetchMyInbox(): Promise<{ items: ApprovalRequestSummary[] }> {
+export async function fetchMyInbox(): Promise<ApprovalRequest[]> {
   // Backend /my-inbox returns a BARE ARRAY (`[]`), NOT a PageResponse envelope
   // (ApprovalController.inbox()). We tolerate a `{items}` fallback for safety
   // and normalise every element through the wire→domain adapter so the cards
-  // and the sidebar badge read the same domain shape.
+  // and the sidebar badge read the same domain shape (including steps[]).
   const res = await httpClient.get<unknown>(endpoints.approval.myInbox);
   const data = res.data;
   const rawItems = Array.isArray(data)
@@ -250,5 +250,5 @@ export async function fetchMyInbox(): Promise<{ items: ApprovalRequestSummary[] 
     : Array.isArray((data as Raw)?.items)
       ? ((data as Raw).items as unknown[])
       : [];
-  return { items: rawItems.map((r) => normalizeApprovalRequest(r)) };
+  return rawItems.map((r) => normalizeApprovalRequest(r));
 }

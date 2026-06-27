@@ -2023,6 +2023,10 @@ export interface MockPanel {
   submitted_at?: string | null;
   approved_at?: string | null;
   created_at: string;
+  /** CEO overview — department label map (optional, resolved from position's dept). */
+  department_label_i18n?: Partial<Record<Locale, string>> | null;
+  /** CEO overview — division label map (optional). */
+  division_label_i18n?: Partial<Record<Locale, string>> | null;
 }
 
 export interface MockPanelAssignment {

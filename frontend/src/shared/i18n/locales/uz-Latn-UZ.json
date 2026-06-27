@@ -2220,7 +2220,13 @@
       "reconcile_error": "Tiklashni bajarib bo'lmadi. Qayta urinib ko'ring.",
       "reconcile_error_ref": "{{code}} · ref {{ref}}",
       "empty_title": "Komissiyalar topilmadi",
-      "empty_body": "Tanlangan filtrga mos baholash komissiyalari yoʻq."
+      "empty_body": "Tanlangan filtrga mos baholash komissiyalari yoʻq.",
+      "action_approve": "Tasdiqlayman",
+      "action_request_changes": "Qayta ko'rib chiqilsin",
+      "action_reject": "Bekor qilinsin",
+      "col_department": "Departament",
+      "col_division": "Bo'limi",
+      "col_avg_score": "Baholash natijasi (o'rtacha bahosi)"
     },
     "dashboard_card": {
       "title": "Imzo kutayotgan komissiyalar",

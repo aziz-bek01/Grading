@@ -18,9 +18,11 @@ import java.io.OutputStream;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -185,24 +187,30 @@ public class EvaluationSummaryReport
                               ReportDataPort.EvaluationMatrix matrix) {
         String locale = ctx.locale();
         // dataKeys stay machine-stable (factor code keyed); displayHeaders are the
-        // localized human labels ("name (CODE)" for factors).
+        // localized human labels ("name (CODE)" for factors). numericColumns and
+        // columnWidths are accumulated in lock-step with the columns so the writer
+        // is TOLD which columns are numeric / how wide — it never guesses.
         List<String> displayHeaders = new ArrayList<>();
         List<String> dataKeys = new ArrayList<>();
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.positionCode", locale), "position_code");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.department", locale), "department");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.division", locale), "division");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.position", locale), "position_title");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.evaluator", locale), "evaluator");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.evaluatorRole", locale), "evaluator_role");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.methodology", locale), "methodology");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.status", locale), "status");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.evaluationDate", locale), "evaluation_date");
+        Set<Integer> numericColumns = new HashSet<>();
+        List<Integer> widths = new ArrayList<>();
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.positionCode", locale), "position_code", 12);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.department", locale), "department", 22);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.division", locale), "division", 22);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.position", locale), "position_title", 22);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.evaluator", locale), "evaluator", 24);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.evaluatorRole", locale), "evaluator_role", 18);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.methodology", locale), "methodology", 18);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.status", locale), "status", 14);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.evaluationDate", locale), "evaluation_date", 12);
         for (ReportDataPort.FactorRef f : matrix.factors()) {
-            addColumn(displayHeaders, dataKeys, nz(f.name()) + " (" + f.code() + ")", "factor_" + f.code());
+            numericColumns.add(displayHeaders.size()); // this column index is numeric
+            addColumn(displayHeaders, dataKeys, widths, nz(f.name()) + " (" + f.code() + ")", "factor_" + f.code(), 11);
         }
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.total", locale), "total_score");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.grade", locale), "grade_code");
-        addColumn(displayHeaders, dataKeys, ReportLabels.label("col.gradeName", locale), "grade_name");
+        numericColumns.add(displayHeaders.size()); // Total column is numeric
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.total", locale), "total_score", 10);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.grade", locale), "grade_code", 8);
+        addColumn(displayHeaders, dataKeys, widths, ReportLabels.label("col.gradeName", locale), "grade_name", 18);
 
         // Group evaluator rows by panelId; null-panel rows are standalone (no
         // average). Sort group order by position code ASC; within a panel, by the
@@ -240,13 +248,20 @@ public class EvaluationSummaryReport
             }
         }
 
-        writeXlsx(out, excel.writeWithRowStyles(
-                "EvaluationSummary", displayHeaders, dataKeys, dataRows, rowStyles));
+        int[] widthsArr = widths.stream().mapToInt(Integer::intValue).toArray();
+        writeXlsx(out, excel.writeGradingSheet(
+                "EvaluationSummary", displayHeaders, dataKeys, dataRows, rowStyles,
+                numericColumns, widthsArr, AVERAGE_MERGE_END_COL));
     }
 
-    private static void addColumn(List<String> headers, List<String> keys, String header, String key) {
+    /** Average-row label spans columns A..F (indices 0..5) as one merged cell. */
+    private static final int AVERAGE_MERGE_END_COL = 5;
+
+    private static void addColumn(List<String> headers, List<String> keys, List<Integer> widths,
+                                  String header, String key, int widthChars) {
         headers.add(header);
         keys.add(key);
+        widths.add(widthChars);
     }
 
     /** One evaluator data row keyed by the stable XLSX column keys. */
@@ -274,18 +289,21 @@ public class EvaluationSummaryReport
     }
 
     /**
-     * The green AVERAGE row: cols 1-4 blank; FIO column carries the localized
-     * "average" label; role blank; methodology + status + date + factor averages
-     * + total from the panel; grade only when the panel is APPROVED/LOCKED.
+     * The green AVERAGE row: columns A..F (indices 0..5) are merged into one
+     * label cell — the localized "average" label is placed in the top-left
+     * ({@code position_code}) key so it renders in the merged cell; the spanned
+     * keys (department..evaluator_role) stay blank. Methodology + status + date +
+     * factor averages + total come from the panel; grade only when the panel is
+     * APPROVED/LOCKED.
      */
     private static Map<String, String> averageRow(ReportDataPort.EvaluationMatrix matrix,
                                                   ReportDataPort.PanelAverageRow avg, String locale) {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("position_code", "");
+        m.put("position_code", ReportLabels.label("row.panelAverage", locale)); // merged A..F label
         m.put("department", "");
         m.put("division", "");
         m.put("position_title", "");
-        m.put("evaluator", ReportLabels.label("row.panelAverage", locale));
+        m.put("evaluator", "");
         m.put("evaluator_role", "");
         m.put("methodology", nz(avg.methodologyVersionLabel()));
         m.put("status", nz(avg.status()));

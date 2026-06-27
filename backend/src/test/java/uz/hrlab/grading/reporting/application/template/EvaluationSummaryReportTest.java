@@ -1,11 +1,26 @@
 package uz.hrlab.grading.reporting.application.template;
 
+import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.PaneInformation;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+import org.apache.poi.xssf.usermodel.XSSFColor;
+import org.apache.poi.xssf.usermodel.XSSFFont;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
 import uz.hrlab.grading.reporting.application.template.impl.EvaluationSummaryReport;
 import uz.hrlab.grading.reporting.domain.ReportFormat;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
+import java.io.ByteArrayInputStream;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -74,9 +89,11 @@ class EvaluationSummaryReportTest {
         assertThat(rows.get(0)).contains("POS-001", "Alice Director");
         assertThat(rows.get(1)).contains("POS-001", "Bob Manager");
         assertThat(rows.get(2)).contains("POS-001", "Carol Expert");
-        // Average row: FIO column carries the localized average label, position code blank.
+        // Average row: the localized average label lives in the MERGED A..F cell —
+        // i.e. the top-left (column 0) cell — and the spanned cells (1..5) are blank.
         assertThat(rows.get(3)).contains("Average");
-        assertThat(rows.get(3).get(0)).isEmpty(); // position code blank on the average row
+        assertThat(rows.get(3).get(0)).isEqualTo("Average"); // merged label cell (A)
+        assertThat(rows.get(3).get(1)).isEmpty(); // spanned cell within the merge
     }
 
     @Test
@@ -192,6 +209,143 @@ class EvaluationSummaryReportTest {
         assertThat(text).contains("Period", "2026-04-01 – 2026-06-30");
         assertThat(text).contains("Evaluators", "Aliyev A.");
         assertThat(text).contains("Methodologies");
+    }
+
+    @Test
+    void xlsxHeaderRowIsDarkGreenWhiteBoldWrappedAndCentered() throws Exception {
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
+            Sheet sheet = wb.getSheetAt(0);
+            Cell h0 = sheet.getRow(0).getCell(0);
+            XSSFCellStyle style = (XSSFCellStyle) h0.getCellStyle();
+
+            // Solid dark forest-green fill (#1F4E2C).
+            assertThat(style.getFillPattern()).isEqualTo(FillPatternType.SOLID_FOREGROUND);
+            XSSFColor fill = style.getFillForegroundColorColor();
+            assertThat(fill).isNotNull();
+            assertThat(toHex(fill.getRGB())).isEqualTo("1F4E2C");
+
+            // White BOLD font + wrap text + center/center.
+            XSSFFont font = style.getFont();
+            assertThat(font.getBold()).isTrue();
+            assertThat(font.getColor()).isEqualTo(IndexedColors.WHITE.getIndex());
+            assertThat(style.getWrapText()).isTrue();
+            assertThat(style.getAlignment()).isEqualTo(HorizontalAlignment.CENTER);
+            assertThat(style.getVerticalAlignment()).isEqualTo(VerticalAlignment.CENTER);
+
+            // Header row taller than default (≈ 3 wrapped lines).
+            assertThat(sheet.getRow(0).getHeightInPoints())
+                    .isGreaterThan(sheet.getDefaultRowHeightInPoints() * 2);
+            // Header cells have the four thin borders too.
+            assertThinBorders(style);
+        }
+    }
+
+    @Test
+    void xlsxEveryDataCellHasThinGridBorders() throws Exception {
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
+            Sheet sheet = wb.getSheetAt(0);
+            // A representative data cell (first evaluator row, first column).
+            Cell sample = sheet.getRow(1).getCell(0);
+            assertThinBorders((XSSFCellStyle) sample.getCellStyle());
+        }
+    }
+
+    @Test
+    void xlsxFactorAndTotalColumnsAreNumericWithOneDecimalFormat() throws Exception {
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        List<String> headers = headerRow(xlsx);
+        int factorCol = headers.indexOf("Knowledge (KNOWLEDGE)");
+        int totalCol = headers.indexOf("Total");
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
+            Sheet sheet = wb.getSheetAt(0);
+            Cell factor = sheet.getRow(1).getCell(factorCol);
+            Cell total = sheet.getRow(1).getCell(totalCol);
+
+            assertThat(factor.getCellType()).isEqualTo(CellType.NUMERIC);
+            assertThat(factor.getNumericCellValue()).isEqualTo(60.0d);
+            assertThat(factor.getCellStyle().getDataFormatString()).contains("0.0");
+
+            assertThat(total.getCellType()).isEqualTo(CellType.NUMERIC);
+            assertThat(total.getNumericCellValue()).isEqualTo(130.0d);
+            assertThat(total.getCellStyle().getDataFormatString()).contains("0.0");
+
+            // A non-numeric column (Evaluator) stays a sanitized STRING cell.
+            int evalCol = headers.indexOf("Evaluator (full name)");
+            assertThat(sheet.getRow(1).getCell(evalCol).getCellType())
+                    .isEqualTo(CellType.STRING);
+        }
+    }
+
+    @Test
+    void xlsxAverageRowIsBoldGreenMergedAcrossAtoF() throws Exception {
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
+            Sheet sheet = wb.getSheetAt(0);
+            // The average row is the 4th body row (index 3) ⇒ sheet row 4.
+            int avgRowIdx = -1;
+            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+                Cell c0 = sheet.getRow(r).getCell(0);
+                if (c0 != null && "Average".equals(c0.toString())) { avgRowIdx = r; break; }
+            }
+            assertThat(avgRowIdx).isGreaterThan(0);
+
+            XSSFCellStyle labelStyle = (XSSFCellStyle) sheet.getRow(avgRowIdx).getCell(0).getCellStyle();
+            assertThat(labelStyle.getFont().getBold()).isTrue();
+            assertThat(labelStyle.getFillPattern()).isEqualTo(FillPatternType.SOLID_FOREGROUND);
+            assertThat(labelStyle.getFillForegroundColor())
+                    .isEqualTo(IndexedColors.LIGHT_GREEN.getIndex());
+            assertThinBorders(labelStyle);
+
+            // A..F (0..5) merged into the single label cell.
+            boolean merged = false;
+            for (CellRangeAddress region : sheet.getMergedRegions()) {
+                if (region.getFirstRow() == avgRowIdx && region.getLastRow() == avgRowIdx
+                        && region.getFirstColumn() == 0 && region.getLastColumn() == 5) {
+                    merged = true;
+                    break;
+                }
+            }
+            assertThat(merged).as("average row A..F merged region").isTrue();
+
+            // The average factor cell is still numeric + green + bold.
+            int factorCol = headerRow(xlsx).indexOf("Knowledge (KNOWLEDGE)");
+            Cell avgFactor = sheet.getRow(avgRowIdx).getCell(factorCol);
+            assertThat(avgFactor.getCellType()).isEqualTo(CellType.NUMERIC);
+            XSSFCellStyle avgNumStyle = (XSSFCellStyle) avgFactor.getCellStyle();
+            assertThat(avgNumStyle.getFont().getBold()).isTrue();
+            assertThat(avgNumStyle.getDataFormatString()).contains("0.0");
+        }
+    }
+
+    @Test
+    void xlsxFreezesHeaderRowAndSetsColumnWidths() throws Exception {
+        byte[] xlsx = renderXlsx(template, ctx(ReportFormat.XLSX, "en-US"));
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
+            Sheet sheet = wb.getSheetAt(0);
+            PaneInformation pane = sheet.getPaneInformation();
+            assertThat(pane).isNotNull();
+            assertThat(pane.getHorizontalSplitPosition()).isEqualTo((short) 1);
+
+            // Explicit fixed widths set (wider than POI's default column width).
+            int defaultWidth = sheet.getDefaultColumnWidth() * 256;
+            assertThat(sheet.getColumnWidth(0)).isGreaterThan(defaultWidth);
+            assertThat(sheet.getColumnWidth(4)).isGreaterThan(defaultWidth); // Evaluator
+        }
+    }
+
+    private static void assertThinBorders(XSSFCellStyle style) {
+        assertThat(style.getBorderTop()).isEqualTo(BorderStyle.THIN);
+        assertThat(style.getBorderBottom()).isEqualTo(BorderStyle.THIN);
+        assertThat(style.getBorderLeft()).isEqualTo(BorderStyle.THIN);
+        assertThat(style.getBorderRight()).isEqualTo(BorderStyle.THIN);
+    }
+
+    private static String toHex(byte[] rgb) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : rgb) sb.append(String.format("%02X", b & 0xFF));
+        return sb.toString();
     }
 
     private ReportGenerationContext ctx(ReportFormat format, String locale) {

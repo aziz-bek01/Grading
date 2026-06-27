@@ -92,20 +92,51 @@ public class DeleteEvaluationUseCase {
                             + " deleted; archive instead");
         }
 
+        deleteCascade(ctx.tenantId(), ctx.userId(), evaluation, reason);
+    }
+
+    /**
+     * SYSTEM entrypoint — delete one ALREADY-LOADED, tenant-checked sheet (scores
+     * first, then the row, then the {@code EVALUATION_DELETED} audit) WITHOUT the
+     * UI permission/ABAC re-check. Used by {@link ResetPanelToCollectingUseCase}
+     * when a CEO REJECTS an EVALUATION_PANEL approval: the reject was already
+     * authorized at the approval step, the panel reset is destructive by product
+     * decision, and the actor (CEO) need not hold {@code EVALUATION_EDIT}. The
+     * SINGLE cascade body ({@link #deleteCascade}) is shared with the UI
+     * {@link #delete} path — no duplicated cascade/audit logic.
+     *
+     * <p>The caller MUST pass a sheet it has already loaded tenant-scoped (e.g. via
+     * {@code findAllByTenantIdAndPanelId}); {@code tenantId} is re-pinned in every
+     * delete + the audit row. The {@link EvaluationStatus#isDeletable()} guard is
+     * re-asserted here so a non-deletable (already SUBMITTED→panel-approved) sheet
+     * is skipped rather than force-deleted — defense in depth.
+     */
+    @Transactional
+    public void deleteForSystem(UUID tenantId, UUID actorUserId,
+                                EvaluationJpaEntity evaluation, String reason) {
+        if (evaluation == null || !evaluation.getStatus().isDeletable()) {
+            return; // skip a non-deletable sheet — preserves committed history
+        }
+        deleteCascade(tenantId, actorUserId, evaluation, reason);
+    }
+
+    /** The SINGLE delete body shared by the UI and system entrypoints. */
+    private void deleteCascade(UUID tenantId, UUID actorUserId,
+                               EvaluationJpaEntity evaluation, String reason) {
         var beforeJson = snapshot.of(evaluation);
 
         // Delete dependent score rows first to avoid FK orphans (tenant-scoped).
         List<EvaluationScoreJpaEntity> dependentScores =
-                scores.findAllByTenantIdAndEvaluationId(ctx.tenantId(), evaluation.getId());
+                scores.findAllByTenantIdAndEvaluationId(tenantId, evaluation.getId());
         for (EvaluationScoreJpaEntity s : dependentScores) {
             scores.delete(s);
         }
-        evaluations.deleteByIdAndTenantId(evaluation.getId(), ctx.tenantId());
+        evaluations.deleteByIdAndTenantId(evaluation.getId(), tenantId);
 
         audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+                .tenantId(tenantId)
                 .projectId(evaluation.getProjectId())
-                .actorUserId(ctx.userId())
+                .actorUserId(actorUserId)
                 .action(AuditAction.EVALUATION_DELETED)
                 .entityType("Evaluation")
                 .entityId(evaluation.getId())

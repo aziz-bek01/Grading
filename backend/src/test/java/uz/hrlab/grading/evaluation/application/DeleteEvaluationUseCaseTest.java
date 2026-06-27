@@ -187,6 +187,67 @@ class DeleteEvaluationUseCaseTest {
         verify(evaluations, never()).deleteByIdAndTenantId(any(), any());
     }
 
+    /**
+     * SYSTEM path ({@code deleteForSystem}) — the panel-reject reset. An
+     * already-loaded, tenant-checked deletable sheet is deleted WITHOUT the UI
+     * permission / ABAC gate (no TenantContext needed): scores removed first, then
+     * the row, then EVALUATION_DELETED audited with the passed system actor + null
+     * afterJson. Reuses the SAME cascade body as the UI delete.
+     */
+    @ParameterizedTest
+    @EnumSource(value = EvaluationStatus.class, names = {"DRAFT", "INCOMPLETE", "COMPLETE"})
+    void systemDeletePreSubmissionDeletesScoresFirstThenRowAndAudits(EvaluationStatus status) {
+        TenantContextHolder.clear(); // prove no UI context is consulted
+        EvaluationJpaEntity e = new EvaluationJpaEntity(
+                evaluationId, tenantId, projectId, positionId, versionId, userId, status);
+        EvaluationScoreJpaEntity s1 = new EvaluationScoreJpaEntity(
+                UUID.randomUUID(), tenantId, evaluationId, UUID.randomUUID(),
+                UUID.randomUUID(), new BigDecimal("10"));
+        when(scores.findAllByTenantIdAndEvaluationId(tenantId, evaluationId))
+                .thenReturn(List.of(s1));
+
+        UUID systemActor = UUID.randomUUID();
+        useCase.deleteForSystem(tenantId, systemActor, e, "panel rejected — reset to COLLECTING");
+
+        verify(scores).delete(s1);
+        verify(evaluations).deleteByIdAndTenantId(evaluationId, tenantId);
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit).record(captor.capture());
+        AuditEvent ev = captor.getValue();
+        assertThat(ev.action()).isEqualTo(AuditAction.EVALUATION_DELETED);
+        assertThat(ev.actorUserId()).isEqualTo(systemActor);
+        assertThat(ev.entityId()).isEqualTo(evaluationId);
+        assertThat(ev.afterJson()).isNull();
+        verify(loader, never()).load(any(), any());
+        verify(abacGate, never()).enforceCanWriteInProject(any(), any());
+    }
+
+    /**
+     * SYSTEM path defense-in-depth — a non-deletable (already-committed) sheet is
+     * SKIPPED, not force-deleted, preserving its committed history. Null is a no-op.
+     */
+    @ParameterizedTest
+    @EnumSource(value = EvaluationStatus.class,
+            names = {"SUBMITTED", "APPROVED", "LOCKED", "ARCHIVED"})
+    void systemDeleteSkipsNonDeletableSheet(EvaluationStatus status) {
+        EvaluationJpaEntity e = new EvaluationJpaEntity(
+                evaluationId, tenantId, projectId, positionId, versionId, userId, status);
+
+        useCase.deleteForSystem(tenantId, UUID.randomUUID(), e, "reset");
+
+        verify(scores, never()).delete(any());
+        verify(evaluations, never()).deleteByIdAndTenantId(any(), any());
+        verify(audit, never()).record(any());
+    }
+
+    @Test
+    void systemDeleteNullSheetIsNoop() {
+        useCase.deleteForSystem(tenantId, UUID.randomUUID(), null, "reset");
+
+        verify(evaluations, never()).deleteByIdAndTenantId(any(), any());
+        verify(audit, never()).record(any());
+    }
+
     // ---------- helpers ----------
 
     private void stubLoad(EvaluationStatus status) {

@@ -123,12 +123,8 @@ public class ReopenPanelUseCase {
 
         panel.setStatus(EvaluationPanelStatus.AWAITING_EVALUATIONS);
         // Clear stored average + per-factor rows so the next completion recomputes.
-        panel.setRawTotalScore(null);
-        panel.setDisplayedTotalScore(null);
-        panel.setAveragedAt(null);
-        panel.setAveragedBy(null);
+        clearPanelAggregates(tenantId, panel);
         panels.save(panel);
-        averages.deleteAllByTenantIdAndPanelId(tenantId, panel.getId());
 
         audit.record(AuditEvent.builder()
                 .tenantId(tenantId)
@@ -140,5 +136,23 @@ public class ReopenPanelUseCase {
                 .reason("reopened from " + status)
                 .build());
         return panel.toDomain();
+    }
+
+    /**
+     * Shared aggregate-clearing helper — nulls the stored panel totals
+     * ({@code raw_total_score}, {@code displayed_total_score}, {@code averaged_at},
+     * {@code averaged_by}) and deletes every materialized
+     * {@code panel_factor_averages} row (tenant-scoped). Used by the reopen body
+     * here AND reused by {@link ResetPanelToCollectingUseCase} (CEO REJECT →
+     * destructive reset to COLLECTING) so the average-clearing invariant lives in
+     * ONE place. Does NOT touch the panel status or persist the panel — the caller
+     * sets the target status and calls {@code save}.
+     */
+    void clearPanelAggregates(UUID tenantId, EvaluationPanelJpaEntity panel) {
+        panel.setRawTotalScore(null);
+        panel.setDisplayedTotalScore(null);
+        panel.setAveragedAt(null);
+        panel.setAveragedBy(null);
+        averages.deleteAllByTenantIdAndPanelId(tenantId, panel.getId());
     }
 }

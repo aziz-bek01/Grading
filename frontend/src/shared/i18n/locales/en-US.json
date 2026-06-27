@@ -2221,6 +2221,7 @@
       "reconcile_error_ref": "{{code}} · ref {{ref}}",
       "empty_title": "No panels found",
       "empty_body": "No evaluation panels match the selected filter.",
+      "actions_menu": "Actions",
       "action_approve": "Approve",
       "action_request_changes": "Request changes",
       "action_reject": "Reject",

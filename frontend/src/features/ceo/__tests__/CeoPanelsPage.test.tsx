@@ -7,9 +7,14 @@
  * 3. The overview calls GET /panels with status params and renders panel rows.
  * 4. The dashboard CEO card renders with EVALUATION_PANEL_APPROVE and is absent without.
  * 5. The sidebar CEO nav item renders with EVALUATION_PANEL_APPROVE and is absent without.
- * 6. Inline sign-off: pending row renders 3 buttons; Tasdiqlayman → ConfirmDialog → approve;
- *    request-changes → ReasonRequiredDialog; reject → ReasonRequiredDialog; <20 chars blocked;
- *    non-pending row shows Open link; dept/division/avg columns render; 400 error shown inline.
+ * 6. Inline sign-off (dropdown UX):
+ *    - pending row renders dropdown trigger button + "Открыть" link → approvalDetails;
+ *    - opening the dropdown exposes Tasdiqlayman / request-changes / reject items;
+ *    - Tasdiqlayman → ConfirmDialog → approve mutation;
+ *    - Qayta ko'rib chiqilsin → ReasonRequiredDialog; <20 chars blocked;
+ *    - Bekor qilinsin → ReasonRequiredDialog; valid reason closes dialog;
+ *    - non-pending row shows "Open" link → panel-detail route (NO dropdown);
+ *    - dept/division/avg-score columns render; 400 error shown inline.
  *
  * REUSE: renderWithProviders, signInWithPermissions, signOut from testUtils.tsx;
  * createMockAdapter from existing handlers (not forked); mockDb fixtures for
@@ -27,6 +32,7 @@ import { createMockAdapter } from '@/shared/api/mocks/handlers';
 import { mockDb } from '@/shared/api/mocks/fixtures';
 import { httpClient } from '@/shared/api/httpClient';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { routes } from '@/shared/config/routes';
 import { CeoPanelsPage } from '../pages/CeoPanelsPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
@@ -79,6 +85,18 @@ const WITH_CEO = [
   PERMISSIONS.APPROVAL_REQUEST_DECIDE,
 ];
 const WITHOUT_CEO = [PERMISSIONS.EVALUATION_READ]; // no EVALUATION_PANEL_APPROVE
+
+/** Open the actions dropdown for the awaiting row and return the open menu. */
+async function openActionsMenu() {
+  await waitFor(() =>
+    expect(screen.getByTestId('ceo-actions-menu-trigger')).toBeInTheDocument(),
+  );
+  fireEvent.click(screen.getByTestId('ceo-actions-menu-trigger'));
+  await waitFor(() =>
+    expect(screen.getByTestId('ceo-actions-menu')).toBeInTheDocument(),
+  );
+  return screen.getByTestId('ceo-actions-menu');
+}
 
 // ─── CeoPanelsPage gating ─────────────────────────────────────────────────────
 
@@ -141,10 +159,10 @@ describe('<CeoPanelsPage /> org-wide status pull', () => {
   });
 });
 
-// ─── Inline sign-off buttons on pending row ───────────────────────────────────
+// ─── Dropdown UX on awaiting rows ─────────────────────────────────────────────
 
-describe('<CeoPanelsPage /> inline sign-off', () => {
-  it('renders 3 inline action buttons for the pending-approval panel row', async () => {
+describe('<CeoPanelsPage /> inline sign-off (dropdown UX)', () => {
+  it('renders the dropdown trigger (not three inline buttons) for the pending-approval panel row', async () => {
     signInWithPermissions(WITH_CEO);
     render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
 
@@ -152,23 +170,52 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
       expect(screen.getByTestId('ceo-panels-table-card')).toBeInTheDocument(),
     );
 
-    // The AVERAGED panel (panel-cfo-averaged) has a PENDING approval step in the
-    // mock inbox (panelApprovalRequest fixture) — so the inline cell renders.
+    // The AVERAGED panel (panel-cfo-averaged) has a PENDING approval step in
+    // the mock inbox → the dropdown trigger should appear.
     await waitFor(() =>
-      expect(screen.getByTestId('ceo-inline-approve')).toBeInTheDocument(),
+      expect(screen.getByTestId('ceo-actions-menu-trigger')).toBeInTheDocument(),
     );
-    expect(screen.getByTestId('ceo-inline-request-changes')).toBeInTheDocument();
-    expect(screen.getByTestId('ceo-inline-reject')).toBeInTheDocument();
+
+    // Three always-visible inline buttons are gone — they are now inside the dropdown.
+    expect(screen.queryByTestId('ceo-inline-approve')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ceo-inline-request-changes')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ceo-inline-reject')).not.toBeInTheDocument();
   });
 
-  it('clicking Tasdiqlayman opens a ConfirmDialog', async () => {
+  it('awaiting row renders an "Open" link pointing to approvalDetails route', async () => {
     signInWithPermissions(WITH_CEO);
     render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
 
     await waitFor(() =>
-      expect(screen.getByTestId('ceo-inline-approve')).toBeInTheDocument(),
+      expect(screen.getByTestId('ceo-panels-table-card')).toBeInTheDocument(),
     );
 
+    // panel-cfo-averaged → approvalId = 'appr-panel-cfo-1'
+    const approvalId = 'appr-panel-cfo-1';
+    await waitFor(() =>
+      expect(screen.getByTestId('ceo-open-approval-panel-cfo-averaged')).toBeInTheDocument(),
+    );
+
+    const openLink = screen.getByTestId('ceo-open-approval-panel-cfo-averaged');
+    expect(openLink).toHaveAttribute('href', routes.approvalDetails(approvalId));
+  });
+
+  it('opening the dropdown exposes approve / request-changes / reject menu items', async () => {
+    signInWithPermissions(WITH_CEO);
+    render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
+
+    await openActionsMenu();
+
+    expect(screen.getByTestId('ceo-inline-approve')).toBeInTheDocument();
+    expect(screen.getByTestId('ceo-inline-request-changes')).toBeInTheDocument();
+    expect(screen.getByTestId('ceo-inline-reject')).toBeInTheDocument();
+  });
+
+  it('clicking Tasdiqlayman in the dropdown opens a ConfirmDialog', async () => {
+    signInWithPermissions(WITH_CEO);
+    render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
+
+    await openActionsMenu();
     fireEvent.click(screen.getByTestId('ceo-inline-approve'));
 
     // ConfirmDialog renders a role=dialog element.
@@ -181,10 +228,7 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
     signInWithPermissions(WITH_CEO);
     render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
 
-    await waitFor(() =>
-      expect(screen.getByTestId('ceo-inline-approve')).toBeInTheDocument(),
-    );
-
+    await openActionsMenu();
     fireEvent.click(screen.getByTestId('ceo-inline-approve'));
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
@@ -205,10 +249,7 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
     signInWithPermissions(WITH_CEO);
     render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
 
-    await waitFor(() =>
-      expect(screen.getByTestId('ceo-inline-request-changes')).toBeInTheDocument(),
-    );
-
+    await openActionsMenu();
     fireEvent.click(screen.getByTestId('ceo-inline-request-changes'));
 
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
@@ -218,10 +259,7 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
     signInWithPermissions(WITH_CEO);
     render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
 
-    await waitFor(() =>
-      expect(screen.getByTestId('ceo-inline-request-changes')).toBeInTheDocument(),
-    );
-
+    await openActionsMenu();
     fireEvent.click(screen.getByTestId('ceo-inline-request-changes'));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
@@ -241,10 +279,7 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
     signInWithPermissions(WITH_CEO);
     render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
 
-    await waitFor(() =>
-      expect(screen.getByTestId('ceo-inline-request-changes')).toBeInTheDocument(),
-    );
-
+    await openActionsMenu();
     fireEvent.click(screen.getByTestId('ceo-inline-request-changes'));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
@@ -269,10 +304,7 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
     signInWithPermissions(WITH_CEO);
     render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
 
-    await waitFor(() =>
-      expect(screen.getByTestId('ceo-inline-reject')).toBeInTheDocument(),
-    );
-
+    await openActionsMenu();
     fireEvent.click(screen.getByTestId('ceo-inline-reject'));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
@@ -295,7 +327,7 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
     );
   });
 
-  it('non-pending panel row shows the Open link instead of inline buttons', async () => {
+  it('non-pending panel row shows the Open link to panel-detail (no dropdown)', async () => {
     signInWithPermissions(WITH_CEO);
     render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
 
@@ -304,12 +336,16 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
     );
 
     // The COLLECTING panel (panel-cto-collecting) has NO pending approval step
-    // in the inbox → it should show the fallback Open link.
+    // in the inbox → it should show the fallback Open link to PanelDetailPage.
     await waitFor(() =>
       expect(
         screen.getByTestId('ceo-open-panel-panel-cto-collecting'),
       ).toBeInTheDocument(),
     );
+
+    // Confirm link goes to panel detail (NOT approval detail).
+    const link = screen.getByTestId('ceo-open-panel-panel-cto-collecting');
+    expect(link.getAttribute('href')).toContain('/evaluation/panels/');
   });
 
   it("renders Departament and Bo'limi columns with seeded values", async () => {
@@ -368,12 +404,11 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
     signInWithPermissions(WITH_CEO);
     render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
 
-    await waitFor(() =>
-      expect(screen.getByTestId('ceo-inline-approve')).toBeInTheDocument(),
-    );
+    // Open the dropdown and select Approve.
+    await openActionsMenu();
+    fireEvent.click(screen.getByTestId('ceo-inline-approve'));
 
     // Open the confirm dialog and confirm.
-    fireEvent.click(screen.getByTestId('ceo-inline-approve'));
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
     const confirmBtn = screen.getByRole('dialog').querySelectorAll('button')[1];
@@ -389,8 +424,8 @@ describe('<CeoPanelsPage /> inline sign-off', () => {
       expect(screen.getByTestId('ceo-inline-action-error')).toBeInTheDocument(),
     );
 
-    // The approve button is still there — table stays interactive.
-    expect(screen.getByTestId('ceo-inline-approve')).toBeInTheDocument();
+    // The dropdown trigger is still there — table stays interactive.
+    expect(screen.getByTestId('ceo-actions-menu-trigger')).toBeInTheDocument();
   });
 });
 

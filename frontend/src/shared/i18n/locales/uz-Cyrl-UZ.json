@@ -2221,6 +2221,7 @@
       "reconcile_error_ref": "{{code}} · ref {{ref}}",
       "empty_title": "Комиссиялар топилмади",
       "empty_body": "Танланган фильтрга мос баҳолаш комиссиялари йўқ.",
+      "actions_menu": "Амаллар",
       "action_approve": "Тасдиқлайман",
       "action_request_changes": "Қайта кўриб чиқилсин",
       "action_reject": "Бекор қилинсин",

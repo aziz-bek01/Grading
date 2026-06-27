@@ -2221,6 +2221,7 @@
       "reconcile_error_ref": "{{code}} · ref {{ref}}",
       "empty_title": "Комиссии не найдены",
       "empty_body": "Нет оценочных комиссий, соответствующих выбранному фильтру.",
+      "actions_menu": "Действия",
       "action_approve": "Подтверждаю",
       "action_request_changes": "На доработку",
       "action_reject": "Отклонить",

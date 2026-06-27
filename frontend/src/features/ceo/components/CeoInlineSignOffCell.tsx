@@ -1,5 +1,5 @@
 /**
- * CeoInlineSignOffCell — inline approve / request-changes / reject buttons
+ * CeoInlineSignOffCell — dropdown menu with approve / request-changes / reject
  * for a single CEO sign-off step shown in the CeoPanelsPage table.
  *
  * REUSE CONTRACT (nothing is reimplemented):
@@ -10,18 +10,21 @@
  *     request-changes) — the SAME shared dialog components.
  *   - Error display: mirrors the ActionErrorAlert pattern from ApprovalActionsBar
  *     (ApiError code → specific i18n key, else generic fallback).
+ *   - Dropdown pattern: matches the LanguageSwitcher pattern (button +
+ *     absolute <ul>, closes on outside-click and Escape key).
  *
  * The component does NOT:
  *   - Duplicate any API call logic.
  *   - Implement new dialogs.
  *   - Have its own mutation for the decide endpoints.
  */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/shared/components/ui/Button';
+import { ChevronDown } from 'lucide-react';
 import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { ReasonRequiredDialog } from '@/shared/components/confirm-dialog/ReasonRequiredDialog';
 import { ApiError } from '@/shared/api/apiError';
+import { cn } from '@/shared/lib/cn';
 import {
   useApproveStep,
   useRejectStep,
@@ -60,11 +63,19 @@ function InlineErrorAlert({ error }: { error: unknown }) {
   );
 }
 
+/**
+ * Dropdown action menu — three decision items: approve, request-changes, reject.
+ * Pattern matches LanguageSwitcher: button + absolute <ul>, outside-click and
+ * Escape close the menu.
+ */
 export function CeoInlineSignOffCell({ approvalId, currentStep }: Props) {
   const { t } = useTranslation();
 
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmApprove, setConfirmApprove] = useState(false);
   const [reasonDialog, setReasonDialog] = useState<'reject' | 'request-changes' | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Reuse the three decide mutations verbatim — same hooks used by ApprovalActionsBar.
   const approveMut = useApproveStep(approvalId);
@@ -77,41 +88,108 @@ export function CeoInlineSignOffCell({ approvalId, currentStep }: Props) {
   // Surface the first error that occurred (matches ApprovalActionsBar pattern).
   const actionError = approveMut.error ?? rejectMut.error ?? requestChangesMut.error;
 
+  // Close menu on outside-click.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
+  // Close menu on Escape key.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [menuOpen]);
+
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap gap-1">
-        {/* Primary: Tasdiqlayman */}
-        <Button
-          size="sm"
-          variant="primary"
+      {/* Dropdown trigger */}
+      <div ref={containerRef} className="relative inline-block">
+        <button
+          type="button"
           disabled={anyPending}
-          onClick={() => setConfirmApprove(true)}
-          data-testid="ceo-inline-approve"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((v) => !v)}
+          data-testid="ceo-actions-menu-trigger"
+          className={cn(
+            'inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium rounded-md',
+            'border border-border-strong bg-surface text-text-primary',
+            'hover:bg-divider disabled:opacity-60 disabled:cursor-not-allowed',
+          )}
         >
-          {t('ceo.panels.action_approve')}
-        </Button>
+          {t('ceo.panels.actions_menu')}
+          <ChevronDown
+            size={14}
+            aria-hidden
+            className={cn('shrink-0 transition-transform', menuOpen && 'rotate-180')}
+          />
+        </button>
 
-        {/* Secondary: Qayta ko'rib chiqilsin */}
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={anyPending}
-          onClick={() => setReasonDialog('request-changes')}
-          data-testid="ceo-inline-request-changes"
-        >
-          {t('ceo.panels.action_request_changes')}
-        </Button>
+        {menuOpen && !anyPending ? (
+          <ul
+            role="menu"
+            data-testid="ceo-actions-menu"
+            className="absolute left-0 mt-1 z-30 min-w-[11rem] bg-surface border border-border rounded-lg shadow-md py-1"
+          >
+            {/* Approve */}
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="ceo-inline-approve"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setConfirmApprove(true);
+                }}
+                className="w-full flex items-center px-3 py-2 text-sm text-text-primary hover:bg-divider text-left"
+              >
+                {t('ceo.panels.action_approve')}
+              </button>
+            </li>
 
-        {/* Danger: Bekor qilinsin */}
-        <Button
-          size="sm"
-          variant="danger"
-          disabled={anyPending}
-          onClick={() => setReasonDialog('reject')}
-          data-testid="ceo-inline-reject"
-        >
-          {t('ceo.panels.action_reject')}
-        </Button>
+            {/* Request changes */}
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="ceo-inline-request-changes"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setReasonDialog('request-changes');
+                }}
+                className="w-full flex items-center px-3 py-2 text-sm text-text-primary hover:bg-divider text-left"
+              >
+                {t('ceo.panels.action_request_changes')}
+              </button>
+            </li>
+
+            {/* Reject */}
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="ceo-inline-reject"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setReasonDialog('reject');
+                }}
+                className="w-full flex items-center px-3 py-2 text-sm text-danger-600 hover:bg-divider text-left"
+              >
+                {t('ceo.panels.action_reject')}
+              </button>
+            </li>
+          </ul>
+        ) : null}
       </div>
 
       <InlineErrorAlert error={actionError} />

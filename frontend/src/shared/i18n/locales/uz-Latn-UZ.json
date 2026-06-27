@@ -2221,6 +2221,7 @@
       "reconcile_error_ref": "{{code}} · ref {{ref}}",
       "empty_title": "Komissiyalar topilmadi",
       "empty_body": "Tanlangan filtrga mos baholash komissiyalari yoʻq.",
+      "actions_menu": "Amallar",
       "action_approve": "Tasdiqlayman",
       "action_request_changes": "Qayta ko'rib chiqilsin",
       "action_reject": "Bekor qilinsin",

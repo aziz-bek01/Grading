@@ -181,11 +181,24 @@ function CeoPanelTable({
           // both shared dialogs — no new approval logic duplicated here).
           const entry = approvalIdByPanelId.get(row.id);
           if (entry) {
+            // Awaiting sign-off: show the decision dropdown AND an "Open"
+            // link to ApprovalDetailsPage (the same rich page reached from the
+            // Approvals inbox) so the CEO can review the full per-evaluator
+            // breakdown without leaving the overview.
             return (
-              <CeoInlineSignOffCell
-                approvalId={entry.approvalId}
-                currentStep={entry.currentStep}
-              />
+              <div className="flex items-center gap-2 flex-wrap">
+                <CeoInlineSignOffCell
+                  approvalId={entry.approvalId}
+                  currentStep={entry.currentStep}
+                />
+                <Link
+                  to={routes.approvalDetails(entry.approvalId)}
+                  className="text-primary-600 hover:underline text-sm whitespace-nowrap"
+                  data-testid={`ceo-open-approval-${row.id}`}
+                >
+                  {t('panel.list.open')}
+                </Link>
+              </div>
             );
           }
           return (

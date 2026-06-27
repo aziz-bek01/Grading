@@ -2060,6 +2060,18 @@ const panels: MockPanel[] = [
     completed_count: 1,
     created_at: '2026-05-01T09:00:00Z',
     // raw_total_score / displayed_total_score OMITTED — collecting (REQ-ISO-5).
+    department_label_i18n: I18N(
+      'Операции',
+      'Операциялар',
+      'Operatsiyalar',
+      'Operations',
+    ),
+    division_label_i18n: I18N(
+      'ИТ-инфраструктура',
+      'АТ-инфратузилма',
+      'AT-infratuzilma',
+      'IT Infrastructure',
+    ),
   },
   // 2) AVERAGED — all completed; stored averages exist; CEO submit allowed.
   {
@@ -2076,6 +2088,12 @@ const panels: MockPanel[] = [
     displayed_total_score: 712.5,
     averaged_at: '2026-05-20T12:00:00Z',
     created_at: '2026-05-02T09:00:00Z',
+    department_label_i18n: I18N(
+      'Финансы',
+      'Молия',
+      'Moliya',
+      'Finance',
+    ),
   },
 ];
 

@@ -13,7 +13,7 @@ export function ApprovalsInboxPage() {
   if (inbox.isLoading) return <LoadingState />;
   if (inbox.error) return <ErrorState onRetry={() => inbox.refetch()} />;
 
-  const items = inbox.data?.items ?? [];
+  const items = inbox.data ?? [];
 
   return (
     <div className="space-y-6" data-testid="approvals-inbox-page">

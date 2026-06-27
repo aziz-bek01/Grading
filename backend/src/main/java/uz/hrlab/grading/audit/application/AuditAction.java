@@ -217,6 +217,21 @@ public final class AuditAction {
     public static final String EVALUATION_PANEL_APPROVED           = "EVALUATION_PANEL_APPROVED";
     public static final String EVALUATION_PANEL_REOPENED          = "EVALUATION_PANEL_REOPENED";
     /**
+     * CEO REJECT of an EVALUATION_PANEL approval — DESTRUCTIVE reset to the DRAFT
+     * "Сбор экспертов" state ({@code SUBMITTED → COLLECTING}). Distinct from the
+     * non-destructive {@link #EVALUATION_PANEL_REOPENED} (CHANGES_REQUESTED /
+     * manual reopen → AWAITING_EVALUATIONS, scores PRESERVED). On this reset every
+     * per-evaluator sheet + its {@code evaluation_scores} are DELETED (each emits
+     * its own {@link #EVALUATION_DELETED}), the {@code panel_factor_averages} +
+     * stored totals are cleared, and the roster {@code panel_assignments} are KEPT
+     * (reset to ASSIGNED, {@code evaluation_id} nulled) so experts can be re-picked
+     * and the roster re-locked. Because the score rows are gone, THIS audit row is
+     * the surviving record of the rejection; entity_id carries the panel_id and the
+     * reason references the approval-side reject reason. SIEM can isolate the more
+     * sensitive destructive path from the safe reopen.
+     */
+    public static final String EVALUATION_PANEL_RESET_TO_DRAFT    = "EVALUATION_PANEL_RESET_TO_DRAFT";
+    /**
      * Feature 2 — reopen an APPROVED panel to add an ADDITIONAL expert
      * ({@code APPROVED -> AWAITING_EVALUATIONS}). Distinct from the generic
      * {@link #EVALUATION_PANEL_REOPENED} (which covers SUBMITTED/AVERAGED reopen +

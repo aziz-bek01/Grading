@@ -374,7 +374,7 @@ function useApprovalInboxCount(permissions: PermissionCode[] | undefined): numbe
       permissions.includes(PERMISSIONS.APPROVAL_STEP_APPROVE) ||
       permissions.includes(PERMISSIONS.APPROVAL_REQUEST_CREATE));
   if (!canApprove) return 0;
-  return inbox.data?.items.length ?? 0;
+  return inbox.data?.length ?? 0;
 }
 
 /**

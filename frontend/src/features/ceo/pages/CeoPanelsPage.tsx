@@ -2,7 +2,7 @@
  * CEO Panel Overview — org-wide (no projectId).
  *
  * Lists ALL panels across the tenant grouped by status section:
- *   - "Awaiting my sign-off" (SUBMITTED / AVERAGED) → links to the approvals inbox.
+ *   - "Awaiting my sign-off" (SUBMITTED / AVERAGED) → inline sign-off buttons.
  *   - "In flight" (AWAITING_EVALUATIONS / COLLECTING) → shows dept head progress.
  *   - "Approved / Locked history" (APPROVED / LOCKED) → shows averaged result.
  *
@@ -13,6 +13,8 @@
  *   - useMyApprovalInbox — count reuse (same hook the sidebar badge uses).
  *   - PermissionGate    — same gate component, gated EVALUATION_PANEL_APPROVE.
  *   - routes.approvalsInbox / routes.approvalDetails — no new approval pages.
+ *   - CeoInlineSignOffCell — inline approve/reject/request-changes (reuses
+ *     the three decide hooks and both shared dialogs from the approval feature).
  *
  * The CEO cannot manage (delete/archive/reopen) panels here — those actions
  * live on PanelDetailPage. Clicking any row navigates to the existing
@@ -49,6 +51,8 @@ import {
 } from '@/features/evaluation/hooks/usePanels';
 import { PanelStatusBadge } from '@/features/evaluation/components/panel/PanelStatusBadge';
 import type { Panel, PanelStatus } from '@/features/evaluation/panelTypes';
+import type { ApprovalStep } from '@/features/approval/types';
+import { CeoInlineSignOffCell } from '../components/CeoInlineSignOffCell';
 
 /** All statuses the CEO overview surfaces (excludes ARCHIVED). */
 const ALL_CEO_STATUSES: PanelStatus[] = [
@@ -70,6 +74,12 @@ const STATUS_GROUP_MAP: Record<StatusGroup, PanelStatus[]> = {
   history: ['APPROVED', 'LOCKED'],
 };
 
+/** Richer map value: both the approvalRequestId AND the current pending step. */
+export interface CeoApprovalEntry {
+  approvalId: string;
+  currentStep: ApprovalStep;
+}
+
 /**
  * Org-wide panel table — reuses DataTable + PanelStatusBadge; links each row
  * to the existing PanelDetailPage (routes.projectPanelDetail).
@@ -81,13 +91,44 @@ function CeoPanelTable({
 }: {
   panels: Panel[];
   loading?: boolean;
-  /** panelId -> pending approvalRequestId (from the CEO inbox), for sign-off routing. */
-  approvalIdByPanelId: Map<string, string>;
+  /** panelId -> { approvalId, currentStep } for inline sign-off; only present when step is PENDING. */
+  approvalIdByPanelId: Map<string, CeoApprovalEntry>;
 }) {
   const { t, i18n } = useTranslation();
 
   const columns: DataTableColumn<Panel>[] = useMemo(
     () => [
+      {
+        key: 'index',
+        header: '№',
+        render: (row) => panels.indexOf(row) + 1,
+      },
+      {
+        key: 'department',
+        header: t('ceo.panels.col_department'),
+        render: (row) =>
+          row.department_label_i18n
+            ? pickLocalized(row.department_label_i18n, i18n.language, t('common.dash'))
+            : t('common.dash'),
+        sortable: true,
+        sortAccessor: (row) =>
+          row.department_label_i18n
+            ? pickLocalized(row.department_label_i18n, i18n.language)
+            : '',
+      },
+      {
+        key: 'division',
+        header: t('ceo.panels.col_division'),
+        render: (row) =>
+          row.division_label_i18n
+            ? pickLocalized(row.division_label_i18n, i18n.language, '')
+            : '',
+        sortable: true,
+        sortAccessor: (row) =>
+          row.division_label_i18n
+            ? pickLocalized(row.division_label_i18n, i18n.language)
+            : '',
+      },
       {
         key: 'position',
         header: t('evaluation.column.position'),
@@ -114,6 +155,16 @@ function CeoPanelTable({
         sortAccessor: (row) => row.evaluator_count,
       },
       {
+        key: 'avg_score',
+        header: t('ceo.panels.col_avg_score'),
+        render: (row) =>
+          row.displayed_total_score != null
+            ? row.displayed_total_score.toFixed(1)
+            : t('common.dash'),
+        sortable: true,
+        sortAccessor: (row) => row.displayed_total_score ?? -Infinity,
+      },
+      {
         key: 'created',
         header: t('panel.list.col_created'),
         render: (row) => formatDateSafe(row.created_at, i18n.language, t('common.dash')),
@@ -125,21 +176,16 @@ function CeoPanelTable({
         header: t('common.actions'),
         render: (row) => {
           // A panel awaiting the CEO's decision has a pending approval request in
-          // the inbox. Route it straight to the approval detail page — that is the
-          // ONLY surface with the Approve/Reject controls AND the averaged result +
-          // per-evaluator breakdown. The read-only PanelDetailPage has no sign-off
-          // action for the CEO (no EVALUATION_PANEL_MANAGE), so linking there was a
-          // dead end. Other statuses keep the read-only panel detail link.
-          const approvalId = approvalIdByPanelId.get(row.id);
-          if (approvalId) {
+          // the inbox with a resolvable currentStep. Show inline sign-off buttons
+          // using the CeoInlineSignOffCell (which reuses the three decide hooks and
+          // both shared dialogs — no new approval logic duplicated here).
+          const entry = approvalIdByPanelId.get(row.id);
+          if (entry) {
             return (
-              <Link
-                to={routes.approvalDetails(approvalId)}
-                className="text-primary-600 hover:underline text-sm font-medium"
-                data-testid={`ceo-signoff-panel-${row.id}`}
-              >
-                {t('ceo.panels.review_sign_off')}
-              </Link>
+              <CeoInlineSignOffCell
+                approvalId={entry.approvalId}
+                currentStep={entry.currentStep}
+              />
             );
           }
           return (
@@ -186,20 +232,25 @@ export function CeoPanelsPage() {
   const inbox = useMyApprovalInbox();
   const pendingApprovalCount = useMemo(
     () =>
-      (inbox.data?.items ?? []).filter(
+      (inbox.data ?? []).filter(
         (r) => r.entityType === 'EVALUATION_PANEL',
       ).length,
     [inbox.data],
   );
 
-  // Map each panel awaiting sign-off to its pending approvalRequestId, so a row can
-  // link straight to the approval page (Approve/Reject). Reuses the inbox data
-  // already fetched above — no extra request.
+  // Map each panel awaiting sign-off to its pending approvalRequestId AND the
+  // current PENDING step, so the inline cell can fire mutations directly.
+  // Reuses the inbox data already fetched above — no extra request.
+  // Only adds an entry when a PENDING step is found (same derivation as
+  // ApprovalDetailsPage's currentStep logic).
   const approvalIdByPanelId = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const r of inbox.data?.items ?? []) {
+    const m = new Map<string, CeoApprovalEntry>();
+    for (const r of inbox.data ?? []) {
       if (r.entityType === 'EVALUATION_PANEL' && r.entityId) {
-        m.set(r.entityId, r.id);
+        const currentStep = r.steps.find((s) => s.status === 'PENDING') ?? null;
+        if (currentStep) {
+          m.set(r.entityId, { approvalId: r.id, currentStep });
+        }
       }
     }
     return m;

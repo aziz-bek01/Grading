@@ -335,6 +335,10 @@ describe('<CeoPanelsPage /> inline sign-off (dropdown UX)', () => {
       expect(screen.getByTestId('ceo-panels-table-card')).toBeInTheDocument(),
     );
 
+    // Page now defaults to the "Awaiting sign-off" tab; switch to "All" to see
+    // the COLLECTING panel (no pending approval → fallback Open link).
+    fireEvent.click(screen.getByRole('tab', { name: 'Все' }));
+
     // The COLLECTING panel (panel-cto-collecting) has NO pending approval step
     // in the inbox → it should show the fallback Open link to PanelDetailPage.
     await waitFor(() =>
@@ -356,11 +360,14 @@ describe('<CeoPanelsPage /> inline sign-off (dropdown UX)', () => {
       expect(screen.getByTestId('ceo-panels-table-card')).toBeInTheDocument(),
     );
 
-    // Finance department label for the AVERAGED panel (ru-RU default in tests).
-    // The seeded value is 'Финансы' for ru-RU.
+    // Finance department label for the AVERAGED panel — visible on the default
+    // "Awaiting sign-off" tab (AVERAGED is in the pending group). 'Финансы' (ru).
     await waitFor(() => expect(screen.getByText('Финансы')).toBeInTheDocument());
+
+    // The COLLECTING panel's labels live under "All" — switch tabs to assert them.
+    fireEvent.click(screen.getByRole('tab', { name: 'Все' }));
     // Операции department for the COLLECTING panel.
-    expect(screen.getByText('Операции')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Операции')).toBeInTheDocument());
     // Division label for the COLLECTING panel: ИТ-инфраструктура.
     expect(screen.getByText('ИТ-инфраструктура')).toBeInTheDocument();
   });

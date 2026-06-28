@@ -238,7 +238,11 @@ export function CeoPanelsPage() {
   const canManage = can(PERMISSIONS.EVALUATION_PANEL_MANAGE);
   const reconcile = useReconcilePanelApprovals();
 
-  const [activeGroup, setActiveGroup] = useState<StatusGroup>('all');
+  // Default to the "Awaiting sign-off" tab: that is the CEO's primary action and
+  // the only group whose rows carry the inline decision buttons. Landing on "All"
+  // showed early-stage (COLLECTING / AWAITING_EVALUATIONS) panels first — no
+  // average yet, only "Open" — which read as "the buttons are missing".
+  const [activeGroup, setActiveGroup] = useState<StatusGroup>('pending');
 
   // Reuse the same inbox hook the sidebar badge uses — counts panels awaiting
   // CEO sign-off without a new endpoint.

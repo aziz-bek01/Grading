@@ -356,7 +356,26 @@ jobs:
             curl -fsS --retry 6 --retry-delay 3 --retry-all-errors \
               http://127.0.0.1:18081/healthz
             echo
-            echo '== Public same-origin via outer proxy (best-effort) =='
-            curl -fsS https://grading.hrlab.uz/ -o /dev/null \
-              && echo "public OK" \
-              || echo '::warning::Public check failed — verify outer proxy + TLS + DNS.'
+            echo '== Public same-origin via outer proxy + edge-cache freshness =='
+            # The container's own index.html is the source of truth for what we
+            # just rolled. The public URL goes through the OUTER proxy/CDN that
+            # fronts grading.hrlab.uz (outside this compose stack — see runbook).
+            # If the outer layer caches index.html it will pin OLD bundle hashes
+            # and users keep seeing the previous build even though the roll
+            # succeeded. Compare the two hashes to surface that explicitly.
+            ORIGIN_HASH="$(curl -fsS http://127.0.0.1:18081/ 2>/dev/null \
+              | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -n1 || true)"
+            echo "origin (container) bundle: ${ORIGIN_HASH:-<none>}"
+            PUBLIC_HTML="$(curl -fsS https://grading.hrlab.uz/ 2>/dev/null || true)"
+            if [ -z "$PUBLIC_HTML" ]; then
+              echo '::warning::Public check failed — verify outer proxy + TLS + DNS.'
+            else
+              PUBLIC_HASH="$(printf '%s' "$PUBLIC_HTML" \
+                | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -n1 || true)"
+              echo "public (edge)      bundle: ${PUBLIC_HASH:-<none>}"
+              if [ -n "$ORIGIN_HASH" ] && [ "$ORIGIN_HASH" = "$PUBLIC_HASH" ]; then
+                echo "public OK — edge serves the freshly-deployed bundle"
+              else
+                echo "::warning::STALE EDGE CACHE — public ($PUBLIC_HASH) != origin ($ORIGIN_HASH). The outer proxy/CDN fronting grading.hrlab.uz is serving a cached index.html, so users keep the old build. Purge it (e.g. Cloudflare 'Purge Everything', or the outer nginx proxy_cache) and ensure index.html is served no-store."
+              fi
+            fi

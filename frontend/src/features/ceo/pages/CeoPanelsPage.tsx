@@ -101,7 +101,7 @@ function CeoPanelTable({
       {
         key: 'index',
         header: '№',
-        render: (row) => panels.indexOf(row) + 1,
+        render: (_row, index) => index + 1,
       },
       {
         key: 'department',

@@ -9,7 +9,13 @@ import { cn } from '@/shared/lib/cn';
 export interface DataTableColumn<T> {
   key: string;
   header: ReactNode;
-  render: (row: T) => ReactNode;
+  /**
+   * Cell renderer. `index` is the row's zero-based position in the currently
+   * displayed (sorted + filtered) result set, spanning pages — use it for a
+   * stable running "№" column instead of `rows.indexOf(row)`, which breaks when
+   * sorting/filtering re-derives the array and loses reference identity.
+   */
+  render: (row: T, index: number) => ReactNode;
   width?: string;
   className?: string;
   sortable?: boolean;
@@ -198,30 +204,33 @@ export function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              pageRows.map((row) => (
-                <tr
-                  key={rowKey(row)}
-                  className={cn(
-                    'border-t border-border hover:bg-divider/40',
-                    onRowClick && 'cursor-pointer',
-                    rowClassName,
-                  )}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                >
-                  {filteredCols.map((col) => (
-                    <td
-                      key={col.key}
-                      className={cn(
-                        'px-4 text-text-primary',
-                        dense ? 'py-1.5' : 'py-3',
-                        col.className,
-                      )}
-                    >
-                      {col.render(row)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              pageRows.map((row, i) => {
+                const rowIndex = safePage * pageSize + i;
+                return (
+                  <tr
+                    key={rowKey(row)}
+                    className={cn(
+                      'border-t border-border hover:bg-divider/40',
+                      onRowClick && 'cursor-pointer',
+                      rowClassName,
+                    )}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  >
+                    {filteredCols.map((col) => (
+                      <td
+                        key={col.key}
+                        className={cn(
+                          'px-4 text-text-primary',
+                          dense ? 'py-1.5' : 'py-3',
+                          col.className,
+                        )}
+                      >
+                        {col.render(row, rowIndex)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

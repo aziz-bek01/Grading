@@ -584,6 +584,61 @@ class PanelControllerWireTest {
     }
 
     @Test
+    void listBindsCamelCaseProjectAndPositionParamsToQuery() throws Exception {
+        // Regression: the wire query-param names are camelCase (projectId /
+        // positionId), matching the @RequestParam binding and every sibling
+        // feature (positions, methodologies, evaluations, grade-structure,
+        // import/export/report). The Jackson SNAKE_CASE strategy rewrites POJO
+        // BODY fields only, NOT query params — so a snake_case `project_id` would
+        // bind to null and silently widen a project-scoped pull to the whole
+        // tenant. This pins the casing the project-scoped caller relies on.
+        UUID projectId = UUID.randomUUID();
+        UUID positionId = UUID.randomUUID();
+        given(queries.list(any(), any(), any(), any()))
+                .willReturn(new PageImpl<>(List.of()));
+        mvc.perform(get("/api/v1/panels")
+                        .param("projectId", projectId.toString())
+                        .param("positionId", positionId.toString())
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk());
+        ArgumentCaptor<UUID> projectCaptor = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<UUID> positionCaptor = ArgumentCaptor.forClass(UUID.class);
+        org.mockito.Mockito.verify(queries).list(
+                projectCaptor.capture(), positionCaptor.capture(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        org.assertj.core.api.Assertions.assertThat(projectCaptor.getValue()).isEqualTo(projectId);
+        org.assertj.core.api.Assertions.assertThat(positionCaptor.getValue()).isEqualTo(positionId);
+    }
+
+    @Test
+    void listStatusOnlyPullPassesNullProjectForOrgWideTenantQuery() throws Exception {
+        // CEO org-wide pull: only repeatable status= params, NO projectId. The
+        // controller must pass projectId == null so PanelQueries routes to the
+        // tenant-wide findAllByTenantIdAndStatusIn path (proven org-wide in
+        // PanelQueriesCountIntegrityTest). This guards the contract end to end.
+        given(queries.list(any(), any(), any(), any()))
+                .willReturn(new PageImpl<>(List.of()));
+        mvc.perform(get("/api/v1/panels")
+                        .param("status", "SUBMITTED")
+                        .param("status", "AVERAGED")
+                        .with(jwt().authorities(() -> "EVALUATION_READ")))
+                .andExpect(status().isOk());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<EvaluationPanelStatus>> statusCaptor =
+                ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<UUID> projectCaptor = ArgumentCaptor.forClass(UUID.class);
+        org.mockito.Mockito.verify(queries).list(
+                projectCaptor.capture(),
+                org.mockito.ArgumentMatchers.any(),
+                statusCaptor.capture(),
+                org.mockito.ArgumentMatchers.any());
+        org.assertj.core.api.Assertions.assertThat(projectCaptor.getValue()).isNull();
+        org.assertj.core.api.Assertions.assertThat(statusCaptor.getValue())
+                .containsExactly(EvaluationPanelStatus.SUBMITTED, EvaluationPanelStatus.AVERAGED);
+    }
+
+    @Test
     void detailReturnsSnakeCasePanelAndRoster() throws Exception {
         UUID panelId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

@@ -35,7 +35,7 @@ function req(
 
 describe('MSW GET /panels', () => {
   it('returns a PageResponse envelope with `total` (not total_elements)', () => {
-    const res = tryHandle(req('GET', '/panels', undefined, { project_id: 'proj-acme-2026' }));
+    const res = tryHandle(req('GET', '/panels', undefined, { projectId: 'proj-acme-2026' }));
     expect(res?.status).toBe(200);
     const body = res?.body as PanelPageResponse;
     expect(body).toHaveProperty('items');
@@ -48,9 +48,9 @@ describe('MSW GET /panels', () => {
     expect(panel).toHaveProperty('completed_count');
   });
 
-  it('filters by position_id (snake_case query param)', () => {
+  it('filters by positionId (camelCase query param)', () => {
     const res = tryHandle(
-      req('GET', '/panels', undefined, { project_id: 'proj-acme-2026', position_id: 'pos-cfo' }),
+      req('GET', '/panels', undefined, { projectId: 'proj-acme-2026', positionId: 'pos-cfo' }),
     );
     const body = res?.body as PanelPageResponse;
     expect(body.items.every((p) => p.position_id === 'pos-cfo')).toBe(true);

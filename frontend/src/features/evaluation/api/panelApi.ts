@@ -130,11 +130,19 @@ export async function fetchPanels(
   filters: PanelListFilters = {},
 ): Promise<PanelPageResponse> {
   // Build params object; omit undefined values so axios does not send them.
+  // Query-param names are camelCase here — Spring's @RequestParam binds the
+  // LITERAL name (the global Jackson SNAKE_CASE strategy rewrites POJO body
+  // fields only, NOT query params). The PanelController.list signature binds
+  // `projectId` / `positionId`, matching every sibling feature (positions,
+  // methodologies, evaluations, grade-structure, import/export/report). Sending
+  // snake_case here bound to null server-side, so a project-scoped pull
+  // silently widened to ALL tenant panels. (roster-suggestions stays
+  // snake_case because that controller explicitly pins @RequestParam("project_id").)
   // status is a repeatable param — pass as an array so axios serialises it as
   // ?status=X&status=Y (the backend repeatable enum contract).
   const params: Record<string, unknown> = {};
-  if (filters.projectId) params.project_id = filters.projectId;
-  if (filters.positionId) params.position_id = filters.positionId;
+  if (filters.projectId) params.projectId = filters.projectId;
+  if (filters.positionId) params.positionId = filters.positionId;
   // CEO org-wide: status filter is only sent when there is no project/position
   // scope (backend contract — combined with project/position it is ignored).
   if (
@@ -144,6 +152,13 @@ export async function fetchPanels(
     !filters.positionId
   ) {
     params.status = filters.status;
+    // Org-wide CEO pull: the overview must show EVERY panel awaiting sign-off in
+    // one table, but the endpoint paginates at Spring's default of 20 rows. With
+    // a tenant of >20 panels the ones the CEO must approve fell beyond page 0 and
+    // never reached `allPanels`, so the "Awaiting sign-off" tab (which filters by
+    // open approval) rendered empty while the inbox badge showed the true count.
+    // Request the controller's MAX_PAGE_SIZE so a single page covers them all.
+    params.size = 200;
   }
   const res = await httpClient.get<unknown>(endpoints.panels.list, { params });
   const env = (res.data ?? {}) as Partial<PanelPageResponse> & {

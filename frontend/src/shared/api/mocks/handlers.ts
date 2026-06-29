@@ -3553,12 +3553,14 @@ function handlePanels(
     });
   }
 
-  // GET /panels?project_id=&position_id=&status=  → PageResponse<PanelResponse>
-  // CEO org-wide pull: status filter honoured ONLY when no project_id/position_id
+  // GET /panels?projectId=&positionId=&status=  → PageResponse<PanelResponse>
+  // CEO org-wide pull: status filter honoured ONLY when no projectId/positionId
   // is present (mirrors the backend contract). Repeatable ?status= params.
+  // Param names are camelCase — PanelController.list binds @RequestParam
+  // projectId / positionId (Jackson SNAKE_CASE rewrites body fields only).
   if (path === '/panels' && method === 'GET') {
-    const projectId = query.get('project_id');
-    const positionId = query.get('position_id');
+    const projectId = query.get('projectId');
+    const positionId = query.get('positionId');
     // URLSearchParams.getAll returns all values for repeatable params.
     const statusFilter = query.getAll('status');
     let list = mockDb.panels;

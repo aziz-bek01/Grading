@@ -4,8 +4,8 @@
  * REUSE: tryHandle from existing handlers (not forked), mockDb fixtures.
  *
  * Asserts:
- * 1. GET /panels with status= (no project_id) filters by status.
- * 2. GET /panels with status= AND project_id ignores the status filter
+ * 1. GET /panels with status= (no projectId) filters by status.
+ * 2. GET /panels with status= AND projectId ignores the status filter
  *    (backend contract: status filter only honoured for tenant-wide pulls).
  * 3. GET /panels with multiple status= values returns panels matching any.
  */
@@ -29,7 +29,7 @@ function req(
 }
 
 describe('MSW GET /panels — org-wide CEO status filter', () => {
-  it('returns only panels matching the requested status (no project_id)', () => {
+  it('returns only panels matching the requested status (no projectId)', () => {
     // AVERAGED panel is seeded as 'panel-cfo-averaged'.
     const res = tryHandle(req('GET', '/panels', { status: ['AVERAGED'] }));
     expect(res?.status).toBe(200);
@@ -50,14 +50,14 @@ describe('MSW GET /panels — org-wide CEO status filter', () => {
     expect(body.items.every((p) => ['AVERAGED', 'AWAITING_EVALUATIONS'].includes(p.status))).toBe(true);
   });
 
-  it('ignores the status filter when project_id is also present (backend contract)', () => {
-    // With project_id present, status filter should be ignored: we get all
+  it('ignores the status filter when projectId is also present (backend contract)', () => {
+    // With projectId present, status filter should be ignored: we get all
     // panels for the project regardless of status.
     const projectId = 'proj-acme-2026';
     const allForProject = mockDb.panels.filter((p) => p.project_id === projectId);
 
     const res = tryHandle(
-      req('GET', '/panels', { project_id: projectId, status: ['APPROVED'] }),
+      req('GET', '/panels', { projectId, status: ['APPROVED'] }),
     );
     expect(res?.status).toBe(200);
     const body = res?.body as PanelPageResponse;

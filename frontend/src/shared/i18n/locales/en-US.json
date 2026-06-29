@@ -1704,8 +1704,8 @@
     "filter_placeholder": "{}",
     "filter": {
       "section_title": "Evaluation summary filters",
-      "methodology_label": "Methodology (versions)",
-      "methodology_empty_hint": "No versions selected — all methodology versions will be included.",
+      "methodology_label": "Methodology version",
+      "methodology_required_hint": "Select exactly one methodology version — the report uses that version's factors.",
       "methodology_load_error": "Failed to load methodology versions.",
       "no_methodologies": "No methodologies in this project.",
       "date_label": "Period (submitted date)",
@@ -1767,6 +1767,7 @@
       "invalid_date_range": "The \"to\" date cannot be earlier than the \"from\" date.",
       "request_failed": "Couldn't create the report request (code: {{code}}). Reference: {{ref}}.",
       "invalid_methodology": "One or more selected methodology versions aren't available here. Clear the methodology filter and try again.",
+      "methodology_required": "Select exactly one methodology version for this report.",
       "malformed_filter": "The report filter couldn't be read. Clear the filters and try again.",
       "permission_denied": "You don't have permission to request reports.",
       "validation_blocked": "Couldn't submit the request — some fields are invalid: {{fields}}. Please check your inputs and try again."

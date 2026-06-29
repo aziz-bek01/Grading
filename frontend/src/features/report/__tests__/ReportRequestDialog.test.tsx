@@ -158,7 +158,7 @@ describe('ReportRequestDialog — EVALUATION_SUMMARY filter panel', () => {
 
     expect(screen.getByTestId('report-request-evaluation-filters')).toBeInTheDocument();
 
-    // Methodology version multi-select (checkbox keyed by version id).
+    // Methodology version single-select (radio keyed by version id).
     await waitFor(() =>
       expect(screen.getByTestId(`report-filter-methodology-version-${VERSION_ID}`)).toBeInTheDocument(),
     );
@@ -231,7 +231,7 @@ describe('ReportRequestDialog — EVALUATION_SUMMARY filter panel', () => {
     expect(parsed.evaluatorUserIds).toBeUndefined();
   });
 
-  it('omits empty filter dimensions instead of sending empty arrays/strings (empty filter = no narrowing)', async () => {
+  it('omits the empty date/evaluator dimensions but keeps the mandatory methodology', async () => {
     stubFilterPanelData();
     const postSpy = vi.spyOn(httpClient, 'post').mockResolvedValue({
       data: {
@@ -249,12 +249,36 @@ describe('ReportRequestDialog — EVALUATION_SUMMARY filter panel', () => {
       target: { value: 'EVALUATION_SUMMARY' },
     });
 
+    // Pick only the (now mandatory) methodology version; leave date + evaluator empty.
+    await waitFor(() =>
+      expect(screen.getByTestId(`report-filter-methodology-version-${VERSION_ID}`)).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId(`report-filter-methodology-version-${VERSION_ID}`));
+
     fireEvent.click(screen.getByTestId('report-request-submit'));
 
     await waitFor(() => expect(postSpy).toHaveBeenCalled());
     const [, body] = postSpy.mock.calls[0] as [string, Record<string, unknown>];
-    // No filters selected -> filter_params is null, not '{}' or an empty-array JSON blob.
-    expect(body.filter_params).toBeNull();
+    // Only the methodology is sent — empty date/evaluator dimensions are omitted,
+    // never sent as empty arrays / strings.
+    const parsed = JSON.parse(body.filter_params as string) as Record<string, unknown>;
+    expect(parsed).toEqual({ methodology_version_ids: [VERSION_ID] });
+  });
+
+  it('blocks submit with a required error when no methodology is selected for EVALUATION_SUMMARY', async () => {
+    stubFilterPanelData();
+    const postSpy = vi.spyOn(httpClient, 'post');
+    openDialog();
+    fireEvent.change(screen.getByTestId('report-request-type'), {
+      target: { value: 'EVALUATION_SUMMARY' },
+    });
+
+    fireEvent.click(screen.getByTestId('report-request-submit'));
+
+    const banner = await screen.findByTestId('report-request-error');
+    expect(banner.textContent ?? '').not.toHaveLength(0);
+    // Mandatory methodology blocks the request BEFORE any network call.
+    expect(postSpy).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
@@ -379,6 +403,13 @@ describe('ReportRequestDialog — EVALUATION_SUMMARY filter panel', () => {
     fireEvent.change(screen.getByTestId('report-request-type'), {
       target: { value: 'EVALUATION_SUMMARY' },
     });
+
+    // Select the mandatory methodology so the submit passes client validation
+    // and actually reaches the (rejecting) backend call.
+    await waitFor(() =>
+      expect(screen.getByTestId(`report-filter-methodology-version-${VERSION_ID}`)).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId(`report-filter-methodology-version-${VERSION_ID}`));
 
     fireEvent.click(screen.getByTestId('report-request-submit'));
 

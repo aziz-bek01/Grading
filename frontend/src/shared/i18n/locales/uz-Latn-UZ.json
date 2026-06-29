@@ -1704,8 +1704,8 @@
     "filter_placeholder": "{}",
     "filter": {
       "section_title": "Baholash xulosasi filtrlari",
-      "methodology_label": "Metodologiya (versiyalar)",
-      "methodology_empty_hint": "Versiya tanlanmadi — barcha metodologiya versiyalari kiritiladi.",
+      "methodology_label": "Metodologiya versiyasi",
+      "methodology_required_hint": "Aniq bitta metodologiya versiyasini tanlang — hisobot o'sha versiyaning faktorlaridan foydalanadi.",
       "methodology_load_error": "Metodologiya versiyalarini yuklab bo'lmadi.",
       "no_methodologies": "Bu loyihada metodologiyalar yo'q.",
       "date_label": "Davr (topshirilgan sana)",
@@ -1767,6 +1767,7 @@
       "invalid_date_range": "\"Sanagacha\" sanasi \"sanadan\" sanasidan oldin bo'lishi mumkin emas.",
       "request_failed": "Hisobot so'rovini yaratib bo'lmadi (kod: {{code}}). Havola: {{ref}}.",
       "invalid_methodology": "Tanlangan metodologiya versiyalaridan biri yoki bir nechtasi bu yerda mavjud emas. Metodologiya filtrini tozalab, qayta urinib ko'ring.",
+      "methodology_required": "Ushbu hisobot uchun aniq bitta metodologiya versiyasini tanlang.",
       "malformed_filter": "Hisobot filtrini o'qib bo'lmadi. Filtrlarni tozalab, qayta urinib ko'ring.",
       "permission_denied": "Hisobot so'rash uchun ruxsatingiz yo'q.",
       "validation_blocked": "So'rovni yuborib bo'lmadi — ba'zi maydonlar noto'g'ri: {{fields}}. Ma'lumotlarni tekshirib, qayta urinib ko'ring."

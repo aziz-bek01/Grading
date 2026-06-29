@@ -282,9 +282,20 @@ export function CeoPanelsPage() {
 
   // Filter client-side by selected group (data already loaded).
   const visiblePanels = useMemo(() => {
+    // "Awaiting sign-off" is defined by an OPEN CEO approval step — the SAME
+    // inbox data that drives the badge count and the inline decision buttons —
+    // NOT by panel status. Backfilled panels can carry an open approval while
+    // their status still lags (no average yet / still COLLECTING), so a
+    // status-only filter (['SUBMITTED','AVERAGED']) hid them here even though
+    // they appear in the approvals inbox. Keying off approvalIdByPanelId keeps
+    // this tab, the "Менинг имзо навбатим" badge, and the row buttons consistent
+    // and guarantees every panel awaiting the CEO is approvable from this table.
+    if (activeGroup === 'pending') {
+      return allPanels.filter((p) => approvalIdByPanelId.has(p.id));
+    }
     const allowed = STATUS_GROUP_MAP[activeGroup];
     return allPanels.filter((p) => allowed.includes(p.status));
-  }, [allPanels, activeGroup]);
+  }, [allPanels, activeGroup, approvalIdByPanelId]);
 
   if (!canApprove) return <NoAccessState />;
 

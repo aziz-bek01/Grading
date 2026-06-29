@@ -10,7 +10,6 @@ import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
 import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,9 +22,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Request-time validation: invalid date range and cross-tenant methodology
- * version are rejected; evaluator ids are fail-soft (not validated); non-
- * EVALUATION_SUMMARY report types skip structured validation.
+ * Request-time validation: exactly one methodology version is mandatory for
+ * the evaluation-bearing report types (each version defines its own factor
+ * set); an invalid date range and a cross-tenant methodology version are
+ * rejected; evaluator ids are fail-soft (not validated); non-evaluation report
+ * types skip structured validation.
  */
 class EvaluationReportFilterValidatorTest {
 
@@ -37,8 +38,33 @@ class EvaluationReportFilterValidatorTest {
     private final UUID tenantId = UUID.randomUUID();
 
     @Test
+    void methodologyRequiredWhenAbsent() {
+        // Empty filter (no methodology) is no longer "all versions" — a report
+        // must be scoped to exactly one methodology version.
+        assertThatThrownBy(() ->
+                validator.validate(ReportType.EVALUATION_SUMMARY, tenantId, "{}"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("REPORT_FILTER_METHODOLOGY_REQUIRED");
+    }
+
+    @Test
+    void multipleMethodologyVersionsRejected() {
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        String json = "{\"methodology_version_ids\":[\"%s\",\"%s\"]}".formatted(a, b);
+        assertThatThrownBy(() ->
+                validator.validate(ReportType.EVALUATION_SUMMARY, tenantId, json))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("REPORT_FILTER_METHODOLOGY_REQUIRED");
+    }
+
+    @Test
     void dateFromAfterDateToRejected() {
-        String json = "{\"date_from\":\"2026-06-30\",\"date_to\":\"2026-04-01\"}";
+        UUID m = UUID.randomUUID();
+        when(methodologyVersions.findAllByTenantIdAndIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(version(m)));
+        String json = ("{\"methodology_version_ids\":[\"%s\"],"
+                + "\"date_from\":\"2026-06-30\",\"date_to\":\"2026-04-01\"}").formatted(m);
         assertThatThrownBy(() ->
                 validator.validate(ReportType.EVALUATION_SUMMARY, tenantId, json))
                 .isInstanceOf(ValidationException.class)
@@ -47,7 +73,11 @@ class EvaluationReportFilterValidatorTest {
 
     @Test
     void equalDatesAllowed() {
-        String json = "{\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-01\"}";
+        UUID m = UUID.randomUUID();
+        when(methodologyVersions.findAllByTenantIdAndIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(version(m)));
+        String json = ("{\"methodology_version_ids\":[\"%s\"],"
+                + "\"date_from\":\"2026-04-01\",\"date_to\":\"2026-04-01\"}").formatted(m);
         assertThatCode(() ->
                 validator.validate(ReportType.EVALUATION_SUMMARY, tenantId, json))
                 .doesNotThrowAnyException();
@@ -55,13 +85,12 @@ class EvaluationReportFilterValidatorTest {
 
     @Test
     void methodologyVersionNotOwnedByTenantRejected() {
-        UUID owned = UUID.randomUUID();
         UUID foreign = UUID.randomUUID();
-        // Repo returns only the tenant-owned version → the foreign id is missing.
+        // Repo returns nothing for the (foreign) id → ownership check fails.
         when(methodologyVersions.findAllByTenantIdAndIdIn(eq(tenantId), any()))
-                .thenReturn(List.of(version(owned)));
+                .thenReturn(List.of());
 
-        String json = "{\"methodology_version_ids\":[\"%s\",\"%s\"]}".formatted(owned, foreign);
+        String json = "{\"methodology_version_ids\":[\"%s\"]}".formatted(foreign);
         assertThatThrownBy(() ->
                 validator.validate(ReportType.EVALUATION_SUMMARY, tenantId, json))
                 .isInstanceOf(ValidationException.class)
@@ -69,33 +98,50 @@ class EvaluationReportFilterValidatorTest {
     }
 
     @Test
-    void allMethodologyVersionsOwnedAccepted() {
+    void singleOwnedMethodologyVersionAccepted() {
         UUID a = UUID.randomUUID();
-        UUID b = UUID.randomUUID();
         when(methodologyVersions.findAllByTenantIdAndIdIn(eq(tenantId), any()))
-                .thenReturn(List.of(version(a), version(b)));
+                .thenReturn(List.of(version(a)));
 
-        String json = "{\"methodology_version_ids\":[\"%s\",\"%s\"]}".formatted(a, b);
+        String json = "{\"methodology_version_ids\":[\"%s\"]}".formatted(a);
         EvaluationReportFilter f =
                 validator.validate(ReportType.EVALUATION_SUMMARY, tenantId, json);
-        assertThat(f.methodologyVersionIds()).containsExactlyInAnyOrder(a, b);
+        assertThat(f.methodologyVersionIds()).containsExactly(a);
     }
 
     @Test
     void evaluatorIdsAreFailSoft_neverRejected() {
         // A random / foreign evaluator id must NOT cause a request rejection
         // (PRD AC-3.4: it simply contributes zero rows downstream).
-        String json = "{\"evaluator_user_ids\":[\"%s\"]}".formatted(UUID.randomUUID());
+        UUID m = UUID.randomUUID();
+        when(methodologyVersions.findAllByTenantIdAndIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(version(m)));
+        String json = ("{\"methodology_version_ids\":[\"%s\"],"
+                + "\"evaluator_user_ids\":[\"%s\"]}").formatted(m, UUID.randomUUID());
         assertThatCode(() ->
                 validator.validate(ReportType.EVALUATION_SUMMARY, tenantId, json))
                 .doesNotThrowAnyException();
     }
 
     @Test
+    void executiveSummaryRequiresMethodology() {
+        // The mandatory single-methodology rule applies to EXECUTIVE_SUMMARY too
+        // (it consumes the same evaluation filter).
+        assertThatThrownBy(() ->
+                validator.validate(ReportType.EXECUTIVE_SUMMARY, tenantId, "{}"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("REPORT_FILTER_METHODOLOGY_REQUIRED");
+    }
+
+    @Test
     void executiveSummaryAlsoValidatesDateRange() {
-        // The same date-range gate now applies to EXECUTIVE_SUMMARY (it consumes
-        // the same evaluation filter for its evaluation-scoped KPIs).
-        String json = "{\"date_from\":\"2026-06-30\",\"date_to\":\"2026-04-01\"}";
+        // The same date-range gate applies to EXECUTIVE_SUMMARY (with the now
+        // mandatory single methodology present).
+        UUID m = UUID.randomUUID();
+        when(methodologyVersions.findAllByTenantIdAndIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(version(m)));
+        String json = ("{\"methodology_version_ids\":[\"%s\"],"
+                + "\"date_from\":\"2026-06-30\",\"date_to\":\"2026-04-01\"}").formatted(m);
         assertThatThrownBy(() ->
                 validator.validate(ReportType.EXECUTIVE_SUMMARY, tenantId, json))
                 .isInstanceOf(ValidationException.class)
@@ -104,12 +150,11 @@ class EvaluationReportFilterValidatorTest {
 
     @Test
     void executiveSummaryValidatesMethodologyOwnership() {
-        UUID owned = UUID.randomUUID();
         UUID foreign = UUID.randomUUID();
         when(methodologyVersions.findAllByTenantIdAndIdIn(eq(tenantId), any()))
-                .thenReturn(List.of(version(owned)));
+                .thenReturn(List.of());
 
-        String json = "{\"methodology_version_ids\":[\"%s\",\"%s\"]}".formatted(owned, foreign);
+        String json = "{\"methodology_version_ids\":[\"%s\"]}".formatted(foreign);
         assertThatThrownBy(() ->
                 validator.validate(ReportType.EXECUTIVE_SUMMARY, tenantId, json))
                 .isInstanceOf(ValidationException.class)
@@ -118,8 +163,8 @@ class EvaluationReportFilterValidatorTest {
 
     @Test
     void nonEvaluationSummaryTypeSkipsStructuredValidation() {
-        // Even an "invalid" date range is not validated for other report types —
-        // the filter stays opaque for them.
+        // Even an "invalid" date range / missing methodology is not validated for
+        // other report types — the filter stays opaque for them.
         String json = "{\"date_from\":\"2026-06-30\",\"date_to\":\"2026-04-01\"}";
         assertThatCode(() ->
                 validator.validate(ReportType.AUDIT_SUMMARY, tenantId, json))

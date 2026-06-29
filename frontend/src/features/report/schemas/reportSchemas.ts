@@ -78,6 +78,20 @@ export const RequestReportSchema = z
       message: 'report.error.invalid_date_range',
       path: ['evaluationFilter', 'dateTo'],
     },
+  )
+  // Exactly ONE methodology version is mandatory for the evaluation-bearing
+  // report types: each methodology version defines its own factor set, so a
+  // report must be scoped to a single version (mirrors backend
+  // REPORT_FILTER_METHODOLOGY_REQUIRED). The wire still carries an array, but
+  // the UI / this rule constrain it to length 1.
+  .refine(
+    (val) =>
+      !supportsEvaluationFilter(val.reportType) ||
+      (val.evaluationFilter?.methodologyVersionIds?.length ?? 0) === 1,
+    {
+      message: 'report.error.methodology_required',
+      path: ['evaluationFilter', 'methodologyVersionIds'],
+    },
   );
 
 export type RequestReportFormValues = z.infer<typeof RequestReportSchema>;

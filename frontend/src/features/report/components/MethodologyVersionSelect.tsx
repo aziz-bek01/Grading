@@ -1,41 +1,48 @@
 /**
- * Methodology-VERSION multi-select for the EVALUATION_SUMMARY report filter
- * panel (PRD §4.1, decision D1 = version granularity).
+ * Methodology-VERSION SINGLE-select for the evaluation report filter panel
+ * (EVALUATION_SUMMARY / EXECUTIVE_SUMMARY).
  *
- * Reuse anchor (per the dispatch doc): the established pattern is a native
- * `<select>`/checkbox group bound directly to `useMethodologies(projectId)` +
- * `useMethodologyVersions(methodologyId)` — the SAME hooks `OpenPanelDialog`
- * uses for its single-select version `<select>` (lines 582-596). There is no
- * existing standalone `<MethodologySelector>` component to avoid duplicating;
- * the duplication risk called out by the PRD is re-fetching methodologies
- * with a hand-rolled query instead of these hooks, which this component
- * avoids by calling them directly.
+ * WHY single, mandatory (was a multi-select checkbox group): each methodology
+ * version defines its OWN factor set, so a report must be scoped to exactly
+ * ONE methodology version — otherwise the factor columns would be the UNION
+ * across versions (mixing factors that belong to different methodologies),
+ * which is meaningless on the page. The caller enforces "exactly one" via the
+ * Zod schema; this control simply guarantees at most one version can be picked
+ * at a time (native radio group across every methodology's versions).
+ *
+ * Reuse anchor: same `useMethodologies(projectId)` + `useMethodologyVersions(
+ * methodologyId)` hooks the previous multi-select and `OpenPanelDialog` use —
+ * no hand-rolled methodology query.
  *
  * Each methodology is rendered as a group of its versions ("{name} v{n}"),
- * grouped by parent methodology name per the recommended UX. Selecting zero
- * versions = no narrowing (server-side "all versions" per AC-1.1).
+ * grouped by parent methodology name. The radio inputs share ONE `name` so
+ * selecting a version in any group deselects every other — true single-select
+ * across the whole panel.
  */
 import { useTranslation } from 'react-i18next';
 import { useMethodologies, useMethodologyVersions } from '@/features/methodology/hooks/useMethodology';
 import { pickLocalized } from '@/shared/lib/localized';
 import type { Methodology } from '@/features/methodology/types';
 
+const RADIO_GROUP_NAME = 'report-filter-methodology-version';
+
 interface Props {
   projectId: string;
-  value: string[];
-  onChange: (next: string[]) => void;
+  /** The selected methodology version id, or null when none is chosen yet. */
+  value: string | null;
+  onChange: (next: string | null) => void;
   disabled?: boolean;
 }
 
 function MethodologyVersionGroup({
   methodology,
-  selected,
-  onToggle,
+  selectedId,
+  onSelect,
   disabled,
 }: {
   methodology: Methodology;
-  selected: Set<string>;
-  onToggle: (versionId: string, checked: boolean) => void;
+  selectedId: string | null;
+  onSelect: (versionId: string) => void;
   disabled?: boolean;
 }) {
   const { t, i18n } = useTranslation();
@@ -67,15 +74,16 @@ function MethodologyVersionGroup({
       <legend className="text-xs font-medium text-text-secondary px-1">{name}</legend>
       <div className="grid grid-cols-1 gap-1">
         {versions.map((v) => {
-          const checked = selected.has(v.id);
+          const checked = selectedId === v.id;
           return (
             <label key={v.id} className="inline-flex items-center gap-2 text-sm text-text-primary">
               <input
-                type="checkbox"
+                type="radio"
+                name={RADIO_GROUP_NAME}
                 checked={checked}
                 disabled={disabled}
-                onChange={(e) => onToggle(v.id, e.target.checked)}
-                className="h-4 w-4 rounded border-border-strong text-primary-500 focus:ring-primary-500 disabled:opacity-50"
+                onChange={() => onSelect(v.id)}
+                className="h-4 w-4 border-border-strong text-primary-500 focus:ring-primary-500 disabled:opacity-50"
                 data-testid={`report-filter-methodology-version-${v.id}`}
               />
               <span>
@@ -89,18 +97,10 @@ function MethodologyVersionGroup({
   );
 }
 
-export function MethodologyVersionMultiSelect({ projectId, value, onChange, disabled }: Props) {
+export function MethodologyVersionSelect({ projectId, value, onChange, disabled }: Props) {
   const { t } = useTranslation();
   const { data, isLoading, isError } = useMethodologies(projectId);
   const methodologies = data?.items ?? [];
-  const selected = new Set(value);
-
-  const toggle = (versionId: string, checked: boolean) => {
-    const next = new Set(value);
-    if (checked) next.add(versionId);
-    else next.delete(versionId);
-    onChange([...next]);
-  };
 
   if (isLoading) {
     return (
@@ -129,13 +129,13 @@ export function MethodologyVersionMultiSelect({ projectId, value, onChange, disa
   }
 
   return (
-    <div className="space-y-2 max-h-48 overflow-y-auto" role="group">
+    <div className="space-y-2 max-h-48 overflow-y-auto" role="radiogroup">
       {methodologies.map((m) => (
         <MethodologyVersionGroup
           key={m.id}
           methodology={m}
-          selected={selected}
-          onToggle={toggle}
+          selectedId={value}
+          onSelect={(id) => onChange(id)}
           disabled={disabled}
         />
       ))}

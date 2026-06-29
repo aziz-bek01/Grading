@@ -20,6 +20,11 @@ import java.util.UUID;
  * never reaches the async worker:
  *
  * <ul>
+ *   <li>methodology version count != 1 ⇒
+ *       {@code REPORT_FILTER_METHODOLOGY_REQUIRED} — exactly one methodology
+ *       version is mandatory because each version defines its own factor set,
+ *       so a report must be scoped to a single methodology (no mixing the
+ *       union of factors across versions);</li>
  *   <li>{@code date_from > date_to} ⇒ {@code REPORT_FILTER_INVALID_DATE_RANGE}
  *       (do NOT silently swap);</li>
  *   <li>any {@code methodology_version_id} not owned by the active tenant ⇒
@@ -59,9 +64,20 @@ public class EvaluationReportFilterValidator {
         // Structured validation runs for the two evaluation-bearing report types
         // that consume the filter: EVALUATION_SUMMARY and EXECUTIVE_SUMMARY. Other
         // report types leave the raw string opaque (no structured validation).
-        if ((type != ReportType.EVALUATION_SUMMARY && type != ReportType.EXECUTIVE_SUMMARY)
-                || filter.isEmpty()) {
+        if (type != ReportType.EVALUATION_SUMMARY && type != ReportType.EXECUTIVE_SUMMARY) {
             return filter;
+        }
+
+        // MANDATORY: exactly ONE methodology version. Each methodology version
+        // defines its own factor set, so a report must be scoped to a single
+        // version — zero (would mix the union of every version's factors) and
+        // more-than-one (would mix factors across methodologies) are both
+        // rejected here. Checked BEFORE the empty-filter short-circuit so an
+        // absent methodology never silently falls through to "all versions".
+        List<UUID> requested = filter.methodologyVersionIds();
+        if (requested.size() != 1) {
+            throw new ValidationException("REPORT_FILTER_METHODOLOGY_REQUIRED",
+                    "REPORT_FILTER_METHODOLOGY_REQUIRED");
         }
 
         if (filter.dateFrom() != null && filter.dateTo() != null
@@ -70,18 +86,15 @@ public class EvaluationReportFilterValidator {
                     "REPORT_FILTER_INVALID_DATE_RANGE");
         }
 
-        List<UUID> requested = filter.methodologyVersionIds();
-        if (!requested.isEmpty()) {
-            Set<UUID> distinct = new HashSet<>(requested);
-            Set<UUID> owned = new HashSet<>();
-            for (MethodologyVersionJpaEntity v :
-                    methodologyVersions.findAllByTenantIdAndIdIn(tenantId, distinct)) {
-                owned.add(v.getId());
-            }
-            if (!owned.containsAll(distinct)) {
-                throw new ValidationException("REPORT_FILTER_INVALID_METHODOLOGY",
-                        "REPORT_FILTER_INVALID_METHODOLOGY");
-            }
+        Set<UUID> distinct = new HashSet<>(requested);
+        Set<UUID> owned = new HashSet<>();
+        for (MethodologyVersionJpaEntity v :
+                methodologyVersions.findAllByTenantIdAndIdIn(tenantId, distinct)) {
+            owned.add(v.getId());
+        }
+        if (!owned.containsAll(distinct)) {
+            throw new ValidationException("REPORT_FILTER_INVALID_METHODOLOGY",
+                    "REPORT_FILTER_INVALID_METHODOLOGY");
         }
 
         return filter;

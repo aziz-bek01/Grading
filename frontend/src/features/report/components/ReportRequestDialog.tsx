@@ -27,7 +27,7 @@ import {
 } from '../schemas/reportSchemas';
 import type { Report, ReportFormat, ReportType } from '../types';
 import { REPORT_FORMAT_AVAILABILITY } from '../types';
-import { MethodologyVersionMultiSelect } from './MethodologyVersionMultiSelect';
+import { MethodologyVersionSelect } from './MethodologyVersionSelect';
 
 interface Props {
   projectId: string;
@@ -197,21 +197,30 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
               <div>
                 <span className="block mb-1 text-xs text-text-secondary">
                   {t('report.filter.methodology_label')}
+                  <span className="text-danger-700"> *</span>
                 </span>
                 <Controller
                   control={form.control}
                   name="evaluationFilter.methodologyVersionIds"
                   render={({ field }) => (
-                    <MethodologyVersionMultiSelect
+                    <MethodologyVersionSelect
                       projectId={projectId}
-                      value={field.value ?? []}
-                      onChange={field.onChange}
+                      // Exactly one methodology version is required (each defines
+                      // its own factors); the array carrier holds 0 or 1 id.
+                      value={field.value?.[0] ?? null}
+                      onChange={(id) => field.onChange(id ? [id] : [])}
                     />
                   )}
                 />
-                <p className="text-xs text-text-muted mt-1">
-                  {t('report.filter.methodology_empty_hint')}
-                </p>
+                {form.formState.errors.evaluationFilter?.methodologyVersionIds?.message ? (
+                  <span className="block text-xs text-danger-700 mt-1" role="alert">
+                    {t(form.formState.errors.evaluationFilter.methodologyVersionIds.message)}
+                  </span>
+                ) : (
+                  <p className="text-xs text-text-muted mt-1">
+                    {t('report.filter.methodology_required_hint')}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -321,6 +330,9 @@ function describeRequestError(
     if (err.isForbidden()) return t('report.error.permission_denied');
     if (err.code === 'REPORT_FILTER_INVALID_METHODOLOGY') {
       return t('report.error.invalid_methodology');
+    }
+    if (err.code === 'REPORT_FILTER_METHODOLOGY_REQUIRED') {
+      return t('report.error.methodology_required');
     }
     if (err.code === 'REPORT_FILTER_INVALID_DATE_RANGE') {
       return t('report.error.invalid_date_range');

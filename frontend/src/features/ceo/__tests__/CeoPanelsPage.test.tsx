@@ -476,6 +476,129 @@ describe('<CeoPanelsPage /> inline sign-off (dropdown UX)', () => {
   });
 });
 
+// ─── QA-053 regression — "pending" tab keyed by OPEN approval, not status ─────
+
+describe('<CeoPanelsPage /> QA-053 regression — Awaiting sign-off keyed by open approval, not status', () => {
+  // Fixture ids, scoped to this describe block and cleaned up after every test
+  // so they never leak into the other describe blocks in this file (same
+  // localized push/cleanup pattern already used elsewhere for panel fixtures,
+  // e.g. panelMswHandlers.test.ts / panelBulkApi.test.ts — no shared fixtures.ts
+  // edit, no risk to the panel-count assumptions other tests in this file make).
+  const BACKFILLED_ID = 'panel-qa053-collecting-pending-approval';
+  const NO_APPROVAL_ID = 'panel-qa053-collecting-no-approval';
+  const BACKFILLED_APPROVAL_ID = 'appr-qa053-collecting-1';
+
+  beforeEach(() => {
+    // Fixture A — the exact backfilled-panel scenario from commit 08742a0:
+    // panel status is still COLLECTING (no average yet), but an OPEN
+    // (PENDING) EVALUATION_PANEL CEO approval already exists for it.
+    mockDb.panels.unshift({
+      id: BACKFILLED_ID,
+      project_id: 'proj-acme-2026',
+      position_id: 'pos-cto',
+      position_title_i18n: { 'ru-RU': 'QA-053 backfilled (approval pending)' },
+      methodology_version_id: 'mv-cfo-v1',
+      status: 'COLLECTING',
+      min_evaluators: 3,
+      evaluator_count: 3,
+      completed_count: 0,
+      created_at: '2026-06-01T09:00:00Z',
+    });
+    // Fixture B — a COLLECTING panel with NO approval at all (the negative
+    // control): must NOT appear on the approval-keyed "pending" tab.
+    mockDb.panels.unshift({
+      id: NO_APPROVAL_ID,
+      project_id: 'proj-acme-2026',
+      position_id: 'pos-cto',
+      position_title_i18n: { 'ru-RU': 'QA-053 plain COLLECTING (no approval)' },
+      methodology_version_id: 'mv-cfo-v1',
+      status: 'COLLECTING',
+      min_evaluators: 3,
+      evaluator_count: 3,
+      completed_count: 0,
+      created_at: '2026-06-01T09:00:00Z',
+    });
+    mockDb.approvalRequests.push({
+      id: BACKFILLED_APPROVAL_ID,
+      project_id: 'proj-acme-2026',
+      entity_type: 'EVALUATION_PANEL',
+      entity_id: BACKFILLED_ID,
+      requested_by: 'mock-evaluator-1',
+      requested_at: '2026-06-01T10:00:00Z',
+      current_status: 'PENDING',
+      entity_label_i18n: { 'ru-RU': 'QA-053 backfilled panel · awaiting CEO sign-off' },
+      initiated_by_name: 'HRLab Consultant',
+      notes_i18n: { 'ru-RU': 'Открыто по реконсиляции (QA-053 fixture).' },
+      steps: [
+        {
+          id: `${BACKFILLED_APPROVAL_ID}-step-1`,
+          step_order: 1,
+          required_permission: 'EVALUATION_PANEL_APPROVE',
+          status: 'PENDING',
+        },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    mockDb.panels = mockDb.panels.filter(
+      (p) => p.id !== BACKFILLED_ID && p.id !== NO_APPROVAL_ID,
+    );
+    mockDb.approvalRequests = mockDb.approvalRequests.filter(
+      (a) => a.id !== BACKFILLED_APPROVAL_ID,
+    );
+  });
+
+  it('a COLLECTING panel WITH a pending CEO approval APPEARS on the "Awaiting sign-off" tab', async () => {
+    signInWithPermissions(WITH_CEO);
+    render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
+
+    // Default tab is already "pending" (Awaiting sign-off / Ожидают подписи) —
+    // no tab click needed, matching every other "awaiting row" test in this file.
+    await waitFor(() =>
+      expect(screen.getByTestId('ceo-panels-table-card')).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`ceo-open-approval-${BACKFILLED_ID}`),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it('a COLLECTING panel WITHOUT any approval does NOT appear on the "Awaiting sign-off" tab (but does show under "All")', async () => {
+    signInWithPermissions(WITH_CEO);
+    render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('ceo-panels-table-card')).toBeInTheDocument(),
+    );
+    // Sanity: the sibling WITH an approval is present on this same tab load...
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`ceo-open-approval-${BACKFILLED_ID}`),
+      ).toBeInTheDocument(),
+    );
+    // ...but the no-approval COLLECTING panel is absent from THIS (pending) tab —
+    // status alone (COLLECTING is a valid "pending"-adjacent state) must NOT be
+    // enough to list it; only an open approval does.
+    expect(
+      screen.queryByTestId(`ceo-open-panel-${NO_APPROVAL_ID}`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('QA-053 plain COLLECTING (no approval)'),
+    ).not.toBeInTheDocument();
+
+    // Proves the exclusion is filter-driven (not a fixture/render bug): the
+    // SAME panel appears once the tab switches to status-based "All".
+    fireEvent.click(screen.getByRole('tab', { name: 'Все' }));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`ceo-open-panel-${NO_APPROVAL_ID}`),
+      ).toBeInTheDocument(),
+    );
+  });
+});
+
 // ─── Dashboard CEO card gating ────────────────────────────────────────────────
 
 describe('Dashboard CEO card gating', () => {

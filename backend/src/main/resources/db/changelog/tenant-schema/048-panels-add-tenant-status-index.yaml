@@ -1,0 +1,26 @@
+# EPIC-001 — org-wide CEO panel list. ADDITIVE: one index, no data change.
+#
+# PanelRepository.findAllByTenantIdAndStatusIn (the tenant-wide "what's awaiting
+# the CEO" pull in PanelQueries) filters ONLY (tenant_id = ? AND status IN (...))
+# with NO project_id / position_id predicate. 034's idx_panels_tenant_project_status
+# is (tenant_id, project_id, status) — project_id LEADS status, so a tenant+status
+# scan cannot use it as an access path (Postgres would have to full-scan every
+# project_id group). idx_panels_tenant_status (tenant_id, status) serves the CEO
+# query directly. Not redundant with 034's project-leading composite; tenant_id is
+# the leading column so RLS/tenant-isolation locality is preserved. Mirrors the
+# raw-sql CREATE INDEX style 034 uses on this same table.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-048-panels-add-tenant-status-index
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,multi-evaluator,ceo-panel
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_panels_tenant_status ON evaluation_panels (tenant_id, status);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_panels_tenant_status;

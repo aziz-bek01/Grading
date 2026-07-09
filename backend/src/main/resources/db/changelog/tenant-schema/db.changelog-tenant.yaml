@@ -216,3 +216,10 @@ databaseChangeLog:
       file: 047-approval-requests-nullable-requested-by.yaml
       relativeToChangelogFile: true
 
+  # EPIC-001 — org-wide CEO panel list. Additive (tenant_id, status) index for
+  # PanelRepository.findAllByTenantIdAndStatusIn (tenant + status IN, no project_id).
+  # Not redundant with 034's project-LEADING idx_panels_tenant_project_status.
+  - include:
+      file: 048-panels-add-tenant-status-index.yaml
+      relativeToChangelogFile: true
+

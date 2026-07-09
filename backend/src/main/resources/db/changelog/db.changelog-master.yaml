@@ -35,6 +35,16 @@ databaseChangeLog:
   - include:
       file: control-plane/008-roles-custom-tenant.yaml
       relativeToChangelogFile: true
+  # DB-003 (CRITICAL) — retro-lock the EXISTING monthly child partitions of
+  # system_audit_log + tenant_audit_logs. 006 applied REVOKE UPDATE/DELETE +
+  # (tenant) ENABLE/FORCE RLS + policy to the parents and `_default` only, so the
+  # ~48 monthly children inherited UPDATE/DELETE (via 005's ALTER DEFAULT
+  # PRIVILEGES) and, for tenant_audit_logs, had no per-child RLS. MUST run AFTER
+  # 005 (roles/default privileges) and 006 (partitions created). Idempotent /
+  # forward-only; no-op if 006 was skipped on a populated deployment.
+  - include:
+      file: control-plane/009-audit-child-partition-lockdown.yaml
+      relativeToChangelogFile: true
   - include:
       file: seeds/001-default-permissions.yaml
       relativeToChangelogFile: true

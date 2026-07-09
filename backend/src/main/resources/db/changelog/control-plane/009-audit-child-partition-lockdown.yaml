@@ -1,0 +1,213 @@
+# Control plane: DB-003 (CRITICAL) — retro-lock the EXISTING monthly child
+# partitions of the two audit logs against the runtime role.
+#
+# WHY (the hole 006 left open):
+#   006-audit-logs-partitioning.yaml converted public.system_audit_log and
+#   public.tenant_audit_logs into RANGE-partitioned parents and applied its
+#   REVOKE UPDATE/DELETE/TRUNCATE + (for tenant_audit_logs) ENABLE/FORCE RLS +
+#   blank-safe policy ONLY to the PARENT tables and their `_default` partitions.
+#   The ~48 pre-provisioned monthly children (2026_01 .. 2027_12) were NOT
+#   named, so:
+#     - 005-db-role-grants.yaml §005.4 issued
+#         ALTER DEFAULT PRIVILEGES IN SCHEMA public
+#           GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO grading_runtime;
+#       so every monthly child inherited UPDATE + DELETE for grading_runtime.
+#     - tenant_audit_logs monthly children have NO per-table RLS (RLS on a
+#       partitioned parent is NOT enforced when a child is named DIRECTLY).
+#   Net effect: a raw-SQL runtime caller that names a child table directly
+#   (e.g. DELETE FROM public.tenant_audit_logs_2026_07 ...) can delete audit
+#   rows and read cross-tenant audit data — bypassing both the F-04 append-only
+#   guarantee and tenant isolation. This changeset closes that for the children
+#   that ALREADY exist.
+#
+# WHAT IT DOES (per existing child, discovered via pg_catalog.pg_inherits):
+#   system_audit_log children  : REVOKE UPDATE, DELETE, TRUNCATE FROM grading_runtime
+#                                (control-plane audit — NOT tenant-scoped, no RLS,
+#                                 exactly as 006 treats the parent).
+#   tenant_audit_logs children : REVOKE UPDATE, DELETE, TRUNCATE FROM grading_runtime
+#                                + ENABLE ROW LEVEL SECURITY + FORCE ROW LEVEL
+#                                SECURITY + CREATE POLICY tenant_isolation_tenant_
+#                                audit_logs (blank-safe NULLIF form, byte-identical
+#                                to the parent policy 031-rls-nullif.yaml re-created).
+#
+#   Role names, REVOKE form, ENABLE/FORCE form and the policy expression are
+#   copied verbatim from 005-db-role-grants.yaml, 006-audit-logs-partitioning.yaml
+#   and 031-rls-nullif.yaml — NONE are invented here.
+#
+# IDEMPOTENCY / FORWARD-ONLY:
+#   - REVOKE ... is a no-op when the privilege is already absent (never errors).
+#   - ALTER TABLE ... ENABLE/FORCE ROW LEVEL SECURITY is a no-op if already set.
+#   - CREATE POLICY is guarded by EXCEPTION WHEN duplicate_object THEN NULL, so a
+#     re-run (or a child 006 already covered, e.g. `_default`) is safe.
+#   - The loops read the LIVE child list from pg_inherits, so if 006 was skipped
+#     (MARK_RAN) on a populated deployment the loops find zero children and this
+#     changeset is a harmless no-op — the ETL runbook that later partitions the
+#     populated tables MUST itself apply the three statements below per child.
+#
+# FUTURE-PARTITION OBLIGATION (forward-only limitation — read before extending):
+#   This changeset only fixes children that exist AT APPLY TIME. The not-yet-built
+#   automatic partition-creation function (Phase 2, tracked with the retention
+#   sweep — see 006 "WHAT THIS CHANGESET DOES NOT DO") MUST, for every NEW child
+#   it creates, run the SAME three statement groups per child:
+#     1) REVOKE UPDATE, DELETE, TRUNCATE ON <child> FROM grading_runtime;
+#     2) ALTER TABLE <child> ENABLE ROW LEVEL SECURITY;
+#        ALTER TABLE <child> FORCE  ROW LEVEL SECURITY;   (tenant_audit_logs only)
+#     3) CREATE POLICY tenant_isolation_tenant_audit_logs ON <child> ...;
+#           (tenant_audit_logs only, blank-safe NULLIF form below)
+#   Otherwise every new month silently re-opens this exact hole.
+databaseChangeLog:
+
+  # --------------------------------------------------------------------------
+  # 009.1 — system_audit_log children: revoke UPDATE/DELETE/TRUNCATE from
+  # grading_runtime. Control-plane audit is NOT tenant-scoped (006 applies no
+  # RLS to it), so no RLS/policy work here — only the append-only lock.
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 009-lockdown-system-audit-children
+      author: database-architect
+      context: control-plane
+      labels: mvp1,security-f04,partitioning,audit,db-003
+      runOnChange: false
+      comment: |
+        DB-003. Retro-apply 006's parent-level append-only REVOKE to every
+        EXISTING system_audit_log monthly child partition. grading_runtime keeps
+        SELECT + INSERT (inherited from parent) but loses UPDATE/DELETE/TRUNCATE
+        on each child, so a direct DELETE FROM public.system_audit_log_YYYY_MM
+        fails with permission denied. Idempotent; no-op if 006 was skipped.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                child regclass;
+              BEGIN
+                FOR child IN
+                  SELECT inhrelid::regclass
+                  FROM pg_catalog.pg_inherits
+                  WHERE inhparent = 'public.system_audit_log'::regclass
+                LOOP
+                  -- Copied verbatim from 005 §005.5 / 006 §006.1 parent form:
+                  --   REVOKE UPDATE, DELETE, TRUNCATE ON <t> FROM grading_runtime;
+                  EXECUTE format(
+                    'REVOKE UPDATE, DELETE, TRUNCATE ON %s FROM grading_runtime', child);
+                END LOOP;
+              END
+              $$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Reverse strictly: re-grant the mutation privileges to every child
+              -- (mirrors 005 §005.5 rollback: GRANT UPDATE, DELETE, TRUNCATE).
+              DO $$
+              DECLARE
+                child regclass;
+              BEGIN
+                FOR child IN
+                  SELECT inhrelid::regclass
+                  FROM pg_catalog.pg_inherits
+                  WHERE inhparent = 'public.system_audit_log'::regclass
+                LOOP
+                  EXECUTE format(
+                    'GRANT UPDATE, DELETE, TRUNCATE ON %s TO grading_runtime', child);
+                END LOOP;
+              END
+              $$;
+
+  # --------------------------------------------------------------------------
+  # 009.2 — tenant_audit_logs children: revoke UPDATE/DELETE/TRUNCATE, then
+  # ENABLE + FORCE RLS and (re)create the blank-safe tenant-isolation policy on
+  # each existing monthly child so a directly-named child cannot leak or delete
+  # cross-tenant audit rows.
+  # --------------------------------------------------------------------------
+  - changeSet:
+      id: 009-lockdown-tenant-audit-children
+      author: database-architect
+      context: control-plane
+      labels: mvp1,security-f04,partitioning,audit,rls,db-003
+      runOnChange: false
+      comment: |
+        DB-003 CRITICAL. Retro-apply 006's parent-level protections to every
+        EXISTING tenant_audit_logs monthly child: (1) REVOKE UPDATE/DELETE/
+        TRUNCATE from grading_runtime (append-only), (2) ENABLE + FORCE RLS,
+        (3) CREATE POLICY tenant_isolation_tenant_audit_logs with the blank-safe
+        NULLIF expression identical to the parent policy (031-rls-nullif.yaml).
+        Without per-child RLS, a runtime caller naming a child directly bypasses
+        tenant isolation on audit data. CREATE POLICY is guarded against
+        duplicate_object so re-runs and the already-covered `_default` child are
+        no-ops. No-op if 006 was skipped (no children).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                child regclass;
+              BEGIN
+                FOR child IN
+                  SELECT inhrelid::regclass
+                  FROM pg_catalog.pg_inherits
+                  WHERE inhparent = 'public.tenant_audit_logs'::regclass
+                LOOP
+                  -- (1) Append-only lock — copied verbatim from 006 §006.2 parent:
+                  --   REVOKE UPDATE, DELETE, TRUNCATE ON <t> FROM grading_runtime;
+                  EXECUTE format(
+                    'REVOKE UPDATE, DELETE, TRUNCATE ON %s FROM grading_runtime', child);
+
+                  -- (2) RLS ENABLE + FORCE — copied verbatim from 006 §006.2 parent:
+                  --   ALTER TABLE <t> ENABLE ROW LEVEL SECURITY;
+                  --   ALTER TABLE <t> FORCE  ROW LEVEL SECURITY;
+                  EXECUTE format('ALTER TABLE %s ENABLE ROW LEVEL SECURITY', child);
+                  EXECUTE format('ALTER TABLE %s FORCE  ROW LEVEL SECURITY', child);
+
+                  -- (3) Blank-safe tenant-isolation policy — the exact expression
+                  -- 031-rls-nullif.yaml re-created on the parent:
+                  --   USING/WITH CHECK (tenant_id =
+                  --     NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+                  -- Guarded so a re-run / the `_default` child (already carrying
+                  -- this policy from 006) does not error.
+                  BEGIN
+                    EXECUTE format(
+                      'CREATE POLICY tenant_isolation_tenant_audit_logs ON %s '
+                      'USING       (tenant_id = NULLIF(current_setting(''app.tenant_id'', true), '''')::uuid) '
+                      'WITH CHECK  (tenant_id = NULLIF(current_setting(''app.tenant_id'', true), '''')::uuid)',
+                      child);
+                  EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                  END;
+                END LOOP;
+              END
+              $$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Reverse strictly (mirrors 006 §006.2 / 030 rollback forms): drop
+              -- the child policy, un-force + disable child RLS, re-grant mutations.
+              DO $$
+              DECLARE
+                child regclass;
+              BEGIN
+                FOR child IN
+                  SELECT inhrelid::regclass
+                  FROM pg_catalog.pg_inherits
+                  WHERE inhparent = 'public.tenant_audit_logs'::regclass
+                LOOP
+                  EXECUTE format(
+                    'DROP POLICY IF EXISTS tenant_isolation_tenant_audit_logs ON %s', child);
+                  EXECUTE format('ALTER TABLE %s NO FORCE ROW LEVEL SECURITY', child);
+                  EXECUTE format('ALTER TABLE %s DISABLE ROW LEVEL SECURITY', child);
+                  EXECUTE format(
+                    'GRANT UPDATE, DELETE, TRUNCATE ON %s TO grading_runtime', child);
+                END LOOP;
+              END
+              $$;

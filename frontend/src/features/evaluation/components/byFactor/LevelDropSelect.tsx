@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, X } from 'lucide-react';
+import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
 import type { Factor, FactorLevel } from '@/features/methodology/types';
@@ -146,10 +147,11 @@ function LevelOptionList({
  *
  * Layout (FE-10): the COLLAPSED control (selected value display / chevron)
  * stays IN the table cell. Clicking it opens the level LIST inside a CENTERED
- * MODAL overlay (the same `fixed inset-0 z-50` dialog primitive used by
- * BulkScoreDialog / ConfirmDialog) so the list is never clipped by the table's
- * `overflow-x-auto` container — the previous absolute in-cell dropdown clipped
- * for bottom rows. Picking a level closes the modal and fires `onSelect`.
+ * MODAL overlay (the shared `<Modal>` primitive — src/shared/components/ui/Modal.tsx
+ * — also used by BulkScoreDialog / ConfirmDialog) so the list is never clipped
+ * by the table's `overflow-x-auto` container — the previous absolute in-cell
+ * dropdown clipped for bottom rows. Picking a level closes the modal and fires
+ * `onSelect`.
  *
  * ONE list component ({@link LevelOptionList}), reused by BOTH the table row
  * (PositionScoreRow, via this collapsed control) and the bulk dialog
@@ -181,16 +183,6 @@ export function LevelDropSelect({
     () => sortedLevels.find((l) => l.id === selectedLevelId) ?? null,
     [sortedLevels, selectedLevelId],
   );
-
-  // Escape closes the centered modal. Only bound while open.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
 
   // Description with the documented fallback chain: description_i18n in the
   // active locale → label_i18n when description is empty.
@@ -272,53 +264,49 @@ export function LevelDropSelect({
         />
       </button>
 
-      {open && !disabled ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={ariaLabel}
-          data-testid={`level-drop-modal${suffix}`}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setOpen(false);
-          }}
-        >
-          <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
-            <header className="flex items-start justify-between gap-3 px-4 py-3 border-b border-border shrink-0">
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wide text-text-muted">
-                  {factorName}
-                </p>
-                <h2
-                  className="text-base text-text-primary truncate"
-                  data-testid={`level-drop-modal-title${suffix}`}
-                >
-                  {modalTitle}
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label={t('common.close')}
-                data-testid={`level-drop-modal-close${suffix}`}
-                className="shrink-0 rounded-md p-1 text-text-muted hover:bg-divider/40 hover:text-text-primary"
+      <Modal
+        open={open && !disabled}
+        onClose={() => setOpen(false)}
+        ariaLabel={ariaLabel}
+        size="lg"
+        data-testid={`level-drop-modal${suffix}`}
+        className="bg-surface rounded-xl shadow-lg border border-border max-h-[80vh] flex flex-col overflow-hidden"
+      >
+        <>
+          <header className="flex items-start justify-between gap-3 px-4 py-3 border-b border-border shrink-0">
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wide text-text-muted">
+                {factorName}
+              </p>
+              <h2
+                className="text-base text-text-primary truncate"
+                data-testid={`level-drop-modal-title${suffix}`}
               >
-                <X size={18} aria-hidden />
-              </button>
-            </header>
-            <div className="overflow-y-auto">
-              <LevelOptionList
-                levels={sortedLevels}
-                selectedLevelId={selectedLevelId}
-                canSeePoints={canSeePoints}
-                testIdSuffix={testIdSuffix ?? ''}
-                ariaLabel={ariaLabel}
-                onPick={handlePick}
-              />
+                {modalTitle}
+              </h2>
             </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label={t('common.close')}
+              data-testid={`level-drop-modal-close${suffix}`}
+              className="shrink-0 rounded-md p-1 text-text-muted hover:bg-divider/40 hover:text-text-primary"
+            >
+              <X size={18} aria-hidden />
+            </button>
+          </header>
+          <div className="overflow-y-auto">
+            <LevelOptionList
+              levels={sortedLevels}
+              selectedLevelId={selectedLevelId}
+              canSeePoints={canSeePoints}
+              testIdSuffix={testIdSuffix ?? ''}
+              ariaLabel={ariaLabel}
+              onPick={handlePick}
+            />
           </div>
-        </div>
-      ) : null}
+        </>
+      </Modal>
     </div>
   );
 }

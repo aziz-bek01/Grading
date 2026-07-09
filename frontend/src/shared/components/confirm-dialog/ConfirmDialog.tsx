@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 
 interface ConfirmDialogProps {
@@ -72,37 +73,21 @@ export function ConfirmDialog({
     if (open && reason !== '') setReason('');
   }
 
-  useEffect(() => {
-    if (!open) return;
-    // Don't steal focus into the confirm button when a reason field is the
-    // primary input the user must fill first.
-    if (!requireReason) confirmRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onCancel, requireReason]);
-
-  if (!open) return null;
-
   const reasonValid = !requireReason || reason.trim().length >= reasonMinLength;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
+    <Modal
+      open={open}
+      onClose={onCancel}
+      labelledBy="confirm-dialog-title"
+      size="md"
+      // Don't steal focus into the confirm button when a reason field is the
+      // primary input the user must fill first — matches the pre-Modal
+      // behaviour of only auto-focusing Confirm outside the reason flow.
+      initialFocusRef={requireReason ? undefined : confirmRef}
+      className={cn('bg-surface rounded-xl shadow-lg border border-border p-6')}
     >
-      <div
-        className={cn(
-          'bg-surface rounded-xl shadow-lg border border-border w-full max-w-md p-6',
-        )}
-      >
+      <>
         <h2 id="confirm-dialog-title" className="text-lg text-text-primary">
           {title}
         </h2>
@@ -161,7 +146,7 @@ export function ConfirmDialog({
             {confirmLabel ?? t('common.confirm')}
           </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

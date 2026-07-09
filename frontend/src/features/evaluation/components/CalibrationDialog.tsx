@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { pickLocalized } from '@/shared/lib/localized';
 import type { Factor } from '@/features/methodology/types';
 import {
@@ -61,13 +62,14 @@ function CalibrationDialogBody({ factors, onConfirm, onCancel }: Omit<Props, 'op
   const valid = !!factorId && scoreValid && reasonValid;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="calibration-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    <Modal
+      open
+      onClose={onCancel}
+      labelledBy="calibration-dialog-title"
+      size="lg"
+      className="bg-surface rounded-xl shadow-lg border border-border p-6 space-y-4"
     >
-      <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-lg p-6 space-y-4">
+      <>
         <h2
           id="calibration-dialog-title"
           className="text-lg text-text-primary"
@@ -137,7 +139,7 @@ function CalibrationDialogBody({ factors, onConfirm, onCancel }: Omit<Props, 'op
             {t('common.confirm')}
           </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

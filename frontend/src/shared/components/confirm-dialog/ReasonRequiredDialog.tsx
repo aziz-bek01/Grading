@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 
 interface ReasonRequiredDialogProps {
   open: boolean;
@@ -32,29 +33,18 @@ function ReasonRequiredDialogBody({
   const [reason, setReason] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    const id = requestAnimationFrame(() => textareaRef.current?.focus());
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onCancel]);
-
   const valid = reason.trim().length >= minLength;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="reason-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    <Modal
+      open
+      onClose={onCancel}
+      labelledBy="reason-dialog-title"
+      size="md"
+      initialFocusRef={textareaRef}
+      className="bg-surface rounded-xl shadow-lg border border-border p-6"
     >
-      <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-md p-6">
+      <>
         <h2 id="reason-dialog-title" className="text-lg text-text-primary">
           {title}
         </h2>
@@ -80,7 +70,7 @@ function ReasonRequiredDialogBody({
             {t('common.confirm')}
           </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

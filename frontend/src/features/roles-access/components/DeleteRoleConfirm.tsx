@@ -8,10 +8,11 @@
  * `mapRolePermissionError`. The dialog never deletes a system role (the list
  * only offers delete on custom rows, and the backend re-enforces with 403).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { useDeleteRole } from '../hooks/useRolePermissions';
 import { mapRolePermissionError } from '../lib/rolePermissionError';
 import type { AssignableRole } from '@/features/users-access/api/rolesApi';
@@ -27,21 +28,13 @@ interface DeleteRoleConfirmProps {
 export function DeleteRoleConfirm({ open, role, onClose, onDeleted }: DeleteRoleConfirmProps) {
   const { t } = useTranslation();
   const del = useDeleteRole();
-  const [confirmRef, setConfirmRef] = useState<HTMLButtonElement | null>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (open) {
-      del.reset();
-      confirmRef?.focus();
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (open) document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    if (open) del.reset();
     // del.reset is stable; intentionally exclude to run only on open/close.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, onClose, confirmRef]);
+  }, [open]);
 
   if (!open || !role) return null;
 
@@ -58,17 +51,16 @@ export function DeleteRoleConfirm({ open, role, onClose, onDeleted }: DeleteRole
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="role-delete-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      labelledBy="role-delete-title"
+      size="md"
+      initialFocusRef={confirmRef}
       data-testid="role-delete-dialog"
+      className="bg-surface rounded-xl shadow-lg border border-border p-6"
     >
-      <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-md p-6">
+      <>
         <h2 id="role-delete-title" className="text-lg text-text-primary">
           {t('roles.delete.title')}
         </h2>
@@ -104,7 +96,7 @@ export function DeleteRoleConfirm({ open, role, onClose, onDeleted }: DeleteRole
             {t('common.cancel')}
           </Button>
           <Button
-            ref={setConfirmRef}
+            ref={confirmRef}
             variant="danger"
             onClick={confirm}
             disabled={del.isPending}
@@ -113,7 +105,7 @@ export function DeleteRoleConfirm({ open, role, onClose, onDeleted }: DeleteRole
             {del.isPending ? t('roles.delete.deleting') : t('roles.delete.confirm')}
           </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

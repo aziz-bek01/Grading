@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Lock, AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 
 /**
@@ -83,47 +84,11 @@ function LockEvaluationDialogBody({
   const warningId = useId();
   const [understood, setUnderstood] = useState(false);
 
-  const panelRef = useRef<HTMLDivElement>(null);
+  // `Modal` moves focus here on open (irreversibility warning read BEFORE the
+  // confirm control), traps Tab/Shift+Tab within the panel, and cancels on
+  // Escape — all gated by `dismissible={!busy}` so a pending lock mutation is
+  // never silently abandoned.
   const warningRef = useRef<HTMLParagraphElement>(null);
-
-  // Move focus to the irreversibility warning on open so a keyboard / screen
-  // reader user reads the consequence BEFORE reaching the confirm control.
-  useEffect(() => {
-    const id = requestAnimationFrame(() => warningRef.current?.focus());
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  // ESC cancels (ignored while a lock is in flight — don't abandon a pending
-  // mutation mid-request).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) onCancel();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onCancel, busy]);
-
-  // Focus trap: keep Tab / Shift+Tab cycling within the dialog.
-  const onKeyDownTrap = (e: React.KeyboardEvent) => {
-    if (e.key !== 'Tab') return;
-    const root = panelRef.current;
-    if (!root) return;
-    const focusables = root.querySelectorAll<HTMLElement>(
-      'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
-    );
-    const enabled = Array.from(focusables).filter((el) => !el.hasAttribute('disabled'));
-    if (enabled.length === 0) return;
-    const first = enabled[0];
-    const last = enabled[enabled.length - 1];
-    const active = document.activeElement as HTMLElement | null;
-    if (e.shiftKey && (active === first || active === warningRef.current)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
 
   const hasSummary =
     summary != null &&
@@ -137,22 +102,17 @@ function LockEvaluationDialogBody({
     summary?.positionName || summary?.positionCode || null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
-      aria-describedby={warningId}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => {
-        // Backdrop click cancels — but never while busy (don't drop a pending lock).
-        if (e.target === e.currentTarget && !busy) onCancel();
-      }}
-      onKeyDown={onKeyDownTrap}
+    <Modal
+      open
+      onClose={onCancel}
+      labelledBy={titleId}
+      describedBy={warningId}
+      size="md"
+      dismissible={!busy}
+      initialFocusRef={warningRef}
+      className="bg-surface rounded-xl shadow-lg border border-border p-6 space-y-4"
     >
-      <div
-        ref={panelRef}
-        className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-md p-6 space-y-4"
-      >
+      <>
         <header className="flex items-start gap-3">
           <span className="rounded-full bg-locked-bg p-2 text-locked" aria-hidden>
             <Lock size={18} />
@@ -270,7 +230,7 @@ function LockEvaluationDialogBody({
               : t('evaluation.lock.confirm')}
           </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

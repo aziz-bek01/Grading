@@ -5,9 +5,10 @@
  * is forwarded to the backend audit log. Frontend can't perform the action
  * without a reason — backend rejects with REASON_REQUIRED otherwise.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 
 interface ArchiveTenantConfirmProps {
   open: boolean;
@@ -35,20 +36,6 @@ function ArchiveTenantConfirmBody({
   const [busy, setBusy] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    // Focus after the dialog mounts.
-    const id = setTimeout(() => taRef.current?.focus(), 0);
-    return () => clearTimeout(id);
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onCancel]);
-
   const trimmed = reason.trim();
   const valid = trimmed.length >= MIN_REASON;
 
@@ -63,16 +50,15 @@ function ArchiveTenantConfirmBody({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="archive-tenant-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
+    <Modal
+      open
+      onClose={onCancel}
+      labelledBy="archive-tenant-title"
+      size="lg"
+      initialFocusRef={taRef}
+      className="bg-surface rounded-xl shadow-lg border border-border p-6"
     >
-      <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-lg p-6">
+      <>
         <h2 id="archive-tenant-title" className="text-lg text-text-primary">
           {t('clients.archive.title')}
         </h2>
@@ -112,7 +98,7 @@ function ArchiveTenantConfirmBody({
             {t('clients.archive.confirm')}
           </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Layers, Layers3, Sparkles, Pencil, Archive } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { StatusBadge } from '@/shared/components/status/StatusBadge';
 import { PERMISSIONS } from '@/shared/types/permissions';
@@ -101,17 +102,8 @@ function GradeStructureTemplatePickerBody({
 }: Omit<GradeStructureTemplatePickerProps, 'open'>) {
   const { t, i18n } = useTranslation();
   const [selected, setSelected] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const templatesQuery = useGradeTemplates();
   const activeLocale = (locale ?? (i18n.language as Locale)) as Locale;
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onCancel]);
 
   const remote = templatesQuery.data?.items ?? [];
   const useRemote = !templatesQuery.isError && remote.length > 0;
@@ -130,19 +122,14 @@ function GradeStructureTemplatePickerBody({
   const selectedOption = options.find((o) => o.code === selected) ?? null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="gs-template-picker-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
+    <Modal
+      open
+      onClose={onCancel}
+      labelledBy="gs-template-picker-title"
+      size="xl"
+      className="bg-surface rounded-xl shadow-lg border border-border p-6"
     >
-      <div
-        ref={dialogRef}
-        className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-xl p-6"
-      >
+      <>
         <h2 id="gs-template-picker-title" className="text-lg text-text-primary">
           {t('gradeStructure.template_picker.title')}
         </h2>
@@ -247,8 +234,8 @@ function GradeStructureTemplatePickerBody({
             {t('common.continue')}
           </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 

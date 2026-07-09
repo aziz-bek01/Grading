@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Shield, ShieldOff } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { formatDateSafe } from '@/shared/lib/dates';
@@ -85,59 +86,59 @@ export function SalaryPermissionToggle({
         </PermissionGate>
       </div>
 
-      {dialogOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="salary-perm-dialog-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-        >
-          <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-md p-6">
-            <h2 id="salary-perm-dialog-title" className="text-lg text-text-primary">
-              {enabled
-                ? t('users.salary.confirmRevokeTitle')
-                : t('users.salary.confirmGrantTitle')}
-            </h2>
-            <div className="mt-3 rounded-md bg-danger-50 border border-danger-500/30 p-3">
-              <p className="text-sm text-danger-700 font-medium">
-                {t('users.salary.warningHeader')}
-              </p>
-              <p className="text-xs text-text-secondary mt-1">
-                {enabled
-                  ? t('users.salary.revokeWarning')
-                  : t('users.salary.grantWarning')}
-              </p>
-            </div>
-            <label htmlFor="salary-perm-reason" className="block mt-4 text-sm font-medium text-text-primary">
-              {t('common.reason_label')} <span className="text-danger-700">*</span>
-            </label>
-            <textarea
-              id="salary-perm-reason"
-              className="mt-1 w-full min-h-[96px] rounded-md border border-border-strong p-3 text-sm focus:border-primary-500 focus:outline-none"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              aria-describedby="salary-perm-reason-help"
-              data-testid="salary-permission-reason"
-            />
-            <p id="salary-perm-reason-help" className="text-xs text-text-muted mt-1">
-              {t('users.salary.reasonHint')}
+      <Modal
+        open={dialogOpen}
+        onClose={closeDialog}
+        labelledBy="salary-perm-dialog-title"
+        size="md"
+        dismissible={!submitting}
+        className="bg-surface rounded-xl shadow-lg border border-border p-6"
+      >
+        <>
+          <h2 id="salary-perm-dialog-title" className="text-lg text-text-primary">
+            {enabled
+              ? t('users.salary.confirmRevokeTitle')
+              : t('users.salary.confirmGrantTitle')}
+          </h2>
+          <div className="mt-3 rounded-md bg-danger-50 border border-danger-500/30 p-3">
+            <p className="text-sm text-danger-700 font-medium">
+              {t('users.salary.warningHeader')}
             </p>
-            <div className="flex justify-end gap-2 mt-6">
-              <Button variant="secondary" onClick={closeDialog} disabled={submitting}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="danger"
-                onClick={handleSubmit}
-                disabled={reason.trim().length < 10 || submitting}
-                data-testid="salary-permission-confirm"
-              >
-                {enabled ? t('users.salary.revoke') : t('users.salary.grant')}
-              </Button>
-            </div>
+            <p className="text-xs text-text-secondary mt-1">
+              {enabled
+                ? t('users.salary.revokeWarning')
+                : t('users.salary.grantWarning')}
+            </p>
           </div>
-        </div>
-      ) : null}
+          <label htmlFor="salary-perm-reason" className="block mt-4 text-sm font-medium text-text-primary">
+            {t('common.reason_label')} <span className="text-danger-700">*</span>
+          </label>
+          <textarea
+            id="salary-perm-reason"
+            className="mt-1 w-full min-h-[96px] rounded-md border border-border-strong p-3 text-sm focus:border-primary-500 focus:outline-none"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            aria-describedby="salary-perm-reason-help"
+            data-testid="salary-permission-reason"
+          />
+          <p id="salary-perm-reason-help" className="text-xs text-text-muted mt-1">
+            {t('users.salary.reasonHint')}
+          </p>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="secondary" onClick={closeDialog} disabled={submitting}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleSubmit}
+              disabled={reason.trim().length < 10 || submitting}
+              data-testid="salary-permission-confirm"
+            >
+              {enabled ? t('users.salary.revoke') : t('users.salary.grant')}
+            </Button>
+          </div>
+        </>
+      </Modal>
     </div>
   );
 }

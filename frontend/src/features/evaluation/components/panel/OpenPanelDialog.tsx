@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
 import { routes } from '@/shared/config/routes';
@@ -96,8 +97,8 @@ type WizardStep = 1 | 2 | 3;
 /**
  * Dept-first 3-step panel wizard (FE-1..FE-6).
  *
- * REFACTOR of the former flat-select dialog — same fixed inset-0 z-50 overlay,
- * the same EvaluatorPicker rows / PanelRoleChip / makeMandatoryRows /
+ * REFACTOR of the former flat-select dialog — same shared `<Modal>` overlay
+ * chrome (src/shared/components/ui/Modal.tsx), the same EvaluatorPicker rows / PanelRoleChip / makeMandatoryRows /
  * addExtra/removeExtra roster machinery, and the same partial-fail result block.
  * The flat position <select> is replaced by:
  *   Step 1 DEPARTMENT  — searchable single-select dept tree + coverage badges.
@@ -477,16 +478,15 @@ function OpenPanelDialogBody({
   })();
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="open-panel-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !submitting) onClose();
-      }}
+    <Modal
+      open
+      onClose={onClose}
+      labelledBy="open-panel-title"
+      size="lg"
+      dismissible={!submitting}
+      className="bg-surface rounded-xl shadow-lg border border-border max-h-[85vh] flex flex-col p-6 space-y-4"
     >
-      <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-lg max-h-[85vh] flex flex-col p-6 space-y-4">
+      <>
         <header className="shrink-0">
           <h2 id="open-panel-title" className="text-lg text-text-primary">
             {t('panel.dialog.title')}
@@ -923,8 +923,8 @@ function OpenPanelDialogBody({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 

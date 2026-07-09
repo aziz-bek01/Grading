@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { EvaluatorPicker } from './EvaluatorPicker';
 
 /** Reason floor — mirrors the BE @Size(min = 5) on ReopenForExpertRequest. */
@@ -65,17 +66,16 @@ export function ReopenForExpertDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="reopen-for-expert-title"
+    <Modal
+      open
+      onClose={onCancel}
+      labelledBy="reopen-for-expert-title"
+      size="md"
+      dismissible={!busy}
       data-testid="reopen-for-expert-dialog"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onCancel();
-      }}
+      className="bg-surface rounded-xl shadow-lg border border-border flex flex-col p-6 space-y-4"
     >
-      <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-md flex flex-col p-6 space-y-4">
+      <>
         <header className="flex items-start justify-between gap-3">
           <h2 id="reopen-for-expert-title" className="text-lg text-text-primary">
             {t('panel.reopen_expert.title')}
@@ -176,7 +176,7 @@ export function ReopenForExpertDialog({
             {t('panel.reopen_expert.confirm')}
           </Button>
         </footer>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

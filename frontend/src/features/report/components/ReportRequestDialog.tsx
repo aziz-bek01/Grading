@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
 import { ApiError } from '@/shared/api/apiError';
+import { Modal } from '@/shared/components/ui/Modal';
 import { DateRangeFields } from '@/shared/components/form/DateRangeFields';
 import { EvaluatorPicker } from '@/features/evaluation/components/panel/EvaluatorPicker';
 import { useRequestReport } from '../hooks/useReports';
@@ -129,15 +130,20 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
   );
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4"
+    <Modal
+      open={open}
+      onClose={onClose}
+      labelledBy="report-request-dialog-title"
+      size="md"
+      dismissible={!submitting}
       data-testid="report-request-dialog"
+      className="bg-surface rounded-lg shadow-lg max-h-[90vh] overflow-y-auto"
     >
-      <div className="bg-surface rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <>
         <header className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-lg font-semibold">{t('report.request_dialog_title')}</h2>
+          <h2 id="report-request-dialog-title" className="text-lg font-semibold">
+            {t('report.request_dialog_title')}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -310,8 +316,8 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 

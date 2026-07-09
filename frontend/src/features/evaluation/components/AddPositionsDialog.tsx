@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, ChevronDown, ChevronRight, Layers, Search } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
 import type { Methodology } from '@/features/methodology/types';
@@ -47,8 +48,9 @@ interface AddPositionsDialogProps {
 /**
  * "Add positions" multi-select dialog (Item 1, FE-2).
  *
- * Reuses the BulkScoreDialog modal STRUCTURE (header + body + footer in the
- * same `fixed inset-0 z-50` centered overlay) — no new modal chrome is authored.
+ * Reuses the BulkScoreDialog modal STRUCTURE (header + body + footer inside
+ * the shared `<Modal>` centered-overlay primitive — src/shared/components/ui/Modal.tsx)
+ * — no new modal chrome is authored.
  * Top control: methodology-version select (active versions only). Body: a
  * checkbox list of CANDIDATE positions = project positions MINUS positions that
  * already have a non-archived evaluation for the selected version. Each row
@@ -197,16 +199,15 @@ function AddPositionsDialogBody({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="add-positions-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !submitting) onClose();
-      }}
+    <Modal
+      open
+      onClose={onClose}
+      labelledBy="add-positions-title"
+      size="lg"
+      dismissible={!submitting}
+      className="bg-surface rounded-xl shadow-lg border border-border max-h-[85vh] flex flex-col p-6 space-y-4"
     >
-      <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-lg max-h-[85vh] flex flex-col p-6 space-y-4">
+      <>
         <header className="shrink-0">
           <h2 id="add-positions-title" className="text-lg text-text-primary">
             {t('evaluation.add_positions.title')}
@@ -489,7 +490,7 @@ function AddPositionsDialogBody({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

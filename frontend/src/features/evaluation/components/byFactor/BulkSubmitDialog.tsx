@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import type { BulkOperationResult } from '../../types';
 
@@ -57,16 +58,15 @@ function BulkSubmitDialogBody({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="bulk-submit-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !submitting) onClose();
-      }}
+    <Modal
+      open
+      onClose={onClose}
+      labelledBy="bulk-submit-title"
+      size="lg"
+      dismissible={!submitting}
+      className="bg-surface rounded-xl shadow-lg border border-border p-6 space-y-4"
     >
-      <div className="bg-surface rounded-xl shadow-lg border border-border w-full max-w-lg p-6 space-y-4">
+      <>
         <header>
           <h2 id="bulk-submit-title" className="text-lg text-text-primary">
             {t('evaluation.byFactor.bulk.submit.title', {
@@ -176,7 +176,7 @@ function BulkSubmitDialogBody({
             {t('evaluation.byFactor.bulk.submit.confirm')}
           </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

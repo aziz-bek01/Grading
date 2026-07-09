@@ -10,6 +10,7 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ShieldAlert, X } from 'lucide-react';
+import { Modal } from '@/shared/components/ui/Modal';
 import { useRequestExport } from '../hooks/useExports';
 import { ExportRequestFormSchema, type ExportRequestFormValues } from '../schemas/exportSchemas';
 import type { ExportFormat, ExportJob, ExportType } from '../types';
@@ -76,15 +77,20 @@ export function ExportRequestDialog({ projectId, open, onClose, onCreated }: Pro
   });
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4"
+    <Modal
+      open={open}
+      onClose={onClose}
+      labelledBy="export-request-dialog-title"
+      size="md"
+      dismissible={!submitting}
       data-testid="export-request-dialog"
+      className="bg-surface rounded-lg shadow-lg max-h-[90vh] overflow-y-auto"
     >
-      <div className="bg-surface rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <>
         <header className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-lg font-semibold">{t('export.request.title')}</h2>
+          <h2 id="export-request-dialog-title" className="text-lg font-semibold">
+            {t('export.request.title')}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -165,7 +171,7 @@ export function ExportRequestDialog({ projectId, open, onClose, onCreated }: Pro
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }

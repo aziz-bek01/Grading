@@ -5,12 +5,14 @@ import { Plus, Pencil, Archive, FilePlus2, BookmarkPlus, RotateCcw } from 'lucid
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { DataTable } from '@/shared/components/data-table/DataTable';
 import { FilterBar } from '@/shared/components/data-table/FilterBar';
+import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { Button } from '@/shared/components/ui/Button';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { ReasonRequiredDialog } from '@/shared/components/confirm-dialog/ReasonRequiredDialog';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { useAuthStore } from '@/features/auth/authStore';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { MethodologyTypeBadge } from '../components/MethodologyTypeBadge';
 import { MethodologyStatusBadge } from '../components/MethodologyStatusBadge';
 import { MethodologyContainerStatusBadge } from '../components/MethodologyContainerStatusBadge';
@@ -220,6 +222,9 @@ export function MethodologyListPage() {
         </div>
       </header>
 
+      {query.isError ? (
+        <ErrorState onRetry={() => query.refetch()} />
+      ) : (
       <DataTable<Methodology>
         rows={filtered}
         rowKey={(m) => m.id}
@@ -303,7 +308,7 @@ export function MethodologyListPage() {
               const ts = m.updated_at ?? m.created_at;
               return (
                 <span className="text-xs text-text-secondary tabular-nums">
-                  {ts ? new Date(ts).toLocaleDateString(currentUserLocale) : ''}
+                  {formatDateSafe(ts, currentUserLocale, '')}
                 </span>
               );
             },
@@ -390,6 +395,7 @@ export function MethodologyListPage() {
           },
         ]}
       />
+      )}
 
       <MethodologyTemplatePicker
         open={pickerOpen}

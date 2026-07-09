@@ -1,5 +1,8 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { LoadingState } from '@/shared/components/feedback/LoadingState';
+import { ErrorState } from '@/shared/components/feedback/ErrorState';
+import { formatDateSafe } from '@/shared/lib/dates';
 import {
   useCancelImport,
   useCommitImport,
@@ -12,7 +15,7 @@ import { ImportErrorsTable } from '../components/ImportErrorsTable';
 import { ImportTemplateBadge } from '../components/ImportTemplateBadge';
 
 export function ImportDetailsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { projectId = '', importId = '' } = useParams<{
     projectId: string;
@@ -23,8 +26,19 @@ export function ImportDetailsPage() {
   const commit = useCommitImport(importId);
   const cancel = useCancelImport(importId);
 
+  if (detail.isError) {
+    return (
+      <section className="p-6" data-testid="import-details-page">
+        <ErrorState onRetry={() => detail.refetch()} />
+      </section>
+    );
+  }
   if (detail.isLoading || !detail.data) {
-    return <section className="p-6 text-sm text-text-muted">{t('states.loading')}</section>;
+    return (
+      <section className="p-6" data-testid="import-details-page">
+        <LoadingState />
+      </section>
+    );
   }
   const batch = detail.data;
   const canCommit =
@@ -39,7 +53,7 @@ export function ImportDetailsPage() {
           <div className="flex items-center gap-2 mt-1">
             <ImportTemplateBadge code={batch.templateCode} />
             <span className="text-xs text-text-muted">
-              {new Date(batch.uploadedAt).toLocaleString()}
+              {formatDateSafe(batch.uploadedAt, i18n.language)}
             </span>
           </div>
         </div>

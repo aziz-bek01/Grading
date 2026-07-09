@@ -21,6 +21,7 @@ import { Button } from '@/shared/components/ui/Button';
 import { Card } from '@/shared/components/ui/Card';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { formatDateSafe } from '@/shared/lib/dates';
 import type { UserMembership } from '../types/userTypes';
 import { UserStatusBadge } from './UserStatusBadge';
 import { AssignRoleDialog } from './AssignRoleDialog';
@@ -41,7 +42,7 @@ interface MembershipCardProps {
 }
 
 export function MembershipCard({ userId, userName, membership }: MembershipCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [assignOpen, setAssignOpen] = useState(false);
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
@@ -68,13 +69,13 @@ export function MembershipCard({ userId, userName, membership }: MembershipCardP
             {membership.joined_at ? (
               <span className="text-xs text-text-muted">
                 {t('users.membership.joinedAt', {
-                  date: new Date(membership.joined_at).toLocaleDateString(),
+                  date: formatDateSafe(membership.joined_at, i18n.language),
                 })}
               </span>
             ) : (
               <span className="text-xs text-text-muted">
                 {t('users.membership.invitedAt', {
-                  date: new Date(membership.invited_at).toLocaleDateString(),
+                  date: formatDateSafe(membership.invited_at, i18n.language),
                 })}
               </span>
             )}

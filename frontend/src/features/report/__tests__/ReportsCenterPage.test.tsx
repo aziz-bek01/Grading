@@ -5,6 +5,7 @@ import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
 import { useAuthStore } from '@/features/auth/authStore';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { httpClient } from '@/shared/api/httpClient';
+import { ApiError } from '@/shared/api/apiError';
 import { ReportsCenterPage } from '../pages/ReportsCenterPage';
 
 const PROJECT_ID = '11111111-1111-1111-1111-111111111111';
@@ -131,5 +132,33 @@ describe('ReportsCenterPage', () => {
       const params = (lastCall[1] as { params?: Record<string, unknown> } | undefined)?.params;
       expect(params).toMatchObject({ status: 'GENERATED', projectId: PROJECT_ID });
     });
+  });
+
+  // FE-018: a 403/500/network failure used to fall through to the same
+  // "no items" branch as a genuinely empty list, rendering the misleading
+  // "No reports yet" copy. The page now reuses the shared ErrorState (with a
+  // retry) instead.
+  it('renders the retryable ErrorState (not the misleading empty copy) on a 403', async () => {
+    vi.spyOn(httpClient, 'get').mockRejectedValue(
+      new ApiError(403, { code: 'ACCESS_DENIED', message: 'forbidden' }),
+    );
+
+    mountAt();
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/No reports yet|Пока нет отчётов/i)).toBeNull();
+  });
+
+  it('renders the retryable ErrorState (not the misleading empty copy) on a 500', async () => {
+    vi.spyOn(httpClient, 'get').mockRejectedValue(
+      new ApiError(500, { code: 'INTERNAL_ERROR', message: 'boom' }),
+    );
+
+    mountAt();
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/No reports yet|Пока нет отчётов/i)).toBeNull();
   });
 });

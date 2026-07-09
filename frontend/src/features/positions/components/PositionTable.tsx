@@ -5,6 +5,7 @@ import { DataTable, type DataTableColumn } from '@/shared/components/data-table/
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { pickLocalized } from '@/shared/lib/localized';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { cn } from '@/shared/lib/cn';
 import { routes } from '@/shared/config/routes';
 import type { Position } from '../types/positionTypes';
@@ -107,7 +108,7 @@ export function PositionTable({
     {
       key: 'updated',
       header: t('positions.column_updated'),
-      render: (p) => (p.updated_at ? new Date(p.updated_at).toLocaleDateString(locale) : '—'),
+      render: (p) => formatDateSafe(p.updated_at, locale),
       sortable: true,
       sortAccessor: (p) => p.updated_at ?? '',
       width: '140px',

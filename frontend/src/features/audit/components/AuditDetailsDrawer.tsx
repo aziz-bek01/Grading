@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/components/ui/Button';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { shortId } from '@/shared/lib/shortId';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { ActionIcon } from './AuditEventRow';
 import { actionIconKind } from './auditActionIcon';
 import type { AuditEvent } from '../types/auditTypes';
@@ -57,7 +58,7 @@ export function AuditDetailsDrawer({ event, open, onClose }: AuditDetailsDrawerP
     <DrawerForm
       open={open}
       title={t(`audit.action.${event.action}`, { defaultValue: event.action })}
-      subtitle={new Date(event.createdAt).toLocaleString(i18n.language)}
+      subtitle={formatDateSafe(event.createdAt, i18n.language)}
       onClose={onClose}
       customActions={
         <Button variant="secondary" onClick={onClose} type="button">

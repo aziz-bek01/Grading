@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/shared/components/ui/Card';
+import { formatDateSafe } from '@/shared/lib/dates';
 import type { WorkflowStageProgress } from './workflowTypes';
 
 interface StageStatusCardProps {
@@ -13,7 +14,7 @@ interface StageStatusCardProps {
 export function StageStatusCard({ stage, onOpenStage, openLabel }: StageStatusCardProps) {
   const { t, i18n } = useTranslation();
   const last = stage.lastUpdatedAt
-    ? new Date(stage.lastUpdatedAt).toLocaleString(i18n.language)
+    ? formatDateSafe(stage.lastUpdatedAt, i18n.language)
     : null;
   return (
     <Card

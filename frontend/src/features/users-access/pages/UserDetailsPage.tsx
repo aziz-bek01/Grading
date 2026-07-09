@@ -31,6 +31,7 @@ import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { routes } from '@/shared/config/routes';
 import { ApiError } from '@/shared/api/apiError';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { useUser } from '../hooks/useUser';
 import { useAddMembership, useResetLogin, useUpdateUser } from '../hooks/useUserMutations';
 import { UserStatusBadge } from '../components/UserStatusBadge';
@@ -144,7 +145,7 @@ export function UserDetailsPage() {
                 <Calendar size={14} aria-hidden />
                 {data.last_login_at
                   ? t('users.lastLoginAt', {
-                      date: new Date(data.last_login_at).toLocaleString(i18n.language),
+                      date: formatDateSafe(data.last_login_at, i18n.language),
                     })
                   : t('users.neverLoggedIn')}
               </span>

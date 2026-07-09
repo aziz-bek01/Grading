@@ -1,5 +1,8 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { LoadingState } from '@/shared/components/feedback/LoadingState';
+import { ErrorState } from '@/shared/components/feedback/ErrorState';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { useExport } from '../hooks/useExports';
 import { ExportStatusBadge } from '../components/ExportStatusBadge';
 import { ExportTypeBadge } from '../components/ExportTypeBadge';
@@ -7,13 +10,24 @@ import { ExportFormatBadge } from '../components/ExportFormatBadge';
 import { SignedDownloadButton } from '../components/SignedDownloadButton';
 
 export function ExportDetailsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { projectId = '', exportId = '' } = useParams<{ projectId: string; exportId: string }>();
   const query = useExport(exportId, { pollWhileInFlight: true });
 
+  if (query.isError) {
+    return (
+      <section className="p-6" data-testid="export-details-page">
+        <ErrorState onRetry={() => query.refetch()} />
+      </section>
+    );
+  }
   if (query.isLoading || !query.data) {
-    return <section className="p-6 text-sm text-text-muted">{t('states.loading')}</section>;
+    return (
+      <section className="p-6" data-testid="export-details-page">
+        <LoadingState />
+      </section>
+    );
   }
   const job = query.data;
 
@@ -43,18 +57,18 @@ export function ExportDetailsPage() {
       </header>
 
       <dl className="grid sm:grid-cols-2 gap-3 text-sm">
-        <Field label={t('export.col.created_at')} value={new Date(job.requestedAt).toLocaleString()} />
+        <Field label={t('export.col.created_at')} value={formatDateSafe(job.requestedAt, i18n.language)} />
         <Field
           label={t('export.col.generated_at')}
-          value={job.generatedAt ? new Date(job.generatedAt).toLocaleString() : '—'}
+          value={formatDateSafe(job.generatedAt, i18n.language)}
         />
         <Field
           label={t('export.col.expires_at')}
-          value={job.expiresAt ? new Date(job.expiresAt).toLocaleString() : '—'}
+          value={formatDateSafe(job.expiresAt, i18n.language)}
         />
         <Field
           label={t('export.col.downloaded_at')}
-          value={job.downloadedAt ? new Date(job.downloadedAt).toLocaleString() : '—'}
+          value={formatDateSafe(job.downloadedAt, i18n.language)}
         />
         <Field label={t('export.col.rows')} value={job.rowCount ?? '—'} />
         <Field

@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
+import { LoadingState } from '@/shared/components/feedback/LoadingState';
+import { EmptyState } from '@/shared/components/feedback/EmptyState';
+import { ErrorState } from '@/shared/components/feedback/ErrorState';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { useCancelExport, useExports } from '../hooks/useExports';
 import { ExportStatusBadge } from '../components/ExportStatusBadge';
 import { ExportTypeBadge } from '../components/ExportTypeBadge';
@@ -33,10 +37,12 @@ export function ExportCenterPage() {
         </button>
       </header>
 
-      {query.isLoading ? (
-        <div className="text-sm text-text-muted">{t('states.loading')}</div>
+      {query.isError ? (
+        <ErrorState onRetry={() => query.refetch()} />
+      ) : query.isLoading ? (
+        <LoadingState />
       ) : !query.data || query.data.items.length === 0 ? (
-        <div className="text-sm text-text-muted py-6">{t('export.center.empty')}</div>
+        <EmptyState body={t('export.center.empty')} />
       ) : (
         <div className="border border-border rounded-md overflow-x-auto">
           <table className="w-full text-sm">
@@ -71,7 +77,7 @@ export function ExportCenterPage() {
 }
 
 function Row({ job, projectId }: { job: import('../types').ExportJob; projectId: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const cancelMut = useCancelExport(job.id);
   const canCancel = ['REQUESTED', 'QUEUED', 'GENERATING'].includes(job.status);
   const canDownload = job.status === 'GENERATED' || job.status === 'DOWNLOADED';
@@ -92,9 +98,9 @@ function Row({ job, projectId }: { job: import('../types').ExportJob; projectId:
       <td className="px-3 py-2">
         <ExportStatusBadge status={job.status} />
       </td>
-      <td className="px-3 py-2 text-text-muted">{new Date(job.requestedAt).toLocaleString()}</td>
+      <td className="px-3 py-2 text-text-muted">{formatDateSafe(job.requestedAt, i18n.language)}</td>
       <td className="px-3 py-2 text-text-muted">
-        {job.expiresAt ? new Date(job.expiresAt).toLocaleString() : '—'}
+        {formatDateSafe(job.expiresAt, i18n.language)}
       </td>
       <td className="px-3 py-2 text-right">
         {job.fileSize ? `${Math.round(job.fileSize / 1024)} KB` : '—'}

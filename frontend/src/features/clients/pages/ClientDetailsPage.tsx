@@ -31,6 +31,7 @@ import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { routes } from '@/shared/config/routes';
 import { ApiError } from '@/shared/api/apiError';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { useTenant } from '../hooks/useTenant';
 import { useTenantStats } from '../hooks/useTenantStats';
 import {
@@ -121,7 +122,7 @@ export function ClientDetailsPage() {
                 <TenantStatusBadge status={tenant.status} />
                 <span>
                   {t('clients.detail.updated_at', {
-                    date: new Date(tenant.updated_at).toLocaleString(i18n.language),
+                    date: formatDateSafe(tenant.updated_at, i18n.language),
                   })}
                 </span>
                 <span>

@@ -13,6 +13,8 @@ import { useTranslation } from 'react-i18next';
 import { ChevronRight, Check, Download, FileText } from 'lucide-react';
 import { useAuthStore } from '@/features/auth/authStore';
 import { PERMISSIONS, type PermissionCode } from '@/shared/types/permissions';
+import { LoadingState } from '@/shared/components/feedback/LoadingState';
+import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { cn } from '@/shared/lib/cn';
 import {
   useCancelImport,
@@ -142,6 +144,8 @@ export function ImportWizardPage() {
           errors={errors.data?.items ?? []}
           loadingDetail={detail.isLoading}
           loadingErrors={errors.isLoading}
+          errorDetail={detail.isError}
+          onRetryDetail={() => detail.refetch()}
           onContinue={() => setStep(4)}
           onCancel={onCancelWizard}
         />
@@ -354,6 +358,8 @@ function StepReviewValidation({
   errors,
   loadingDetail,
   loadingErrors,
+  errorDetail,
+  onRetryDetail,
   onContinue,
   onCancel,
 }: {
@@ -361,12 +367,17 @@ function StepReviewValidation({
   errors: Parameters<typeof ImportErrorsTable>[0]['errors'];
   loadingDetail: boolean;
   loadingErrors: boolean;
+  errorDetail: boolean;
+  onRetryDetail: () => void;
   onContinue: () => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  if (errorDetail) {
+    return <ErrorState onRetry={onRetryDetail} />;
+  }
   if (loadingDetail || !batch) {
-    return <div className="text-sm text-text-muted">{t('states.loading')}</div>;
+    return <LoadingState />;
   }
   const canContinue =
     batch.status === 'READY_FOR_REVIEW' || batch.status === 'READY_TO_COMMIT';

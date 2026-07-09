@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { FolderKanban, Users, Activity, Clock } from 'lucide-react';
 import { Card } from '@/shared/components/ui/Card';
+import { formatDateSafe } from '@/shared/lib/dates';
 import type { TenantStats } from '../types/clientTypes';
 
 interface TenantStatsCardsProps {
@@ -16,7 +17,7 @@ export function TenantStatsCards({ stats, loading }: TenantStatsCardsProps) {
   const { t, i18n } = useTranslation();
   const dash = '—';
   const fmtDate = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleString(i18n.language) : t('clients.stats.never_active');
+    formatDateSafe(iso, i18n.language, t('clients.stats.never_active'));
 
   const cards = [
     {

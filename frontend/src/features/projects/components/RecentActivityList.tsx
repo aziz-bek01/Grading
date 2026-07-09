@@ -27,6 +27,7 @@ import { usePermission } from '@/features/auth/usePermission';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { routes } from '@/shared/config/routes';
 import { useAuditEvents } from '@/features/audit/hooks/useAuditEvents';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { ActionIcon } from '@/features/audit/components/AuditEventRow';
 import { actionIconKind } from '@/features/audit/components/auditActionIcon';
 import type { AuditEvent } from '@/features/audit/types/auditTypes';
@@ -57,8 +58,8 @@ function formatRelative(iso: string, locale: string): string {
   if (diffMin < 60) return `${diffMin}m`;
   const diffHr = Math.round(diffMin / 60);
   if (diffHr < 24) return `${diffHr}h`;
-  // Fall back to a localised short date for older events.
-  return new Date(iso).toLocaleDateString(locale);
+  // Fall back to a localised date for older events.
+  return formatDateSafe(iso, locale);
 }
 
 export function RecentActivityList({ projectId, limit = 20 }: RecentActivityListProps) {
@@ -161,7 +162,7 @@ export function RecentActivityList({ projectId, limit = 20 }: RecentActivityList
                     <p className="text-xs text-text-secondary truncate">
                       {e.actorName ?? e.actorUserId ?? t('common.unknown_actor')}
                       {' · '}
-                      <time dateTime={e.createdAt} title={new Date(e.createdAt).toLocaleString(i18n.language)}>
+                      <time dateTime={e.createdAt} title={formatDateSafe(e.createdAt, i18n.language)}>
                         {formatRelative(e.createdAt, i18n.language)}
                       </time>
                     </p>

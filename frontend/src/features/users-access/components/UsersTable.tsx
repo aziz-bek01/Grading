@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { routes } from '@/shared/config/routes';
 import type { User } from '../types/userTypes';
 import { UserStatusBadge } from './UserStatusBadge';
@@ -65,7 +66,7 @@ export function UsersTable({ rows, loading, toolbarRight, filterBar }: UsersTabl
       header: t('users.column.lastLogin'),
       render: (u) =>
         u.last_login_at ? (
-          new Date(u.last_login_at).toLocaleString(locale)
+          formatDateSafe(u.last_login_at, locale)
         ) : (
           <span className="text-text-muted">{t('users.never')}</span>
         ),

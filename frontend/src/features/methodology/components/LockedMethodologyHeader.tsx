@@ -3,6 +3,7 @@ import { Lock, FilePlus2 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { formatDateSafe } from '@/shared/lib/dates';
 import type { MethodologyVersion } from '../types';
 
 interface LockedMethodologyHeaderProps {
@@ -24,11 +25,10 @@ export function LockedMethodologyHeader({
   const { t, i18n } = useTranslation();
   const isLocked = version.status === 'LOCKED';
 
-  // Reuse the codebase's established locale-aware timestamp pattern
-  // (`new Date(iso).toLocaleString(i18n.language)`, as in AuditListPage /
-  // ApprovalRequestCard / StageStatusCard) instead of printing the raw ISO.
-  const formatTs = (iso?: string | null) =>
-    iso ? new Date(iso).toLocaleString(i18n.language) : '—';
+  // FE-017: reuse the single shared date formatter (`formatDateSafe`) instead
+  // of hand-rolling `new Date(iso).toLocaleString(i18n.language)` — it also
+  // guards the null/invalid-date path uniformly across the app.
+  const formatTs = (iso?: string | null) => formatDateSafe(iso, i18n.language);
 
   /**
    * D-407 / PC4-5 — display the human-readable name resolved server-side.

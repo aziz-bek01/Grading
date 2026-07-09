@@ -30,6 +30,7 @@ import { PERMISSIONS } from '@/shared/types/permissions';
 import { useAuthStore } from '@/features/auth/authStore';
 import { usePermission } from '@/features/auth/usePermission';
 import { shortId } from '@/shared/lib/shortId';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { useAuditEvents } from '../hooks/useAuditEvents';
 import { AuditFilterBar } from '../components/AuditFilterBar';
 import { AuditDetailsDrawer } from '../components/AuditDetailsDrawer';
@@ -100,7 +101,7 @@ export function AuditListPage() {
       width: '180px',
       render: (e) => (
         <span className="text-text-primary text-sm">
-          {new Date(e.createdAt).toLocaleString(i18n.language)}
+          {formatDateSafe(e.createdAt, i18n.language)}
         </span>
       ),
       sortable: true,

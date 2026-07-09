@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { routes } from '@/shared/config/routes';
 import type { TenantListRow } from '../types/clientTypes';
 import { TenantStatusBadge } from './TenantStatusBadge';
@@ -78,7 +79,7 @@ export function TenantsTable({ rows, loading, toolbarRight, filterBar }: Tenants
     {
       key: 'updated_at',
       header: t('clients.column.updated'),
-      render: (r) => new Date(r.updated_at).toLocaleString(locale),
+      render: (r) => formatDateSafe(r.updated_at, locale),
       sortable: true,
       sortAccessor: (r) => r.updated_at,
       width: '180px',

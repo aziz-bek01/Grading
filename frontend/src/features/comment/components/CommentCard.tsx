@@ -4,6 +4,7 @@ import { Pencil, Trash2, CornerDownRight } from 'lucide-react';
 import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { useAuthStore } from '@/features/auth/authStore';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { MentionText } from './MentionText';
 import { CommentInput } from './CommentInput';
 import type { Comment } from '../types';
@@ -29,7 +30,7 @@ export function CommentCard({ comment, onEdit, onDelete, onReply, isReply }: Pro
   const canDelete = isOwn && !!onDelete && user?.permissions.includes(PERMISSIONS.COMMENT_DELETE);
   const canReply = !isReply && !!onReply && user?.permissions.includes(PERMISSIONS.COMMENT_CREATE);
 
-  const created = new Date(comment.createdAt).toLocaleString(i18n.language);
+  const created = formatDateSafe(comment.createdAt, i18n.language);
   const edited = comment.updatedAt && comment.updatedAt !== comment.createdAt;
 
   if (comment.deletedAt) {

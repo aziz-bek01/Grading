@@ -4,12 +4,14 @@ import { useTranslation } from 'react-i18next';
 import { Archive, BookmarkPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { DataTable } from '@/shared/components/data-table/DataTable';
+import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { Button } from '@/shared/components/ui/Button';
 import { ConfirmDialog } from '@/shared/components/confirm-dialog/ConfirmDialog';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { useAuthStore } from '@/features/auth/authStore';
 import { pickLocalized } from '@/shared/lib/localized';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { GradeStructureStatusBadge } from '../components/GradeStructureStatusBadge';
 import { GradeStructureTypeBadge } from '../components/GradeStructureTypeBadge';
 import {
@@ -170,6 +172,9 @@ export function GradeStructureListPage() {
         </PermissionGate>
       </header>
 
+      {query.isError ? (
+        <ErrorState onRetry={() => query.refetch()} />
+      ) : (
       <DataTable<GradeStructureListItem>
         rows={items}
         rowKey={(s) => s.id}
@@ -243,7 +248,7 @@ export function GradeStructureListPage() {
               const ts = s.updated_at ?? s.created_at;
               return (
                 <span className="text-xs text-text-secondary tabular-nums">
-                  {ts ? new Date(ts).toLocaleDateString(currentUserLocale) : '—'}
+                  {formatDateSafe(ts, currentUserLocale)}
                 </span>
               );
             },
@@ -317,6 +322,7 @@ export function GradeStructureListPage() {
           },
         ]}
       />
+      )}
 
       <GradeStructureTemplatePicker
         open={pickerOpen}

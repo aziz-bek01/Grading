@@ -20,6 +20,10 @@ import { useTranslation } from 'react-i18next';
 import { Plus, ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '@/features/auth/authStore';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { LoadingState } from '@/shared/components/feedback/LoadingState';
+import { EmptyState } from '@/shared/components/feedback/EmptyState';
+import { ErrorState } from '@/shared/components/feedback/ErrorState';
+import { formatDateSafe } from '@/shared/lib/dates';
 import {
   useCancelReport,
   useReports,
@@ -144,10 +148,12 @@ export function ReportsCenterPage() {
         </select>
       </div>
 
-      {query.isLoading ? (
-        <div className="text-sm text-text-muted">{t('states.loading')}</div>
+      {query.isError ? (
+        <ErrorState onRetry={() => query.refetch()} />
+      ) : query.isLoading ? (
+        <LoadingState />
       ) : !query.data || query.data.items.length === 0 ? (
-        <div className="text-sm text-text-muted py-6">{t('report.empty')}</div>
+        <EmptyState body={t('report.empty')} />
       ) : (
         <div className="border border-border rounded-md overflow-x-auto">
           <table className="w-full text-sm">
@@ -183,7 +189,7 @@ export function ReportsCenterPage() {
 }
 
 function Row({ report }: { report: Report }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const cancelMut = useCancelReport(report.id);
   const canCancel = REPORT_IN_FLIGHT_STATUSES.has(report.status);
   const canDownload = REPORT_DOWNLOADABLE_STATUSES.has(report.status);
@@ -213,9 +219,9 @@ function Row({ report }: { report: Report }) {
         )}
       </td>
       <td className="px-3 py-2 text-text-muted text-xs">{report.requestedBy ?? '—'}</td>
-      <td className="px-3 py-2 text-text-muted">{new Date(report.requestedAt).toLocaleString()}</td>
+      <td className="px-3 py-2 text-text-muted">{formatDateSafe(report.requestedAt, i18n.language)}</td>
       <td className="px-3 py-2 text-text-muted">
-        {report.expiresAt ? new Date(report.expiresAt).toLocaleString() : '—'}
+        {formatDateSafe(report.expiresAt, i18n.language)}
       </td>
       <td className="px-3 py-2 text-right">
         <div className="flex items-center justify-end gap-2">

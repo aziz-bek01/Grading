@@ -18,6 +18,7 @@ import { Shield, ShieldOff } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { formatDateSafe } from '@/shared/lib/dates';
 import { cn } from '@/shared/lib/cn';
 
 interface SalaryPermissionToggleProps {
@@ -34,7 +35,7 @@ export function SalaryPermissionToggle({
   onSubmit,
   disabled,
 }: SalaryPermissionToggleProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -67,7 +68,7 @@ export function SalaryPermissionToggle({
           </p>
           <p className="text-xs text-text-secondary mt-1">
             {enabled
-              ? t('users.salary.enabledHint', { date: grantedAt ? new Date(grantedAt).toLocaleDateString() : '—' })
+              ? t('users.salary.enabledHint', { date: formatDateSafe(grantedAt, i18n.language) })
               : t('users.salary.disabledHint')}
           </p>
         </div>

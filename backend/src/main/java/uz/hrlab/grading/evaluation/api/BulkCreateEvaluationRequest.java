@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import uz.hrlab.grading.common.api.Pagination;
 
 import java.util.List;
 import java.util.UUID;
@@ -16,12 +17,12 @@ import java.util.UUID;
  * {@code position_id}, {@code methodology_version_id}, {@code evaluator_user_id}.
  *
  * <p>{@code items} is {@code @NotEmpty} and capped at
- * {@link EvaluationController#MAX_PAGE_SIZE} (200) per call.
+ * {@link Pagination#MAX_PAGE_SIZE} (200) per call.
  */
 public record BulkCreateEvaluationRequest(
         @NotEmpty(message = "items must contain at least one row")
-        @Size(max = EvaluationController.MAX_PAGE_SIZE,
-                message = "items capped at " + EvaluationController.MAX_PAGE_SIZE + " per call")
+        @Size(max = Pagination.MAX_PAGE_SIZE,
+                message = "items capped at " + Pagination.MAX_PAGE_SIZE + " per call")
         @Valid
         List<Item> items
 ) {

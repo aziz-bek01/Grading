@@ -2,7 +2,6 @@ package uz.hrlab.grading.methodology.api;
 
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +26,7 @@ import uz.hrlab.grading.methodology.application.RestoreMethodologyUseCase;
 import uz.hrlab.grading.methodology.application.SaveAsTemplateUseCase;
 import uz.hrlab.grading.methodology.application.UpdateMethodologyMetadataUseCase;
 import uz.hrlab.grading.common.api.PageResponse;
+import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 
@@ -89,14 +89,11 @@ public class MethodologyController {
                 .body(MethodologyResponse.from(agg.methodology(), agg.currentVersion().id()));
     }
 
-    /** Maximum allowed page size per blueprint API-5 (F-409). */
-    public static final int MAX_PAGE_SIZE = 200;
-
     @GetMapping
     @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public PageResponse<MethodologyResponse> list(@RequestParam(required = false) UUID projectId,
                                                   Pageable pageable) {
-        Pageable safePageable = clampPageSize(pageable);
+        Pageable safePageable = Pagination.clamp(pageable);
         Page<MethodologyJpaEntity> page = queries.findByProject(projectId, safePageable);
         // Batch-load every version of the page in one query (no N+1), then enrich
         // each row with latest/active version pointers + audit timestamps.
@@ -106,21 +103,6 @@ public class MethodologyController {
                 queries.versionsByMethodologyIds(ids);
         return PageResponse.of(page, e -> MethodologyResponse.fromList(
                 e, versionsById.getOrDefault(e.getId(), List.of())));
-    }
-
-    /**
-     * F-409: caps {@link Pageable#getPageSize()} at {@link #MAX_PAGE_SIZE} to
-     * defend against DoS from unbounded {@code ?size=N}. Preserves page
-     * number + sort order.
-     */
-    private static Pageable clampPageSize(Pageable pageable) {
-        if (pageable == null) {
-            return PageRequest.of(0, 20);
-        }
-        if (pageable.getPageSize() <= MAX_PAGE_SIZE) {
-            return pageable;
-        }
-        return PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
     }
 
     /**

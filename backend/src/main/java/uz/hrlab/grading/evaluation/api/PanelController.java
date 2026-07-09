@@ -3,7 +3,6 @@ package uz.hrlab.grading.evaluation.api;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uz.hrlab.grading.common.api.PageResponse;
+import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.evaluation.application.ArchivePanelUseCase;
 import uz.hrlab.grading.evaluation.application.AssignEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.application.BackfillPanelApprovalsMigration;
@@ -52,8 +52,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/panels")
 public class PanelController {
-
-    public static final int MAX_PAGE_SIZE = 200;
 
     private final CreatePanelUseCase createUseCase;
     private final BulkCreatePanelsUseCase bulkCreateUseCase;
@@ -278,7 +276,7 @@ public class PanelController {
                                             @RequestParam(required = false) UUID positionId,
                                             @RequestParam(required = false) List<EvaluationPanelStatus> status,
                                             Pageable pageable) {
-        Page<PanelResponse> page = queries.list(projectId, positionId, status, clampPageSize(pageable));
+        Page<PanelResponse> page = queries.list(projectId, positionId, status, Pagination.clamp(pageable));
         return PageResponse.from(page);
     }
 
@@ -294,13 +292,4 @@ public class PanelController {
         return queries.getResult(id);
     }
 
-    private static Pageable clampPageSize(Pageable pageable) {
-        if (pageable == null) {
-            return PageRequest.of(0, 20);
-        }
-        if (pageable.getPageSize() <= MAX_PAGE_SIZE) {
-            return pageable;
-        }
-        return PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
-    }
 }

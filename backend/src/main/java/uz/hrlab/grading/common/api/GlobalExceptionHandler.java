@@ -23,16 +23,13 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.BaseDomainException;
 import uz.hrlab.grading.common.exception.ConflictException;
+import uz.hrlab.grading.common.exception.DomainTransitionRejectedException;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ResourceNotFoundException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.UnprocessableEntityException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
-import uz.hrlab.grading.approval.domain.ApprovalTransitionRejectedException;
-import uz.hrlab.grading.jobanalysis.domain.QuestionnaireTransitionRejectedException;
-import uz.hrlab.grading.jobprofile.domain.JobProfileTransitionRejectedException;
-import uz.hrlab.grading.methodology.domain.MethodologyVersionTransitionRejectedException;
 import uz.hrlab.grading.project.application.ProjectLockedException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
@@ -182,27 +179,20 @@ public class GlobalExceptionHandler {
         return build(status, ex.getCode(), ex.getMessage());
     }
 
-    @ExceptionHandler(JobProfileTransitionRejectedException.class)
-    public ResponseEntity<ErrorResponse> handleJobProfileTransition(
-            JobProfileTransitionRejectedException ex) {
-        return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
-    }
-
-    @ExceptionHandler(QuestionnaireTransitionRejectedException.class)
-    public ResponseEntity<ErrorResponse> handleQuestionnaireTransition(
-            QuestionnaireTransitionRejectedException ex) {
-        return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
-    }
-
-    @ExceptionHandler(MethodologyVersionTransitionRejectedException.class)
-    public ResponseEntity<ErrorResponse> handleMethodologyVersionTransition(
-            MethodologyVersionTransitionRejectedException ex) {
-        return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
-    }
-
-    @ExceptionHandler(ApprovalTransitionRejectedException.class)
-    public ResponseEntity<ErrorResponse> handleApprovalTransition(
-            ApprovalTransitionRejectedException ex) {
+    /**
+     * 409 Conflict — ANY domain state-machine transition rejection (BE-014).
+     * One handler now covers all ten sibling {@code *TransitionRejectedException}
+     * types (job profile, questionnaire, methodology version, approval, panel
+     * status, evaluation, grade structure, export job, import batch, report)
+     * because they share the {@link DomainTransitionRejectedException} base.
+     * Previously only four were mapped and the other six fell through to the
+     * generic domain handler and returned 400, so clients could not tell a
+     * "conflict / retry" from a "bad request". The stable per-exception
+     * {@code code} is carried through unchanged for the frontend to switch on.
+     */
+    @ExceptionHandler(DomainTransitionRejectedException.class)
+    public ResponseEntity<ErrorResponse> handleDomainTransition(
+            DomainTransitionRejectedException ex) {
         return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
     }
 

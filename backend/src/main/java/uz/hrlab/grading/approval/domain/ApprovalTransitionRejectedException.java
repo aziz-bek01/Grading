@@ -1,9 +1,9 @@
 package uz.hrlab.grading.approval.domain;
 
-import uz.hrlab.grading.common.exception.BaseDomainException;
+import uz.hrlab.grading.common.exception.DomainTransitionRejectedException;
 
 /** Thrown when an approval-related state transition violates the FSM. */
-public class ApprovalTransitionRejectedException extends BaseDomainException {
+public class ApprovalTransitionRejectedException extends DomainTransitionRejectedException {
 
     public ApprovalTransitionRejectedException(String message) {
         super("APPROVAL_TRANSITION_REJECTED", message);

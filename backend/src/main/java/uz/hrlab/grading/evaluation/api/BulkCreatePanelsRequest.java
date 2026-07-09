@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.evaluation.domain.EvaluatorRole;
 
 import java.util.List;
@@ -27,7 +28,7 @@ import java.util.UUID;
  * partial / not-yet-complete roster is allowed at this stage.
  *
  * <p>{@code positionIds} is {@code @NotEmpty} and capped at
- * {@link PanelController#MAX_PAGE_SIZE} (200) per call (same cap as bulk-create
+ * {@link Pagination#MAX_PAGE_SIZE} (200) per call (same cap as bulk-create
  * evaluations). Snake_case on the wire via global Jackson SNAKE_CASE:
  * {@code methodology_version_id}, {@code position_ids}, {@code roster},
  * {@code evaluator_user_id}, {@code evaluator_role}, {@code start_evaluations}.
@@ -43,8 +44,8 @@ public record BulkCreatePanelsRequest(
         @NotNull UUID methodologyVersionId,
 
         @NotEmpty(message = "position_ids must contain at least one position")
-        @Size(max = PanelController.MAX_PAGE_SIZE,
-                message = "position_ids capped at " + PanelController.MAX_PAGE_SIZE + " per call")
+        @Size(max = Pagination.MAX_PAGE_SIZE,
+                message = "position_ids capped at " + Pagination.MAX_PAGE_SIZE + " per call")
         List<UUID> positionIds,
 
         @Valid

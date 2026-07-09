@@ -3,7 +3,6 @@ package uz.hrlab.grading.integration.imports.api;
 import jakarta.validation.constraints.NotBlank;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +20,7 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.PageResponse;
+import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.imports.application.CancelImportBatchUseCase;
 import uz.hrlab.grading.integration.imports.application.CommitImportBatchUseCase;
@@ -48,7 +48,6 @@ import java.util.UUID;
 public class ImportController {
 
     private static final Logger log = LoggerFactory.getLogger(ImportController.class);
-    private static final int MAX_PAGE_SIZE = 200;
 
     private static final String XLSX_MIME =
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -184,7 +183,7 @@ public class ImportController {
             @RequestParam(required = false) ImportBatchStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(MAX_PAGE_SIZE, size));
+        Pageable pageable = Pagination.of(page, size);
         return PageResponse.of(queries.list(projectId, status, pageable), ImportBatchResponse::from);
     }
 
@@ -201,7 +200,7 @@ public class ImportController {
             @RequestParam(required = false) ImportErrorLevel level,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(MAX_PAGE_SIZE, size));
+        Pageable pageable = Pagination.of(page, size);
         return PageResponse.of(queries.listErrors(id, level, pageable), ImportErrorResponse::from);
     }
 

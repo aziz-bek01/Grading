@@ -2,7 +2,6 @@ package uz.hrlab.grading.evaluation.api;
 
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,6 +35,7 @@ import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.common.api.PageResponse;
+import uz.hrlab.grading.common.api.Pagination;
 
 import java.util.List;
 import java.util.UUID;
@@ -44,9 +44,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/evaluations")
 public class EvaluationController {
-
-    /** Maximum allowed page size per blueprint API-5 (F-409). */
-    public static final int MAX_PAGE_SIZE = 200;
 
     private final CreateEvaluationUseCase createUseCase;
     private final BulkCreateEvaluationsUseCase bulkCreateUseCase;
@@ -143,7 +140,7 @@ public class EvaluationController {
                                                 @RequestParam(required = false) UUID factorId,
                                                 @RequestParam(required = false) UUID departmentId,
                                                 Pageable pageable) {
-        Pageable safe = clampPageSize(pageable);
+        Pageable safe = Pagination.clamp(pageable);
         // K-sheet UX branch — Excel-style per-factor grid across positions.
         if ("factor".equalsIgnoreCase(groupBy)) {
             Page<EvaluationByFactorRow> rows = queries.listByFactor(
@@ -291,14 +288,4 @@ public class EvaluationController {
         return bulkSubmitUseCase.execute(req.evaluationIds(), req.reason());
     }
 
-    /** F-409: caps page size at MAX_PAGE_SIZE to defend against DoS. */
-    private static Pageable clampPageSize(Pageable pageable) {
-        if (pageable == null) {
-            return PageRequest.of(0, 20);
-        }
-        if (pageable.getPageSize() <= MAX_PAGE_SIZE) {
-            return pageable;
-        }
-        return PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
-    }
 }

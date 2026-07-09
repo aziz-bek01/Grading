@@ -6,6 +6,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
+import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.project.domain.Project;
 import uz.hrlab.grading.project.domain.ProjectStatus;
@@ -18,8 +19,6 @@ import java.util.UUID;
 
 @Service
 public class FindProjectQuery {
-
-    private static final int MAX_PAGE_SIZE = 200;
 
     private final ProjectRepository projects;
     private final AbacGate abacGate;
@@ -42,7 +41,7 @@ public class FindProjectQuery {
     @Transactional(readOnly = true)
     public Page<Project> list(int page, int size) {
         TenantContext ctx = TenantContextHolder.requireActive();
-        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        int safeSize = Pagination.clampSize(size);
         Page<ProjectJpaEntity> raw = projects.findAllByTenantIdAndStatusNot(
                 ctx.tenantId(), ProjectStatus.ARCHIVED,
                 PageRequest.of(Math.max(page, 0), safeSize, Sort.by("code").ascending()));

@@ -3,7 +3,6 @@ package uz.hrlab.grading.integration.exports.api;
 import jakarta.validation.Valid;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -18,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uz.hrlab.grading.common.api.PageResponse;
+import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.integration.exports.application.CancelExportJobUseCase;
 import uz.hrlab.grading.integration.exports.application.DownloadExportFileUseCase;
 import uz.hrlab.grading.integration.exports.application.ExportJobQueries;
@@ -33,8 +33,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/exports")
 public class ExportController {
-
-    private static final int MAX_PAGE_SIZE = 200;
 
     private final RequestExportUseCase requestUseCase;
     private final ExportJobQueries queries;
@@ -69,7 +67,7 @@ public class ExportController {
             @RequestParam(required = false) ExportType type,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(MAX_PAGE_SIZE, size));
+        Pageable pageable = Pagination.of(page, size);
         return PageResponse.of(queries.list(projectId, status, type, pageable), ExportJobResponse::from);
     }
 

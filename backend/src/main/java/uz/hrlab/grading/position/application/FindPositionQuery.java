@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.DepartmentScopeFilter;
 import uz.hrlab.grading.access.application.RoleCodes;
+import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.domain.Position;
@@ -39,8 +40,6 @@ import java.util.UUID;
  */
 @Service
 public class FindPositionQuery {
-
-    private static final int MAX_PAGE_SIZE = 200;
 
     private final PositionRepository positions;
     private final DepartmentRepository departments;
@@ -105,7 +104,7 @@ public class FindPositionQuery {
             effectiveStatus = PositionStatus.ACTIVE;
         }
 
-        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        int safeSize = Pagination.clampSize(size);
         PageRequest pageable = PageRequest.of(
                 Math.max(page, 0), safeSize, Sort.by("code").ascending());
 

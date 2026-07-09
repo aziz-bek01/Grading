@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import uz.hrlab.grading.common.api.Pagination;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.api.UserListResponse;
@@ -41,8 +42,6 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ListUsersQuery {
-
-    private static final int MAX_PAGE_SIZE = 200;
 
     private final UserManagementPolicy policy;
     private final UserTenantMembershipRepository membershipRepo;
@@ -142,7 +141,7 @@ public class ListUsersQuery {
 
     private static Pageable pageable(int page, int size) {
         int safePage = Math.max(0, page);
-        int safeSize = Math.min(Math.max(1, size), MAX_PAGE_SIZE);
+        int safeSize = Pagination.clampSize(size);
         return PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.ASC, "id"));
     }
 }

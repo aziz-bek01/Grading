@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.api.AuditEventResponse;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogJpaEntity;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogRepository;
+import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
@@ -42,7 +43,6 @@ import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 public class ListAuditEventsQuery {
 
     private static final int DEFAULT_PAGE_SIZE = 50;
-    private static final int MAX_PAGE_SIZE     = 200;
 
     private final SystemAuditLogRepository auditRepo;
 
@@ -159,7 +159,7 @@ public class ListAuditEventsQuery {
 
     private static Pageable pageable(int page, int size) {
         int safePage = Math.max(0, page);
-        int safeSize = Math.min(Math.max(1, size <= 0 ? DEFAULT_PAGE_SIZE : size), MAX_PAGE_SIZE);
+        int safeSize = Pagination.clampSize(size <= 0 ? DEFAULT_PAGE_SIZE : size);
         // Sort is encoded in the JPQL "order by sa.createdAt desc"; we keep
         // an unsorted Pageable so the @Query is the single source of truth.
         return PageRequest.of(safePage, safeSize);

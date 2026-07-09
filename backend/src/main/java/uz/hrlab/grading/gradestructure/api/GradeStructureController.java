@@ -2,7 +2,6 @@ package uz.hrlab.grading.gradestructure.api;
 
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,6 +35,7 @@ import uz.hrlab.grading.gradestructure.domain.GradeStructureStatus;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureType;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureJpaEntity;
 import uz.hrlab.grading.common.api.PageResponse;
+import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.methodology.api.ReorderRequest;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -53,8 +53,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/grade-structures")
 public class GradeStructureController {
-
-    public static final int MAX_PAGE_SIZE = 200;
 
     private final CreateGradeStructureFromTemplateUseCase fromTemplate;
     private final CreateGradeStructureFromScratchUseCase fromScratch;
@@ -126,7 +124,7 @@ public class GradeStructureController {
     public PageResponse<GradeStructureResponse> list(@RequestParam(required = false) UUID projectId,
                                                      @RequestParam(required = false) GradeStructureStatus status,
                                                      Pageable pageable) {
-        Pageable safe = clamp(pageable);
+        Pageable safe = Pagination.clamp(pageable);
         Page<GradeStructureJpaEntity> page = queries.findByProject(projectId, status, safe);
         // Batch-load the grade count of every structure on the page in one query
         // (no N+1), then enrich each row with grade_count + audit timestamps.
@@ -237,11 +235,5 @@ public class GradeStructureController {
                         structureId, req.score())
                 .map(PreviewLookupResponse::of)
                 .orElseGet(PreviewLookupResponse::miss);
-    }
-
-    private static Pageable clamp(Pageable pageable) {
-        if (pageable == null) return PageRequest.of(0, 20);
-        if (pageable.getPageSize() <= MAX_PAGE_SIZE) return pageable;
-        return PageRequest.of(pageable.getPageNumber(), MAX_PAGE_SIZE, pageable.getSort());
     }
 }

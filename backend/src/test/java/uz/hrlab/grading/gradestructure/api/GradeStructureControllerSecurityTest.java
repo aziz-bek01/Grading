@@ -185,11 +185,11 @@ class GradeStructureControllerSecurityTest {
         doThrow(new GradeStructureTransitionRejectedException(
                 "Cannot modify a grade structure in state APPROVED"))
                 .when(deleteUseCase).delete(eq(id));
-        // GradeStructureTransitionRejectedException -> BaseDomainException
-        // fall-through -> 400 with its stable code.
+        // BE-014: GradeStructureTransitionRejectedException is a
+        // DomainTransitionRejectedException -> 409 CONFLICT with its stable code.
         mvc.perform(delete("/api/v1/grade-structures/{id}", id)
                         .with(jwt().authorities(() -> "GRADE_EDIT")))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("GRADE_STRUCTURE_TRANSITION_REJECTED"));
     }
 
@@ -325,9 +325,10 @@ class GradeStructureControllerSecurityTest {
         UUID gradeId = UUID.randomUUID();
         doThrow(new GradeStructureTransitionRejectedException("locked"))
                 .when(gradeService).removeBand(eq(gradeId));
+        // BE-014: transition rejection -> 409 CONFLICT (was 400 pre-fix).
         mvc.perform(delete("/api/v1/grades/{id}/band", gradeId)
                         .with(jwt().authorities(() -> "GRADE_EDIT")))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("GRADE_STRUCTURE_TRANSITION_REJECTED"));
     }
 

@@ -1,8 +1,8 @@
 package uz.hrlab.grading.jobanalysis.domain;
 
-import uz.hrlab.grading.common.exception.BaseDomainException;
+import uz.hrlab.grading.common.exception.DomainTransitionRejectedException;
 
-public class QuestionnaireTransitionRejectedException extends BaseDomainException {
+public class QuestionnaireTransitionRejectedException extends DomainTransitionRejectedException {
 
     public QuestionnaireTransitionRejectedException(String safeMessage) {
         super("QUESTIONNAIRE_TRANSITION_REJECTED", safeMessage);

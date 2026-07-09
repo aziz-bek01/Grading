@@ -14,6 +14,7 @@ import { Button } from '@/shared/components/ui/Button';
 import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
+import { useSelectionSet } from '@/shared/lib/useSelectionSet';
 import { routes } from '@/shared/config/routes';
 import {
   DepartmentSingleSelectTree,
@@ -135,9 +136,6 @@ function OpenPanelDialogBody({
   // T4 — Step 2 subtree toggle: when ON the candidate list includes the selected
   // unit's descendants (server expands via includeSubtree=true); OFF = direct.
   const [includeSubtree, setIncludeSubtree] = useState(false);
-  const [selectedPositions, setSelectedPositions] = useState<Set<string>>(
-    new Set(),
-  );
   const [versionId, setVersionId] = useState(() => {
     const preferred =
       defaultVersionId &&
@@ -236,30 +234,22 @@ function OpenPanelDialogBody({
   const fullyPaneled =
     candidates.length > 0 && selectablePositions.length === 0;
 
-  const allSelected =
-    selectablePositions.length > 0 &&
-    selectablePositions.every((p) => selectedPositions.has(p.id));
+  const {
+    selected: selectedPositions,
+    setSelected: setSelectedPositions,
+    toggle: toggleSelectedPosition,
+    toggleAll: toggleAllSelectedPositions,
+    allSelected,
+    clear: clearSelectedPositions,
+  } = useSelectionSet(selectablePositions, (p) => p.id);
 
   const toggleAll = () => {
-    setSelectedPositions((prev) => {
-      const next = new Set(prev);
-      if (allSelected) {
-        for (const p of selectablePositions) next.delete(p.id);
-      } else {
-        for (const p of selectablePositions) next.add(p.id);
-      }
-      return next;
-    });
+    toggleAllSelectedPositions();
     setResult(null);
   };
 
   const togglePosition = (id: string, on: boolean) => {
-    setSelectedPositions((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+    toggleSelectedPosition(id, on);
     setResult(null);
   };
 
@@ -398,7 +388,7 @@ function OpenPanelDialogBody({
 
   const selectDepartment = (id: string) => {
     setDepartmentId(id);
-    setSelectedPositions(new Set());
+    clearSelectedPositions();
     setIncludeSubtree(false);
     setResult(null);
   };
@@ -406,7 +396,7 @@ function OpenPanelDialogBody({
   const toggleSubtree = (on: boolean) => {
     setIncludeSubtree(on);
     // The candidate set changes — drop any selection that may no longer be listed.
-    setSelectedPositions(new Set());
+    clearSelectedPositions();
     setResult(null);
   };
 
@@ -589,7 +579,7 @@ function OpenPanelDialogBody({
                 value={versionId}
                 onChange={(e) => {
                   setVersionId(e.target.value);
-                  setSelectedPositions(new Set());
+                  clearSelectedPositions();
                   setResult(null);
                 }}
                 data-testid="open-panel-version-select"

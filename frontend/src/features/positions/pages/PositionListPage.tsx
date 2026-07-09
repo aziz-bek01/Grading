@@ -62,8 +62,8 @@ export function PositionListPage() {
   const updateMutation = useUpdatePosition(editing?.id ?? '');
   const archiveMutation = useArchivePosition();
 
-  const departments = tree.data ?? [];
-  const rows = positions.data?.items ?? [];
+  const departments = useMemo(() => tree.data ?? [], [tree.data]);
+  const rows = useMemo(() => positions.data?.items ?? [], [positions.data]);
 
   const filters: FilterDefinition[] = useMemo(
     () => [

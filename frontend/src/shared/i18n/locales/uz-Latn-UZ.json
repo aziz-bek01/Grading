@@ -1014,7 +1014,9 @@
       "archive_methodology_title": "Metodologiya arxivlansinmi?",
       "archive_methodology_body": "Metodologiya faol roʻyxatdan yashiriladi. Bu oʻchirish emas — sababni koʻrsating.",
       "new_version_title": "Yangi versiya yaratilsinmi?",
-      "new_version_body": "Barcha faktorlar va darajalar nusxasi bilan yangi qoralama versiya yaratiladi."
+      "new_version_body": "Barcha faktorlar va darajalar nusxasi bilan yangi qoralama versiya yaratiladi.",
+      "remove_factor_body": "Faktor qoralamadan oʻchiriladi. Agar u baholashlarda foydalanilgan boʻlsa, oʻchirilmaydi, balki tarix uchun saqlanib, eskirgan deb belgilanadi.",
+      "remove_level_body": "Daraja faktoridan oʻchiriladi. Agar u baholashlarda foydalanilgan boʻlsa, oʻchirilmaydi, balki tarix uchun saqlanib, eskirgan deb belgilanadi."
     }
   },
   "evaluation": {

@@ -1014,7 +1014,9 @@
       "archive_methodology_title": "Archive this methodology?",
       "archive_methodology_body": "The methodology will be hidden from the active list. This is not a delete — provide a reason.",
       "new_version_title": "Create new version?",
-      "new_version_body": "A new draft version will be created with a copy of all factors and levels."
+      "new_version_body": "A new draft version will be created with a copy of all factors and levels.",
+      "remove_factor_body": "This removes the factor from the draft version. If it is already referenced by evaluations, it is deprecated (kept for history) instead of deleted.",
+      "remove_level_body": "This removes the level from the factor. If it is already referenced by evaluations, it is deprecated (kept for history) instead of deleted."
     }
   },
   "evaluation": {

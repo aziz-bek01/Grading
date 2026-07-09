@@ -23,6 +23,7 @@ import { ScoringModeBadge } from '@/features/methodology/components/ScoringModeB
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import { pickLocalized } from '@/shared/lib/localized';
 import { cn } from '@/shared/lib/cn';
+import { useSelectionSet } from '@/shared/lib/useSelectionSet';
 import { useEvaluations } from '../../hooks/useEvaluation';
 import { upsertScore } from '../../api/evaluationApi';
 import {
@@ -161,7 +162,6 @@ export function EvaluationByFactorView({
   const [onlyUnfilled, setOnlyUnfilled] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
-  const [bulkSet, setBulkSet] = useState<Set<string>>(new Set());
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
 
   // Dialog open flags
@@ -357,6 +357,13 @@ export function EvaluationByFactorView({
   const totalElements = rowsQuery.data?.total_elements ?? 0;
   const totalPages = rowsQuery.data?.total_pages ?? 1;
 
+  const {
+    selected: bulkSet,
+    toggle: toggleRow,
+    toggleMany: toggleManyBulk,
+    clear: clearBulkSet,
+  } = useSelectionSet(rows, (r) => r.evaluation_id);
+
   // ----- Per-row mutations -----
   const bulkScoreMutation = useBulkScoreSet(activeFactor?.id ?? '');
   const bulkSubmitMutation = useBulkSubmit(activeFactor?.id ?? '');
@@ -367,7 +374,7 @@ export function EvaluationByFactorView({
   const prevFactorIdRef = useRef(activeFactor?.id ?? null);
   if (prevFactorIdRef.current !== (activeFactor?.id ?? null)) {
     prevFactorIdRef.current = activeFactor?.id ?? null;
-    setBulkSet(new Set());
+    clearBulkSet();
     setActiveRowId(null);
     setPage(0);
   }
@@ -430,25 +437,7 @@ export function EvaluationByFactorView({
   const allRowIds = useMemo(() => rows.map((r) => r.evaluation_id), [rows]);
   const allSelected =
     bulkSet.size > 0 && allRowIds.every((id) => bulkSet.has(id));
-  const toggleAll = () => {
-    setBulkSet((prev) => {
-      const next = new Set(prev);
-      if (allSelected) {
-        for (const id of allRowIds) next.delete(id);
-      } else {
-        for (const id of allRowIds) next.add(id);
-      }
-      return next;
-    });
-  };
-  const toggleRow = (id: string, on: boolean) => {
-    setBulkSet((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  };
+  const toggleAll = () => toggleManyBulk(allRowIds);
 
   // The active (row-clicked) row — drives the subtle row highlight only.
   // The rubric panel that previously consumed it has been retired; the
@@ -828,7 +817,7 @@ export function EvaluationByFactorView({
             factor_level_id: factorLevelId,
             reason,
           });
-          if (result.failed.length === 0) setBulkSet(new Set());
+          if (result.failed.length === 0) clearBulkSet();
           return result;
         }}
       />
@@ -841,7 +830,7 @@ export function EvaluationByFactorView({
             evaluation_ids: Array.from(bulkSet),
             reason,
           });
-          if (result.failed.length === 0) setBulkSet(new Set());
+          if (result.failed.length === 0) clearBulkSet();
           return result;
         }}
       />

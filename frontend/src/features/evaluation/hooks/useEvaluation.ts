@@ -14,7 +14,8 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { useDebouncedCallback } from '@/shared/lib/useDebounce';
 import {
   approveEvaluation,
   archiveEvaluation,
@@ -199,43 +200,36 @@ export function usePreviewScore() {
   const [data, setData] = useState<ScoringResult | null>(null);
   const [isPending, setIsPending] = useState(false);
   const requestIdRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    },
-    [],
-  );
+  const { run, cancel } = useDebouncedCallback((payload: PreviewScorePayload) => {
+    const myId = ++requestIdRef.current;
+    previewScore(payload)
+      .then((res) => {
+        // Discard stale responses.
+        if (myId !== requestIdRef.current) return;
+        setData(res);
+        setIsPending(false);
+      })
+      .catch(() => {
+        if (myId !== requestIdRef.current) return;
+        setIsPending(false);
+      });
+  }, 300);
 
   const debouncedPreview = useCallback(
-    (payload: PreviewScorePayload, debounceMs = 300) => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      const myId = ++requestIdRef.current;
+    (payload: PreviewScorePayload) => {
       setIsPending(true);
-      timerRef.current = setTimeout(() => {
-        previewScore(payload)
-          .then((res) => {
-            // Discard stale responses.
-            if (myId !== requestIdRef.current) return;
-            setData(res);
-            setIsPending(false);
-          })
-          .catch(() => {
-            if (myId !== requestIdRef.current) return;
-            setIsPending(false);
-          });
-      }, debounceMs);
+      run(payload);
     },
-    [],
+    [run],
   );
 
   const reset = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    cancel();
     requestIdRef.current += 1;
     setData(null);
     setIsPending(false);
-  }, []);
+  }, [cancel]);
 
   return { data, isPending, debouncedPreview, reset };
 }

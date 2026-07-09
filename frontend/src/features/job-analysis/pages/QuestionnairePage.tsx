@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Send, Archive } from 'lucide-react';
@@ -12,6 +12,7 @@ import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { ReasonRequiredDialog } from '@/shared/components/confirm-dialog/ReasonRequiredDialog';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { pickLocalized } from '@/shared/lib/localized';
+import { useDebouncedCallback } from '@/shared/lib/useDebounce';
 import {
   useArchiveQuestionnaire,
   useQuestionnaire,
@@ -56,7 +57,6 @@ export function QuestionnairePage() {
   const archiveMut = useArchiveQuestionnaire(questionnaireId, positionId);
 
   const [pending, setPending] = useState<Record<string, JobAnalysisAnswerValue>>({});
-  const debounceRef = useRef<Record<string, number>>({});
 
   const data = query.data;
   const readOnly = data?.status === 'COMPLETED' || data?.status === 'ARCHIVED';
@@ -86,25 +86,25 @@ export function QuestionnairePage() {
   const [submitOpen, setSubmitOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
 
+  // Debounced auto-save, one independent channel per question id — editing
+  // question B must never cancel a still-pending save for question A. All
+  // pending timers are cleared on unmount by the shared hook.
+  const { run: scheduleAutoSave } = useDebouncedCallback(
+    (questionId: string, value: JobAnalysisAnswerValue) => {
+      void updateAnswerMut.mutateAsync({ question_id: questionId, value });
+    },
+    AUTO_SAVE_DEBOUNCE_MS,
+    { keyOf: (questionId: string) => questionId },
+  );
+
   const handleChange = useCallback(
     (questionId: string, value: JobAnalysisAnswerValue) => {
       if (readOnly) return;
       setPending((p) => ({ ...p, [questionId]: value }));
-      // Debounced auto-save per question.
-      const existing = debounceRef.current[questionId];
-      if (existing) window.clearTimeout(existing);
-      debounceRef.current[questionId] = window.setTimeout(() => {
-        void updateAnswerMut.mutateAsync({ question_id: questionId, value });
-      }, AUTO_SAVE_DEBOUNCE_MS);
+      scheduleAutoSave(questionId, value);
     },
-    [readOnly, updateAnswerMut],
+    [readOnly, scheduleAutoSave],
   );
-
-  useEffect(() => {
-    return () => {
-      Object.values(debounceRef.current).forEach((id) => window.clearTimeout(id));
-    };
-  }, []);
 
   if (query.isLoading) return <LoadingState />;
   if (query.error || !data) return <ErrorState onRetry={() => query.refetch()} />;

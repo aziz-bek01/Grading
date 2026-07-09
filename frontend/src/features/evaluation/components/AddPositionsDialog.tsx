@@ -5,6 +5,7 @@ import { Button } from '@/shared/components/ui/Button';
 import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
+import { useSelectionSet } from '@/shared/lib/useSelectionSet';
 import type { Methodology } from '@/features/methodology/types';
 import type { Position } from '@/features/positions/types/positionTypes';
 import type { BulkCreateEvaluationResult } from '../types';
@@ -94,7 +95,6 @@ function AddPositionsDialogBody({
     return preferred || activeMethodologies[0]?.active_version_id || '';
   });
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BulkCreateEvaluationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +120,17 @@ function AddPositionsDialogBody({
       });
   }, [positions, versionId, existingKeys, search, i18n.language, departmentNameOf]);
 
+  const {
+    selected,
+    setSelected,
+    toggle: toggleRow,
+    toggleAll,
+    allSelected,
+    isAllSelected,
+    toggleMany,
+    clear: clearSelected,
+  } = useSelectionSet(candidates, (p) => p.id);
+
   // Group-by-department toggle — defaults ON when candidate count > threshold.
   // Pure client-side; departmentNameOf(positionId) is already available.
   const [groupByDept, setGroupByDept] = useState(
@@ -143,30 +154,6 @@ function AddPositionsDialogBody({
       const next = new Set(prev);
       if (next.has(dept)) next.delete(dept);
       else next.add(dept);
-      return next;
-    });
-  };
-
-  const allSelected =
-    candidates.length > 0 && candidates.every((p) => selected.has(p.id));
-
-  const toggleAll = () => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (allSelected) {
-        for (const p of candidates) next.delete(p.id);
-      } else {
-        for (const p of candidates) next.add(p.id);
-      }
-      return next;
-    });
-  };
-
-  const toggleRow = (id: string, on: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
       return next;
     });
   };
@@ -229,7 +216,7 @@ function AddPositionsDialogBody({
             value={versionId}
             onChange={(e) => {
               setVersionId(e.target.value);
-              setSelected(new Set());
+              clearSelected();
               setResult(null);
             }}
             data-testid="add-positions-version-select"
@@ -309,20 +296,9 @@ function AddPositionsDialogBody({
             // Grouped by department — each group is collapsible
             Array.from(groupedCandidates.entries()).map(([dept, deptPositions]) => {
               const isCollapsed = collapsedGroups.has(dept);
-              const deptAllSelected =
-                deptPositions.length > 0 &&
-                deptPositions.every((p) => selected.has(p.id));
-              const toggleDeptAll = () => {
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (deptAllSelected) {
-                    for (const p of deptPositions) next.delete(p.id);
-                  } else {
-                    for (const p of deptPositions) next.add(p.id);
-                  }
-                  return next;
-                });
-              };
+              const deptPositionIds = deptPositions.map((p) => p.id);
+              const deptAllSelected = isAllSelected(deptPositionIds);
+              const toggleDeptAll = () => toggleMany(deptPositionIds);
               return (
                 <div key={dept}>
                   {/* Dept group header */}

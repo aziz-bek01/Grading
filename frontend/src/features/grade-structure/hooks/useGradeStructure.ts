@@ -4,8 +4,9 @@
  * All mutations invalidate the structure detail + list so the locked /
  * approved banner, GradeTable, and version chain re-render in lockstep.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDebouncedValue } from '@/shared/lib/useDebounce';
 import {
   addGrade,
   approveStructure,
@@ -266,16 +267,7 @@ export function usePreviewGradeLookup(
   score: number | null,
   debounceMs = 300,
 ) {
-  const [debouncedScore, setDebouncedScore] = useState<number | null>(score);
-  const lastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (lastTimer.current) clearTimeout(lastTimer.current);
-    lastTimer.current = setTimeout(() => setDebouncedScore(score), debounceMs);
-    return () => {
-      if (lastTimer.current) clearTimeout(lastTimer.current);
-    };
-  }, [score, debounceMs]);
+  const debouncedScore = useDebouncedValue(score, debounceMs);
 
   const enabled = !!structureId && debouncedScore != null && !Number.isNaN(debouncedScore);
 

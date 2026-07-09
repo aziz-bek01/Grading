@@ -157,8 +157,6 @@ describe('MethodologyBuilderPage', () => {
     updateVersionMetadataSpy.mockReset();
     removeFactorSpy.mockReset();
     removeFactorSpy.mockResolvedValue(undefined);
-    // window.confirm backs the legacy remove guard — auto-accept in tests.
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
   afterEach(() => {
     signOut();
@@ -402,10 +400,17 @@ describe('MethodologyBuilderPage', () => {
 
     await waitFor(() => expect(screen.getByTestId('approved-edit-banner')).toBeInTheDocument());
 
-    // First action is gated; acknowledge the confirm, then remove.
+    // First action is gated; acknowledge the confirm, then confirm the
+    // remove itself (FE-049 — the remove action opens a second ConfirmDialog
+    // instead of window.confirm).
     await user.click(screen.getByTestId('factor-A-remove'));
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: /understand|continue|продолж|давом/i }));
+    const gateDialog = await screen.findByRole('dialog');
+    await user.click(within(gateDialog).getByRole('button', { name: /understand|continue|продолж|давом/i }));
+
+    const removeDialog = await screen.findByRole('dialog');
+    await user.click(
+      within(removeDialog).getByRole('button', { name: /delete|удалить|ўчириш|o.chirish/i }),
+    );
 
     await waitFor(() => expect(screen.getByTestId('deprecate-notice')).toBeInTheDocument());
     expect(removeFactorSpy).toHaveBeenCalled();

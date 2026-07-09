@@ -99,6 +99,10 @@ export function MethodologyBuilderPage() {
   // FE-2 — inline notice when a referenced factor/level was soft-deprecated
   // (kept for historical evaluations) instead of hard-deleted.
   const [deprecateNotice, setDeprecateNotice] = useState<string | null>(null);
+  // FE-049 — remove-factor / remove-level confirmation (replaces window.confirm
+  // with the shared ConfirmDialog). Non-null target = the dialog is open.
+  const [removeFactorTarget, setRemoveFactorTarget] = useState<Factor | null>(null);
+  const [removeLevelTarget, setRemoveLevelTarget] = useState<FactorLevel | null>(null);
 
   const editorFactor = useMemo(
     () => factors.find((f) => f.id === editorFactorId) ?? null,
@@ -247,9 +251,15 @@ export function MethodologyBuilderPage() {
   // FACTOR_REFERENCED_BY_EVALUATIONS; either way the user sees a clear,
   // non-alarming explanation and the row stays (now with a "deprecated" badge
   // after the version refetch).
-  const handleRemoveFactor = async (f: Factor) => {
+  const handleRemoveFactor = (f: Factor) => {
     if (guardApprovedEdit(() => handleRemoveFactor(f))) return;
-    if (!window.confirm(t('methodology.confirm_remove_factor'))) return;
+    setRemoveFactorTarget(f);
+  };
+
+  const confirmRemoveFactor = async () => {
+    const f = removeFactorTarget;
+    if (!f) return;
+    setRemoveFactorTarget(null);
     setEditorFactorId(f.id);
     try {
       await removeFactorMut.mutateAsync();
@@ -292,8 +302,14 @@ export function MethodologyBuilderPage() {
     await updateLevelMut.mutateAsync({ levelId: lvl.id, payload: lvl });
   };
 
-  const handleRemoveLevel = async (lvl: FactorLevel) => {
-    if (!window.confirm(t('methodology.confirm_remove_level'))) return;
+  const handleRemoveLevel = (lvl: FactorLevel) => {
+    setRemoveLevelTarget(lvl);
+  };
+
+  const confirmRemoveLevel = async () => {
+    const lvl = removeLevelTarget;
+    if (!lvl) return;
+    setRemoveLevelTarget(null);
     try {
       await removeLevelMut.mutateAsync(lvl.id);
       if (approvedEditMode) {
@@ -563,6 +579,28 @@ export function MethodologyBuilderPage() {
           setApproveOpen(false);
           await approveMut.mutateAsync();
         }}
+      />
+
+      {/* FE-049 — remove-factor / remove-level confirmation (replaces window.confirm
+          with the shared ConfirmDialog). */}
+      <ConfirmDialog
+        open={removeFactorTarget !== null}
+        destructive
+        title={t('methodology.confirm_remove_factor')}
+        body={t('methodology.confirm.remove_factor_body')}
+        confirmLabel={t('common.delete')}
+        onCancel={() => setRemoveFactorTarget(null)}
+        onConfirm={confirmRemoveFactor}
+      />
+
+      <ConfirmDialog
+        open={removeLevelTarget !== null}
+        destructive
+        title={t('methodology.confirm_remove_level')}
+        body={t('methodology.confirm.remove_level_body')}
+        confirmLabel={t('common.delete')}
+        onCancel={() => setRemoveLevelTarget(null)}
+        onConfirm={confirmRemoveLevel}
       />
 
       <ReasonRequiredDialog

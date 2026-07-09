@@ -162,6 +162,27 @@ function paginate<T>(items: T[], page: number, size: number) {
   };
 }
 
+/**
+ * FE-027: mirrors the backend's evaluation-list DTO `methodology_version_label`
+ * field — a resolved "Name (vN)" string per row — so the mock exercises the
+ * SAME response shape the real backend now returns (no per-methodology
+ * fetchMethodologyVersions fan-out needed on the FE side to build it). Joins
+ * methodologyVersions → methodology the same way the by-factor handler
+ * resolves department_name/position_title (ru-RU with en-US fallback; the mock
+ * does not localize per Accept-Language). `null` when the version or its
+ * parent methodology cannot be resolved (defensive — should not happen for
+ * seeded fixtures).
+ */
+function resolveMethodologyVersionLabel(methodologyVersionId: string): string | null {
+  const version = mockDb.methodologyVersions.find((v) => v.id === methodologyVersionId);
+  if (!version) return null;
+  const methodology = mockDb.methodologies.find((m) => m.id === version.methodology_id);
+  if (!methodology) return null;
+  const name = methodology.name_i18n['ru-RU'] ?? methodology.name_i18n['en-US'] ?? null;
+  if (!name) return null;
+  return `${name} (v${version.version_number})`;
+}
+
 function handleProjects(method: string, path: string, _query: URLSearchParams, config: AxiosRequestConfig): MatchResult | null {
   if (path === '/projects' && method === 'GET') {
     // Real backend filters by JWT-derived tenant; mock reads it from header.
@@ -1841,7 +1862,15 @@ function handleEvaluations(
     if (projectId) list = list.filter((e) => e.project_id === projectId);
     if (positionId) list = list.filter((e) => e.position_id === positionId);
     if (status) list = list.filter((e) => e.status === status);
-    return ok(paginate(list, page, size));
+    // FE-027: attach the server-resolved `methodology_version_label` per row —
+    // see {@link resolveMethodologyVersionLabel}. The FE no longer needs to
+    // fan out one fetchMethodologyVersions request PER methodology to build
+    // this label client-side.
+    const withLabel = list.map((e) => ({
+      ...e,
+      methodology_version_label: resolveMethodologyVersionLabel(e.methodology_version_id),
+    }));
+    return ok(paginate(withLabel, page, size));
   }
 
   // POST /evaluations  (create)

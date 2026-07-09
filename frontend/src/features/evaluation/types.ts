@@ -76,6 +76,22 @@ export interface Evaluation {
    * when {@link panelId} is present.
    */
   evaluatorRole?: EvaluatorRole | null;
+  /**
+   * Server-resolved, already-localized "Name (vN)" label for the methodology
+   * version this evaluation was scored against. Adapted from the BE wire field
+   * `methodology_version_label` (snake_case) by {@link fetchEvaluations} — the
+   * camelCase name marks it as a FE-derived convenience field, mirroring the
+   * {@link panelId}/{@link evaluatorRole} pattern above.
+   *
+   * `null`/absent when the backend response predates this field (only the
+   * evaluation-LIST DTO carries it) — callers MUST fall back to a client-derived
+   * label rather than assume presence (see EvaluationListPage's "methodology"
+   * column). Carrying this per row replaces the FE-027 N+1: previously the
+   * evaluation list page fired one `fetchMethodologyVersions` request PER
+   * methodology (via `useQueries`) on every load just to resolve this label
+   * client-side; the backend now resolves it once per row.
+   */
+  methodologyVersionLabel?: string | null;
 }
 
 export interface EvaluationScore {

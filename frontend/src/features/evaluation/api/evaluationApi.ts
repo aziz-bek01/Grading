@@ -12,6 +12,7 @@
  * server-side state mutation per architecture §15.
  */
 import { httpClient } from '@/shared/api/httpClient';
+import { pick, type Raw } from '@/shared/api/wireAdapter';
 import type { PageEnvelope } from '@/shared/types/common';
 import type {
   BulkCreateEvaluationPayload,
@@ -120,7 +121,30 @@ export async function fetchEvaluations(
       size: filters.size,
     },
   });
-  return res.data;
+  // FE-027: adapt the server-resolved `methodology_version_label` (wire
+  // snake_case, already-localized "Name (vN)") into the FE-derived camelCase
+  // convenience field {@link Evaluation.methodologyVersionLabel}, mirroring
+  // the panelId/evaluatorRole adaptation in {@link fetchEvaluation}. This
+  // replaces the old N+1 where EvaluationListPage fired one
+  // fetchMethodologyVersions request PER methodology (via useQueries) purely
+  // to build this label client-side — the backend now resolves it once per
+  // row. `pick` falls back to `null` when the field is absent (an older API
+  // response), which callers must handle (see EvaluationListPage).
+  // `items` defensively defaults to `[]` — mirrors fetchPanels' envelope
+  // guard — so a malformed/empty envelope never throws here.
+  const rawItems = Array.isArray(res.data?.items) ? res.data.items : [];
+  const items = rawItems.map((row) => {
+    const raw = row as unknown as Raw;
+    return {
+      ...row,
+      methodologyVersionLabel: pick<string>(
+        raw,
+        'methodology_version_label',
+        'methodologyVersionLabel',
+      ),
+    };
+  });
+  return { ...res.data, items };
 }
 
 /**

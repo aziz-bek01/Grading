@@ -1,5 +1,4 @@
 import { Suspense, lazy, useCallback, useMemo, useState } from 'react';
-import { useQueries } from '@tanstack/react-query';
 import {
   Link,
   useParams,
@@ -21,10 +20,6 @@ import { useAuthStore } from '@/features/auth/authStore';
 import { pickLocalized } from '@/shared/lib/localized';
 import { cn } from '@/shared/lib/cn';
 import { useMethodologies } from '@/features/methodology/hooks/useMethodology';
-import {
-  fetchMethodologyVersions,
-  methodologyKeys,
-} from '@/features/methodology/api/methodologyApi';
 import { useAllPositions } from '@/features/positions/hooks/usePositions';
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import {
@@ -248,14 +243,6 @@ export function EvaluationListPage() {
   // useAllPositions pages to completion via the shared fetchAllPages helper.
   const positionsQuery = useAllPositions(projectId ? { projectId } : null);
   const methodologiesQuery = useMethodologies(projectId);
-  const versionQueries = useQueries({
-    queries: (methodologiesQuery.data?.items ?? []).map((meth) => ({
-      queryKey: methodologyKeys.versions(meth.id),
-      queryFn: () => fetchMethodologyVersions(meth.id),
-      enabled: !!meth.id,
-      staleTime: 5 * 60_000,
-    })),
-  });
   const treeQuery = useDepartmentTree(projectId);
   const panelsQuery = usePanels(projectId ? { projectId } : {});
   const bulkCreateMutation = useBulkCreateEvaluations();
@@ -345,16 +332,28 @@ export function EvaluationListPage() {
     return m;
   }, [methodologiesQuery.data, i18n.language]);
 
+  // FE-027: version→methodology lookup used for (a) the methodology-filter
+  // dropdown match and (b) a fallback for the "methodology" column when the
+  // backend-resolved `methodologyVersionLabel` is absent (older API). Built
+  // ONLY from the already-fetched methodology list's active_version_id /
+  // latest_version_id — NO per-methodology version fetch. This previously also
+  // resolved every historical (superseded) version id by firing one
+  // fetchMethodologyVersions request PER methodology (via useQueries) on every
+  // page load purely to label rows — the N+1 the audit flagged as FE-027. The
+  // backend now resolves the row label directly, so that fan-out is gone; a row
+  // scored against a truly historical (non-active/non-latest) version now falls
+  // through to the dash the "methodology" column renders and won't match the
+  // filter dropdown — an accepted, narrow trade-off given the overwhelming
+  // majority of evaluations are scored against the active/latest version.
   const versionToMeth = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
-    (methodologiesQuery.data?.items ?? []).forEach((meth, idx) => {
+    (methodologiesQuery.data?.items ?? []).forEach((meth) => {
       const entry = { id: meth.id, name: pickLocalized(meth.name_i18n, i18n.language) };
       if (meth.active_version_id) m.set(meth.active_version_id, entry);
       if (meth.latest_version_id) m.set(meth.latest_version_id, entry);
-      for (const v of versionQueries[idx]?.data ?? []) m.set(v.id, entry);
     });
     return m;
-  }, [methodologiesQuery.data, versionQueries, i18n.language]);
+  }, [methodologiesQuery.data, i18n.language]);
 
   const selectedVersionId = useMemo(() => {
     if (!methodologyParam) return null;
@@ -396,9 +395,15 @@ export function EvaluationListPage() {
     {
       key: 'methodology',
       header: t('evaluation.column.methodology'),
+      // FE-027: prefer the backend-resolved `methodologyVersionLabel`
+      // ("Name (vN)") — every row already carries it, no per-methodology
+      // version fetch needed. Falls back to the FE-derived methodology name
+      // (versionToMeth, active/latest only — see its comment) for older API
+      // responses that predate the field, then a dash.
       render: (row) =>
+        row.methodologyVersionLabel ??
         versionToMeth.get(row.methodology_version_id)?.name ??
-        row.methodology_version_id.slice(0, 8),
+        '—',
     },
     {
       key: 'status',

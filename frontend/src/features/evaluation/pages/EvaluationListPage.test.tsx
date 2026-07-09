@@ -122,6 +122,10 @@ const evaluations: Evaluation[] = [
     methodology_version_id: 'v-1',
     status: 'DRAFT',
     displayed_total_score: 0,
+    // FE-027: the evaluation-list DTO now carries this backend-resolved label
+    // straight from the (adapted) API response — the "methodology" column
+    // must render it verbatim, with NO client-side version-fetch fan-out.
+    methodologyVersionLabel: 'CFO Финансы (v1)',
   },
   {
     id: 'eval-2',
@@ -131,6 +135,9 @@ const evaluations: Evaluation[] = [
     status: 'SUBMITTED',
     displayed_total_score: 42.5,
     submitted_at: '2026-05-01T10:00:00Z',
+    // Deliberately NO methodologyVersionLabel — simulates an older API
+    // response predating the field. The column must fall back gracefully
+    // (FE-derived methodology name) rather than break.
   },
   // INCOMPLETE is now a deletable (pre-submission) status — mirrors the owner's
   // report that "Неполная" rows must offer "Удалить".
@@ -231,6 +238,26 @@ vi.mock('@/features/methodology/hooks/useMethodology', () => ({
   useMethodologies: () => ({ data: { items: methodologies }, isLoading: false }),
 }));
 
+// FE-027 regression guard: the page used to fan out one
+// `fetchMethodologyVersions` request PER methodology (via `useQueries`) on
+// every load, purely to resolve the "methodology" column label client-side.
+// Spy on the REAL module (kept functional via importActual) so a
+// reintroduced fan-out would show up as calls here — the fix removes the
+// import entirely, so this must stay at 0 across every test in this file.
+const fetchMethodologyVersionsSpy = vi.fn();
+vi.mock('@/features/methodology/api/methodologyApi', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/features/methodology/api/methodologyApi')
+  >('@/features/methodology/api/methodologyApi');
+  return {
+    ...actual,
+    fetchMethodologyVersions: (methodologyId: string) => {
+      fetchMethodologyVersionsSpy(methodologyId);
+      return actual.fetchMethodologyVersions(methodologyId);
+    },
+  };
+});
+
 // ---- Panel-commission wizard hooks (only exercised by the commission test) ----
 // usePanels is mocked here (empty coverage) AND useBulkCreatePanels is replaced
 // with a spy so we assert the page-built payload — the real fetcher never runs.
@@ -287,6 +314,7 @@ describe('EvaluationListPage — Item 1 (department / add / delete)', () => {
     bulkCreateSpy.mockReset();
     deleteSpy.mockReset();
     bulkCreatePanelsSpy.mockReset();
+    fetchMethodologyVersionsSpy.mockReset();
   });
   afterEach(() => signOut());
 
@@ -301,6 +329,27 @@ describe('EvaluationListPage — Item 1 (department / add / delete)', () => {
     // localized names render at least once each (exact counts are fixture churn).
     expect(screen.getAllByText('Финансы').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('ИТ').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('FE-027: "methodology" column renders methodologyVersionLabel directly from the row, falling back gracefully when absent, with NO per-methodology version fetch', async () => {
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText('Финансовый аналитик')).toBeInTheDocument(),
+    );
+    // eval-1 (pos-1) carries the backend-resolved `methodologyVersionLabel` —
+    // rendered verbatim, no client-side derivation.
+    const pos1Row = screen.getByText('Финансовый аналитик').closest('tr')!;
+    expect(within(pos1Row).getByText('CFO Финансы (v1)')).toBeInTheDocument();
+
+    // eval-2 (pos-2) deliberately has NO methodologyVersionLabel (simulates an
+    // older API response) — the column falls back to the FE-derived
+    // methodology name instead of breaking.
+    const pos2Row = screen.getByText('Разработчик').closest('tr')!;
+    expect(within(pos2Row).getByText('CFO Финансы')).toBeInTheDocument();
+
+    // The N+1 fan-out (one fetchMethodologyVersions call PER methodology) is
+    // gone — the page no longer imports/calls it at all.
+    expect(fetchMethodologyVersionsSpy).not.toHaveBeenCalled();
   });
 
   it('FE-3: delete action is shown for EVERY pre-submission row and hidden for post-submission (with EVALUATION_EDIT)', async () => {

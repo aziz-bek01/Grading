@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import uz.hrlab.grading.common.infrastructure.TenantAwareRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -14,6 +15,17 @@ public interface FactorLevelRepository
     List<FactorLevelJpaEntity>
             findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(
                     UUID tenantId, UUID factorId);
+
+    /**
+     * BE-26 — batch variant of {@link #findAllByTenantIdAndFactorIdOrderByLevelOrderAsc}
+     * for the report methodology-spec build: loads every level of a PAGE of factors
+     * in ONE tenant-scoped round-trip (no per-factor N+1), globally ordered by
+     * {@code level_order ASC} so an in-memory group-by-factorId preserves the same
+     * per-factor level order the single-factor finder produced. Tenant is pinned.
+     */
+    List<FactorLevelJpaEntity>
+            findAllByTenantIdAndFactorIdInOrderByLevelOrderAsc(
+                    UUID tenantId, Collection<UUID> factorIds);
 
     /**
      * BE-4 — ACTIVE (non-deprecated) levels of a factor, for the "levels a NEW

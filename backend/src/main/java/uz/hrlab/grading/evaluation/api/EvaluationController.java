@@ -33,7 +33,6 @@ import uz.hrlab.grading.evaluation.application.SubmitEvaluationUseCase;
 import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreCommand;
 import uz.hrlab.grading.evaluation.application.UpsertEvaluationScoreUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
-import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.common.api.PageResponse;
 import uz.hrlab.grading.common.api.Pagination;
 
@@ -147,9 +146,12 @@ public class EvaluationController {
                     projectId, factorId, status, departmentId, safe);
             return ResponseEntity.ok(PageResponse.from(rows));
         }
-        Page<EvaluationJpaEntity> page = queries.list(projectId, positionId, evaluatorUserId,
+        // DB-23 / FE-27 — the query service returns the projection-backed wire rows
+        // directly (no methodology_basis_snapshot JSONB fetched; methodology_version_label
+        // pre-resolved), so the controller stays a thin envelope wrapper.
+        Page<EvaluationResponse> page = queries.list(projectId, positionId, evaluatorUserId,
                 status, safe);
-        return ResponseEntity.ok(PageResponse.of(page, e -> EvaluationResponse.from(e.toDomain())));
+        return ResponseEntity.ok(PageResponse.from(page));
     }
 
     /**

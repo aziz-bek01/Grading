@@ -14,6 +14,17 @@ public interface PanelFactorAverageRepository
 
     List<PanelFactorAverageJpaEntity> findAllByTenantIdAndPanelId(UUID tenantId, UUID panelId);
 
+    /**
+     * BE-19 — batch variant of {@link #findAllByTenantIdAndPanelId} for the report
+     * panel-averages build: loads every materialized per-factor average for a PAGE
+     * of panels in ONE tenant-scoped round-trip (no per-panel N+1), grouped by
+     * {@code panel_id} in memory. Mirrors the batch pattern already used in
+     * {@code DefaultReportDataPort.loadEvaluations} (scores/positions IdIn). Tenant
+     * is pinned, so a foreign panel id contributes no row.
+     */
+    List<PanelFactorAverageJpaEntity> findAllByTenantIdAndPanelIdIn(
+            UUID tenantId, Collection<UUID> panelIds);
+
     /** Tenant-scoped bulk delete used on recompute / reopen (stale averages cleared). */
     long deleteAllByTenantIdAndPanelId(UUID tenantId, UUID panelId);
 

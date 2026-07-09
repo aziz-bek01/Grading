@@ -24,6 +24,7 @@ import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationRowView;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyRepository;
@@ -126,12 +127,13 @@ class EvaluationQueriesScopeTest {
     @Test
     void bypassRoleUsesUnfilteredProjectFinder() {
         setContext(Set.of(RoleCodes.CLIENT_HR_DIRECTOR), Set.of());
-        when(evaluations.findAllByTenantIdAndProjectId(eq(tenantId), eq(projectId), any()))
-                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+        // DB-23 — the list read binds the EvaluationRowView projection finder.
+        when(evaluations.findRowsByTenantIdAndProjectId(eq(tenantId), eq(projectId), any()))
+                .thenReturn(new PageImpl<>(List.<EvaluationRowView>of()));
 
         queries.list(projectId, null, null, null, pageable);
 
-        verify(evaluations).findAllByTenantIdAndProjectId(eq(tenantId), eq(projectId), any());
+        verify(evaluations).findRowsByTenantIdAndProjectId(eq(tenantId), eq(projectId), any());
         verify(evaluations, never())
                 .findInDepartments(any(), any(), any(), any(), any(), any(), any());
     }
@@ -141,7 +143,7 @@ class EvaluationQueriesScopeTest {
         setContext(Set.of(RoleCodes.EVALUATION_COMMITTEE_MEMBER), Set.of(d1));
         when(evaluations.findInDepartments(
                 eq(tenantId), any(), any(), any(), any(), any(), any()))
-                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+                .thenReturn(new PageImpl<>(List.<EvaluationRowView>of()));
 
         queries.list(projectId, null, null, null, pageable);
 
@@ -153,7 +155,7 @@ class EvaluationQueriesScopeTest {
                 scopeCaptor.capture(), any());
         assertThat(scopeCaptor.getValue()).containsExactly(d1);
         verify(evaluations, never())
-                .findAllByTenantIdAndProjectId(any(), any(), any());
+                .findRowsByTenantIdAndProjectId(any(), any(), any());
     }
 
     @Test
@@ -165,8 +167,8 @@ class EvaluationQueriesScopeTest {
         assertThat(result.getTotalElements()).isZero();
         verify(evaluations, never())
                 .findInDepartments(any(), any(), any(), any(), any(), any(), any());
-        verify(evaluations, never()).findAllByTenantIdAndProjectId(any(), any(), any());
-        verify(evaluations, never()).findAllByTenantId(any(), any());
+        verify(evaluations, never()).findRowsByTenantIdAndProjectId(any(), any(), any());
+        verify(evaluations, never()).findRowsByTenantId(any(), any());
     }
 
     // ================================================= SINGLE-ID READS (C-2)

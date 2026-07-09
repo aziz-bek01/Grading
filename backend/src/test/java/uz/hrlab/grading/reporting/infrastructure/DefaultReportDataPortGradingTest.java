@@ -146,13 +146,14 @@ class DefaultReportDataPortGradingTest {
                         score(nested.getId(), knowledgeFactorId, "60"),
                         score(topLevel.getId(), knowledgeFactorId, "80")));
 
-        // AVERAGED panel has materialized per-factor averages + a grade; AWAITING has none.
-        when(panelFactorAverages.findAllByTenantIdAndPanelId(tenantId, averagedPanelId))
+        // BE-19 — the port now batch-loads per-factor averages + panels for the whole
+        // page in ONE tenant-scoped query each. Only the AVERAGED panel has
+        // materialized averages; the AWAITING panel contributes no average row, so it
+        // simply does not appear in the batched result (⇒ no PanelAverageRow).
+        when(panelFactorAverages.findAllByTenantIdAndPanelIdIn(eq(tenantId), any()))
                 .thenReturn(List.of(avg(averagedPanelId, knowledgeFactorId, "61")));
-        when(panelFactorAverages.findAllByTenantIdAndPanelId(tenantId, awaitingPanelId))
-                .thenReturn(List.of());
-        when(panels.findByIdAndTenantId(averagedPanelId, tenantId))
-                .thenReturn(Optional.of(panel(averagedPanelId, EvaluationPanelStatus.APPROVED,
+        when(panels.findAllByTenantIdAndIdIn(eq(tenantId), any()))
+                .thenReturn(List.of(panel(averagedPanelId, EvaluationPanelStatus.APPROVED,
                         submitted.plusDays(1), new BigDecimal("130"), 3)));
 
         ReportDataPort.EvaluationMatrix matrix =

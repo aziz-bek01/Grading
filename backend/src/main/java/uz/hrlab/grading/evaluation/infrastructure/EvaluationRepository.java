@@ -30,6 +30,27 @@ public interface EvaluationRepository
     Page<EvaluationJpaEntity> findAllByTenantIdAndEvaluatorUserId(
             UUID tenantId, UUID evaluatorUserId, Pageable pageable);
 
+    // ── DB-23: list read projections (no methodology_basis_snapshot JSONB) ──────
+    // These mirror the entity finders above one-for-one (SAME derived WHERE, SAME
+    // pagination/ordering) but return the closed {@link EvaluationRowView}, so
+    // Spring Data restricts the SELECT to the list columns and never reads the wide
+    // JSONB on the list surface. The entity finders above stay for the report /
+    // KPI callers that legitimately load full rows. Byte-identical result rows.
+
+    Page<EvaluationRowView> findRowsByTenantIdAndProjectId(
+            UUID tenantId, UUID projectId, Pageable pageable);
+
+    Page<EvaluationRowView> findRowsByTenantIdAndProjectIdAndStatus(
+            UUID tenantId, UUID projectId, EvaluationStatus status, Pageable pageable);
+
+    Page<EvaluationRowView> findRowsByTenantIdAndPositionId(
+            UUID tenantId, UUID positionId, Pageable pageable);
+
+    Page<EvaluationRowView> findRowsByTenantIdAndEvaluatorUserId(
+            UUID tenantId, UUID evaluatorUserId, Pageable pageable);
+
+    Page<EvaluationRowView> findRowsByTenantId(UUID tenantId, Pageable pageable);
+
     /**
      * "My evaluations" inbox (self-scoped) — every sheet whose evaluator IS the
      * caller, ordered newest-updated first. Tenant + evaluator are BOTH pinned in
@@ -192,8 +213,13 @@ public interface EvaluationRepository
      * <p>Tenant scoping is enforced by the {@code :tenantId} bind parameter
      * (defense in depth — TenantContext provides the value; never trust input).
      */
+    // DB-23 — grid projection (id/positionId/methodologyVersionId/status only), so
+    // the K-sheet never selects the wide methodology_basis_snapshot JSONB. WHERE
+    // clause is UNCHANGED from the prior entity variant.
     @Query("""
-           SELECT e FROM EvaluationJpaEntity e
+           SELECT e.id AS id, e.positionId AS positionId,
+                  e.methodologyVersionId AS methodologyVersionId, e.status AS status
+           FROM EvaluationJpaEntity e
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
@@ -204,7 +230,7 @@ public interface EvaluationRepository
                    WHERE p.tenantId = :tenantId AND p.departmentId = :departmentId
              ))
            """)
-    Page<EvaluationJpaEntity> findForFactorGrid(
+    Page<EvaluationGridView> findForFactorGrid(
             @Param("tenantId") UUID tenantId,
             @Param("projectId") UUID projectId,
             @Param("methodologyVersionId") UUID methodologyVersionId,
@@ -222,7 +248,9 @@ public interface EvaluationRepository
      * layer passes a non-confining path (see {@link #findForFactorGrid}).
      */
     @Query("""
-           SELECT e FROM EvaluationJpaEntity e
+           SELECT e.id AS id, e.positionId AS positionId,
+                  e.methodologyVersionId AS methodologyVersionId, e.status AS status
+           FROM EvaluationJpaEntity e
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
@@ -234,7 +262,7 @@ public interface EvaluationRepository
                    WHERE p.tenantId = :tenantId AND p.departmentId = :departmentId
              ))
            """)
-    Page<EvaluationJpaEntity> findForFactorGridOwnOnly(
+    Page<EvaluationGridView> findForFactorGridOwnOnly(
             @Param("tenantId") UUID tenantId,
             @Param("projectId") UUID projectId,
             @Param("methodologyVersionId") UUID methodologyVersionId,
@@ -257,8 +285,22 @@ public interface EvaluationRepository
      * MUST NOT pass an empty {@code scopeDepartmentIds}; the query layer short-
      * circuits an empty scope to an empty page (fail-closed) before the DB.
      */
+    // DB-23 — explicit column list (no methodology_basis_snapshot) so the
+    // department-scoped list read binds the closed EvaluationRowView projection and
+    // never selects the wide JSONB. WHERE clause is UNCHANGED from the entity variant.
     @Query("""
-           SELECT e FROM EvaluationJpaEntity e
+           SELECT e.id AS id, e.projectId AS projectId, e.positionId AS positionId,
+                  e.methodologyVersionId AS methodologyVersionId,
+                  e.evaluatorUserId AS evaluatorUserId, e.panelId AS panelId,
+                  e.evaluatorRole AS evaluatorRole, e.status AS status,
+                  e.rawTotalScore AS rawTotalScore,
+                  e.displayedTotalScore AS displayedTotalScore,
+                  e.gradeBandId AS gradeBandId, e.assignedGradeNumber AS assignedGradeNumber,
+                  e.submittedAt AS submittedAt, e.submittedBy AS submittedBy,
+                  e.approvedAt AS approvedAt, e.approvedBy AS approvedBy,
+                  e.lockedAt AS lockedAt, e.lockedBy AS lockedBy,
+                  e.archivedAt AS archivedAt, e.archivedBy AS archivedBy
+           FROM EvaluationJpaEntity e
            WHERE e.tenantId = :tenantId
              AND (:projectId IS NULL OR e.projectId = :projectId)
              AND (:positionId IS NULL OR e.positionId = :positionId)
@@ -269,7 +311,7 @@ public interface EvaluationRepository
                    WHERE p.tenantId = :tenantId AND p.departmentId IN (:scope)
              )
            """)
-    Page<EvaluationJpaEntity> findInDepartments(
+    Page<EvaluationRowView> findInDepartments(
             @Param("tenantId") UUID tenantId,
             @Param("projectId") UUID projectId,
             @Param("positionId") UUID positionId,
@@ -293,7 +335,9 @@ public interface EvaluationRepository
      * server-side from the requested factorId.
      */
     @Query("""
-           SELECT e FROM EvaluationJpaEntity e
+           SELECT e.id AS id, e.positionId AS positionId,
+                  e.methodologyVersionId AS methodologyVersionId, e.status AS status
+           FROM EvaluationJpaEntity e
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
@@ -306,7 +350,7 @@ public interface EvaluationRepository
                      AND (:departmentId IS NULL OR p.departmentId = :departmentId)
              )
            """)
-    Page<EvaluationJpaEntity> findForFactorGridInDepartments(
+    Page<EvaluationGridView> findForFactorGridInDepartments(
             @Param("tenantId") UUID tenantId,
             @Param("projectId") UUID projectId,
             @Param("methodologyVersionId") UUID methodologyVersionId,
@@ -323,7 +367,9 @@ public interface EvaluationRepository
      * caller sees only their own rows within their subtree.
      */
     @Query("""
-           SELECT e FROM EvaluationJpaEntity e
+           SELECT e.id AS id, e.positionId AS positionId,
+                  e.methodologyVersionId AS methodologyVersionId, e.status AS status
+           FROM EvaluationJpaEntity e
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
@@ -337,7 +383,7 @@ public interface EvaluationRepository
                      AND (:departmentId IS NULL OR p.departmentId = :departmentId)
              )
            """)
-    Page<EvaluationJpaEntity> findForFactorGridInDepartmentsOwnOnly(
+    Page<EvaluationGridView> findForFactorGridInDepartmentsOwnOnly(
             @Param("tenantId") UUID tenantId,
             @Param("projectId") UUID projectId,
             @Param("methodologyVersionId") UUID methodologyVersionId,

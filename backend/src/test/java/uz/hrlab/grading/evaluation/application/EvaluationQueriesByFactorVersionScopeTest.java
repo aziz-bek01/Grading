@@ -20,7 +20,7 @@ import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.evaluation.api.EvaluationByFactorRow;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventRepository;
-import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationGridView;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorJpaEntity;
@@ -114,7 +114,7 @@ class EvaluationQueriesByFactorVersionScopeTest {
         stubFactor(factorVersionId);
         when(evaluations.findForFactorGrid(
                 eq(tenantId), eq(projectId), eq(factorVersionId), any(), any(), any()))
-                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+                .thenReturn(new PageImpl<>(List.<EvaluationGridView>of()));
 
         queries.listByFactor(projectId, factorId, null, null, pageable);
 
@@ -134,18 +134,20 @@ class EvaluationQueriesByFactorVersionScopeTest {
         // The finder is version-filtered at the DB level. The mock honours the
         // contract: ONLY same-version evaluations are returned; an evaluation of
         // otherVersionId is NOT in the result because it would be filtered out.
-        EvaluationJpaEntity sameVersionEval = new EvaluationJpaEntity(
-                UUID.randomUUID(), tenantId, projectId, positionId, factorVersionId,
-                UUID.randomUUID(), EvaluationStatus.DRAFT);
+        // DB-23 — the grid finder returns the EvaluationGridView projection.
+        UUID sameVersionEvalId = UUID.randomUUID();
+        EvaluationGridView sameVersionRow =
+                gridRow(sameVersionEvalId, positionId, factorVersionId, EvaluationStatus.DRAFT);
         when(evaluations.findForFactorGrid(
                 eq(tenantId), eq(projectId), eq(factorVersionId), any(), any(), any()))
-                .thenReturn(new PageImpl<>(List.of(sameVersionEval)));
+                .thenReturn(new PageImpl<>(List.of(sameVersionRow)));
         stubPosition();
         // PERF (P1) — scores are now batch-loaded for the whole page in ONE call.
         when(scores.findAllByTenantIdAndEvaluationIdIn(eq(tenantId), any()))
                 .thenReturn(List.of());
-        when(factors.findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(
-                tenantId, factorVersionId)).thenReturn(List.of());
+        // BE-25 — the "filled / N" denominator is a scalar COUNT now (no factor-row load).
+        when(factors.countByTenantIdAndMethodologyVersionId(tenantId, factorVersionId))
+                .thenReturn(0L);
 
         Page<EvaluationByFactorRow> result =
                 queries.listByFactor(projectId, factorId, null, null, pageable);
@@ -153,7 +155,7 @@ class EvaluationQueriesByFactorVersionScopeTest {
         // Every returned row belongs to an evaluation of the factor's own version.
         assertThat(result.getContent())
                 .extracting(EvaluationByFactorRow::evaluationId)
-                .containsExactly(sameVersionEval.getId());
+                .containsExactly(sameVersionEvalId);
         // Crucially, the finder was called with the factor's version — so the DB
         // never even returns the other-version evaluation.
         verify(evaluations).findForFactorGrid(
@@ -170,7 +172,7 @@ class EvaluationQueriesByFactorVersionScopeTest {
         // and the non-department finder are never used.
         when(evaluations.findForFactorGridInDepartmentsOwnOnly(
                 eq(tenantId), eq(projectId), eq(factorVersionId), any(), any(), any(), any(), any()))
-                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+                .thenReturn(new PageImpl<>(List.<EvaluationGridView>of()));
 
         queries.listByFactor(projectId, factorId, null, null, pageable);
 
@@ -196,6 +198,17 @@ class EvaluationQueriesByFactorVersionScopeTest {
     }
 
     // --------------------------------------------------------------- helpers
+
+    /** DB-23 — a lightweight {@link EvaluationGridView} projection stand-in. */
+    private static EvaluationGridView gridRow(UUID id, UUID positionId,
+                                              UUID methodologyVersionId, EvaluationStatus status) {
+        return new EvaluationGridView() {
+            @Override public UUID getId() { return id; }
+            @Override public UUID getPositionId() { return positionId; }
+            @Override public UUID getMethodologyVersionId() { return methodologyVersionId; }
+            @Override public EvaluationStatus getStatus() { return status; }
+        };
+    }
 
     private void stubFactor(UUID methodologyVersionId) {
         FactorJpaEntity factor = new FactorJpaEntity(

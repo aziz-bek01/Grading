@@ -22,6 +22,7 @@ import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventRepository;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationGridView;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
@@ -142,7 +143,7 @@ class EvaluationQueriesPanelBlindTest {
         when(evaluations.findForFactorGridOwnOnly(
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(),
                 eq(evaluatorA), any()))
-                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+                .thenReturn(new PageImpl<>(List.<EvaluationGridView>of()));
 
         queries.listByFactor(projectId, factorId, null, null, pageable);
 
@@ -164,7 +165,7 @@ class EvaluationQueriesPanelBlindTest {
         when(evaluations.findForFactorGridOwnOnly(
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(),
                 eq(evaluatorA), any()))
-                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+                .thenReturn(new PageImpl<>(List.<EvaluationGridView>of()));
 
         queries.listByFactor(projectId, factorId, null, null, pageable);
 
@@ -185,7 +186,7 @@ class EvaluationQueriesPanelBlindTest {
                 tenantId, projectId, versionId, evaluatorA)).thenReturn(false);
         when(evaluations.findForFactorGrid(
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(), any()))
-                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+                .thenReturn(new PageImpl<>(List.<EvaluationGridView>of()));
 
         queries.listByFactor(projectId, factorId, null, null, pageable);
 
@@ -209,7 +210,7 @@ class EvaluationQueriesPanelBlindTest {
         when(evaluations.findForFactorGridOwnOnly(
                 eq(tenantId), eq(projectId), eq(versionId), any(), any(),
                 eq(evaluatorA), any()))
-                .thenReturn(new PageImpl<>(List.<EvaluationJpaEntity>of()));
+                .thenReturn(new PageImpl<>(List.<EvaluationGridView>of()));
 
         queries.listByFactor(projectId, factorId, null, null, pageable);
 

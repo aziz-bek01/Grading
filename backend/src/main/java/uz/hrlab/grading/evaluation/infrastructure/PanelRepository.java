@@ -19,6 +19,15 @@ public interface PanelRepository
     Page<EvaluationPanelJpaEntity> findAllByTenantIdAndProjectId(
             UUID tenantId, UUID projectId, Pageable pageable);
 
+    /**
+     * BE-19 — batch by-id resolution (tenant-scoped, no N+1). Resolves a PAGE of
+     * distinct panel ids in ONE round-trip so the report panel-averages build stops
+     * issuing a {@code findByIdAndTenantId} per panel in a loop. Tenant is pinned,
+     * so a foreign id contributes no row (never the BOLA-prone single-arg findById).
+     */
+    List<EvaluationPanelJpaEntity> findAllByTenantIdAndIdIn(
+            UUID tenantId, Collection<UUID> ids);
+
     Page<EvaluationPanelJpaEntity> findAllByTenantIdAndProjectIdAndPositionId(
             UUID tenantId, UUID projectId, UUID positionId, Pageable pageable);
 

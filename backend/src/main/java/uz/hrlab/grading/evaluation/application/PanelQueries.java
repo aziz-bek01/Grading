@@ -441,10 +441,21 @@ public class PanelQueries {
         }
 
         String locale = ctx.locale() == null ? "ru-RU" : ctx.locale();
+        // BE-24 — batch every factor referenced by the averages in ONE tenant-scoped
+        // query (was one findByIdAndTenantId per average row → N+1); map by id in
+        // memory. Tenant pinned, so a foreign factor id resolves to null (same
+        // null-name outcome as the old per-row miss).
+        Set<UUID> avgFactorIds = new HashSet<>();
+        for (PanelFactorAverageJpaEntity row : avgRows) {
+            avgFactorIds.add(row.getFactorId());
+        }
+        Map<UUID, FactorJpaEntity> factorById = new HashMap<>();
+        for (FactorJpaEntity f : factors.findAllByTenantIdAndIdIn(tenant, avgFactorIds)) {
+            factorById.put(f.getId(), f);
+        }
         List<PanelResultResponse.FactorAverage> factorAverages = new ArrayList<>(avgRows.size());
         for (PanelFactorAverageJpaEntity row : avgRows) {
-            FactorJpaEntity factor = factors
-                    .findByIdAndTenantId(row.getFactorId(), tenant).orElse(null);
+            FactorJpaEntity factor = factorById.get(row.getFactorId());
             List<PanelResultResponse.PerEvaluator> contributors =
                     perFactor.getOrDefault(row.getFactorId(), List.of());
             factorAverages.add(new PanelResultResponse.FactorAverage(

@@ -11,12 +11,15 @@ import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.api.EvaluationByFactorRow;
+import uz.hrlab.grading.evaluation.api.EvaluationResponse;
 import uz.hrlab.grading.evaluation.api.MyEvaluationRow;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventRepository;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationGridView;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
+import uz.hrlab.grading.evaluation.infrastructure.EvaluationRowView;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionStatus;
@@ -125,10 +128,22 @@ public class EvaluationQueries {
         return findById(id).getMethodologyBasisSnapshot();
     }
 
+    /**
+     * Project-level evaluation list. Returns the stable {@link EvaluationResponse}
+     * wire rows directly (built from the {@link EvaluationRowView} projection, so
+     * DB-23 the wide {@code methodology_basis_snapshot} JSONB is never selected on
+     * the list surface) and each row carries the FE-27 server-resolved
+     * {@code methodology_version_label} so the client never fires a per-methodology
+     * request to label historical versions.
+     *
+     * <p>The department-scope routing and the unfiltered branch ORDER are preserved
+     * byte-for-byte from before; only the returned columns (projection) and the
+     * enrichment (version label) changed.
+     */
     @Transactional(readOnly = true)
-    public Page<EvaluationJpaEntity> list(UUID projectId, UUID positionId,
-                                          UUID evaluatorUserId, EvaluationStatus status,
-                                          Pageable pageable) {
+    public Page<EvaluationResponse> list(UUID projectId, UUID positionId,
+                                         UUID evaluatorUserId, EvaluationStatus status,
+                                         Pageable pageable) {
         TenantContext ctx = TenantContextHolder.requireActive();
         if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
             throw new PermissionDeniedException();
@@ -138,30 +153,91 @@ public class EvaluationQueries {
         // E4-S2 — department-scope filter. Present ⇒ confine evaluations to
         // positions in the assigned subtree; empty present set ⇒ fail-closed.
         Optional<Set<UUID>> scope = departmentScopeFilter.allowedDepartmentIds(ctx);
+        Page<EvaluationRowView> page;
         if (scope.isPresent()) {
             if (scope.get().isEmpty()) {
                 return Page.empty(pageable); // scoped but no assignment → no rows
             }
-            return evaluations.findInDepartments(
+            page = evaluations.findInDepartments(
                     tenant, projectId, positionId, evaluatorUserId, status,
                     scope.get(), pageable);
+        } else if (positionId != null) {
+            // Unfiltered (bypass / non-scoped) — preserve the existing branch order.
+            page = evaluations.findRowsByTenantIdAndPositionId(tenant, positionId, pageable);
+        } else if (evaluatorUserId != null) {
+            page = evaluations.findRowsByTenantIdAndEvaluatorUserId(tenant, evaluatorUserId, pageable);
+        } else if (projectId != null && status != null) {
+            page = evaluations.findRowsByTenantIdAndProjectIdAndStatus(
+                    tenant, projectId, status, pageable);
+        } else if (projectId != null) {
+            page = evaluations.findRowsByTenantIdAndProjectId(tenant, projectId, pageable);
+        } else {
+            page = evaluations.findRowsByTenantId(tenant, pageable);
         }
 
-        // Unfiltered (bypass / non-scoped) — preserve the existing branch order.
-        if (positionId != null) {
-            return evaluations.findAllByTenantIdAndPositionId(tenant, positionId, pageable);
+        // FE-27 — resolve the localized "Name (vN)" label ONCE per distinct
+        // methodology version on the page (batched versions → methodology
+        // containers), reusing the SAME lookup listMine already performs. No N+1.
+        String locale = ctx.locale() == null ? "ru-RU" : ctx.locale();
+        Map<UUID, String> labelByVersion = resolveVersionLabels(tenant, page.getContent(), locale);
+        return page.map(v -> EvaluationResponse.fromRow(
+                v, labelByVersion.get(v.getMethodologyVersionId())));
+    }
+
+    /**
+     * FE-27 helper — distinct methodology-version ids on the page → localized
+     * "Name (vN)" label. Two tenant-scoped batch queries (versions, then their
+     * methodology containers), mirroring {@code listMine}'s enrichment (no
+     * duplication of a third resolver). A foreign/stale version id resolves to no
+     * label (the client falls back to a short id, as it did before).
+     */
+    private Map<UUID, String> resolveVersionLabels(
+            UUID tenant, List<EvaluationRowView> rows, String locale) {
+        Set<UUID> versionIds = new HashSet<>();
+        for (EvaluationRowView v : rows) {
+            if (v.getMethodologyVersionId() != null) {
+                versionIds.add(v.getMethodologyVersionId());
+            }
         }
-        if (evaluatorUserId != null) {
-            return evaluations.findAllByTenantIdAndEvaluatorUserId(tenant, evaluatorUserId, pageable);
+        if (versionIds.isEmpty()) {
+            return Map.of();
         }
-        if (projectId != null && status != null) {
-            return evaluations.findAllByTenantIdAndProjectIdAndStatus(
-                    tenant, projectId, status, pageable);
+        Map<UUID, MethodologyVersionJpaEntity> versionById = new HashMap<>();
+        methodologyVersions.findAllByTenantIdAndIdIn(tenant, versionIds)
+                .forEach(ver -> versionById.put(ver.getId(), ver));
+
+        Set<UUID> methodologyIds = new HashSet<>();
+        versionById.values().forEach(ver -> {
+            if (ver.getMethodologyId() != null) {
+                methodologyIds.add(ver.getMethodologyId());
+            }
+        });
+        Map<UUID, MethodologyJpaEntity> methodologyById = new HashMap<>();
+        if (!methodologyIds.isEmpty()) {
+            methodologies.findAllByTenantIdAndIdIn(tenant, methodologyIds)
+                    .forEach(m -> methodologyById.put(m.getId(), m));
         }
-        if (projectId != null) {
-            return evaluations.findAllByTenantIdAndProjectId(tenant, projectId, pageable);
+
+        Map<UUID, String> labels = new HashMap<>();
+        for (UUID versionId : versionIds) {
+            MethodologyVersionJpaEntity ver = versionById.get(versionId);
+            if (ver == null) {
+                continue; // foreign/stale id → no label
+            }
+            MethodologyJpaEntity m = ver.getMethodologyId() == null
+                    ? null : methodologyById.get(ver.getMethodologyId());
+            String name = null;
+            if (m != null) {
+                name = pickLocalized(m.getNameI18n(), locale);
+                if (name == null || name.isBlank()) {
+                    name = m.getCode();
+                }
+            }
+            labels.put(versionId, (name == null || name.isBlank())
+                    ? "v" + ver.getVersionNumber()
+                    : name + " (v" + ver.getVersionNumber() + ")");
         }
-        return evaluations.findAllByTenantId(tenant, pageable);
+        return labels;
     }
 
     /**
@@ -278,10 +354,10 @@ public class EvaluationQueries {
         List<MyEvaluationRow> out = new java.util.ArrayList<>(mine.size());
         for (EvaluationJpaEntity e : mine) {
             PositionJpaEntity p = positionById.get(e.getPositionId());
+            // BE-25 — count the version's factors via a scalar COUNT instead of
+            // loading every factor row just to .size() them (byte-identical total).
             int total = totalsByVersion.computeIfAbsent(e.getMethodologyVersionId(),
-                    vid -> factors
-                            .findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(tenant, vid)
-                            .size());
+                    vid -> (int) factors.countByTenantIdAndMethodologyVersionId(tenant, vid));
             UUID methodologyId = methodologyIdByVersion.get(e.getMethodologyVersionId());
             MethodologyJpaEntity m = methodologyId == null ? null : methodologyById.get(methodologyId);
             out.add(new MyEvaluationRow(
@@ -377,7 +453,8 @@ public class EvaluationQueries {
 
         // E4-S2 — department-scope filter on the K-sheet grid.
         Optional<Set<UUID>> scope = departmentScopeFilter.allowedDepartmentIds(ctx);
-        Page<EvaluationJpaEntity> page;
+        // DB-23 — grid projection (no methodology_basis_snapshot JSONB on grid rows).
+        Page<EvaluationGridView> page;
         if (scope.isPresent()) {
             if (scope.get().isEmpty()) {
                 return Page.<EvaluationByFactorRow>empty(pageable); // scoped but no assignment
@@ -463,10 +540,9 @@ public class EvaluationQueries {
             EvaluationScoreJpaEntity s = scoreByEval.get(e.getId());
 
             // Cache total per methodology version (same N for all rows of one version).
+            // BE-25 — scalar COUNT instead of loading every factor row to .size() it.
             int total = totalsByVersion.computeIfAbsent(e.getMethodologyVersionId(),
-                    vid -> factors
-                            .findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(tenant, vid)
-                            .size());
+                    vid -> (int) factors.countByTenantIdAndMethodologyVersionId(tenant, vid));
 
             return new EvaluationByFactorRow(
                     e.getId(),

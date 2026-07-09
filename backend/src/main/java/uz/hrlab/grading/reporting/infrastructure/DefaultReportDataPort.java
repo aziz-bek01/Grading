@@ -236,14 +236,27 @@ public class DefaultReportDataPort implements ReportDataPort {
                 ? "" : ReportLabels.localizeStatus(version.getStatus().name(), locale);
         String methodologyName = resolveMethodologyName(tenantId, version, locale);
 
-        List<FactorRow> factorRows = new ArrayList<>();
-        for (FactorJpaEntity f :
+        List<FactorJpaEntity> factorList =
                 factors.findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(
-                        tenantId, versionId)) {
+                        tenantId, versionId);
+        // BE-26 — batch every factor's levels in ONE tenant-scoped query (was one
+        // findAllByTenantIdAndFactorId per factor → N+1). Global level_order ASC +
+        // group-by-factorId preserves each factor's per-level order byte-for-byte.
+        Set<UUID> factorIds = new LinkedHashSet<>();
+        for (FactorJpaEntity f : factorList) factorIds.add(f.getId());
+        Map<UUID, List<FactorLevelJpaEntity>> levelsByFactor = new HashMap<>();
+        if (!factorIds.isEmpty()) {
+            for (FactorLevelJpaEntity lvl :
+                    factorLevels.findAllByTenantIdAndFactorIdInOrderByLevelOrderAsc(
+                            tenantId, factorIds)) {
+                levelsByFactor.computeIfAbsent(lvl.getFactorId(), k -> new ArrayList<>()).add(lvl);
+            }
+        }
+        List<FactorRow> factorRows = new ArrayList<>();
+        for (FactorJpaEntity f : factorList) {
             List<Map<String, String>> levels = new ArrayList<>();
             for (FactorLevelJpaEntity lvl :
-                    factorLevels.findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(
-                            tenantId, f.getId())) {
+                    levelsByFactor.getOrDefault(f.getId(), List.of())) {
                 Map<String, String> lm = new LinkedHashMap<>();
                 lm.put("code", nz(lvl.getCode()));
                 lm.put("order", String.valueOf(lvl.getLevelOrder()));
@@ -521,13 +534,16 @@ public class DefaultReportDataPort implements ReportDataPort {
      * materialized {@code panel_factor_averages} rows (panel reached AVERAGED+).
      * Panels still collecting (AWAITING_EVALUATIONS, no averages) produce NO row.
      *
-     * <p>Batch, tenant-scoped, no N+1: the panel entities load via the page's
-     * panel-id-grouped tenant finder ({@code findAllByTenantIdAndProjectId} would
-     * over-fetch — we instead load each distinct panel once through the
-     * tenant-scoped {@code PanelRepository}). The per-factor averages load via
-     * {@code findAllByTenantIdAndPanelId} per distinct panel id (bounded by the
-     * page's panel count). Factor ids map to the SAME stable factor codes the
-     * evaluator rows use ({@code factorCodeById}).
+     * <p>Batch, tenant-scoped, no N+1 (BE-19): the per-factor averages for the WHOLE
+     * page of panels load via {@code findAllByTenantIdAndPanelIdIn} in ONE round-trip
+     * (grouped by panel id in memory), and the panel entities via
+     * {@code findAllByTenantIdAndIdIn} in ONE more — the SAME batch pattern
+     * {@code loadEvaluations} already uses ~15 lines above (scores/positions IdIn),
+     * replacing the previous {@code findAllByTenantIdAndPanelId + findByIdAndTenantId}
+     * per-panel pair. Factor ids map to the SAME stable factor codes the evaluator
+     * rows use ({@code factorCodeById}). Output order (panel-id insertion order) and
+     * the "no materialized average ⇒ no row" / "foreign panel ⇒ no row" semantics are
+     * byte-identical to the per-panel loop.
      */
     private List<PanelAverageRow> loadPanelAverages(
             UUID tenantId, List<EvaluationJpaEntity> pageRows,
@@ -540,15 +556,26 @@ public class DefaultReportDataPort implements ReportDataPort {
         }
         if (panelIds.isEmpty()) return List.of();
 
+        // BE-19 — ONE query for every panel's per-factor averages, grouped by panel.
+        Map<UUID, List<PanelFactorAverageJpaEntity>> avgsByPanel = new HashMap<>();
+        for (PanelFactorAverageJpaEntity a :
+                panelFactorAverages.findAllByTenantIdAndPanelIdIn(tenantId, panelIds)) {
+            avgsByPanel.computeIfAbsent(a.getPanelId(), k -> new ArrayList<>()).add(a);
+        }
+        // BE-19 — ONE query for every distinct panel entity (tenant-scoped).
+        Map<UUID, EvaluationPanelJpaEntity> panelById = new HashMap<>();
+        for (EvaluationPanelJpaEntity p : panels.findAllByTenantIdAndIdIn(tenantId, panelIds)) {
+            panelById.put(p.getId(), p);
+        }
+
         List<PanelAverageRow> out = new ArrayList<>();
         for (UUID panelId : panelIds) {
             List<PanelFactorAverageJpaEntity> avgs =
-                    panelFactorAverages.findAllByTenantIdAndPanelId(tenantId, panelId);
+                    avgsByPanel.getOrDefault(panelId, List.of());
             // No materialized averages ⇒ panel has not reached AVERAGED ⇒ NO row.
             if (avgs.isEmpty()) continue;
 
-            EvaluationPanelJpaEntity panel =
-                    panels.findByIdAndTenantId(panelId, tenantId).orElse(null);
+            EvaluationPanelJpaEntity panel = panelById.get(panelId);
             if (panel == null) continue; // tenant-scoped: a foreign id yields nothing
 
             Map<String, String> avgByCode = new LinkedHashMap<>();

@@ -223,3 +223,21 @@ databaseChangeLog:
       file: 048-panels-add-tenant-status-index.yaml
       relativeToChangelogFile: true
 
+  # DB-021 (T2 perf) — FK-LEADING indexes for CASCADE-delete children. Parent
+  # ON DELETE CASCADE fires an internal single-column probe
+  # (DELETE FROM child WHERE <fk> = $1) that a tenant-leading (tenant_id, fk, …)
+  # composite cannot serve, forcing a seq scan (worst on evaluation_scores /
+  # import_batch_rows / import_errors). Adds a plain FK-leading index per
+  # genuine CASCADE hotspot that lacked one. Purely additive.
+  - include:
+      file: 049-cascade-child-fk-leading-indexes.yaml
+      relativeToChangelogFile: true
+
+  # DB-022 (T2 perf) — org-wide approval-status dashboards filter
+  # (tenant_id, current_status) with no project_id; 021's
+  # (tenant_id, project_id, current_status) has project_id LEADING status, so it
+  # cannot serve them. Adds idx_approval_requests_tenant_status. Additive.
+  - include:
+      file: 050-approval-requests-add-tenant-status-index.yaml
+      relativeToChangelogFile: true
+

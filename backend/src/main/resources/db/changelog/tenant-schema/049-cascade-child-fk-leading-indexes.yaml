@@ -1,0 +1,178 @@
+# DB-021 (T2 performance) — FK-LEADING indexes for CASCADE-delete children.
+#
+# Problem: several child tables cover their FK to the parent ONLY with a
+# tenant-leading composite index, e.g. evaluation_scores has
+# idx_evaluation_scores_evaluation (tenant_id, evaluation_id). When the parent
+# row is deleted, PostgreSQL enforces the ON DELETE CASCADE referential action
+# with an internal, single-column probe:
+#     DELETE FROM child WHERE <fk_col> = $1
+# That probe has NO tenant_id predicate, so a (tenant_id, <fk_col>, …) index
+# cannot be used as an access path (tenant_id is the leading column) — the
+# planner falls back to a SEQUENTIAL SCAN of the whole child table for every
+# parent delete. Worst on the high-cardinality children (evaluation_scores,
+# import_batch_rows, import_errors) but the seq-scan cost is O(child table
+# size), so it hurts on any non-trivial child whose parent gets hard-deleted.
+#
+# Fix: add a plain FK-LEADING btree index on the referencing column for each
+# CASCADE child that lacked one. Grouped below by the parent whose DELETE the
+# index accelerates. Purely additive (CREATE INDEX only, no data touched); each
+# changeset has a DROP INDEX rollback. Mirrors the raw-sql CREATE INDEX style of
+# 034 / 048.
+#
+# SCOPE / non-duplication (verified against 006/008/011/015/018/020/021/024/034):
+#   * job_analysis_answers — SKIPPED: 008 replaced its FK with a COMPOSITE
+#     (tenant_id, questionnaire_id) FK, so the cascade probe is
+#     WHERE tenant_id=$1 AND questionnaire_id=$2, which idx_jaa_questionnaire
+#     (tenant_id, questionnaire_id) already serves. Already covered.
+#   * approval_steps — SKIPPED: uq_approval_steps_request_order
+#     (approval_request_id, step_order) already LEADS with the FK column.
+#   * project_workflow_stages — SKIPPED: uq_project_workflow_stages_workflow_stage
+#     (project_workflow_id, stage) already LEADS with the FK column.
+#   * project_workflows / export_jobs / reports (project_id CASCADE) — EXCLUDED:
+#     parent is projects, which is RESTRICT-guarded by evaluations /
+#     grade_structures / approval_requests (never hard-deleted in practice) and
+#     the children are low/moderate cardinality. Not a genuine hotspot; left out
+#     to avoid blanket-indexing.
+#
+# Tenant isolation / RLS: these indexes intentionally do NOT lead with tenant_id
+# because they exist SOLELY to serve PostgreSQL's internal RI cascade probe, not
+# application queries (which keep using the tenant-leading composites). The FK
+# column is a UUID pointing at an already tenant-scoped + RLS-protected parent
+# row, so the index opens no cross-tenant reachability path; the child table's
+# RLS policies (030/031/037) still filter every application access. Same
+# precedent as 018's single-column idx_grade_structures_previous_version.
+databaseChangeLog:
+
+  # -- evaluations DELETE -> cascades to evaluation_scores + calibration_events.
+  #    Both are the two cascade arms of the SAME parent delete; a parent DELETE
+  #    is only as fast as its slowest arm, so both must be FK-leading indexed.
+  #    Existing coverage was tenant-leading only:
+  #      evaluation_scores:            idx_evaluation_scores_evaluation (tenant_id, evaluation_id)
+  #      evaluation_calibration_events: idx_eval_calib_evaluation (tenant_id, evaluation_id, decided_at DESC)
+  - changeSet:
+      id: tenant-049-eval-delete-cascade-fk-indexes
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,t2-performance,db-021,cascade-fk-index
+      changes:
+        - sql:
+            sql: |
+              -- DELETE FROM evaluations ... -> DELETE FROM evaluation_scores WHERE evaluation_id = $1
+              CREATE INDEX idx_evaluation_scores_evaluation_fk ON evaluation_scores (evaluation_id);
+              -- DELETE FROM evaluations ... -> DELETE FROM evaluation_calibration_events WHERE evaluation_id = $1
+              CREATE INDEX idx_eval_calib_evaluation_fk ON evaluation_calibration_events (evaluation_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_eval_calib_evaluation_fk;
+              DROP INDEX IF EXISTS idx_evaluation_scores_evaluation_fk;
+
+  # -- factors DELETE -> cascades to factor_levels (draft methodology editing
+  #    deletes/re-creates factors frequently). Existing coverage tenant-leading
+  #    only: idx_factor_levels_factor (tenant_id, factor_id, level_order).
+  - changeSet:
+      id: tenant-049-factor-levels-delete-cascade-fk-index
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,t2-performance,db-021,cascade-fk-index
+      changes:
+        - sql:
+            sql: |
+              -- DELETE FROM factors ... -> DELETE FROM factor_levels WHERE factor_id = $1
+              CREATE INDEX idx_factor_levels_factor_fk ON factor_levels (factor_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_factor_levels_factor_fk;
+
+  # -- evaluation_panels DELETE -> cascades to panel_assignments +
+  #    panel_factor_averages (both arms of the same panel delete). Existing
+  #    coverage tenant-leading only:
+  #      panel_assignments:      idx_panel_assignments_panel (tenant_id, panel_id)
+  #      panel_factor_averages:  idx_panel_factor_averages_panel (tenant_id, panel_id)
+  - changeSet:
+      id: tenant-049-panel-delete-cascade-fk-indexes
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,t2-performance,db-021,cascade-fk-index
+      changes:
+        - sql:
+            sql: |
+              -- DELETE FROM evaluation_panels ... -> DELETE FROM panel_assignments WHERE panel_id = $1
+              CREATE INDEX idx_panel_assignments_panel_fk ON panel_assignments (panel_id);
+              -- DELETE FROM evaluation_panels ... -> DELETE FROM panel_factor_averages WHERE panel_id = $1
+              CREATE INDEX idx_panel_factor_averages_panel_fk ON panel_factor_averages (panel_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_panel_factor_averages_panel_fk;
+              DROP INDEX IF EXISTS idx_panel_assignments_panel_fk;
+
+  # -- grade_structures DELETE -> cascades to grades + grade_bands (direct), and
+  #    grades DELETE -> cascades to grade_bands (grade_id). Three FK arms, none
+  #    FK-leading indexed. Existing coverage tenant-leading only:
+  #      grades:       idx_grades_tenant_structure (tenant_id, grade_structure_id, sort_order)
+  #      grade_bands:  idx_grade_bands_structure_min (tenant_id, grade_structure_id, min_score)
+  #      grade_bands:  uq_grade_bands_grade (tenant_id, grade_id)  [grade_id is 2nd col]
+  - changeSet:
+      id: tenant-049-grade-delete-cascade-fk-indexes
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,t2-performance,db-021,cascade-fk-index
+      changes:
+        - sql:
+            sql: |
+              -- DELETE FROM grade_structures ... -> DELETE FROM grades WHERE grade_structure_id = $1
+              CREATE INDEX idx_grades_structure_fk ON grades (grade_structure_id);
+              -- DELETE FROM grade_structures ... -> DELETE FROM grade_bands WHERE grade_structure_id = $1
+              CREATE INDEX idx_grade_bands_structure_fk ON grade_bands (grade_structure_id);
+              -- DELETE FROM grades ... -> DELETE FROM grade_bands WHERE grade_id = $1
+              CREATE INDEX idx_grade_bands_grade_fk ON grade_bands (grade_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_grade_bands_grade_fk;
+              DROP INDEX IF EXISTS idx_grade_bands_structure_fk;
+              DROP INDEX IF EXISTS idx_grades_structure_fk;
+
+  # -- approval_requests DELETE -> cascades to approval_steps (already FK-leading
+  #    via uq_approval_steps_request_order) -> cascades to approval_decisions.
+  #    Only approval_decisions lacked FK-leading coverage. Existing coverage
+  #    tenant-leading only: idx_approval_decisions_tenant_step (tenant_id, approval_step_id).
+  - changeSet:
+      id: tenant-049-approval-delete-cascade-fk-index
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,t2-performance,db-021,cascade-fk-index
+      changes:
+        - sql:
+            sql: |
+              -- DELETE FROM approval_steps ... -> DELETE FROM approval_decisions WHERE approval_step_id = $1
+              CREATE INDEX idx_approval_decisions_step_fk ON approval_decisions (approval_step_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_approval_decisions_step_fk;
+
+  # -- import_batches DELETE -> cascades to import_batch_rows + import_errors,
+  #    both HIGH-cardinality (one row per spreadsheet row / per validation
+  #    error). Existing coverage tenant-leading only:
+  #      import_batch_rows: idx_import_batch_rows_batch_status (tenant_id, import_batch_id, status)
+  #      import_errors:     idx_import_errors_batch_level (tenant_id, import_batch_id, error_level)
+  - changeSet:
+      id: tenant-049-import-delete-cascade-fk-indexes
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,t2-performance,db-021,cascade-fk-index
+      changes:
+        - sql:
+            sql: |
+              -- DELETE FROM import_batches ... -> DELETE FROM import_batch_rows WHERE import_batch_id = $1
+              CREATE INDEX idx_import_batch_rows_batch_fk ON import_batch_rows (import_batch_id);
+              -- DELETE FROM import_batches ... -> DELETE FROM import_errors WHERE import_batch_id = $1
+              CREATE INDEX idx_import_errors_batch_fk ON import_errors (import_batch_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_import_errors_batch_fk;
+              DROP INDEX IF EXISTS idx_import_batch_rows_batch_fk;

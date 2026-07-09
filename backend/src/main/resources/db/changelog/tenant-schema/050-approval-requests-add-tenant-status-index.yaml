@@ -1,0 +1,38 @@
+# DB-022 (T2 performance) — org-wide approval-status dashboards.
+#
+# The "what is awaiting approval across the whole company-client" dashboards
+# filter approval_requests by (tenant_id = ? AND current_status IN (...)) with
+# NO project_id predicate. 021's idx_approval_requests_tenant_project_status is
+# (tenant_id, project_id, current_status) — project_id LEADS current_status, so
+# a tenant+status scan cannot use it as an access path (the planner would have
+# to walk every project_id group), degrading to a tenant-prefix scan.
+#
+# idx_approval_requests_tenant_status (tenant_id, current_status) serves the
+# org-wide status query directly. NOT redundant with:
+#   * idx_approval_requests_tenant_project_status (tenant_id, project_id, current_status)
+#       -> project_id leads status; unusable for the no-project query.
+#   * idx_approval_requests_tenant_entity (tenant_id, entity_type, entity_id)
+#       -> no status column.
+#   * uq_approval_requests_one_pending_per_entity (tenant_id, entity_type, entity_id)
+#       WHERE current_status = 'PENDING'
+#       -> single-status partial index keyed on entity, not a status dashboard index.
+#
+# tenant_id is the leading column, so tenant-isolation locality is preserved.
+# Additive (one index, no data change); mirrors the raw-sql CREATE INDEX style
+# of 048 on the sibling panel table. Column name confirmed as current_status
+# against 021 (approval_requests.current_status + chk_approval_requests_status).
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-050-approval-requests-add-tenant-status-index
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,t2-performance,db-022
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_approval_requests_tenant_status ON approval_requests (tenant_id, current_status);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_approval_requests_tenant_status;

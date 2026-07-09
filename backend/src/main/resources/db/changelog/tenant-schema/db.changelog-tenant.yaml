@@ -241,3 +241,29 @@ databaseChangeLog:
       file: 050-approval-requests-add-tenant-status-index.yaml
       relativeToChangelogFile: true
 
+  # DB-030 (LOW perf) — partial index for the UNASSIGNED-PENDING branch of
+  # ApprovalStepRepository.findInbox (approver_user_id IS NULL AND status='PENDING',
+  # keyed on (tenant_id, required_permission) so the required-permission IN-list is
+  # an index scan, not a heap filter). Complements — does not duplicate — 021's
+  # full idx_approval_steps_tenant_approver_status (which lacks required_permission
+  # and is not partial). Additive.
+  - include:
+      file: 051-approval-steps-unassigned-inbox-index.yaml
+      relativeToChangelogFile: true
+
+  # DB-031 (LOW perf) — (tenant_id, factor_level_id) index on evaluation_scores,
+  # backing the factor-level soft-deprecate guard
+  # (existsByTenantIdAndFactorLevelId, BE-4) and the RESTRICT FK probe. No
+  # existing evaluation_scores index contains factor_level_id. Additive.
+  - include:
+      file: 052-evaluation-scores-factor-level-index.yaml
+      relativeToChangelogFile: true
+
+  # DB-051 (LOW integrity) — add the missing project_id FKs on import_batches and
+  # file_attachments -> projects(id) ON DELETE CASCADE, mirroring the sibling
+  # artifact children export_jobs (025) / reports (028). import_batches.project_id
+  # is nullable (NULLs exempt); file_attachments.project_id is NOT NULL.
+  - include:
+      file: 053-import-attachment-project-fks.yaml
+      relativeToChangelogFile: true
+

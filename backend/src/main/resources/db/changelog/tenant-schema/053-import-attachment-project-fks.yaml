@@ -1,0 +1,77 @@
+# DB-051 (LOW integrity) — add the missing project_id FKs on import_batches and
+# file_attachments.
+#
+# Every other project-level child references projects(id): evaluations /
+# approval_requests (ON DELETE RESTRICT — core records that must block a project
+# delete) and export_jobs / reports / project_workflows (ON DELETE CASCADE —
+# disposable artifact/derived rows that follow the project out). import_batches
+# and file_attachments (024/026) carry project_id but were never given the FK, so
+# a stray/mistyped project_id could point at nothing and a project delete would
+# leave orphaned artifact metadata.
+#
+# ON DELETE CASCADE — mirrors the sibling ARTIFACT children export_jobs (025) and
+# reports (028), which the codebase already groups as the "project_id CASCADE"
+# set (see 049 header). import_batches (import staging) and file_attachments
+# (attachment metadata) are the same class of disposable, project-owned artifact:
+# if a project is ever hard-deleted they should be cleaned up with it, not block
+# it (RESTRICT is reserved for core evaluation/approval records). Not that a hard
+# project delete happens in practice — projects stay RESTRICT-guarded by
+# evaluations / grade_structures / approval_requests — but CASCADE is the
+# consistent, blueprint-correct semantics for this artifact tier.
+#
+# Safety / existing rows:
+#   * import_batches.project_id is NULLABLE (024) — NULLs are exempt from FK
+#     checking, so pre-existing null-project batches remain valid.
+#   * file_attachments.project_id is NOT NULL (026) and is set from the owning
+#     project at creation; the FK simply formalises that invariant.
+#   Shipped as NOT VALID: the constraint is enforced for all new/modified rows
+#   immediately but existing rows are NOT scanned at ADD time, so a pre-existing
+#   orphan project_id (a project hard-deleted while only these artifact rows
+#   referenced it) cannot fail this migration on a populated production schema.
+#   Referential integrity going forward is guaranteed; DevOps can later run
+#   `ALTER TABLE ... VALIDATE CONSTRAINT ...` after reconciling any orphan to also
+#   certify the historical rows. (projects stay RESTRICT-guarded by evaluations /
+#   grade_structures / approval_requests, so orphans should not exist in practice.)
+#
+# No cross-schema FK — projects lives in the SAME tenant schema (public in
+# mode-shared). PostgreSQL RI checks bypass RLS, and the identical export_jobs /
+# reports -> projects FKs already run under the same 030/031 RLS regime, so this
+# opens no cross-tenant path. Raw-sql ADD CONSTRAINT with DROP CONSTRAINT
+# rollback; fk_ naming per convention.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-053-import-batches-project-fk
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,integrity,db-051
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE import_batches
+                ADD CONSTRAINT fk_import_batches_project
+                FOREIGN KEY (project_id) REFERENCES projects(id)
+                ON DELETE CASCADE
+                NOT VALID;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE import_batches DROP CONSTRAINT IF EXISTS fk_import_batches_project;
+
+  - changeSet:
+      id: tenant-053-file-attachments-project-fk
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,integrity,db-051
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE file_attachments
+                ADD CONSTRAINT fk_file_attachments_project
+                FOREIGN KEY (project_id) REFERENCES projects(id)
+                ON DELETE CASCADE
+                NOT VALID;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE file_attachments DROP CONSTRAINT IF EXISTS fk_file_attachments_project;

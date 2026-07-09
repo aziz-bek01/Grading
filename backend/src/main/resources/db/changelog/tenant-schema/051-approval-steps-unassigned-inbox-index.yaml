@@ -1,0 +1,52 @@
+# DB-030 (LOW perf) — partial index for the UNASSIGNED-PENDING branch of the
+# approval inbox query (ApprovalStepRepository.findInbox).
+#
+# findInbox (021 table) is:
+#     WHERE s.tenantId = :tenantId
+#       AND s.status   = PENDING
+#       AND ( s.approverUserId = :userId                       -- branch A (assigned)
+#          OR (s.approverUserId IS NULL                        -- branch B (unassigned,
+#              AND s.requiredPermission IN :userPermissions))  --   permission-routed)
+#
+# Branch A is served by 021's idx_approval_steps_tenant_approver_status
+# (tenant_id, approver_user_id, status): approver_user_id = :userId + status.
+#
+# Branch B is NOT well served by that index. It can seek tenant_id + approver_
+# user_id IS NULL + status='PENDING', but required_permission is absent from the
+# index, so the IN (:userPermissions) list becomes a heap-side FILTER, and the
+# index also spans every assigned approver + every status (large). This changeset
+# adds a PARTIAL index whose predicate captures branch B's constant conditions
+# (approver_user_id IS NULL AND status='PENDING') and whose key (tenant_id,
+# required_permission) turns the IN-list into an index range scan with no filter.
+# The partial index is a small fraction of the table (only unassigned pending
+# steps), so it complements — does not duplicate — the full status index.
+#
+# Non-redundancy — the ONLY existing approval_steps indexes (021) are:
+#   * PK (id)
+#   * uq_approval_steps_request_order (approval_request_id, step_order)
+#   * idx_approval_steps_tenant_approver_status (tenant_id, approver_user_id, status)
+# None carry required_permission and none are partial-on-(approver_user_id IS NULL
+# AND status='PENDING'); this index is genuinely complementary.
+#
+# Column names / predicate verified against 021 (approver_user_id,
+# required_permission, status) and chk_approval_steps_status ('PENDING' is a valid
+# status literal). tenant_id LEADS the key, preserving RLS/tenant-isolation
+# locality; approval_steps already has FORCE RLS + tenant_isolation (030/031).
+# Additive (one index, no data change); raw-sql CREATE INDEX style of 048/050.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-051-approval-steps-unassigned-inbox-index
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,perf,db-030
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_approval_steps_unassigned_inbox
+                ON approval_steps (tenant_id, required_permission)
+                WHERE approver_user_id IS NULL AND status = 'PENDING';
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_approval_steps_unassigned_inbox;

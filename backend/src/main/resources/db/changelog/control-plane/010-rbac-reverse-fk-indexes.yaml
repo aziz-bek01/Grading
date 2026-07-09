@@ -1,0 +1,67 @@
+# DB-029 (LOW perf) — reverse-direction FK indexes on the RBAC join tables.
+#
+# role_permissions and user_roles are CONTROL-PLANE tables (public schema,
+# 002-create-users-access.yaml) — NOT tenant-schema tables. Their FK columns on
+# the NON-LEADING side of a composite/unique key have no standalone index, so a
+# parent DELETE forces a sequential scan of the join table to enforce the FK:
+#
+#   * role_permissions — PK is (role_id, permission_id). role_id is the LEADING
+#     PK column (covers fk_role_permissions_role's cascade probe), but
+#     permission_id is only the SECOND PK column, so DELETE FROM permissions
+#     fires fk_role_permissions_permission's internal probe
+#         DELETE FROM role_permissions WHERE permission_id = $1
+#     which the (role_id, permission_id) PK cannot serve (permission_id is not
+#     the leading key) -> seq scan.
+#
+#   * user_roles — PK is (id); the only composite is
+#     uq_user_roles_membership_role (user_tenant_membership_id, role_id).
+#     user_tenant_membership_id LEADS (covers fk_user_roles_membership), but
+#     role_id is only the SECOND column, so DELETE FROM roles fires
+#     fk_user_roles_role's probe
+#         DELETE FROM user_roles WHERE role_id = $1
+#     which that unique index cannot serve -> seq scan.
+#
+# Fix: one plain btree index on each uncovered FK column. Purely additive
+# (CREATE INDEX only), each with a DROP INDEX rollback. Mirrors the raw-sql
+# CREATE INDEX ... ON public.<table> style 002 already uses (idx_utm_tenant /
+# idx_utm_user).
+#
+# PLACEMENT: control-plane (context: control-plane), NOT the tenant changelog.
+# These are shared public RBAC catalogue tables — they do NOT exist in per-tenant
+# schemas, so a CREATE INDEX on them must run ONCE against public, not be
+# re-applied by TenantSchemaProvisioner. Roles/permissions are intentionally
+# global control-plane data; a plain index on a UUID FK column stores no tenant
+# business data and opens no cross-tenant path.
+databaseChangeLog:
+
+  - changeSet:
+      id: 010-role-permissions-permission-fk-index
+      author: database-architect
+      context: control-plane
+      labels: mvp2,perf,db-029,reverse-fk-index
+      changes:
+        - sql:
+            sql: |
+              -- DELETE FROM public.permissions ... -> DELETE FROM public.role_permissions WHERE permission_id = $1
+              CREATE INDEX idx_role_permissions_permission
+                ON public.role_permissions (permission_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_role_permissions_permission;
+
+  - changeSet:
+      id: 010-user-roles-role-fk-index
+      author: database-architect
+      context: control-plane
+      labels: mvp2,perf,db-029,reverse-fk-index
+      changes:
+        - sql:
+            sql: |
+              -- DELETE FROM public.roles ... -> DELETE FROM public.user_roles WHERE role_id = $1
+              CREATE INDEX idx_user_roles_role
+                ON public.user_roles (role_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_user_roles_role;

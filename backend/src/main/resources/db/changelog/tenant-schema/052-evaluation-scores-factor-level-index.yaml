@@ -1,0 +1,39 @@
+# DB-031 (LOW perf) — (tenant_id, factor_level_id) index on evaluation_scores.
+#
+# The factor-level soft-deprecate guard (BE-4,
+# EvaluationScoreRepository.existsByTenantIdAndFactorLevelId) runs
+#     SELECT 1 FROM evaluation_scores WHERE tenant_id = ? AND factor_level_id = ? LIMIT 1
+# before a level can be soft-deprecated (041). fk_evaluation_scores_factor_level
+# is ON DELETE RESTRICT (015), so the same lookup shape also backs any RI probe.
+# factor_level_id is currently UNINDEXED, so both degrade to a tenant-prefix scan
+# with a factor_level_id heap filter.
+#
+# Non-redundancy — the ONLY existing evaluation_scores indexes are:
+#   * 015 PK (id)
+#   * 015 uq_evaluation_scores_per_factor        (tenant_id, evaluation_id, factor_id)
+#   * 015 idx_evaluation_scores_evaluation       (tenant_id, evaluation_id)
+#   * 015 idx_evaluation_scores_factor           (tenant_id, factor_id)
+#   * 049 idx_evaluation_scores_evaluation_fk    (evaluation_id)
+# None contain factor_level_id anywhere, so none can serve the guard. This index
+# is genuinely new. Named to mirror 015's idx_evaluation_scores_factor.
+#
+# Column name factor_level_id verified against 015. tenant_id LEADS, preserving
+# RLS/tenant-isolation locality; evaluation_scores already has FORCE RLS +
+# tenant_isolation (030/031). Additive (one index, no data change); raw-sql
+# CREATE INDEX style of 048/049/050.
+databaseChangeLog:
+
+  - changeSet:
+      id: tenant-052-evaluation-scores-factor-level-index
+      author: database-architect
+      context: mode-shared
+      labels: mvp2,perf,db-031
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_evaluation_scores_factor_level
+                ON evaluation_scores (tenant_id, factor_level_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_evaluation_scores_factor_level;

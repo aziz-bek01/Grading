@@ -46,10 +46,7 @@ public class BulkSubmitEvaluationsUseCase {
     }
 
     public BulkOperationResponse execute(List<UUID> evaluationIds, String reason) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_EDIT);
         if (evaluationIds == null || evaluationIds.isEmpty()) {
             throw new ValidationException("evaluationIds must contain at least one id");
         }

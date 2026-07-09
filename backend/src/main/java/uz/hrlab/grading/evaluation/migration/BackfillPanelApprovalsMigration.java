@@ -1,4 +1,4 @@
-package uz.hrlab.grading.evaluation.application;
+package uz.hrlab.grading.evaluation.migration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +10,10 @@ import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.approval.domain.ApprovalRequestStatus;
 import uz.hrlab.grading.approval.infrastructure.ApprovalRequestJpaEntity;
 import uz.hrlab.grading.approval.infrastructure.ApprovalRequestRepository;
+import uz.hrlab.grading.evaluation.application.CeoPanelApprovalOpener;
+import uz.hrlab.grading.evaluation.application.ComputePanelAverageUseCase;
+import uz.hrlab.grading.evaluation.application.PanelCompletionChecker;
+import uz.hrlab.grading.evaluation.application.SubmitPanelToCeoUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;

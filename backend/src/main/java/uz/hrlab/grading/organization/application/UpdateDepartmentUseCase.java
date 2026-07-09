@@ -12,9 +12,8 @@ import uz.hrlab.grading.organization.domain.DepartmentStatus;
 import uz.hrlab.grading.organization.domain.DepartmentValidationPolicy;
 import uz.hrlab.grading.organization.infrastructure.DepartmentJpaEntity;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
+import uz.hrlab.grading.project.application.ProjectAccess;
 import uz.hrlab.grading.project.application.ProjectLockedException;
-import uz.hrlab.grading.project.domain.ProjectStatus;
-import uz.hrlab.grading.project.infrastructure.ProjectRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -25,17 +24,17 @@ import java.util.UUID;
 public class UpdateDepartmentUseCase {
 
     private final DepartmentRepository departments;
-    private final ProjectRepository projects;
+    private final ProjectAccess projectAccess;
     private final AuditService audit;
     private final AbacGate abacGate;
     private final DepartmentValidationPolicy policy = new DepartmentValidationPolicy();
 
     public UpdateDepartmentUseCase(DepartmentRepository departments,
-                                   ProjectRepository projects,
+                                   ProjectAccess projectAccess,
                                    AuditService audit,
                                    AbacGate abacGate) {
         this.departments = departments;
-        this.projects = projects;
+        this.projectAccess = projectAccess;
         this.audit = audit;
         this.abacGate = abacGate;
     }
@@ -50,12 +49,7 @@ public class UpdateDepartmentUseCase {
         if (entity.getStatus() == DepartmentStatus.ARCHIVED) {
             throw new ProjectLockedException();
         }
-        var project = projects.findByIdAndTenantId(entity.getProjectId(), ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new);
-        if (project.getStatus() == ProjectStatus.LOCKED
-                || project.getStatus() == ProjectStatus.ARCHIVED) {
-            throw new ProjectLockedException();
-        }
+        projectAccess.requireWritable(ctx, entity.getProjectId());
 
         if (cmd.parentId() != null && !cmd.parentId().equals(entity.getParentId())) {
             policy.validateParentForUpdate(

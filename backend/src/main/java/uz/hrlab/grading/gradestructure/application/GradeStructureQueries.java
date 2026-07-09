@@ -6,7 +6,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.gradestructure.domain.Grade;
 import uz.hrlab.grading.gradestructure.domain.GradeBand;
@@ -48,10 +47,7 @@ public class GradeStructureQueries {
     public Page<GradeStructureJpaEntity> findByProject(UUID projectId,
                                                        GradeStructureStatus status,
                                                        Pageable pageable) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_READ);
         if (status != null && projectId != null) {
             return structures.findAllByTenantIdAndProjectIdAndStatus(
                     ctx.tenantId(), projectId, status, pageable);
@@ -71,10 +67,7 @@ public class GradeStructureQueries {
      */
     @Transactional(readOnly = true)
     public Map<UUID, Integer> gradeCountsByStructureIds(Collection<UUID> structureIds) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_READ);
         Map<UUID, Integer> out = new HashMap<>();
         if (structureIds == null || structureIds.isEmpty()) {
             return out;
@@ -87,10 +80,7 @@ public class GradeStructureQueries {
 
     @Transactional(readOnly = true)
     public GradeStructureAggregate findDetail(UUID id) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_READ);
         GradeStructureJpaEntity s = structures.findByIdAndTenantId(id, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         List<GradeJpaEntity> gs = grades
@@ -107,10 +97,7 @@ public class GradeStructureQueries {
 
     @Transactional(readOnly = true)
     public List<GradeBandJpaEntity> bandsOf(UUID structureId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_READ);
         return bands.findAllByTenantIdAndGradeStructureIdOrderByMinScoreAsc(
                 ctx.tenantId(), structureId);
     }

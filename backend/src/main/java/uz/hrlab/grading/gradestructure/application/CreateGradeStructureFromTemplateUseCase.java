@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.gradestructure.domain.GradeBandGapPolicy;
@@ -61,10 +60,7 @@ public class CreateGradeStructureFromTemplateUseCase {
 
     @Transactional
     public GradeStructureAggregate create(CreateGradeStructureFromTemplateCommand cmd) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_EDIT);
         // BE-9: resolve from the registry built-ins OR a tenant custom template
         // (by code) via the unified catalog — deep-copy grades_snapshot → rows.
         GradeStructureTemplate template = templateCatalog.findInstantiable(

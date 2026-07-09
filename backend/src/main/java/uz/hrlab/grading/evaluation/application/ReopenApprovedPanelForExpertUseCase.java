@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.Evaluation;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
@@ -101,10 +100,7 @@ public class ReopenApprovedPanelForExpertUseCase {
 
     @Transactional
     public EvaluationPanel reopen(UUID panelId, UUID additionalEvaluatorUserId, String reason) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_PANEL_MANAGE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_PANEL_MANAGE);
         if (additionalEvaluatorUserId == null) {
             throw new ValidationException("additional_evaluator_user_id is required");
         }

@@ -31,6 +31,7 @@ import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
 import uz.hrlab.grading.organization.domain.DepartmentStatus;
 import uz.hrlab.grading.organization.domain.DepartmentType;
+import uz.hrlab.grading.organization.infrastructure.DepartmentHierarchyResolver;
 import uz.hrlab.grading.organization.infrastructure.DepartmentJpaEntity;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
@@ -90,7 +91,8 @@ class DefaultReportDataPortGradingTest {
     private final DefaultReportDataPort port = new DefaultReportDataPort(
             positions, projects, evaluations, evaluationScores, factors, factorLevels,
             methodologyVersions, methodologies, gradeStructures, grades, departments,
-            users, tenants, auditLog, actorNames, panels, panelFactorAverages);
+            users, tenants, auditLog, actorNames, panels, panelFactorAverages,
+            new DepartmentHierarchyResolver(departments));
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID projectId = UUID.randomUUID();

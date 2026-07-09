@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
@@ -133,10 +132,7 @@ public class MethodologyQueries {
      */
     @Transactional(readOnly = true)
     public List<MethodologyJpaEntity> findMyMethodologiesInProject(UUID projectId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         if (projectId == null) {
             throw new ValidationException("projectId is required");
         }
@@ -204,10 +200,7 @@ public class MethodologyQueries {
      */
     @Transactional(readOnly = true)
     public long countInProgressEvaluations(UUID methodologyId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.METHODOLOGY_EDIT);
         UUID tenant = ctx.tenantId();
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(methodologyId, tenant)
                 .orElseThrow(TenantAccessDeniedException::new);
@@ -300,11 +293,7 @@ public class MethodologyQueries {
     }
 
     private TenantContext requireReadPerm() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_READ)) {
-            throw new PermissionDeniedException();
-        }
-        return ctx;
+        return TenantContextHolder.requireActive().require(PermissionCodes.METHODOLOGY_READ);
     }
 
     /**
@@ -330,11 +319,7 @@ public class MethodologyQueries {
      * </ul>
      */
     private TenantContext requireMethodologyStructureReadPerm() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_READ)
-                && !ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
-        return ctx;
+        return TenantContextHolder.requireActive()
+                .requireAny(PermissionCodes.METHODOLOGY_READ, PermissionCodes.EVALUATION_READ);
     }
 }

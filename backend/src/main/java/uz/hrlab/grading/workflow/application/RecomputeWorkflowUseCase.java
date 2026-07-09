@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.project.infrastructure.ProjectJpaEntity;
 import uz.hrlab.grading.project.infrastructure.ProjectRepository;
@@ -40,10 +39,7 @@ public class RecomputeWorkflowUseCase {
 
     @Transactional
     public ProjectWorkflow recompute(UUID projectId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.WORKFLOW_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.WORKFLOW_READ);
         ProjectJpaEntity project = projects.findByIdAndTenantId(projectId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         abacGate.enforceCanReadProject(ctx, project.getId(), project.getStatus());

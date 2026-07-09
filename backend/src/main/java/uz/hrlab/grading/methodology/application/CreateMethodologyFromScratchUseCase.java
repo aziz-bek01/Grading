@@ -8,7 +8,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ConflictException;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.methodology.domain.MethodologyStatus;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionStatus;
@@ -52,10 +51,7 @@ public class CreateMethodologyFromScratchUseCase {
 
     @Transactional
     public MethodologyAggregate create(CreateMethodologyCommand cmd) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_CREATE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.METHODOLOGY_CREATE);
         if (cmd.projectId() != null) {
             projects.findByIdAndTenantId(cmd.projectId(), ctx.tenantId())
                     .orElseThrow(TenantAccessDeniedException::new);

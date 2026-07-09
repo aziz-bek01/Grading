@@ -3,7 +3,6 @@ package uz.hrlab.grading.reporting.application;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.reporting.domain.ReportStatus;
@@ -37,10 +36,7 @@ public class IssueReportDownloadUrlUseCase {
 
     @Transactional(readOnly = true)
     public String issue(UUID reportId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.REPORT_EXPORT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.REPORT_EXPORT);
         ReportJpaEntity report = reports.findByIdAndTenantId(reportId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
 

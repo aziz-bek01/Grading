@@ -8,7 +8,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ConflictException;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.methodology.domain.MethodologyStatus;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionStatus;
@@ -69,10 +68,7 @@ public class CreateMethodologyFromTemplateUseCase {
 
     @Transactional
     public MethodologyAggregate create(CreateMethodologyFromTemplateCommand cmd) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_CREATE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.METHODOLOGY_CREATE);
 
         // Resolve from built-in OR tenant custom via the single catalog port.
         // A cross-tenant/archived custom code throws ResourceNotFoundException (404).

@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureImmutabilityPolicy;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeBandRepository;
@@ -59,10 +58,7 @@ public class DeleteGradeStructureUseCase {
 
     @Transactional
     public void delete(UUID structureId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_EDIT);
         GradeStructureJpaEntity s = structures.findByIdAndTenantId(structureId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         if (s.getProjectId() != null) {

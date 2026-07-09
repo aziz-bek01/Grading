@@ -8,7 +8,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditJsonRedactor;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.jobprofile.domain.JobProfile;
@@ -65,10 +64,7 @@ public class RequestJobProfileChangesUseCase {
             throw new ValidationException("REASON_REQUIRED",
                     "A reason of at least " + MIN_REASON_LENGTH + " characters is required");
         }
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.JOB_PROFILE_APPROVE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.JOB_PROFILE_APPROVE);
         JobProfileJpaEntity entity = profiles.findByIdAndTenantId(id, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
 

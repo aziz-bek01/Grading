@@ -45,10 +45,7 @@ public class CancelApprovalRequestUseCase {
 
     @Transactional
     public ApprovalRequest cancel(UUID requestId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.APPROVAL_REQUEST_CANCEL)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.APPROVAL_REQUEST_CANCEL);
         ApprovalRequestJpaEntity req = requests.findByIdAndTenantId(requestId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         abacGate.enforceCanWriteInProject(ctx, req.getProjectId());

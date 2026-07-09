@@ -8,7 +8,6 @@ import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.excel.ExcelParser;
@@ -84,9 +83,7 @@ public class CommitImportBatchUseCase {
         ImportTemplateDefinition def = templates.find(batch.getTemplateCode())
                 .orElseThrow(() -> new ValidationException("UNKNOWN_TEMPLATE_CODE"));
         // Level-5 security re-check at commit time.
-        if (!ctx.hasPermission(def.requiredPermission())) {
-            throw new PermissionDeniedException();
-        }
+        ctx.require(def.requiredPermission());
         // ABAC project membership re-check — the originating UPLOAD checked at
         // upload time but the user / role grants may have changed since.
         if (batch.getProjectId() != null) {

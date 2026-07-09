@@ -5,7 +5,6 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.exports.domain.ExportJobStatus;
@@ -71,9 +70,7 @@ public class DownloadExportFileUseCase {
                 .orElseThrow(TenantAccessDeniedException::new);
 
         String permission = ExportTypePermissions.requiredPermission(job.getExportType());
-        if (!ctx.hasPermission(permission)) {
-            throw new PermissionDeniedException();
-        }
+        ctx.require(permission);
         if (job.getStatus() != ExportJobStatus.GENERATED
                 && job.getStatus() != ExportJobStatus.DOWNLOADED) {
             throw new ValidationException("EXPORT_NOT_READY: " + job.getStatus());

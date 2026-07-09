@@ -83,7 +83,7 @@ class PanelControllerWireTest {
     @MockBean ArchivePanelUseCase archiveUseCase;
     @MockBean ReopenPanelUseCase reopenUseCase;
     @MockBean ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
-    @MockBean uz.hrlab.grading.evaluation.application.PanelApprovalReconciliationRunner reconciliationRunner;
+    @MockBean uz.hrlab.grading.evaluation.migration.PanelApprovalReconciliationRunner reconciliationRunner;
     @MockBean PanelQueries queries;
     @MockBean uz.hrlab.grading.audit.application.AuditService auditService;
 
@@ -149,8 +149,8 @@ class PanelControllerWireTest {
     @Test
     void rosterSuggestionsRequiresPanelManage() throws Exception {
         mvc.perform(get("/api/v1/panels/roster-suggestions")
-                        .param("project_id", UUID.randomUUID().toString())
-                        .param("department_id", UUID.randomUUID().toString())
+                        .param("projectId", UUID.randomUUID().toString())
+                        .param("departmentId", UUID.randomUUID().toString())
                         .with(jwt().authorities(() -> "EVALUATION_READ")))
                 .andExpect(status().isForbidden());
     }
@@ -443,8 +443,8 @@ class PanelControllerWireTest {
                 new RosterSuggestionResponse(deptId, List.of(
                         new RosterSuggestionResponse.Candidate(candidate, "Ali Valiyev"))));
         mvc.perform(get("/api/v1/panels/roster-suggestions")
-                        .param("project_id", UUID.randomUUID().toString())
-                        .param("department_id", deptId.toString())
+                        .param("projectId", UUID.randomUUID().toString())
+                        .param("departmentId", deptId.toString())
                         .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.department_id").value(deptId.toString()))
@@ -458,8 +458,8 @@ class PanelControllerWireTest {
         given(queries.suggestDepartmentDirector(any(), any()))
                 .willThrow(new TenantAccessDeniedException());
         mvc.perform(get("/api/v1/panels/roster-suggestions")
-                        .param("project_id", UUID.randomUUID().toString())
-                        .param("department_id", UUID.randomUUID().toString())
+                        .param("projectId", UUID.randomUUID().toString())
+                        .param("departmentId", UUID.randomUUID().toString())
                         .with(jwt().authorities(() -> "EVALUATION_PANEL_MANAGE")))
                 .andExpect(status().isNotFound());
     }

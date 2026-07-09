@@ -10,7 +10,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
 import uz.hrlab.grading.reporting.application.template.ReportTitleResolver;
@@ -71,9 +70,7 @@ public class RequestReportUseCase {
         if (type == null || format == null || projectId == null) {
             throw new ValidationException("REPORT_PARAMS_REQUIRED");
         }
-        if (!ctx.hasPermission(PermissionCodes.REPORT_CREATE)) {
-            throw new PermissionDeniedException();
-        }
+        ctx.require(PermissionCodes.REPORT_CREATE);
 
         // Parse + validate the structured filter at REQUEST time (fail fast).
         // Throws REPORT_FILTER_MALFORMED / REPORT_FILTER_INVALID_DATE_RANGE /

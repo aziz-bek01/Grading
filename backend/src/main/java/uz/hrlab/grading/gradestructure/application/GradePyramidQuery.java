@@ -4,7 +4,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeBandJpaEntity;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeBandRepository;
@@ -60,10 +59,7 @@ public class GradePyramidQuery {
 
     @Transactional(readOnly = true)
     public List<GradePyramidRow> pyramid(UUID structureId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_READ);
         GradeStructureJpaEntity s = structures.findByIdAndTenantId(structureId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
 

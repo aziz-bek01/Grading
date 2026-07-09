@@ -19,14 +19,12 @@ import uz.hrlab.grading.common.api.PageResponse;
 import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.evaluation.application.ArchivePanelUseCase;
 import uz.hrlab.grading.evaluation.application.AssignEvaluatorUseCase;
-import uz.hrlab.grading.evaluation.application.BackfillPanelApprovalsMigration;
 import uz.hrlab.grading.evaluation.application.BulkCreatePanelsCommand;
 import uz.hrlab.grading.evaluation.application.BulkCreatePanelsUseCase;
 import uz.hrlab.grading.evaluation.application.CreatePanelCommand;
 import uz.hrlab.grading.evaluation.application.CreatePanelUseCase;
 import uz.hrlab.grading.evaluation.application.DeletePanelUseCase;
 import uz.hrlab.grading.evaluation.application.LockRosterUseCase;
-import uz.hrlab.grading.evaluation.application.PanelApprovalReconciliationRunner;
 import uz.hrlab.grading.evaluation.application.PanelQueries;
 import uz.hrlab.grading.evaluation.application.ReopenApprovedPanelForExpertUseCase;
 import uz.hrlab.grading.evaluation.application.ReopenPanelUseCase;
@@ -35,6 +33,8 @@ import uz.hrlab.grading.evaluation.application.WithdrawEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.domain.PanelAssignment;
+import uz.hrlab.grading.evaluation.migration.BackfillPanelApprovalsMigration;
+import uz.hrlab.grading.evaluation.migration.PanelApprovalReconciliationRunner;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.List;
@@ -102,7 +102,7 @@ public class PanelController {
         EvaluationPanel panel = createUseCase.create(new CreatePanelCommand(
                 req.positionId(), req.methodologyVersionId(), req.minEvaluators()));
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(PanelResponse.from(panel, null, 0, 0));
+                .body(PanelResponse.ofMutation(panel));
     }
 
     /**
@@ -145,8 +145,8 @@ public class PanelController {
     @GetMapping("/roster-suggestions")
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
     public RosterSuggestionResponse rosterSuggestions(
-            @RequestParam("project_id") UUID projectId,
-            @RequestParam("department_id") UUID departmentId) {
+            @RequestParam("projectId") UUID projectId,
+            @RequestParam("departmentId") UUID departmentId) {
         return queries.suggestDepartmentDirector(projectId, departmentId);
     }
 
@@ -169,13 +169,13 @@ public class PanelController {
     @PostMapping("/{id}/lock-roster")
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
     public PanelResponse lockRoster(@PathVariable UUID id) {
-        return PanelResponse.from(lockRosterUseCase.lockRoster(id), null, 0, 0);
+        return PanelResponse.ofMutation(lockRosterUseCase.lockRoster(id));
     }
 
     @PostMapping("/{id}/submit")
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
     public PanelResponse submit(@PathVariable UUID id) {
-        return PanelResponse.from(submitUseCase.submit(id), null, 0, 0);
+        return PanelResponse.ofMutation(submitUseCase.submit(id));
     }
 
     /**
@@ -204,7 +204,7 @@ public class PanelController {
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
     public PanelResponse archive(@PathVariable UUID id,
                                  @Valid @RequestBody ReasonRequest req) {
-        return PanelResponse.from(archiveUseCase.archive(id, req.reason()), null, 0, 0);
+        return PanelResponse.ofMutation(archiveUseCase.archive(id, req.reason()));
     }
 
     /**
@@ -216,7 +216,7 @@ public class PanelController {
     @PostMapping("/{id}/reopen")
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
     public PanelResponse reopen(@PathVariable UUID id) {
-        return PanelResponse.from(reopenUseCase.reopen(id), null, 0, 0);
+        return PanelResponse.ofMutation(reopenUseCase.reopen(id));
     }
 
     /**
@@ -234,9 +234,8 @@ public class PanelController {
     @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
     public PanelResponse reopenForExpert(@PathVariable UUID id,
                                          @Valid @RequestBody ReopenForExpertRequest req) {
-        return PanelResponse.from(
-                reopenForExpertUseCase.reopen(id, req.additionalEvaluatorUserId(), req.reason()),
-                null, 0, 0);
+        return PanelResponse.ofMutation(
+                reopenForExpertUseCase.reopen(id, req.additionalEvaluatorUserId(), req.reason()));
     }
 
     /**

@@ -5,7 +5,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatus;
 import uz.hrlab.grading.integration.imports.domain.ImportErrorLevel;
@@ -73,14 +72,11 @@ public class ImportBatchQueries {
     }
 
     private TenantContext requireRead() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.IMPORT_READ)
-                && !ctx.hasPermission(PermissionCodes.ORG_IMPORT)
-                && !ctx.hasPermission(PermissionCodes.POSITION_IMPORT)
-                && !ctx.hasPermission(PermissionCodes.METHODOLOGY_IMPORT)
-                && !ctx.hasPermission(PermissionCodes.GRADE_IMPORT)) {
-            throw new PermissionDeniedException();
-        }
-        return ctx;
+        return TenantContextHolder.requireActive().requireAny(
+                PermissionCodes.IMPORT_READ,
+                PermissionCodes.ORG_IMPORT,
+                PermissionCodes.POSITION_IMPORT,
+                PermissionCodes.METHODOLOGY_IMPORT,
+                PermissionCodes.GRADE_IMPORT);
     }
 }

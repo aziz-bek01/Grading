@@ -6,7 +6,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.comment.domain.Comment;
 import uz.hrlab.grading.comment.domain.CommentEntityType;
 import uz.hrlab.grading.comment.infrastructure.CommentRepository;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -26,10 +25,7 @@ public class ListCommentsByEntityQuery {
 
     @Transactional(readOnly = true)
     public List<Comment> list(CommentEntityType entityType, UUID entityId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.COMMENT_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.COMMENT_READ);
         return comments
                 .findAllByTenantIdAndEntityTypeAndEntityIdAndDeletedAtIsNullOrderByCreatedAtAsc(
                         ctx.tenantId(), entityType, entityId)

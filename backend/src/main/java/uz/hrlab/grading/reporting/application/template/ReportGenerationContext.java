@@ -2,6 +2,7 @@ package uz.hrlab.grading.reporting.application.template;
 
 import uz.hrlab.grading.reporting.domain.ReportFormat;
 import uz.hrlab.grading.reporting.domain.ReportType;
+import uz.hrlab.grading.tenancy.domain.Locale;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -32,7 +33,7 @@ public final class ReportGenerationContext {
         this.projectId = b.projectId;
         this.reportType = b.reportType;
         this.format = b.format;
-        this.locale = b.locale == null ? "ru-RU" : b.locale;
+        this.locale = b.locale == null ? Locale.RU_RU : b.locale;
         this.filterParams = b.filterParams;
         this.requestedBy = b.requestedBy;
         this.requestedAt = b.requestedAt;

@@ -4,7 +4,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.project.infrastructure.ProjectJpaEntity;
 import uz.hrlab.grading.project.infrastructure.ProjectRepository;
@@ -47,10 +46,7 @@ public class GetProjectWorkflowQuery {
 
     @Transactional
     public ProjectWorkflow get(UUID projectId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.WORKFLOW_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.WORKFLOW_READ);
         ProjectJpaEntity project = projects.findByIdAndTenantId(projectId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         abacGate.enforceCanReadProject(ctx, project.getId(), project.getStatus());
@@ -61,10 +57,7 @@ public class GetProjectWorkflowQuery {
 
     @Transactional(readOnly = true)
     public ProjectWorkflow getCached(UUID projectId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.WORKFLOW_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.WORKFLOW_READ);
         ProjectJpaEntity project = projects.findByIdAndTenantId(projectId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         abacGate.enforceCanReadProject(ctx, project.getId(), project.getStatus());

@@ -64,10 +64,7 @@ public class BulkUpsertEvaluationScoreUseCase {
      */
     public BulkOperationResponse execute(UUID factorId, UUID factorLevelId,
                                          List<UUID> evaluationIds, String reason) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_EDIT);
         if (factorId == null || factorLevelId == null) {
             throw new ValidationException("factorId and factorLevelId are required");
         }

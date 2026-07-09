@@ -105,10 +105,7 @@ public class BulkCreatePanelsUseCase {
     }
 
     public BulkCreatePanelsResponse execute(BulkCreatePanelsCommand command) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_PANEL_MANAGE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_PANEL_MANAGE);
         if (command == null || command.methodologyVersionId() == null) {
             throw new ValidationException("methodology_version_id is required");
         }

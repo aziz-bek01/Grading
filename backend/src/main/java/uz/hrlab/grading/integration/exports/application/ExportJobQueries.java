@@ -5,7 +5,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.integration.exports.domain.ExportJobStatus;
 import uz.hrlab.grading.integration.exports.domain.ExportType;
@@ -46,13 +45,10 @@ public class ExportJobQueries {
     }
 
     private TenantContext requireRead() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EXPORT_READ)
-                && !ctx.hasPermission(PermissionCodes.EXPORT_REQUEST)
-                && !ctx.hasPermission(PermissionCodes.REPORT_EXPORT)
-                && !ctx.hasPermission(PermissionCodes.SALARY_EXPORT)) {
-            throw new PermissionDeniedException();
-        }
-        return ctx;
+        return TenantContextHolder.requireActive().requireAny(
+                PermissionCodes.EXPORT_READ,
+                PermissionCodes.EXPORT_REQUEST,
+                PermissionCodes.REPORT_EXPORT,
+                PermissionCodes.SALARY_EXPORT);
     }
 }

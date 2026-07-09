@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
@@ -97,10 +96,7 @@ public class ReopenPanelUseCase {
      */
     @Transactional
     public EvaluationPanel reopen(UUID panelId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_PANEL_MANAGE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_PANEL_MANAGE);
         EvaluationPanelJpaEntity panel = loader.requirePanel(panelId, ctx.tenantId());
         PositionJpaEntity position = loader.requirePosition(panel, ctx.tenantId());
         abacGate.enforceCanWriteInDepartment(

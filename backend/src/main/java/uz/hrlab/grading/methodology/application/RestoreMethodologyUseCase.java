@@ -8,7 +8,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditJsonRedactor;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.methodology.domain.Methodology;
@@ -53,9 +52,7 @@ public class RestoreMethodologyUseCase {
         }
         TenantContext ctx = TenantContextHolder.requireActive();
         // Defense-in-depth RBAC re-check (matches Archive/Approve/Lock/Create).
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        ctx.require(PermissionCodes.METHODOLOGY_EDIT);
         // BOLA: load by id + tenant so a cross-tenant id surfaces as 404.
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(id, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);

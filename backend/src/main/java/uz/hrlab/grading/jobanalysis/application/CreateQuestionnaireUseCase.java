@@ -15,9 +15,7 @@ import uz.hrlab.grading.jobanalysis.infrastructure.JobAnalysisQuestionnaireJpaEn
 import uz.hrlab.grading.jobanalysis.infrastructure.JobAnalysisQuestionnaireRepository;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
-import uz.hrlab.grading.project.application.ProjectLockedException;
-import uz.hrlab.grading.project.domain.ProjectStatus;
-import uz.hrlab.grading.project.infrastructure.ProjectRepository;
+import uz.hrlab.grading.project.application.ProjectAccess;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -35,20 +33,20 @@ public class CreateQuestionnaireUseCase {
 
     private final JobAnalysisQuestionnaireRepository questionnaires;
     private final PositionRepository positions;
-    private final ProjectRepository projects;
+    private final ProjectAccess projectAccess;
     private final AuditService audit;
     private final AbacGate abacGate;
     private final QuestionnaireAuditSnapshot snapshot;
 
     public CreateQuestionnaireUseCase(JobAnalysisQuestionnaireRepository questionnaires,
                                       PositionRepository positions,
-                                      ProjectRepository projects,
+                                      ProjectAccess projectAccess,
                                       AuditService audit,
                                       AbacGate abacGate,
                                       QuestionnaireAuditSnapshot snapshot) {
         this.questionnaires = questionnaires;
         this.positions = positions;
-        this.projects = projects;
+        this.projectAccess = projectAccess;
         this.audit = audit;
         this.abacGate = abacGate;
         this.snapshot = snapshot;
@@ -66,12 +64,7 @@ public class CreateQuestionnaireUseCase {
         abacGate.enforceCanWriteInDepartment(ctx, position.getProjectId(),
                 position.getDepartmentId());
 
-        var project = projects.findByIdAndTenantId(position.getProjectId(), ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new);
-        if (project.getStatus() == ProjectStatus.LOCKED
-                || project.getStatus() == ProjectStatus.ARCHIVED) {
-            throw new ProjectLockedException();
-        }
+        projectAccess.requireWritable(ctx, position.getProjectId());
 
         List<JobAnalysisQuestion> questions;
         try {

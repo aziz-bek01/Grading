@@ -8,7 +8,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditJsonRedactor;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.methodology.domain.MethodologyVersion;
@@ -59,9 +58,7 @@ public class ArchiveMethodologyVersionUseCase {
         }
         TenantContext ctx = TenantContextHolder.requireActive();
         // F-402: defense-in-depth RBAC re-check (matches Approve/Lock/Create pattern).
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        ctx.require(PermissionCodes.METHODOLOGY_EDIT);
         MethodologyVersionJpaEntity v = versions.findByIdAndTenantId(versionId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(v.getMethodologyId(), ctx.tenantId())

@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.gradestructure.domain.GradeBandGapPolicy;
@@ -46,10 +45,7 @@ public class CreateGradeStructureFromScratchUseCase {
 
     @Transactional
     public GradeStructureAggregate create(CreateGradeStructureCommand cmd) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_EDIT);
         if (cmd.projectId() != null) {
             projects.findByIdAndTenantId(cmd.projectId(), ctx.tenantId())
                     .orElseThrow(TenantAccessDeniedException::new);

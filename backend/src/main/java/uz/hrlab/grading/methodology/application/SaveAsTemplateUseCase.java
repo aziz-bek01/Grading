@@ -8,7 +8,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ConflictException;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.methodology.domain.MethodologyTemplateStatus;
 import uz.hrlab.grading.methodology.infrastructure.CustomMethodologyTemplateRepository;
@@ -100,10 +99,7 @@ public class SaveAsTemplateUseCase {
 
     @Transactional
     public UUID saveAsTemplate(SaveAsTemplateCommand cmd) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_CREATE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.METHODOLOGY_CREATE);
 
         // Reserved-vs-builtin namespace collision → 409 (a custom code may not
         // shadow a built-in registry code).

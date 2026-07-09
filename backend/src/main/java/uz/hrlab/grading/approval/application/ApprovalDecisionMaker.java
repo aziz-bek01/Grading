@@ -84,10 +84,7 @@ public class ApprovalDecisionMaker {
 
     private ApprovalRequest decide(UUID requestId, UUID stepId,
                                    ApprovalDecisionType decisionType, String reasonOrNotes) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.APPROVAL_REQUEST_DECIDE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.APPROVAL_REQUEST_DECIDE);
         ApprovalRequestJpaEntity req = requests.findByIdAndTenantId(requestId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         abacGate.enforceCanWriteInProject(ctx, req.getProjectId());
@@ -114,8 +111,8 @@ public class ApprovalDecisionMaker {
             if (!step.getApproverUserId().equals(ctx.userId())) {
                 throw new PermissionDeniedException();
             }
-        } else if (!ctx.hasPermission(step.getRequiredPermission())) {
-            throw new PermissionDeniedException();
+        } else {
+            ctx.require(step.getRequiredPermission());
         }
 
         // Step status update

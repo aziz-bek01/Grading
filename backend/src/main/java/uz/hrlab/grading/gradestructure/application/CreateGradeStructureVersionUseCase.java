@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.gradestructure.domain.GradeStructure;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureStatus;
@@ -60,10 +59,7 @@ public class CreateGradeStructureVersionUseCase {
 
     @Transactional
     public GradeStructure createNewVersion(UUID sourceId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_EDIT);
         GradeStructureJpaEntity source = structures.findByIdAndTenantId(sourceId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         if (source.getProjectId() != null) {

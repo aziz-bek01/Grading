@@ -7,6 +7,7 @@ import uz.hrlab.grading.access.infrastructure.UserJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserRepository;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogJpaEntity;
 import uz.hrlab.grading.audit.infrastructure.SystemAuditLogRepository;
+import uz.hrlab.grading.common.i18n.I18nText;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity;
@@ -30,6 +31,7 @@ import uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyRepository;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
+import uz.hrlab.grading.organization.infrastructure.DepartmentHierarchyResolver;
 import uz.hrlab.grading.organization.infrastructure.DepartmentJpaEntity;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
@@ -104,6 +106,7 @@ public class DefaultReportDataPort implements ReportDataPort {
     private final ActorNameResolver actorNames;
     private final PanelRepository panels;
     private final PanelFactorAverageRepository panelFactorAverages;
+    private final DepartmentHierarchyResolver departmentHierarchy;
 
     public DefaultReportDataPort(PositionRepository positions,
                                  ProjectRepository projects,
@@ -121,7 +124,8 @@ public class DefaultReportDataPort implements ReportDataPort {
                                  SystemAuditLogRepository auditLog,
                                  ActorNameResolver actorNames,
                                  PanelRepository panels,
-                                 PanelFactorAverageRepository panelFactorAverages) {
+                                 PanelFactorAverageRepository panelFactorAverages,
+                                 DepartmentHierarchyResolver departmentHierarchy) {
         this.positions = positions;
         this.projects = projects;
         this.evaluations = evaluations;
@@ -139,6 +143,7 @@ public class DefaultReportDataPort implements ReportDataPort {
         this.actorNames = actorNames;
         this.panels = panels;
         this.panelFactorAverages = panelFactorAverages;
+        this.departmentHierarchy = departmentHierarchy;
     }
 
     @Override
@@ -261,12 +266,12 @@ public class DefaultReportDataPort implements ReportDataPort {
                 lm.put("code", nz(lvl.getCode()));
                 lm.put("order", String.valueOf(lvl.getLevelOrder()));
                 lm.put("points", lvl.getPoints() == null ? "" : lvl.getPoints().toPlainString());
-                lm.put("label", i18n(lvl.getLabelI18n(), locale, nz(lvl.getCode())));
+                lm.put("label", I18nText.pick(lvl.getLabelI18n(), locale, nz(lvl.getCode())));
                 levels.add(lm);
             }
             factorRows.add(new FactorRow(
                     nz(f.getCode()),
-                    i18n(f.getNameI18n(), locale, nz(f.getCode())),
+                    I18nText.pick(f.getNameI18n(), locale, nz(f.getCode())),
                     f.getWeight() == null ? 0 : f.getWeight().intValue(),
                     f.getMaxPoints() == null ? 0 : f.getMaxPoints().intValue(),
                     scoringMode,
@@ -282,19 +287,12 @@ public class DefaultReportDataPort implements ReportDataPort {
         MethodologyJpaEntity m = methodologies
                 .findByIdAndTenantId(version.getMethodologyId(), tenantId).orElse(null);
         if (m == null) return fallback;
-        String name = i18n(m.getNameI18n(), locale, nz(m.getCode()));
+        String name = I18nText.pick(m.getNameI18n(), locale, nz(m.getCode()));
         return name + " (v" + version.getVersionNumber() + ")";
     }
 
     private static String gradeName(GradeJpaEntity g, String locale) {
-        return i18n(g.getNameI18n(), locale, "G" + g.getGradeNumber());
-    }
-
-    private static String i18n(Map<String, String> map, String locale, String fallback) {
-        if (map == null || map.isEmpty()) return fallback;
-        if (locale != null && map.containsKey(locale)) return map.get(locale);
-        return map.getOrDefault(ReportLabels.DEFAULT_LOCALE,
-                map.values().stream().findFirst().orElse(fallback));
+        return I18nText.pick(g.getNameI18n(), locale, "G" + g.getGradeNumber());
     }
 
     @Override
@@ -378,7 +376,7 @@ public class DefaultReportDataPort implements ReportDataPort {
                 if (!factorCodeById.containsKey(f.getId())) {
                     factorCodeById.put(f.getId(), f.getCode());
                     factorByCode.putIfAbsent(f.getCode(),
-                            new FactorRef(f.getCode(), i18n(f.getNameI18n(), locale, nz(f.getCode()))));
+                            new FactorRef(f.getCode(), I18nText.pick(f.getNameI18n(), locale, nz(f.getCode()))));
                 }
             }
             MethodologyVersionJpaEntity version =
@@ -420,10 +418,11 @@ public class DefaultReportDataPort implements ReportDataPort {
             }
         }
         // Department tree (Departament = top-level ancestor; Bo'limi = own leaf dept
-        // when it has a parent). Walk parentId up to the root via a batch-load that
-        // ALSO fetches every ancestor in the chain — one extra tenant-scoped
+        // when it has a parent). Shared with the panel list surface via
+        // DepartmentHierarchyResolver (BE-032): one tenant-scoped
         // findAllByTenantIdAndIdIn per level (org trees are shallow), no per-row N+1.
-        Map<UUID, DepartmentJpaEntity> deptById = loadDepartmentClosure(tenantId, departmentIds);
+        Map<UUID, DepartmentJpaEntity> deptById =
+                departmentHierarchy.loadClosure(tenantId, departmentIds);
         Map<UUID, String> deptNames = localizeDepartments(deptById, locale);
 
         // Grade names — resolve once for the project (active grade structure).
@@ -475,13 +474,14 @@ public class DefaultReportDataPort implements ReportDataPort {
 
             // Departament (top-level ancestor) + Bo'limi (own leaf dept IF nested).
             UUID leafDeptId = p == null ? null : p.getDepartmentId();
-            UUID rootDeptId = topLevelAncestor(leafDeptId, deptById);
-            String topDeptName = rootDeptId == null ? "" : deptNames.getOrDefault(rootDeptId, "");
+            DepartmentHierarchyResolver.DepartmentSplit split =
+                    departmentHierarchy.split(leafDeptId, deptById);
+            String topDeptName = split.topLevelId() == null
+                    ? "" : deptNames.getOrDefault(split.topLevelId(), "");
             // "added if exists, blank if not": a division only when the leaf differs
             // from the top-level ancestor (i.e. the position's department has a parent).
-            String divisionName = (leafDeptId != null && rootDeptId != null
-                    && !leafDeptId.equals(rootDeptId))
-                    ? deptNames.getOrDefault(leafDeptId, "") : "";
+            String divisionName = split.divisionId() == null
+                    ? "" : deptNames.getOrDefault(split.divisionId(), "");
 
             Integer gradeNum = ev.getAssignedGradeNumber();
             String gradeCode = gradeNum == null ? "" : "G" + gradeNum;
@@ -783,40 +783,9 @@ public class DefaultReportDataPort implements ReportDataPort {
         if (tenantId == null || ids == null || ids.isEmpty()) return Map.of();
         Map<UUID, String> names = new HashMap<>();
         for (DepartmentJpaEntity d : departments.findAllByTenantIdAndIdIn(tenantId, ids)) {
-            names.put(d.getId(), i18n(d.getNameI18n(), locale, nz(d.getCode())));
+            names.put(d.getId(), I18nText.pick(d.getNameI18n(), locale, nz(d.getCode())));
         }
         return names;
-    }
-
-    /**
-     * Load the department CLOSURE: the leaf departments plus every ancestor up to
-     * the root, so the grading XLSX can split "Departament" (top-level ancestor)
-     * from "Bo'limi" (own leaf, when nested). Batch + tenant-scoped, no per-row
-     * N+1: each level resolves the as-yet-unseen parent ids in ONE
-     * {@code findAllByTenantIdAndIdIn} call; org trees are shallow, so the loop
-     * runs a handful of times at most. A {@code visited} guard makes a corrupt
-     * cyclic {@code parent_id} chain terminate instead of looping forever.
-     */
-    private Map<UUID, DepartmentJpaEntity> loadDepartmentClosure(UUID tenantId, Set<UUID> leafIds) {
-        if (tenantId == null || leafIds == null || leafIds.isEmpty()) return Map.of();
-        Map<UUID, DepartmentJpaEntity> byId = new HashMap<>();
-        Set<UUID> frontier = new LinkedHashSet<>(leafIds);
-        int safety = 0;
-        while (!frontier.isEmpty() && safety++ < 64) {
-            List<DepartmentJpaEntity> loaded = departments.findAllByTenantIdAndIdIn(tenantId, frontier);
-            Set<UUID> nextParents = new LinkedHashSet<>();
-            for (DepartmentJpaEntity d : loaded) {
-                byId.put(d.getId(), d);
-            }
-            for (DepartmentJpaEntity d : loaded) {
-                UUID parent = d.getParentId();
-                if (parent != null && !byId.containsKey(parent) && !nextParents.contains(parent)) {
-                    nextParents.add(parent);
-                }
-            }
-            frontier = nextParents;
-        }
-        return byId;
     }
 
     /** Localize every loaded department (closure) id → localized name. */
@@ -824,30 +793,9 @@ public class DefaultReportDataPort implements ReportDataPort {
             Map<UUID, DepartmentJpaEntity> byId, String locale) {
         Map<UUID, String> names = new HashMap<>(byId.size());
         for (DepartmentJpaEntity d : byId.values()) {
-            names.put(d.getId(), i18n(d.getNameI18n(), locale, nz(d.getCode())));
+            names.put(d.getId(), I18nText.pick(d.getNameI18n(), locale, nz(d.getCode())));
         }
         return names;
-    }
-
-    /**
-     * Walk {@code parentId} up from {@code leafId} to the root within the loaded
-     * closure. Returns the top-level ancestor id (== {@code leafId} when the leaf
-     * has no parent). Null leaf or an ancestor missing from the closure (cross-tenant
-     * / pruned) stops the walk at the last resolved node. A {@code visited} guard
-     * makes a cyclic chain terminate.
-     */
-    private static UUID topLevelAncestor(UUID leafId, Map<UUID, DepartmentJpaEntity> byId) {
-        if (leafId == null) return null;
-        UUID current = leafId;
-        Set<UUID> visited = new LinkedHashSet<>();
-        while (current != null && visited.add(current)) {
-            DepartmentJpaEntity d = byId.get(current);
-            if (d == null) return current; // last resolved node is the best-known root
-            UUID parent = d.getParentId();
-            if (parent == null) return current;
-            current = parent;
-        }
-        return current;
     }
 
     private static final DateTimeFormatter UTC_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -894,11 +842,11 @@ public class DefaultReportDataPort implements ReportDataPort {
     }
 
     private static String titleFor(PositionJpaEntity p, String locale) {
-        return i18n(p.getTitleI18n(), locale, p.getCode());
+        return I18nText.pick(p.getTitleI18n(), locale, p.getCode());
     }
 
     private static String titleForProject(ProjectJpaEntity p, String locale) {
-        return i18n(p.getNameI18n(), locale, p.getCode());
+        return I18nText.pick(p.getNameI18n(), locale, p.getCode());
     }
 
     private static String nz(String s) { return s == null ? "" : s; }

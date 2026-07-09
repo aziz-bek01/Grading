@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.gradestructure.infrastructure.CustomGradeTemplateRepository;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeTemplateJpaEntity;
@@ -45,10 +44,7 @@ public class UpdateGradeTemplateUseCase {
     @Transactional
     public UUID rename(UUID templateId, Map<String, String> nameI18n,
                        Map<String, String> descriptionI18n) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_EDIT);
         GradeTemplateJpaEntity entity = customTemplates
                 .findByIdAndTenantId(templateId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);

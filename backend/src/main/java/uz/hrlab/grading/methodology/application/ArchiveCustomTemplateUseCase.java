@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.methodology.domain.MethodologyTemplateStatus;
 import uz.hrlab.grading.methodology.infrastructure.CustomMethodologyTemplateRepository;
@@ -44,10 +43,7 @@ public class ArchiveCustomTemplateUseCase {
 
     @Transactional
     public void archive(UUID templateId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.METHODOLOGY_EDIT);
         MethodologyTemplateJpaEntity entity = customTemplates
                 .findByIdAndTenantId(templateId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);

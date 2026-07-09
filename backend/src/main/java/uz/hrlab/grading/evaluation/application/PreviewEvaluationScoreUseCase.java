@@ -3,7 +3,6 @@ package uz.hrlab.grading.evaluation.application;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.EvaluationScoringEngine;
 import uz.hrlab.grading.evaluation.domain.ScoringInputs;
@@ -39,10 +38,7 @@ public class PreviewEvaluationScoreUseCase {
 
     @Transactional(readOnly = true)
     public ScoringResult preview(PreviewScoreCommand cmd) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         if (cmd == null || cmd.methodologyVersionId() == null) {
             throw new ValidationException("methodologyVersionId is required");
         }

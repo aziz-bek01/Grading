@@ -56,10 +56,7 @@ public class BulkCreateEvaluationsUseCase {
     }
 
     public BulkCreateEvaluationsResponse execute(List<CreateEvaluationCommand> rows) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_EDIT);
         if (rows == null || rows.isEmpty()) {
             throw new ValidationException("items must contain at least one row");
         }

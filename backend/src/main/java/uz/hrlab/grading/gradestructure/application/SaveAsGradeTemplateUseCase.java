@@ -8,7 +8,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ConflictException;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.gradestructure.domain.GradeTemplateStatus;
 import uz.hrlab.grading.gradestructure.infrastructure.CustomGradeTemplateRepository;
@@ -74,10 +73,7 @@ public class SaveAsGradeTemplateUseCase {
     public UUID saveAsTemplate(UUID structureId, String code,
                                Map<String, String> nameI18n,
                                Map<String, String> descriptionI18n) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.GRADE_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_EDIT);
 
         // Reserved-vs-builtin namespace collision → 409 (a custom code may not
         // shadow a built-in registry code).

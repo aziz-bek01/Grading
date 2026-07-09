@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.methodology.domain.FactorLevel;
@@ -278,12 +277,8 @@ public class FactorLevelService {
 
     /** Coarse gate (BE-2): METHODOLOGY_EDIT OR METHODOLOGY_EDIT_APPROVED. */
     private TenantContext requireEditPerm() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT)
-                && !ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT_APPROVED)) {
-            throw new PermissionDeniedException();
-        }
-        return ctx;
+        return TenantContextHolder.requireActive().requireAny(
+                PermissionCodes.METHODOLOGY_EDIT, PermissionCodes.METHODOLOGY_EDIT_APPROVED);
     }
 
     private Ctx loadAndGate(UUID factorId, TenantContext ctx) {

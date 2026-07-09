@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.methodology.domain.MethodologyVersion;
@@ -111,10 +110,6 @@ public class UpdateMethodologyVersionMetadataUseCase {
     }
 
     private TenantContext requireEditPerm() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.METHODOLOGY_EDIT)) {
-            throw new PermissionDeniedException();
-        }
-        return ctx;
+        return TenantContextHolder.requireActive().require(PermissionCodes.METHODOLOGY_EDIT);
     }
 }

@@ -8,7 +8,6 @@ import uz.hrlab.grading.approval.infrastructure.ApprovalRequestJpaEntity;
 import uz.hrlab.grading.approval.infrastructure.ApprovalRequestRepository;
 import uz.hrlab.grading.approval.infrastructure.ApprovalStepJpaEntity;
 import uz.hrlab.grading.approval.infrastructure.ApprovalStepRepository;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -38,10 +37,7 @@ public class ListMyPendingApprovalsQuery {
 
     @Transactional(readOnly = true)
     public List<ApprovalRequest> list() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.APPROVAL_REQUEST_DECIDE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.APPROVAL_REQUEST_DECIDE);
         List<String> perms = ctx.permissions() == null
                 ? List.of()
                 : new ArrayList<>(ctx.permissions());

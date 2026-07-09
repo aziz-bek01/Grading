@@ -26,6 +26,7 @@ import uz.hrlab.grading.evaluation.infrastructure.PanelAssignmentRepository;
 import uz.hrlab.grading.evaluation.infrastructure.PanelFactorAverageRepository;
 import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
+import uz.hrlab.grading.organization.infrastructure.DepartmentHierarchyResolver;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
@@ -102,7 +103,7 @@ class PanelQueriesListScopeTest {
         // position / evaluation list queries; no second filtering approach.
         queries = new PanelQueries(panels, assignments, averages, evaluations, scores,
                 positions, factors, actorNames, abacGate, departments, departmentScopes,
-                new DepartmentScopeFilter());
+                new DepartmentScopeFilter(), new DepartmentHierarchyResolver(departments));
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         positionId = UUID.randomUUID();

@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.jobprofile.domain.JobProfile;
 import uz.hrlab.grading.jobprofile.domain.JobProfileStatus;
@@ -55,10 +54,7 @@ public class ApproveJobProfileUseCase {
 
     @Transactional
     public JobProfile approve(UUID id) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.JOB_PROFILE_APPROVE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.JOB_PROFILE_APPROVE);
         JobProfileJpaEntity entity = profiles.findByIdAndTenantId(id, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
 

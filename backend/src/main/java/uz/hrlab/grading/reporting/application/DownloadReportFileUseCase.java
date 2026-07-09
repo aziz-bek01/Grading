@@ -6,7 +6,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.storage.ObjectStorageAdapter;
@@ -51,10 +50,7 @@ public class DownloadReportFileUseCase {
 
     @Transactional
     public DownloadPayload download(UUID reportId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.REPORT_EXPORT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.REPORT_EXPORT);
         ReportJpaEntity report = reports.findByIdAndTenantId(reportId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
 

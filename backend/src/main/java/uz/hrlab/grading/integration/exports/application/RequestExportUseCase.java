@@ -7,7 +7,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.exports.domain.ExportFormat;
 import uz.hrlab.grading.integration.exports.domain.ExportJobStatus;
@@ -43,9 +42,7 @@ public class RequestExportUseCase {
             throw new ValidationException("EXPORT_PARAMS_REQUIRED");
         }
         String requiredPermission = ExportTypePermissions.requiredPermission(type);
-        if (!ctx.hasPermission(requiredPermission)) {
-            throw new PermissionDeniedException();
-        }
+        ctx.require(requiredPermission);
 
         UUID jobId = UUID.randomUUID();
         ExportJobJpaEntity job = new ExportJobJpaEntity(

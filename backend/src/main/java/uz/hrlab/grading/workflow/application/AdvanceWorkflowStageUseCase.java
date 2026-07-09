@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.project.infrastructure.ProjectJpaEntity;
@@ -49,10 +48,7 @@ public class AdvanceWorkflowStageUseCase {
 
     @Transactional
     public ProjectWorkflow advance(UUID projectId, WorkflowStage targetStage) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.WORKFLOW_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.WORKFLOW_EDIT);
         if (targetStage == null) {
             throw new ValidationException("targetStage is required");
         }

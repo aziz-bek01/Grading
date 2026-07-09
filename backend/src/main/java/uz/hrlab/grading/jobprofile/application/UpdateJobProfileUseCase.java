@@ -13,9 +13,7 @@ import uz.hrlab.grading.jobprofile.infrastructure.JobProfileJpaEntity;
 import uz.hrlab.grading.jobprofile.infrastructure.JobProfileRepository;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
-import uz.hrlab.grading.project.application.ProjectLockedException;
-import uz.hrlab.grading.project.domain.ProjectStatus;
-import uz.hrlab.grading.project.infrastructure.ProjectRepository;
+import uz.hrlab.grading.project.application.ProjectAccess;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -31,7 +29,7 @@ public class UpdateJobProfileUseCase {
 
     private final JobProfileRepository profiles;
     private final PositionRepository positions;
-    private final ProjectRepository projects;
+    private final ProjectAccess projectAccess;
     private final AuditService audit;
     private final AbacGate abacGate;
     private final JobProfileImmutabilityPolicy immutabilityPolicy;
@@ -39,14 +37,14 @@ public class UpdateJobProfileUseCase {
 
     public UpdateJobProfileUseCase(JobProfileRepository profiles,
                                    PositionRepository positions,
-                                   ProjectRepository projects,
+                                   ProjectAccess projectAccess,
                                    AuditService audit,
                                    AbacGate abacGate,
                                    JobProfileImmutabilityPolicy immutabilityPolicy,
                                    JobProfileAuditSnapshot snapshot) {
         this.profiles = profiles;
         this.positions = positions;
-        this.projects = projects;
+        this.projectAccess = projectAccess;
         this.audit = audit;
         this.abacGate = abacGate;
         this.immutabilityPolicy = immutabilityPolicy;
@@ -67,12 +65,7 @@ public class UpdateJobProfileUseCase {
         abacGate.enforceCanWriteInDepartment(ctx, entity.getProjectId(),
                 position.getDepartmentId());
 
-        var project = projects.findByIdAndTenantId(entity.getProjectId(), ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new);
-        if (project.getStatus() == ProjectStatus.LOCKED
-                || project.getStatus() == ProjectStatus.ARCHIVED) {
-            throw new ProjectLockedException();
-        }
+        projectAccess.requireWritable(ctx, entity.getProjectId());
 
         // Hard rule: APPROVED + ARCHIVED + UNDER_REVIEW are not editable.
         immutabilityPolicy.enforceEditable(entity.getStatus());

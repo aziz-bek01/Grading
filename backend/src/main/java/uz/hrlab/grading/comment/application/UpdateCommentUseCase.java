@@ -36,10 +36,7 @@ public class UpdateCommentUseCase {
 
     @Transactional
     public Comment update(UUID id, String newBody) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.COMMENT_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.COMMENT_EDIT);
         if (newBody == null || newBody.isBlank()) {
             throw new ValidationException("BODY_REQUIRED");
         }

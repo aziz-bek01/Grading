@@ -1,6 +1,7 @@
 package uz.hrlab.grading.methodology.domain;
 
 import org.springframework.stereotype.Component;
+import uz.hrlab.grading.tenancy.domain.Locale;
 
 import java.util.List;
 import java.util.Map;
@@ -13,7 +14,7 @@ import java.util.Map;
 @Component
 public class MethodologyVersionPrimaryLocaleValidator {
 
-    public static final String PRIMARY_LOCALE = "ru-RU";
+    public static final String PRIMARY_LOCALE = Locale.RU_RU;
 
     public void validate(List<? extends FactorNameView> factors) {
         if (factors == null) return;

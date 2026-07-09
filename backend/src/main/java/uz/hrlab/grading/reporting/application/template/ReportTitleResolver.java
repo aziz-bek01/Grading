@@ -1,5 +1,6 @@
 package uz.hrlab.grading.reporting.application.template;
 
+import uz.hrlab.grading.common.i18n.I18nText;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
 import java.util.Map;
@@ -52,8 +53,6 @@ public final class ReportTitleResolver {
     public static String resolve(ReportType type, String locale) {
         Map<String, String> byLocale = TITLES.get(type);
         if (byLocale == null) return type.name();
-        return byLocale.getOrDefault(
-                locale == null ? "ru-RU" : locale,
-                byLocale.getOrDefault("ru-RU", type.name()));
+        return I18nText.pick(byLocale, locale, type.name());
     }
 }

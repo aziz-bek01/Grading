@@ -30,6 +30,7 @@ import uz.hrlab.grading.evaluation.infrastructure.PanelRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
 import uz.hrlab.grading.organization.domain.DepartmentStatus;
 import uz.hrlab.grading.organization.domain.DepartmentType;
+import uz.hrlab.grading.organization.infrastructure.DepartmentHierarchyResolver;
 import uz.hrlab.grading.organization.infrastructure.DepartmentJpaEntity;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.domain.PositionStatus;
@@ -98,7 +99,7 @@ class PanelQueriesDepartmentLabelTest {
         // returns empty (unfiltered) — these label tests keep the unfiltered path.
         queries = new PanelQueries(panels, assignments, averages, evaluations, scores,
                 positions, factors, actorNames, abacGate, departments, departmentScopes,
-                new DepartmentScopeFilter());
+                new DepartmentScopeFilter(), new DepartmentHierarchyResolver(departments));
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         rootDeptId = UUID.randomUUID();

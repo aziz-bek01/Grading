@@ -14,9 +14,7 @@ import uz.hrlab.grading.jobprofile.infrastructure.JobProfileJpaEntity;
 import uz.hrlab.grading.jobprofile.infrastructure.JobProfileRepository;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
-import uz.hrlab.grading.project.application.ProjectLockedException;
-import uz.hrlab.grading.project.domain.ProjectStatus;
-import uz.hrlab.grading.project.infrastructure.ProjectRepository;
+import uz.hrlab.grading.project.application.ProjectAccess;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -31,20 +29,20 @@ public class CreateJobProfileUseCase {
 
     private final JobProfileRepository profiles;
     private final PositionRepository positions;
-    private final ProjectRepository projects;
+    private final ProjectAccess projectAccess;
     private final AuditService audit;
     private final AbacGate abacGate;
     private final JobProfileAuditSnapshot snapshot;
 
     public CreateJobProfileUseCase(JobProfileRepository profiles,
                                    PositionRepository positions,
-                                   ProjectRepository projects,
+                                   ProjectAccess projectAccess,
                                    AuditService audit,
                                    AbacGate abacGate,
                                    JobProfileAuditSnapshot snapshot) {
         this.profiles = profiles;
         this.positions = positions;
-        this.projects = projects;
+        this.projectAccess = projectAccess;
         this.audit = audit;
         this.abacGate = abacGate;
         this.snapshot = snapshot;
@@ -63,12 +61,7 @@ public class CreateJobProfileUseCase {
         abacGate.enforceCanWriteInDepartment(ctx, position.getProjectId(),
                 position.getDepartmentId());
 
-        var project = projects.findByIdAndTenantId(position.getProjectId(), ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new);
-        if (project.getStatus() == ProjectStatus.LOCKED
-                || project.getStatus() == ProjectStatus.ARCHIVED) {
-            throw new ProjectLockedException();
-        }
+        projectAccess.requireWritable(ctx, position.getProjectId());
 
         if (profiles.existsByTenantIdAndProjectIdAndPositionIdAndStatusNot(
                 ctx.tenantId(), position.getProjectId(), position.getId(),

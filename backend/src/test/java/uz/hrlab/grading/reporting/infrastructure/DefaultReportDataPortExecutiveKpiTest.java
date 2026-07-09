@@ -22,6 +22,7 @@ import uz.hrlab.grading.methodology.infrastructure.FactorLevelRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyRepository;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
+import uz.hrlab.grading.organization.infrastructure.DepartmentHierarchyResolver;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
@@ -75,7 +76,8 @@ class DefaultReportDataPortExecutiveKpiTest {
     private final DefaultReportDataPort port = new DefaultReportDataPort(
             positions, projects, evaluations, evaluationScores, factors, factorLevels,
             methodologyVersions, methodologies, gradeStructures, grades, departments,
-            users, tenants, auditLog, actorNames, panels, panelFactorAverages);
+            users, tenants, auditLog, actorNames, panels, panelFactorAverages,
+            new DepartmentHierarchyResolver(departments));
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID projectId = UUID.randomUUID();

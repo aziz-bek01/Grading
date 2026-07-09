@@ -33,10 +33,7 @@ public class DeleteCommentUseCase {
 
     @Transactional
     public void delete(UUID id) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.COMMENT_DELETE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.COMMENT_DELETE);
         CommentJpaEntity entity = comments.findByIdAndTenantId(id, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         boolean isOwner = ctx.userId() != null && ctx.userId().equals(entity.getAuthorUserId());

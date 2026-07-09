@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
@@ -67,10 +66,7 @@ public class ArchivePanelUseCase {
 
     @Transactional
     public EvaluationPanel archive(UUID panelId, String reason) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_PANEL_MANAGE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_PANEL_MANAGE);
         if (reason == null || reason.trim().length() < MIN_REASON_LENGTH) {
             throw new ValidationException(
                     "reason is required (min " + MIN_REASON_LENGTH + " chars)");

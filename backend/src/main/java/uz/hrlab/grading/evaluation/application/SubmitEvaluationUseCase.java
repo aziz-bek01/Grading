@@ -10,7 +10,6 @@ import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.evaluation.domain.Evaluation;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatusTransitionPolicy;
@@ -77,10 +76,7 @@ public class SubmitEvaluationUseCase {
 
     @Transactional
     public Evaluation submit(UUID evaluationId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_EDIT);
         EvaluationContext context = loader.load(evaluationId, ctx.tenantId());
         EvaluationJpaEntity evaluation = context.evaluation();
         // E4-S3 — project membership + department-subtree write gate, resolved

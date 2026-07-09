@@ -55,6 +55,15 @@ public record PanelResponse(
     }
 
     /**
+     * BE-046 — mutation surface: a state-changing endpoint (create / lock-roster /
+     * submit / archive / reopen / reopen-for-expert) echoes the updated panel with
+     * no roster context — null position title and zero evaluator/completed counts.
+     */
+    public static PanelResponse ofMutation(EvaluationPanel p) {
+        return from(p, null, 0, 0);
+    }
+
+    /**
      * LIST surface — carries the Departament (top-level ancestor) and Bo'limi
      * (own leaf when nested) localized labels for the CEO table.
      */

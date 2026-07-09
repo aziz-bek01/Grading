@@ -1,4 +1,4 @@
-package uz.hrlab.grading.evaluation.application;
+package uz.hrlab.grading.evaluation.migration;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

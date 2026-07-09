@@ -6,7 +6,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatus;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatusTransitionPolicy;
@@ -30,11 +29,8 @@ public class CancelImportBatchUseCase {
 
     @Transactional
     public ImportBatchJpaEntity cancel(UUID batchId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.IMPORT_CANCEL)
-                && !ctx.hasPermission(PermissionCodes.ORG_IMPORT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().requireAny(
+                PermissionCodes.IMPORT_CANCEL, PermissionCodes.ORG_IMPORT);
         ImportBatchJpaEntity batch = batches.findByIdAndTenantId(batchId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         ImportBatchStatusTransitionPolicy.assertAllowed(batch.getStatus(), ImportBatchStatus.CANCELLED);

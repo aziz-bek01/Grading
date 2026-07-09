@@ -1,5 +1,7 @@
 package uz.hrlab.grading.tenancy.application;
 
+import uz.hrlab.grading.common.exception.PermissionDeniedException;
+
 import java.util.Set;
 import java.util.UUID;
 
@@ -57,5 +59,39 @@ public record TenantContext(
 
     public boolean hasPermission(String permission) {
         return permissions != null && permissions.contains(permission);
+    }
+
+    /**
+     * BE-033 — permission guard. Returns this context when it carries
+     * {@code permission}; otherwise throws the standard
+     * {@link PermissionDeniedException} (same {@code PERMISSION_DENIED} /
+     * "Action not permitted" shape as the hand-rolled {@code require*} helpers and
+     * inline {@code if (!hasPermission(...)) throw} sites this consolidates).
+     * Fail-closed: a null/absent permission denies.
+     */
+    public TenantContext require(String permission) {
+        if (!hasPermission(permission)) {
+            throw new PermissionDeniedException();
+        }
+        return this;
+    }
+
+    /**
+     * BE-033 — "any-of" permission guard. Returns this context when it carries AT
+     * LEAST ONE of {@code permissions}; otherwise throws
+     * {@link PermissionDeniedException}. Behaviorally identical to the chained
+     * {@code !hasPermission(a) && !hasPermission(b) && ... ⇒ throw} idiom. An
+     * empty/null varargs denies (fail-closed — "holds none of the required
+     * permissions").
+     */
+    public TenantContext requireAny(String... permissions) {
+        if (permissions != null) {
+            for (String permission : permissions) {
+                if (hasPermission(permission)) {
+                    return this;
+                }
+            }
+        }
+        throw new PermissionDeniedException();
     }
 }

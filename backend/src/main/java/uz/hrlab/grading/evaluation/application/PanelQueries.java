@@ -10,7 +10,6 @@ import uz.hrlab.grading.access.application.DepartmentScopeFilter;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.access.domain.DepartmentScopePolicy;
 import uz.hrlab.grading.access.infrastructure.UserDepartmentScopeRepository;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.api.PanelAssignmentResponse;
@@ -18,6 +17,7 @@ import uz.hrlab.grading.evaluation.api.PanelDetailResponse;
 import uz.hrlab.grading.evaluation.api.PanelResponse;
 import uz.hrlab.grading.evaluation.api.PanelResultResponse;
 import uz.hrlab.grading.evaluation.api.RosterSuggestionResponse;
+import uz.hrlab.grading.organization.infrastructure.DepartmentHierarchyResolver;
 import uz.hrlab.grading.organization.infrastructure.DepartmentJpaEntity;
 import uz.hrlab.grading.organization.infrastructure.DepartmentRepository;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
@@ -38,6 +38,7 @@ import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
+import uz.hrlab.grading.tenancy.domain.Locale;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -45,7 +46,6 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -85,6 +85,7 @@ public class PanelQueries {
     private final DepartmentRepository departments;
     private final UserDepartmentScopeRepository departmentScopes;
     private final DepartmentScopeFilter departmentScopeFilter;
+    private final DepartmentHierarchyResolver departmentHierarchy;
 
     public PanelQueries(PanelRepository panels,
                         PanelAssignmentRepository assignments,
@@ -97,7 +98,8 @@ public class PanelQueries {
                         AbacGate abacGate,
                         DepartmentRepository departments,
                         UserDepartmentScopeRepository departmentScopes,
-                        DepartmentScopeFilter departmentScopeFilter) {
+                        DepartmentScopeFilter departmentScopeFilter,
+                        DepartmentHierarchyResolver departmentHierarchy) {
         this.panels = panels;
         this.assignments = assignments;
         this.averages = averages;
@@ -110,6 +112,7 @@ public class PanelQueries {
         this.departments = departments;
         this.departmentScopes = departmentScopes;
         this.departmentScopeFilter = departmentScopeFilter;
+        this.departmentHierarchy = departmentHierarchy;
     }
 
     /**
@@ -128,10 +131,7 @@ public class PanelQueries {
      */
     @Transactional(readOnly = true)
     public RosterSuggestionResponse suggestDepartmentDirector(UUID projectId, UUID departmentId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_PANEL_MANAGE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_PANEL_MANAGE);
         if (projectId == null || departmentId == null) {
             throw new ValidationException("project_id and department_id are required");
         }
@@ -256,12 +256,11 @@ public class PanelQueries {
         }
 
         // Departament = top-level ancestor department; Bo'limi = the position's OWN
-        // leaf department when it is nested (differs from the ancestor). Reuses the
-        // same batched ancestor-walk pattern the evaluation report uses
-        // (DefaultReportDataPort.loadDepartmentClosure/topLevelAncestor): ONE
+        // leaf department when it is nested (differs from the ancestor). Shared with
+        // the evaluation report port via DepartmentHierarchyResolver (BE-032): ONE
         // tenant-scoped findAllByTenantIdAndIdIn per tree level (org trees are
         // shallow) — no per-panel N+1, no cross-tenant leak (tenant pinned).
-        Map<UUID, DepartmentJpaEntity> deptById = loadDepartmentClosure(tenant, leafDeptIds);
+        Map<UUID, DepartmentJpaEntity> deptById = departmentHierarchy.loadClosure(tenant, leafDeptIds);
 
         // Group ACTIVE roster seats by panel; precompute (active, completed) counts.
         Map<UUID, int[]> rosterCounts = new HashMap<>(); // panelId -> [active, completed]
@@ -302,13 +301,15 @@ public class PanelQueries {
             }
             // Departament (top-level ancestor) + Bo'limi (own leaf IF nested).
             UUID leafDeptId = deptByPosition.get(p.getPositionId());
-            UUID rootDeptId = topLevelAncestor(leafDeptId, deptById);
-            DepartmentJpaEntity rootDept = rootDeptId == null ? null : deptById.get(rootDeptId);
+            DepartmentHierarchyResolver.DepartmentSplit split =
+                    departmentHierarchy.split(leafDeptId, deptById);
+            DepartmentJpaEntity rootDept =
+                    split.topLevelId() == null ? null : deptById.get(split.topLevelId());
             Map<String, String> departmentLabel = rootDept == null ? null : rootDept.getNameI18n();
             // Division only when the leaf differs from the ancestor (has a parent).
             Map<String, String> divisionLabel = null;
-            if (leafDeptId != null && rootDeptId != null && !leafDeptId.equals(rootDeptId)) {
-                DepartmentJpaEntity leafDept = deptById.get(leafDeptId);
+            if (split.divisionId() != null) {
+                DepartmentJpaEntity leafDept = deptById.get(split.divisionId());
                 divisionLabel = leafDept == null ? null : leafDept.getNameI18n();
             }
             return PanelResponse.from(p.toDomain(),
@@ -380,10 +381,7 @@ public class PanelQueries {
      */
     @Transactional(readOnly = true)
     public PanelResultResponse getResult(UUID panelId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.CAMPAIGN_RESULTS_VIEW)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.CAMPAIGN_RESULTS_VIEW);
         UUID tenant = ctx.tenantId();
         EvaluationPanelJpaEntity panel = panels.findByIdAndTenantId(panelId, tenant)
                 .orElseThrow(TenantAccessDeniedException::new);
@@ -440,7 +438,7 @@ public class PanelQueries {
                             s.getRawFactorScore()));
         }
 
-        String locale = ctx.locale() == null ? "ru-RU" : ctx.locale();
+        String locale = ctx.locale() == null ? Locale.RU_RU : ctx.locale();
         // BE-24 — batch every factor referenced by the averages in ONE tenant-scoped
         // query (was one findByIdAndTenantId per average row → N+1); map by id in
         // memory. Tenant pinned, so a foreign factor id resolves to null (same
@@ -488,71 +486,6 @@ public class PanelQueries {
     }
 
     private TenantContext requireRead() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
-        return ctx;
-    }
-
-    /**
-     * Load the department CLOSURE (leaf departments + every ancestor up to the
-     * root) so the panel list can split Departament (top-level ancestor) from
-     * Bo'limi (own leaf, when nested). Reuses the same batched, tenant-scoped
-     * approach as {@code DefaultReportDataPort.loadDepartmentClosure}: each level
-     * resolves the as-yet-unseen parent ids in ONE {@code findAllByTenantIdAndIdIn}
-     * (org trees are shallow → a handful of round-trips, no per-row N+1). A safety
-     * bound makes a corrupt cyclic {@code parent_id} chain terminate. {@code tenant}
-     * is pinned in every query, so a cross-tenant parent contributes nothing.
-     */
-    private Map<UUID, DepartmentJpaEntity> loadDepartmentClosure(UUID tenant, Set<UUID> leafIds) {
-        if (tenant == null || leafIds == null || leafIds.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, DepartmentJpaEntity> byId = new HashMap<>();
-        Set<UUID> frontier = new LinkedHashSet<>(leafIds);
-        int safety = 0;
-        while (!frontier.isEmpty() && safety++ < 64) {
-            List<DepartmentJpaEntity> loaded = departments.findAllByTenantIdAndIdIn(tenant, frontier);
-            for (DepartmentJpaEntity d : loaded) {
-                byId.put(d.getId(), d);
-            }
-            Set<UUID> nextParents = new LinkedHashSet<>();
-            for (DepartmentJpaEntity d : loaded) {
-                UUID parent = d.getParentId();
-                if (parent != null && !byId.containsKey(parent)) {
-                    nextParents.add(parent);
-                }
-            }
-            frontier = nextParents;
-        }
-        return byId;
-    }
-
-    /**
-     * Walk {@code parentId} up from {@code leafId} to the root within the loaded
-     * closure. Returns the top-level ancestor id (== {@code leafId} when the leaf
-     * has no parent). Null leaf or an ancestor missing from the closure stops the
-     * walk at the last resolved node; a {@code visited} guard makes a cyclic chain
-     * terminate. Mirrors {@code DefaultReportDataPort.topLevelAncestor}.
-     */
-    private static UUID topLevelAncestor(UUID leafId, Map<UUID, DepartmentJpaEntity> byId) {
-        if (leafId == null) {
-            return null;
-        }
-        UUID current = leafId;
-        Set<UUID> visited = new LinkedHashSet<>();
-        while (current != null && visited.add(current)) {
-            DepartmentJpaEntity d = byId.get(current);
-            if (d == null) {
-                return current; // last resolved node is the best-known root
-            }
-            UUID parent = d.getParentId();
-            if (parent == null) {
-                return current;
-            }
-            current = parent;
-        }
-        return current;
+        return TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
     }
 }

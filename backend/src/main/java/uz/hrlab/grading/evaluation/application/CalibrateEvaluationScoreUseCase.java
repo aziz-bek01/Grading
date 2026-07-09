@@ -8,7 +8,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.EvaluationCalibrationEvent;
@@ -96,10 +95,7 @@ public class CalibrateEvaluationScoreUseCase {
 
     @Transactional
     public EvaluationCalibrationEvent calibrate(CalibrateEvaluationScoreCommand cmd) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.CALIBRATION_EDIT)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.CALIBRATION_EDIT);
         if (cmd == null || cmd.evaluationId() == null || cmd.factorId() == null
                 || cmd.newRawFactorScore() == null) {
             throw new ValidationException(

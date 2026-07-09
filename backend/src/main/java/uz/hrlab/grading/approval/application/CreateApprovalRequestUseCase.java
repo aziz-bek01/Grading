@@ -16,7 +16,6 @@ import java.util.List;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.project.infrastructure.ProjectRepository;
@@ -64,10 +63,7 @@ public class CreateApprovalRequestUseCase {
 
     @Transactional
     public ApprovalRequest create(CreateApprovalRequestCommand cmd) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.APPROVAL_REQUEST_CREATE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.APPROVAL_REQUEST_CREATE);
         return createInternal(ctx, cmd, true);
     }
 

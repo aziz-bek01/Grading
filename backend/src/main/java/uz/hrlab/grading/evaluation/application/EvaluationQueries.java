@@ -7,9 +7,9 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.DepartmentScopeFilter;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
+import uz.hrlab.grading.common.i18n.I18nText;
 import uz.hrlab.grading.evaluation.api.EvaluationByFactorRow;
 import uz.hrlab.grading.evaluation.api.EvaluationResponse;
 import uz.hrlab.grading.evaluation.api.MyEvaluationRow;
@@ -35,6 +35,7 @@ import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
+import uz.hrlab.grading.tenancy.domain.Locale;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -98,10 +99,7 @@ public class EvaluationQueries {
 
     @Transactional(readOnly = true)
     public EvaluationJpaEntity findById(UUID id) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         EvaluationJpaEntity evaluation = evaluations.findByIdAndTenantId(id, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         // C-2 — single-id reads must respect department scope (intra-tenant IDOR
@@ -144,10 +142,7 @@ public class EvaluationQueries {
     public Page<EvaluationResponse> list(UUID projectId, UUID positionId,
                                          UUID evaluatorUserId, EvaluationStatus status,
                                          Pageable pageable) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         UUID tenant = ctx.tenantId();
 
         // E4-S2 — department-scope filter. Present ⇒ confine evaluations to
@@ -178,7 +173,7 @@ public class EvaluationQueries {
         // FE-27 — resolve the localized "Name (vN)" label ONCE per distinct
         // methodology version on the page (batched versions → methodology
         // containers), reusing the SAME lookup listMine already performs. No N+1.
-        String locale = ctx.locale() == null ? "ru-RU" : ctx.locale();
+        String locale = ctx.locale() == null ? Locale.RU_RU : ctx.locale();
         Map<UUID, String> labelByVersion = resolveVersionLabels(tenant, page.getContent(), locale);
         return page.map(v -> EvaluationResponse.fromRow(
                 v, labelByVersion.get(v.getMethodologyVersionId())));
@@ -228,7 +223,7 @@ public class EvaluationQueries {
                     ? null : methodologyById.get(ver.getMethodologyId());
             String name = null;
             if (m != null) {
-                name = pickLocalized(m.getNameI18n(), locale);
+                name = I18nText.pick(m.getNameI18n(), locale);
                 if (name == null || name.isBlank()) {
                     name = m.getCode();
                 }
@@ -276,10 +271,7 @@ public class EvaluationQueries {
      */
     @Transactional(readOnly = true)
     public List<MyEvaluationRow> listMine() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         UUID tenant = ctx.tenantId();
         UUID me = ctx.userId();
         if (me == null) {
@@ -381,10 +373,7 @@ public class EvaluationQueries {
 
     @Transactional(readOnly = true)
     public List<EvaluationScoreJpaEntity> findScoresByEvaluationId(UUID evaluationId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         // Tenant guard — ensure evaluation belongs to the active tenant first.
         EvaluationJpaEntity evaluation = evaluations.findByIdAndTenantId(evaluationId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
@@ -411,10 +400,7 @@ public class EvaluationQueries {
                                                     EvaluationStatus status,
                                                     UUID departmentId,
                                                     Pageable pageable) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         if (projectId == null || factorId == null) {
             throw new ValidationException("projectId and factorId are required for groupBy=factor");
         }
@@ -528,7 +514,7 @@ public class EvaluationQueries {
             }
         }
 
-        String locale = ctx.locale() == null ? "ru-RU" : ctx.locale();
+        String locale = ctx.locale() == null ? Locale.RU_RU : ctx.locale();
 
         return page.map(e -> {
             PositionJpaEntity p = positionById.get(e.getPositionId());
@@ -548,9 +534,9 @@ public class EvaluationQueries {
                     e.getId(),
                     e.getPositionId(),
                     p == null ? null : p.getCode(),
-                    p == null ? null : pickLocalized(p.getTitleI18n(), locale),
-                    d == null ? null : pickLocalized(d.getNameI18n(), locale),
-                    parent == null ? null : pickLocalized(parent.getNameI18n(), locale),
+                    p == null ? null : I18nText.pick(p.getTitleI18n(), locale),
+                    d == null ? null : I18nText.pick(d.getNameI18n(), locale),
+                    parent == null ? null : I18nText.pick(parent.getNameI18n(), locale),
                     deptId,
                     e.getStatus(),
                     filledByEval.getOrDefault(e.getId(), 0),
@@ -561,22 +547,10 @@ public class EvaluationQueries {
         });
     }
 
-    /** Lightweight i18n fallback: requested locale → ru-RU → first available value. */
-    private static String pickLocalized(Map<String, String> i18n, String locale) {
-        if (i18n == null || i18n.isEmpty()) return null;
-        String v = i18n.get(locale);
-        if (v != null) return v;
-        v = i18n.get("ru-RU");
-        if (v != null) return v;
-        return i18n.values().iterator().next();
-    }
 
     @Transactional(readOnly = true)
     public List<EvaluationCalibrationEventJpaEntity> findCalibrationHistory(UUID evaluationId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_READ)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         EvaluationJpaEntity evaluation = evaluations.findByIdAndTenantId(evaluationId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         // C-2 — department-scope read gate (intra-tenant IDOR fix).

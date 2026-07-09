@@ -9,7 +9,6 @@ import org.springframework.web.multipart.MultipartFile;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatus;
 import uz.hrlab.grading.integration.imports.infrastructure.ImportBatchJpaEntity;
@@ -70,9 +69,7 @@ public class UploadImportFileUseCase {
         TenantContext ctx = TenantContextHolder.requireActive();
         ImportTemplateDefinition def = templates.find(templateCode)
                 .orElseThrow(() -> new ValidationException("UNKNOWN_TEMPLATE_CODE: " + templateCode));
-        if (!ctx.hasPermission(def.requiredPermission())) {
-            throw new PermissionDeniedException();
-        }
+        ctx.require(def.requiredPermission());
         if (file == null || file.isEmpty()) {
             throw new ValidationException("FILE_REQUIRED");
         }

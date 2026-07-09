@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.evaluation.domain.Evaluation;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatusTransitionPolicy;
@@ -47,10 +46,7 @@ public class LockEvaluationUseCase {
 
     @Transactional
     public Evaluation lock(UUID evaluationId) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_LOCK)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_LOCK);
         EvaluationContext context = loader.load(evaluationId, ctx.tenantId());
         EvaluationJpaEntity evaluation = context.evaluation();
         abacGate.enforceCanWriteInProject(ctx, evaluation.getProjectId());

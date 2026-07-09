@@ -7,7 +7,6 @@ import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.Evaluation;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
@@ -54,10 +53,7 @@ public class RequestEvaluationChangesUseCase {
 
     @Transactional
     public Evaluation requestChanges(UUID evaluationId, String reason) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.EVALUATION_APPROVE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_APPROVE);
         if (reason == null || reason.trim().length() < MIN_REASON_LENGTH) {
             throw new ValidationException(
                     "reason is required (min " + MIN_REASON_LENGTH + " chars)");

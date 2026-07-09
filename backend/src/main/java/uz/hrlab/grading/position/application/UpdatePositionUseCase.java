@@ -14,9 +14,8 @@ import uz.hrlab.grading.position.domain.Position;
 import uz.hrlab.grading.position.domain.PositionStatus;
 import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
+import uz.hrlab.grading.project.application.ProjectAccess;
 import uz.hrlab.grading.project.application.ProjectLockedException;
-import uz.hrlab.grading.project.domain.ProjectStatus;
-import uz.hrlab.grading.project.infrastructure.ProjectRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -28,18 +27,18 @@ public class UpdatePositionUseCase {
 
     private final PositionRepository positions;
     private final DepartmentRepository departments;
-    private final ProjectRepository projects;
+    private final ProjectAccess projectAccess;
     private final AuditService audit;
     private final AbacGate abacGate;
 
     public UpdatePositionUseCase(PositionRepository positions,
                                  DepartmentRepository departments,
-                                 ProjectRepository projects,
+                                 ProjectAccess projectAccess,
                                  AuditService audit,
                                  AbacGate abacGate) {
         this.positions = positions;
         this.departments = departments;
-        this.projects = projects;
+        this.projectAccess = projectAccess;
         this.audit = audit;
         this.abacGate = abacGate;
     }
@@ -55,12 +54,7 @@ public class UpdatePositionUseCase {
         if (entity.getStatus() == PositionStatus.ARCHIVED) {
             throw new ProjectLockedException();
         }
-        var project = projects.findByIdAndTenantId(entity.getProjectId(), ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new);
-        if (project.getStatus() == ProjectStatus.LOCKED
-                || project.getStatus() == ProjectStatus.ARCHIVED) {
-            throw new ProjectLockedException();
-        }
+        projectAccess.requireWritable(ctx, entity.getProjectId());
 
         if (cmd.departmentId() != null && !cmd.departmentId().equals(entity.getDepartmentId())) {
             DepartmentJpaEntity newDept = departments

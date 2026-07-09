@@ -1,5 +1,7 @@
 package uz.hrlab.grading.jobprofile.application;
 
+import uz.hrlab.grading.tenancy.domain.Locale;
+
 import java.util.List;
 import java.util.Map;
 
@@ -10,10 +12,10 @@ import java.util.Map;
  */
 public final class JobProfileLocales {
 
-    public static final String PRIMARY_LOCALE = "ru-RU";
+    public static final String PRIMARY_LOCALE = Locale.RU_RU;
 
     public static final List<String> ALL_LOCALES =
-            List.of("ru-RU", "uz-Cyrl-UZ", "uz-Latn-UZ", "en-US");
+            List.of(Locale.RU_RU, Locale.UZ_CYRL_UZ, Locale.UZ_LATN_UZ, Locale.EN_US);
 
     private JobProfileLocales() { }
 

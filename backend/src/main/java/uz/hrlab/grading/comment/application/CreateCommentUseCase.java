@@ -10,7 +10,6 @@ import uz.hrlab.grading.comment.domain.Comment;
 import uz.hrlab.grading.comment.domain.MentionExtractor;
 import uz.hrlab.grading.comment.infrastructure.CommentJpaEntity;
 import uz.hrlab.grading.comment.infrastructure.CommentRepository;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
@@ -36,10 +35,7 @@ public class CreateCommentUseCase {
 
     @Transactional
     public Comment create(CreateCommentCommand cmd) {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.COMMENT_CREATE)) {
-            throw new PermissionDeniedException();
-        }
+        TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.COMMENT_CREATE);
         if (cmd == null || cmd.entityType() == null || cmd.entityId() == null
                 || cmd.body() == null || cmd.body().isBlank()) {
             throw new ValidationException("MISSING_FIELDS");

@@ -1,4 +1,4 @@
-package uz.hrlab.grading.evaluation.application;
+package uz.hrlab.grading.evaluation.migration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

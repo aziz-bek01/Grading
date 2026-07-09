@@ -5,7 +5,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
-import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.reporting.domain.ReportStatus;
 import uz.hrlab.grading.reporting.domain.ReportType;
@@ -52,12 +51,9 @@ public class ReportQueries {
     }
 
     private TenantContext requireRead() {
-        TenantContext ctx = TenantContextHolder.requireActive();
-        if (!ctx.hasPermission(PermissionCodes.REPORT_READ)
-                && !ctx.hasPermission(PermissionCodes.REPORT_CREATE)
-                && !ctx.hasPermission(PermissionCodes.REPORT_EXPORT)) {
-            throw new PermissionDeniedException();
-        }
-        return ctx;
+        return TenantContextHolder.requireActive().requireAny(
+                PermissionCodes.REPORT_READ,
+                PermissionCodes.REPORT_CREATE,
+                PermissionCodes.REPORT_EXPORT);
     }
 }

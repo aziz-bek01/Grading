@@ -220,11 +220,20 @@ export function CeoInlineSignOffCell({ approvalId, currentStep }: Props) {
         }}
       />
 
-      {/* Reject — reason required (default 20-char minimum kept). */}
+      {/*
+        Reject — reason required (default 20-char minimum kept).
+        DESTRUCTIVE: rejecting an EVALUATION_PANEL sign-off resets the panel to
+        COLLECTING and permanently deletes every evaluator's scores (deliberate,
+        twice-confirmed product decision — see QA-005). This cell is used ONLY
+        for panel sign-off rows, so the stronger `reject_dialog_body_destructive`
+        copy always applies here — no entityType branch needed. The generic
+        `approval.actions.reject_dialog_body` stays untouched for non-panel
+        (non-destructive) rejections used by ApprovalActionsBar.
+      */}
       <ReasonRequiredDialog
         open={reasonDialog === 'reject'}
         title={t('approval.actions.reject_dialog_title')}
-        body={t('approval.actions.reject_dialog_body')}
+        body={t('ceo.panels.reject_dialog_body_destructive')}
         onCancel={() => setReasonDialog(null)}
         onConfirm={(reason) => {
           rejectMut.mutate({ stepId: currentStep.id, reason });

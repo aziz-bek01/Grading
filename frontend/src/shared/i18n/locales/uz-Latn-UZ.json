@@ -2226,6 +2226,7 @@
       "action_approve": "Tasdiqlayman",
       "action_request_changes": "Qayta ko'rib chiqilsin",
       "action_reject": "Bekor qilinsin",
+      "reject_dialog_body_destructive": "Diqqat: bu amalni qaytarib bo'lmaydi. Bekor qilinganda barcha baholovchilar tomonidan qo'yilgan baholar butunlay o'chiriladi va komissiya «Ekspertlar yig'ilmoqda» (qoralama) holatiga qaytariladi. Tasdiqlash uchun sababni kiriting (kamida 20 ta belgi).",
       "col_department": "Departament",
       "col_division": "Bo'limi",
       "col_avg_score": "Baholash natijasi (o'rtacha bahosi)"

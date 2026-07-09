@@ -2226,6 +2226,7 @@
       "action_approve": "Approve",
       "action_request_changes": "Request changes",
       "action_reject": "Reject",
+      "reject_dialog_body_destructive": "Warning: this action cannot be undone. Rejecting will permanently delete every evaluator's submitted scores and return the panel to \"Collecting evaluators\" (draft) status. Enter a reason to confirm (minimum 20 characters).",
       "col_department": "Department",
       "col_division": "Division",
       "col_avg_score": "Average score"

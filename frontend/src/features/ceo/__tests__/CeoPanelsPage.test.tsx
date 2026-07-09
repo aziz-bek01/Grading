@@ -36,6 +36,7 @@ import { routes } from '@/shared/config/routes';
 import { CeoPanelsPage } from '../pages/CeoPanelsPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
+import ruRU from '@/shared/i18n/locales/ru-RU.json';
 
 // ─── Adapter setup ────────────────────────────────────────────────────────────
 
@@ -325,6 +326,45 @@ describe('<CeoPanelsPage /> inline sign-off (dropdown UX)', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
     );
+  });
+
+  // QA-005 — the panel-reject dialog must warn that confirming permanently
+  // deletes every evaluator's scores and resets the panel to COLLECTING; this
+  // is stronger than (and must differ from) both the request-changes copy and
+  // the generic approval reject copy reused elsewhere (ApprovalActionsBar).
+  it('Bekor qilinsin dialog shows the destructive data-loss warning, distinct from request-changes and the generic reject copy', async () => {
+    signInWithPermissions(WITH_CEO);
+    render(renderWithProviders(<CeoPanelsPage />, ['/app/ceo/panels']));
+
+    await openActionsMenu();
+    fireEvent.click(screen.getByTestId('ceo-inline-reject'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+
+    const rejectDialog = screen.getByRole('dialog');
+    const destructiveBody = ruRU.ceo.panels.reject_dialog_body_destructive;
+
+    // The destructive copy is rendered verbatim in the reject dialog...
+    expect(rejectDialog).toHaveTextContent(destructiveBody);
+    // ...and it is a materially different, stronger warning than the generic
+    // reject copy shared by non-panel (non-destructive) rejections.
+    expect(destructiveBody).not.toBe(ruRU.approval.actions.reject_dialog_body);
+    expect(rejectDialog).not.toHaveTextContent(ruRU.approval.actions.reject_dialog_body);
+
+    // Close it, then confirm request-changes still uses its own (non-destructive)
+    // copy, unaffected by this change.
+    fireEvent.click(rejectDialog.querySelectorAll('button')[0]); // Cancel
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('ceo-actions-menu-trigger'));
+    await waitFor(() =>
+      expect(screen.getByTestId('ceo-inline-request-changes')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId('ceo-inline-request-changes'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+
+    const changesDialog = screen.getByRole('dialog');
+    expect(changesDialog).toHaveTextContent(ruRU.approval.actions.changes_dialog_body);
+    expect(changesDialog).not.toHaveTextContent(destructiveBody);
   });
 
   it('non-pending panel row shows the Open link to panel-detail (no dropdown)', async () => {

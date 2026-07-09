@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.ActorNameResolver;
+import uz.hrlab.grading.access.application.DepartmentScopeFilter;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.access.domain.DepartmentScopePolicy;
 import uz.hrlab.grading.access.infrastructure.UserDepartmentScopeRepository;
@@ -41,11 +42,13 @@ import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -81,6 +84,7 @@ public class PanelQueries {
     private final AbacGate abacGate;
     private final DepartmentRepository departments;
     private final UserDepartmentScopeRepository departmentScopes;
+    private final DepartmentScopeFilter departmentScopeFilter;
 
     public PanelQueries(PanelRepository panels,
                         PanelAssignmentRepository assignments,
@@ -92,7 +96,8 @@ public class PanelQueries {
                         ActorNameResolver actorNames,
                         AbacGate abacGate,
                         DepartmentRepository departments,
-                        UserDepartmentScopeRepository departmentScopes) {
+                        UserDepartmentScopeRepository departmentScopes,
+                        DepartmentScopeFilter departmentScopeFilter) {
         this.panels = panels;
         this.assignments = assignments;
         this.averages = averages;
@@ -104,6 +109,7 @@ public class PanelQueries {
         this.abacGate = abacGate;
         this.departments = departments;
         this.departmentScopes = departmentScopes;
+        this.departmentScopeFilter = departmentScopeFilter;
     }
 
     /**
@@ -163,16 +169,54 @@ public class PanelQueries {
      * handful of panels, so an in-memory status post-filter would be the simpler add
      * but would silently break paging totals. The CEO org view is statuses-only;
      * project/position-scoped callers keep the existing unfiltered paths.
+     *
+     * <p>EPIC-001 — OBJECT-LEVEL ABAC. This org-wide list exposes each panel's
+     * {@code raw/displayed_total_score} + {@code assigned_grade_number}, so it MUST
+     * apply the same department dimension {@link #getPanelDetail} enforces per-row
+     * (there via {@code AbacGate.enforceCanReadPosition} →
+     * {@code DepartmentScopePolicy}). The decision point is the SHARED
+     * {@link DepartmentScopeFilter} — the exact mechanism {@code FindPositionQuery}
+     * and {@code EvaluationQueries} already use for their list reads (no second
+     * filtering approach):
+     * <ul>
+     *   <li>{@link Optional#empty()} — tenant-wide bypass (CEO / HR Director /
+     *       Company Admin / HRLab staff): UNFILTERED. The CEO Panel Overview stays
+     *       org-wide across every department (regression-locked below).</li>
+     *   <li>present, non-empty — a department-scoped caller (DEPARTMENT_MANAGER /
+     *       EVALUATION_COMMITTEE_MEMBER): confine to panels whose position lives in
+     *       the assigned subtree.</li>
+     *   <li>present, EMPTY — department-scoped but assigned nothing: ZERO rows
+     *       (fail-closed).</li>
+     * </ul>
      */
     @Transactional(readOnly = true)
     public Page<PanelResponse> list(UUID projectId, UUID positionId,
                                     Collection<EvaluationPanelStatus> statuses, Pageable pageable) {
         TenantContext ctx = requireRead();
         UUID tenant = ctx.tenantId();
+
+        // EPIC-001 — resolve the department allow-list ONCE via the shared filter.
+        // Empty ⇒ unfiltered (bypass / CEO); present ⇒ confine; present-empty ⇒
+        // fail-closed. Same contract as FindPositionQuery / EvaluationQueries.
+        Optional<Set<UUID>> scope = departmentScopeFilter.allowedDepartmentIds(ctx);
+
         boolean filterByStatus = statuses != null && !statuses.isEmpty()
                 && projectId == null && positionId == null;
         Page<EvaluationPanelJpaEntity> page;
-        if (filterByStatus) {
+        if (scope.isPresent()) {
+            if (scope.get().isEmpty()) {
+                return Page.<PanelResponse>empty(pageable); // scoped but no assignment → no rows
+            }
+            // ONE department-scoped finder reproduces the SAME optional projectId /
+            // positionId / status-pull branch semantics as the unfiltered path
+            // below, plus the department confinement. Non-status branches pass the
+            // full status set (a no-op filter) so there is no duplicated per-branch
+            // scoped query — mirrors EvaluationQueries.list's single findInDepartments.
+            Collection<EvaluationPanelStatus> effectiveStatuses = filterByStatus
+                    ? statuses : EnumSet.allOf(EvaluationPanelStatus.class);
+            page = panels.findInDepartments(
+                    tenant, projectId, positionId, effectiveStatuses, scope.get(), pageable);
+        } else if (filterByStatus) {
             page = panels.findAllByTenantIdAndStatusIn(tenant, statuses, pageable);
         } else if (projectId != null && positionId != null) {
             page = panels.findAllByTenantIdAndProjectIdAndPositionId(

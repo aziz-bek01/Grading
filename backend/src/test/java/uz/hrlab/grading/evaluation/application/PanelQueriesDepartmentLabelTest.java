@@ -13,6 +13,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.ActorNameResolver;
+import uz.hrlab.grading.access.application.DepartmentScopeFilter;
 import uz.hrlab.grading.access.application.RoleCodes;
 import uz.hrlab.grading.access.infrastructure.UserDepartmentScopeRepository;
 import uz.hrlab.grading.evaluation.api.PanelResponse;
@@ -93,8 +94,11 @@ class PanelQueriesDepartmentLabelTest {
 
     @BeforeEach
     void setUp() {
+        // Real (stateless) filter: CLIENT_HR_DIRECTOR is a tenant-wide bypass, so it
+        // returns empty (unfiltered) — these label tests keep the unfiltered path.
         queries = new PanelQueries(panels, assignments, averages, evaluations, scores,
-                positions, factors, actorNames, abacGate, departments, departmentScopes);
+                positions, factors, actorNames, abacGate, departments, departmentScopes,
+                new DepartmentScopeFilter());
         tenantId = UUID.randomUUID();
         projectId = UUID.randomUUID();
         rootDeptId = UUID.randomUUID();

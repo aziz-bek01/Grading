@@ -57,8 +57,20 @@ public class DevAuthFilter extends OncePerRequestFilter {
     public static final String HEADER_SALARY      = "X-Dev-Salary";
     public static final String HEADER_LOCALE      = "X-Dev-Locale";
 
-    /** Profiles where DevAuthFilter may run. Production profiles must NEVER appear here. */
-    public static final Set<String> ALLOWED_PROFILES = Set.of("local", "test", "dev");
+    /**
+     * Profiles where DevAuthFilter may run. Production profiles must NEVER appear
+     * here.
+     *
+     * <p>SEC-002: {@code "dev"} was REMOVED. The {@code dev} profile is deployed
+     * behind a PUBLIC ingress, and this filter trusts an UNAUTHENTICATED
+     * {@code X-Dev-User} header — so allowing it under {@code dev} was a header-
+     * spoof auth bypass on a reachable host. Only the genuinely local/CI-internal
+     * profiles ({@code local}, {@code test}) may bind it. Under {@code dev} the
+     * filter is now ABSENT ({@link uz.hrlab.grading.security.SecurityConfig}
+     * skips it) AND its constructor refuses to start — belt-and-braces, so a
+     * misconfiguration fails closed at boot rather than silently opening the gate.
+     */
+    public static final Set<String> ALLOWED_PROFILES = Set.of("local", "test");
 
     /**
      * Optional DB-backed RBAC resolver. {@code null} in pure unit tests

@@ -2,9 +2,12 @@ package uz.hrlab.grading.evaluation.infrastructure;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import uz.hrlab.grading.common.infrastructure.TenantAwareRepository;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -59,6 +62,47 @@ public interface PanelRepository
      */
     Page<EvaluationPanelJpaEntity> findAllByTenantIdAndStatusIn(
             UUID tenantId, java.util.Collection<EvaluationPanelStatus> statuses, Pageable pageable);
+
+    /**
+     * EPIC-001 — department-scoped variant of the org-wide {@code list} read
+     * (object-level ABAC). A panel carries no department of its own; it inherits
+     * the department of its Position. This finder confines the result to panels
+     * whose POSITION lives in a department within {@code scopeDepartmentIds}, via
+     * a tenant-scoped subquery — the SAME shape as
+     * {@code EvaluationRepository.findInDepartments} (an evaluation also inherits
+     * its department from its position). The optional {@code projectId} /
+     * {@code positionId} filters are null-safe ({@code null} ⇒ ignored), mirroring
+     * the unfiltered branches in {@code PanelQueries.list}.
+     *
+     * <p>Status is passed as a (always non-empty) collection: the caller supplies
+     * the requested statuses for the tenant-wide status pull, or the full status
+     * set (a no-op filter) for the other branches — so this ONE finder is the
+     * single source of the scoped query without re-listing every branch. An empty
+     * status collection is never passed (an {@code IN ()} is not portable SQL).
+     *
+     * <p>The {@code IN (:scope)} predicate ALSO drives the JPA count query, so the
+     * page total reflects only visible rows (no count leak). Callers MUST NOT pass
+     * an empty {@code scopeDepartmentIds}; the query layer short-circuits an empty
+     * scope to an empty page (fail-closed) before ever reaching the DB.
+     */
+    @Query("""
+           SELECT ep FROM EvaluationPanelJpaEntity ep
+           WHERE ep.tenantId = :tenantId
+             AND (:projectId IS NULL OR ep.projectId = :projectId)
+             AND (:positionId IS NULL OR ep.positionId = :positionId)
+             AND ep.status IN (:statuses)
+             AND ep.positionId IN (
+                   SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
+                   WHERE p.tenantId = :tenantId AND p.departmentId IN (:scope)
+             )
+           """)
+    Page<EvaluationPanelJpaEntity> findInDepartments(
+            @Param("tenantId") UUID tenantId,
+            @Param("projectId") UUID projectId,
+            @Param("positionId") UUID positionId,
+            @Param("statuses") Collection<EvaluationPanelStatus> statuses,
+            @Param("scope") Collection<UUID> scopeDepartmentIds,
+            Pageable pageable);
 
     /**
      * Tenant-scoped hard delete (Defect-2 BE). Mirrors

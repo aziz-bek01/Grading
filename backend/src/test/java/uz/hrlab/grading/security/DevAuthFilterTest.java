@@ -27,7 +27,22 @@ class DevAuthFilterTest {
 
         assertThatThrownBy(() -> new DevAuthFilter(env))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("dev");
+                // The guard names the allowed profiles; assert on a still-allowed
+                // one ("local") rather than "dev", which is no longer accepted.
+                .hasMessageContaining("local");
+    }
+
+    @Test
+    void refusesToStartUnderDevProfile() {
+        // SEC-002: the `dev` profile is deployed behind a public ingress, so the
+        // unauthenticated X-Dev-* header path MUST NOT be reachable there. The
+        // filter is ABSENT under `dev`; its constructor refuses to start as a
+        // belt-and-braces guard.
+        MockEnvironment env = new MockEnvironment();
+        env.setActiveProfiles("dev");
+        assertThatThrownBy(() -> new DevAuthFilter(env))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(DevAuthFilter.ALLOWED_PROFILES).doesNotContain("dev");
     }
 
     @Test

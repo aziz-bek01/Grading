@@ -85,9 +85,7 @@ public class BulkSubmitEvaluationsUseCase {
 
     private void recordSummary(TenantContext ctx, int updated, int skipped, String reason) {
         try {
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            audit.record(AuditEvent.builder(ctx)
                     .action(AuditAction.EVALUATION_BULK_SUBMITTED)
                     .entityType("Evaluation")
                     .reason(buildReason(updated, skipped, reason))

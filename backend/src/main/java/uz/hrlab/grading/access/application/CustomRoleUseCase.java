@@ -348,9 +348,7 @@ public class CustomRoleUseCase {
     }
 
     private AuditEvent roleEvent(TenantContext ctx, RoleJpaEntity role, String action, String reason) {
-        return AuditEvent.builder()
-                .tenantId(ctx.tenantId())
-                .actorUserId(ctx.userId())
+        return AuditEvent.builder(ctx)
                 .action(action)
                 .entityType("Role")
                 .entityId(role.getId())
@@ -359,9 +357,7 @@ public class CustomRoleUseCase {
     }
 
     private void auditPermission(TenantContext ctx, RoleJpaEntity role, String permissionCode, String action) {
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
                 .action(action)
                 .entityType("RolePermission")
                 .entityId(role.getId())

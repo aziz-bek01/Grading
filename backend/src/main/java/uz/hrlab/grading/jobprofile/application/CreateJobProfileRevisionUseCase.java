@@ -100,10 +100,8 @@ public class CreateJobProfileRevisionUseCase {
         // here makes the archive durable first so the index is always satisfied.
         em.flush();
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(source.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.JOB_PROFILE_ARCHIVED)
                 .entityType("JobProfile")
                 .entityId(source.getId())
@@ -134,10 +132,8 @@ public class CreateJobProfileRevisionUseCase {
         revision.setActualizationDate(source.getActualizationDate());
         profiles.save(revision);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(source.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.JOB_PROFILE_REVISION_CREATED)
                 .entityType("JobProfile")
                 .entityId(newId)

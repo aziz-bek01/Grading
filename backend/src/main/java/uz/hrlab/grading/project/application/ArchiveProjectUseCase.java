@@ -38,10 +38,8 @@ public class ArchiveProjectUseCase {
         if (entity.getStatus() == ProjectStatus.ARCHIVED) return;
         entity.setStatus(ProjectStatus.ARCHIVED);
         projects.save(entity);
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(id)
-                .actorUserId(ctx.userId())
                 .action(AuditAction.PROJECT_ARCHIVED)
                 .entityType("Project")
                 .entityId(id)

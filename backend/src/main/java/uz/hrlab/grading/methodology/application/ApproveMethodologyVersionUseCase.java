@@ -121,10 +121,8 @@ public class ApproveMethodologyVersionUseCase {
         v.setApprovedBy(ctx.userId());
         versions.save(v);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(m.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_VERSION_APPROVED)
                 .entityType("MethodologyVersion")
                 .entityId(versionId)

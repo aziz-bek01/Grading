@@ -67,10 +67,8 @@ public class CreateGradeStructureFromScratchUseCase {
         s.setDescriptionI18n(cmd.descriptionI18n());
         structures.save(s);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(cmd.projectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_STRUCTURE_CREATED)
                 .entityType("GradeStructure")
                 .entityId(structureId)

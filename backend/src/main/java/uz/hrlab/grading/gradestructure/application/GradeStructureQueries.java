@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.gradestructure.api.GradeStructureResponse;
 import uz.hrlab.grading.gradestructure.domain.Grade;
 import uz.hrlab.grading.gradestructure.domain.GradeBand;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureStatus;
@@ -43,20 +44,29 @@ public class GradeStructureQueries {
         this.bands = bands;
     }
 
+    // BE-035 — returns the enriched wire DTO (mapped in-tx). The list-view
+    // grade_count/createdAt/updatedAt fields live on the JpaEntity (not the
+    // domain), so the batched-count enrichment + GradeStructureResponse.fromList
+    // mapping is done here, keeping the persistence type out of the controller.
     @Transactional(readOnly = true)
-    public Page<GradeStructureJpaEntity> findByProject(UUID projectId,
-                                                       GradeStructureStatus status,
-                                                       Pageable pageable) {
+    public Page<GradeStructureResponse> findByProject(UUID projectId,
+                                                      GradeStructureStatus status,
+                                                      Pageable pageable) {
         TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_READ);
+        Page<GradeStructureJpaEntity> page;
         if (status != null && projectId != null) {
-            return structures.findAllByTenantIdAndProjectIdAndStatus(
+            page = structures.findAllByTenantIdAndProjectIdAndStatus(
                     ctx.tenantId(), projectId, status, pageable);
-        }
-        if (projectId != null) {
-            return structures.findAllByTenantIdAndProjectId(
+        } else if (projectId != null) {
+            page = structures.findAllByTenantIdAndProjectId(
                     ctx.tenantId(), projectId, pageable);
+        } else {
+            page = structures.findAllByTenantId(ctx.tenantId(), pageable);
         }
-        return structures.findAllByTenantId(ctx.tenantId(), pageable);
+        List<UUID> ids = page.getContent().stream()
+                .map(GradeStructureJpaEntity::getId).toList();
+        Map<UUID, Integer> counts = gradeCountsByStructureIds(ids);
+        return page.map(e -> GradeStructureResponse.fromList(e, counts.getOrDefault(e.getId(), 0)));
     }
 
     /**

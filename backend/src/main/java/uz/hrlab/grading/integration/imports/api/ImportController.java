@@ -147,7 +147,7 @@ public class ImportController {
             throw rejected;
         }
         UUID id = uploadUseCase.upload(file, templateCode, projectId);
-        return ImportBatchResponse.from(queries.get(id));
+        return queries.get(id);
     }
 
     private void recordUploadRejection(MultipartFile file, String templateCode,
@@ -184,13 +184,13 @@ public class ImportController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = Pagination.of(page, size);
-        return PageResponse.of(queries.list(projectId, status, pageable), ImportBatchResponse::from);
+        return PageResponse.from(queries.list(projectId, status, pageable));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("isAuthenticated()")
     public ImportBatchResponse get(@PathVariable("id") UUID id) {
-        return ImportBatchResponse.from(queries.get(id));
+        return queries.get(id);
     }
 
     @GetMapping("/{id}/errors")
@@ -201,18 +201,18 @@ public class ImportController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         Pageable pageable = Pagination.of(page, size);
-        return PageResponse.of(queries.listErrors(id, level, pageable), ImportErrorResponse::from);
+        return PageResponse.from(queries.listErrors(id, level, pageable));
     }
 
     @PostMapping("/{id}/commit")
     @PreAuthorize("isAuthenticated()")
     public ImportBatchResponse commit(@PathVariable("id") UUID id) {
-        return ImportBatchResponse.from(commitUseCase.commit(id));
+        return commitUseCase.commit(id);
     }
 
     @PostMapping("/{id}/cancel")
     @PreAuthorize("isAuthenticated()")
     public ImportBatchResponse cancel(@PathVariable("id") UUID id) {
-        return ImportBatchResponse.from(cancelUseCase.cancel(id));
+        return cancelUseCase.cancel(id);
     }
 }

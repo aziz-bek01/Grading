@@ -78,10 +78,8 @@ public class ArchiveJobProfileUseCase {
         entity.setStatus(JobProfileStatus.ARCHIVED);
         profiles.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.JOB_PROFILE_ARCHIVED)
                 .entityType("JobProfile")
                 .entityId(id)

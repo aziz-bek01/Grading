@@ -1,6 +1,7 @@
 package uz.hrlab.grading.audit.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import uz.hrlab.grading.tenancy.application.TenantContext;
 
 import java.util.UUID;
 
@@ -45,6 +46,28 @@ public final class AuditEvent {
     }
 
     public static Builder builder() { return new Builder(); }
+
+    /**
+     * BE-036 — context-prefilling factory. Returns a {@link Builder} with the
+     * per-request context fields carried by {@link TenantContext} already set
+     * (tenantId + actorUserId); the caller only adds the event-specific fields
+     * (action, entityType, entityId, projectId, reason, before/after JSON).
+     *
+     * <p>Produces a byte-identical {@link AuditEvent} to the hand-rolled
+     * {@code builder().tenantId(ctx.tenantId()).actorUserId(ctx.userId())…}
+     * pattern it replaces. {@code ipAddress}/{@code userAgent}/{@code
+     * correlationId}/{@code traceId} are deliberately NOT sourced here: those
+     * live on the HTTP request (not on {@link TenantContext}) and are only set
+     * by the edge sites that hold the request — {@code TenantContextFilter} and
+     * {@code GlobalExceptionHandler}. Sites recording against a target/other
+     * tenant, a background actor, or a nullable context must keep using the
+     * no-arg {@link #builder()} and set those fields explicitly.
+     */
+    public static Builder builder(TenantContext ctx) {
+        return new Builder()
+                .tenantId(ctx.tenantId())
+                .actorUserId(ctx.userId());
+    }
 
     public UUID tenantId() { return tenantId; }
     public UUID projectId() { return projectId; }

@@ -92,10 +92,8 @@ public class SubmitPanelToCeoUseCase {
 
         UUID approvalRequestId = ceoApprovalOpener.openIfAbsent(ctx.tenantId(), panel);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(panel.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_PANEL_SUBMITTED_TO_CEO)
                 .entityType("EvaluationPanel")
                 .entityId(panelId)

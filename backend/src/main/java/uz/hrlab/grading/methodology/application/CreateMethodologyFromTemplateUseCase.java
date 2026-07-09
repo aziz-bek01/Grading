@@ -125,20 +125,16 @@ public class CreateMethodologyFromTemplateUseCase {
             }
         }
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(cmd.projectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_CREATED)
                 .entityType("Methodology")
                 .entityId(methodologyId)
                 .reason("from-template:" + cmd.templateCode())
                 .afterJson(snapshot.of(m))
                 .build());
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(cmd.projectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_VERSION_CREATED)
                 .entityType("MethodologyVersion")
                 .entityId(versionId)

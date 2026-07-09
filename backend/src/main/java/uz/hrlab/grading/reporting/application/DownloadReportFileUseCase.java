@@ -76,14 +76,12 @@ public class DownloadReportFileUseCase {
             report.setDownloadedAt(OffsetDateTime.now());
             reports.save(report);
         }
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId()).projectId(report.getProjectId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
+                .projectId(report.getProjectId())
                 .action(AuditAction.REPORT_DOWNLOADED)
                 .entityType("Report").entityId(report.getId()).build());
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId()).projectId(report.getProjectId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
+                .projectId(report.getProjectId())
                 .action(AuditAction.FILE_DOWNLOADED)
                 .entityType("Report").entityId(report.getId()).build());
 

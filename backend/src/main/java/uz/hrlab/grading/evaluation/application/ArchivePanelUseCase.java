@@ -87,10 +87,8 @@ public class ArchivePanelUseCase {
         panel.setArchivedBy(ctx.userId());
         panels.save(panel);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(panel.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_PANEL_ARCHIVED)
                 .entityType("EvaluationPanel")
                 .entityId(panel.getId())

@@ -56,7 +56,7 @@ public class ExportController {
     @PreAuthorize("isAuthenticated()")
     public ExportJobResponse request(@Valid @RequestBody RequestExportRequest req) {
         UUID id = requestUseCase.request(req.exportType(), req.format(), req.projectId(), req.filterParams());
-        return ExportJobResponse.from(queries.get(id));
+        return queries.get(id);
     }
 
     @GetMapping
@@ -68,13 +68,13 @@ public class ExportController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = Pagination.of(page, size);
-        return PageResponse.of(queries.list(projectId, status, type, pageable), ExportJobResponse::from);
+        return PageResponse.from(queries.list(projectId, status, type, pageable));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("isAuthenticated()")
     public ExportJobResponse get(@PathVariable("id") UUID id) {
-        return ExportJobResponse.from(queries.get(id));
+        return queries.get(id);
     }
 
     /**
@@ -120,6 +120,6 @@ public class ExportController {
     @PostMapping("/{id}/cancel")
     @PreAuthorize("isAuthenticated()")
     public ExportJobResponse cancel(@PathVariable("id") UUID id) {
-        return ExportJobResponse.from(cancelUseCase.cancel(id));
+        return cancelUseCase.cancel(id);
     }
 }

@@ -11,6 +11,7 @@ import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.excel.ExcelParser;
+import uz.hrlab.grading.integration.imports.api.ImportBatchResponse;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatus;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatusTransitionPolicy;
 import uz.hrlab.grading.integration.imports.domain.ImportErrorLevel;
@@ -75,8 +76,9 @@ public class CommitImportBatchUseCase {
         this.audit = audit;
     }
 
+    // BE-035 — returns the wire DTO (mapped in-tx), never the JpaEntity.
     @Transactional
-    public ImportBatchJpaEntity commit(UUID batchId) {
+    public ImportBatchResponse commit(UUID batchId) {
         TenantContext ctx = TenantContextHolder.requireActive();
         ImportBatchJpaEntity batch = batches.findByIdAndTenantId(batchId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
@@ -115,7 +117,7 @@ public class CommitImportBatchUseCase {
             recordError(ctx.tenantId(), batch.getId(), "STORAGE_RETRIEVE_FAILED",
                     "Failed to retrieve uploaded file from storage", batch.getTraceId());
             audit.record(buildBatchAudit(ctx, batch, AuditAction.IMPORT_FAILED));
-            return batches.save(batch);
+            return ImportBatchResponse.from(batches.save(batch));
         }
         ExcelParser.ParsedSheet sheet;
         try {
@@ -125,7 +127,7 @@ public class CommitImportBatchUseCase {
             recordError(ctx.tenantId(), batch.getId(), "COMMIT_PARSE_FAILED",
                     "Failed to re-parse uploaded file at commit time", batch.getTraceId());
             audit.record(buildBatchAudit(ctx, batch, AuditAction.IMPORT_FAILED));
-            return batches.save(batch);
+            return ImportBatchResponse.from(batches.save(batch));
         }
 
         ImportRowCommitContext commitCtx = new ImportRowCommitContext(
@@ -200,7 +202,7 @@ public class CommitImportBatchUseCase {
         batch.setCommittedAt(OffsetDateTime.now());
         ImportBatchJpaEntity saved = batches.save(batch);
         audit.record(buildBatchAudit(ctx, saved, finalAuditAction));
-        return saved;
+        return ImportBatchResponse.from(saved);
     }
 
     private void transition(ImportBatchJpaEntity batch, ImportBatchStatus to) {
@@ -209,10 +211,8 @@ public class CommitImportBatchUseCase {
     }
 
     private AuditEvent buildBatchAudit(TenantContext ctx, ImportBatchJpaEntity batch, String action) {
-        return AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        return AuditEvent.builder(ctx)
                 .projectId(batch.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(action)
                 .entityType("ImportBatch")
                 .entityId(batch.getId())

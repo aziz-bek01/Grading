@@ -57,10 +57,8 @@ public class ArchiveMethodologyUseCase {
         m.setStatus(MethodologyStatus.ARCHIVED);
         methodologies.save(m);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(m.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_ARCHIVED)
                 .entityType("Methodology")
                 .entityId(id)

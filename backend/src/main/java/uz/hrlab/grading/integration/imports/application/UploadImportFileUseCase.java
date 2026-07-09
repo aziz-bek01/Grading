@@ -109,19 +109,15 @@ public class UploadImportFileUseCase {
         batch.setTraceId(UUID.randomUUID().toString());
         batches.save(batch);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(projectId)
-                .actorUserId(ctx.userId())
                 .action(AuditAction.IMPORT_UPLOADED)
                 .entityType("ImportBatch")
                 .entityId(batchId)
                 .reason("template=" + templateCode + " size=" + file.getSize())
                 .build());
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(projectId)
-                .actorUserId(ctx.userId())
                 .action(AuditAction.FILE_UPLOADED)
                 .entityType("ImportBatch")
                 .entityId(batchId)

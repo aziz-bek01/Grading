@@ -69,10 +69,8 @@ public class LockMethodologyVersionUseCase {
         v.setLockedBy(ctx.userId());
         versions.save(v);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(m.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_VERSION_LOCKED)
                 .entityType("MethodologyVersion")
                 .entityId(versionId)

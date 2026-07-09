@@ -141,18 +141,14 @@ public class RevokeMembershipUseCase {
 
         try {
             identityProvisioning.deactivateUser(subject);
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            audit.record(AuditEvent.builder(ctx)
                     .action(AuditAction.USER_IDP_ACCOUNT_DEACTIVATED)
                     .entityType("User")
                     .entityId(userId)
                     .reason("externalIdpSubject=" + subject + " trigger=LAST_MEMBERSHIP_REVOKED")
                     .build());
         } catch (IdentityProvisioningException ex) {
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            audit.record(AuditEvent.builder(ctx)
                     .action(AuditAction.USER_IDP_DEACTIVATION_FAILED)
                     .entityType("User")
                     .entityId(userId)

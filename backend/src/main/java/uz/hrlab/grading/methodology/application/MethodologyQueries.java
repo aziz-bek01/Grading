@@ -10,6 +10,7 @@ import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
+import uz.hrlab.grading.methodology.api.MethodologyResponse;
 import uz.hrlab.grading.methodology.domain.Factor;
 import uz.hrlab.grading.methodology.domain.FactorLevel;
 import uz.hrlab.grading.methodology.domain.Methodology;
@@ -96,20 +97,31 @@ public class MethodologyQueries {
                 .orElse(null);
     }
 
+    // BE-035 — returns the enriched wire DTO (mapped in-tx). The list-view
+    // latest/active version pointers + audit timestamps live on the JpaEntity,
+    // so the batched version enrichment + MethodologyResponse.fromList mapping is
+    // done here, keeping the persistence type out of the controller.
     @Transactional(readOnly = true)
-    public Page<MethodologyJpaEntity> findByProject(UUID projectId, Pageable pageable) {
+    public Page<MethodologyResponse> findByProject(UUID projectId, Pageable pageable) {
         // Defect-2: backs GET /methodologies?projectId=... — the scoring view's
         // methodology selector source. Broadened to EVALUATION_READ; project ABAC
         // (enforceCanListInProject) is UNCHANGED, so an evaluator still only sees
         // methodologies in projects they are a member of.
         TenantContext ctx = requireMethodologyStructureReadPerm();
+        Page<MethodologyJpaEntity> page;
         if (projectId != null) {
             abacGate.enforceCanListInProject(ctx, projectId);
-            return methodologies.findAllByTenantIdAndProjectId(
+            page = methodologies.findAllByTenantIdAndProjectId(
                     ctx.tenantId(), projectId, pageable);
+        } else {
+            // Global / null-project listing: paged tenant-scoped — null-project filter
+            page = methodologies.findAllByTenantId(ctx.tenantId(), pageable);
         }
-        // Global / null-project listing: paged tenant-scoped — null-project filter
-        return methodologies.findAllByTenantId(ctx.tenantId(), pageable);
+        List<UUID> ids = page.getContent().stream()
+                .map(MethodologyJpaEntity::getId).toList();
+        Map<UUID, List<MethodologyVersionJpaEntity>> versionsById = versionsByMethodologyIds(ids);
+        return page.map(e -> MethodologyResponse.fromList(
+                e, versionsById.getOrDefault(e.getId(), List.of())));
     }
 
     /**
@@ -130,8 +142,9 @@ public class MethodologyQueries {
      * evaluator are pinned in every predicate; ARCHIVED sheets and ARCHIVED
      * containers are excluded.
      */
+    // BE-035 — returns the enriched wire DTO (mapped in-tx), never the JpaEntity.
     @Transactional(readOnly = true)
-    public List<MethodologyJpaEntity> findMyMethodologiesInProject(UUID projectId) {
+    public List<MethodologyResponse> findMyMethodologiesInProject(UUID projectId) {
         TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         if (projectId == null) {
             throw new ValidationException("projectId is required");
@@ -159,8 +172,23 @@ public class MethodologyQueries {
         }
 
         // ACTIVE containers among those ids, in this project (ARCHIVED filtered out).
-        return methodologies.findAllByTenantIdAndProjectIdAndStatusAndIdIn(
+        List<MethodologyJpaEntity> rows = methodologies.findAllByTenantIdAndProjectIdAndStatusAndIdIn(
                 tenant, projectId, MethodologyStatus.ACTIVE, methodologyIds);
+        return enrichWithVersions(rows);
+    }
+
+    /**
+     * BE-035 — shared list-view enrichment: per methodology, resolve its versions
+     * (one batched query, no N+1) and map to the {@link MethodologyResponse}
+     * list-item shape (latest/active version pointers + audit timestamps).
+     */
+    private List<MethodologyResponse> enrichWithVersions(List<MethodologyJpaEntity> rows) {
+        List<UUID> ids = rows.stream().map(MethodologyJpaEntity::getId).toList();
+        Map<UUID, List<MethodologyVersionJpaEntity>> versionsById = versionsByMethodologyIds(ids);
+        return rows.stream()
+                .map(e -> MethodologyResponse.fromList(
+                        e, versionsById.getOrDefault(e.getId(), List.of())))
+                .toList();
     }
 
     /**
@@ -239,8 +267,9 @@ public class MethodologyQueries {
         return v.toDomain();
     }
 
+    // BE-035 — returns the domain MethodologyVersion list (mapped in-tx).
     @Transactional(readOnly = true)
-    public List<MethodologyVersionJpaEntity> listVersions(UUID methodologyId) {
+    public List<MethodologyVersion> listVersions(UUID methodologyId) {
         // Defect-2: backs GET /methodologies/{id}/versions — the scoring entry
         // page (EvaluationListPage) fans out this call per methodology to map
         // version_id → methodology. Broadened to EVALUATION_READ; tenant + project
@@ -252,7 +281,9 @@ public class MethodologyQueries {
             abacGate.enforceCanListInProject(ctx, m.getProjectId());
         }
         return versions.findAllByTenantIdAndMethodologyIdOrderByVersionNumberDesc(
-                ctx.tenantId(), methodologyId);
+                        ctx.tenantId(), methodologyId).stream()
+                .map(MethodologyVersionJpaEntity::toDomain)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -263,8 +294,9 @@ public class MethodologyQueries {
         return f.toDomain();
     }
 
+    // BE-035 — returns the domain Factor list (mapped in-tx), never the JpaEntity.
     @Transactional(readOnly = true)
-    public List<FactorJpaEntity> listFactorsByVersion(UUID versionId) {
+    public List<Factor> listFactorsByVersion(UUID versionId) {
         // Defect-1: scoring-sheet hydration step (factors of the version). Same
         // broadened structural READ as findVersionById; ABAC unchanged.
         TenantContext ctx = requireMethodologyStructureReadPerm();
@@ -276,7 +308,9 @@ public class MethodologyQueries {
             abacGate.enforceCanListInProject(ctx, m.getProjectId());
         }
         return factors.findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(
-                ctx.tenantId(), versionId);
+                        ctx.tenantId(), versionId).stream()
+                .map(FactorJpaEntity::toDomain)
+                .toList();
     }
 
     @Transactional(readOnly = true)

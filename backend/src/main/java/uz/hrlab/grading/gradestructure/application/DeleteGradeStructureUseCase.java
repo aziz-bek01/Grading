@@ -79,10 +79,8 @@ public class DeleteGradeStructureUseCase {
         grades.deleteAll(gs);
         structures.delete(s);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_STRUCTURE_DELETED)
                 .entityType("GradeStructure")
                 .entityId(structureId)

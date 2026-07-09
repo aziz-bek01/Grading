@@ -101,7 +101,7 @@ public class MethodologyVersionController {
     @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public List<FactorResponse> listFactors(@PathVariable UUID id) {
         return queries.listFactorsByVersion(id).stream()
-                .map(e -> FactorResponse.from(e.toDomain()))
+                .map(FactorResponse::from)
                 .toList();
     }
 

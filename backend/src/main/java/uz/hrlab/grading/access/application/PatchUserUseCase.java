@@ -253,9 +253,7 @@ public class PatchUserUseCase {
         // @Transactional rolls back (no row was written yet anyway).
         if (resetPassword) {
             identityProvisioning.setPassword(user.getExternalIdpSubject(), password);
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            audit.record(AuditEvent.builder(ctx)
                     .action(AuditAction.USER_PASSWORD_RESET)
                     .entityType("User")
                     .entityId(userId)
@@ -265,9 +263,7 @@ public class PatchUserUseCase {
 
         if (changed) {
             userRepo.save(user);
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            audit.record(AuditEvent.builder(ctx)
                     .action(AuditAction.USER_UPDATED)
                     .entityType("User")
                     .entityId(userId)
@@ -285,9 +281,7 @@ public class PatchUserUseCase {
                 identityProvisioning.changeEmail(subject, user.getEmail());
             }
             // old→new are not secrets — safe to audit for forensics.
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            audit.record(AuditEvent.builder(ctx)
                     .action(AuditAction.USER_EMAIL_CHANGED)
                     .entityType("User")
                     .entityId(userId)
@@ -324,9 +318,7 @@ public class PatchUserUseCase {
             } else {
                 identityProvisioning.reactivateUser(subject);
             }
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            audit.record(AuditEvent.builder(ctx)
                     .action(deactivating
                             ? AuditAction.USER_IDP_ACCOUNT_DEACTIVATED
                             : AuditAction.USER_IDP_ACCOUNT_REACTIVATED)
@@ -337,9 +329,7 @@ public class PatchUserUseCase {
                     .build());
         } catch (IdentityProvisioningException ex) {
             // In-app cutoff already committed; flag the IdP failure for retry.
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            audit.record(AuditEvent.builder(ctx)
                     .action(AuditAction.USER_IDP_DEACTIVATION_FAILED)
                     .entityType("User")
                     .entityId(user.getId())

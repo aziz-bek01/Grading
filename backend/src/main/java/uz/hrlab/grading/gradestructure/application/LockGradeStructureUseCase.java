@@ -59,10 +59,8 @@ public class LockGradeStructureUseCase {
         s.setLockedBy(ctx.userId());
         structures.save(s);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_STRUCTURE_LOCKED)
                 .entityType("GradeStructure")
                 .entityId(structureId)

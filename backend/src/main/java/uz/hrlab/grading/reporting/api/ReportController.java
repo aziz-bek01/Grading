@@ -65,7 +65,7 @@ public class ReportController {
     public ReportResponse request(@Valid @RequestBody RequestReportRequest req) {
         UUID id = requestUseCase.request(req.reportType(), req.format(),
                 req.projectId(), req.filterParams());
-        return ReportResponse.from(queries.get(id));
+        return queries.get(id);
     }
 
     @GetMapping
@@ -78,14 +78,13 @@ public class ReportController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = Pagination.of(page, size);
-        return PageResponse.of(queries.list(projectId, status, type, requestedBy, pageable),
-                ReportResponse::from);
+        return PageResponse.from(queries.list(projectId, status, type, requestedBy, pageable));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('REPORT_READ','REPORT_CREATE','REPORT_EXPORT')")
     public ReportResponse get(@PathVariable("id") UUID id) {
-        return ReportResponse.from(queries.get(id));
+        return queries.get(id);
     }
 
     /**
@@ -125,6 +124,6 @@ public class ReportController {
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasAnyAuthority('REPORT_CREATE','REPORT_EXPORT')")
     public ReportResponse cancel(@PathVariable("id") UUID id) {
-        return ReportResponse.from(cancelUseCase.cancel(id));
+        return cancelUseCase.cancel(id);
     }
 }

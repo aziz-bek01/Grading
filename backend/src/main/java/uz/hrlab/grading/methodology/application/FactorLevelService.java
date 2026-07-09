@@ -102,10 +102,8 @@ public class FactorLevelService {
         levels.save(l);
 
         var afterJson = snapshot.of(l);
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(vctx.methodology.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.FACTOR_LEVEL_CREATED)
                 .entityType("FactorLevel")
                 .entityId(id)
@@ -141,10 +139,8 @@ public class FactorLevelService {
         levels.save(l);
 
         var afterJson = snapshot.of(l);
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(vctx.methodology.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.FACTOR_LEVEL_UPDATED)
                 .entityType("FactorLevel")
                 .entityId(levelId)
@@ -181,10 +177,8 @@ public class FactorLevelService {
             l.setDeprecatedBy(ctx.userId());
             levels.save(l);
             var afterJson = snapshot.of(l);
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
+            audit.record(AuditEvent.builder(ctx)
                     .projectId(vctx.methodology.getProjectId())
-                    .actorUserId(ctx.userId())
                     .action(AuditAction.FACTOR_LEVEL_DEPRECATED)
                     .entityType("FactorLevel")
                     .entityId(levelId)
@@ -203,10 +197,8 @@ public class FactorLevelService {
             throw new ValidationException("LEVEL_REFERENCED_BY_EVALUATIONS",
                     "Factor level is referenced by existing evaluations and cannot be deleted");
         }
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(vctx.methodology.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.FACTOR_LEVEL_REMOVED)
                 .entityType("FactorLevel")
                 .entityId(levelId)
@@ -249,10 +241,8 @@ public class FactorLevelService {
             l.setLevelOrder(i + 1);
             levels.save(l);
         }
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(vctx.methodology.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.FACTOR_LEVEL_REORDERED)
                 .entityType("Factor")
                 .entityId(factorId)

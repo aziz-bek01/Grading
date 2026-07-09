@@ -113,10 +113,8 @@ public class UpdateAnswerUseCase {
             questionnaires.save(questionnaire);
         }
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(questionnaire.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.JOB_ANALYSIS_ANSWER_UPDATED)
                 .entityType("JobAnalysisAnswer")
                 .entityId(entity.getId())

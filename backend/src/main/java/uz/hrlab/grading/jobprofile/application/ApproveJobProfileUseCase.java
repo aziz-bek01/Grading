@@ -76,10 +76,8 @@ public class ApproveJobProfileUseCase {
         entity.setLockedAt(now);
         profiles.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.JOB_PROFILE_APPROVED)
                 .entityType("JobProfile")
                 .entityId(id)

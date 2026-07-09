@@ -69,10 +69,8 @@ public class AdvanceWorkflowStageUseCase {
         wf.setCurrentStage(targetStage);
         workflows.save(wf);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(projectId)
-                .actorUserId(ctx.userId())
                 .action(AuditAction.WORKFLOW_STAGE_ADVANCED)
                 .entityType("ProjectWorkflow")
                 .entityId(wf.getId())

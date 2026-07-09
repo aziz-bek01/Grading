@@ -124,10 +124,8 @@ public class CreateApprovalRequestUseCase {
             req.setCurrentStatus(ApprovalRequestStatus.APPROVED);
             requests.save(req);
 
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
+            audit.record(AuditEvent.builder(ctx)
                     .projectId(req.getProjectId())
-                    .actorUserId(ctx.userId())
                     .action(AuditAction.APPROVAL_STEP_APPROVED)
                     .entityType("ApprovalStep")
                     .entityId(firstStep.getId())
@@ -193,10 +191,8 @@ public class CreateApprovalRequestUseCase {
             steps.save(step);
         }
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(cmd.projectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.APPROVAL_REQUEST_CREATED)
                 .entityType("ApprovalRequest")
                 .entityId(req.getId())

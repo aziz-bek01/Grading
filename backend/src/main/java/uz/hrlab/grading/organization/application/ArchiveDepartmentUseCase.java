@@ -40,10 +40,8 @@ public class ArchiveDepartmentUseCase {
         if (entity.getStatus() == DepartmentStatus.ARCHIVED) return;
         entity.setStatus(DepartmentStatus.ARCHIVED);
         departments.save(entity);
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.DEPARTMENT_ARCHIVED)
                 .entityType("Department")
                 .entityId(id)

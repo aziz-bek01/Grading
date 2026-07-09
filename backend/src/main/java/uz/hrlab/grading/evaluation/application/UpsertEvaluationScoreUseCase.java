@@ -156,10 +156,8 @@ public class UpsertEvaluationScoreUseCase {
         // No-op for panelless / legacy evaluations.
         panelCompletionWatcher.onEvaluationStatusRecomputed(evaluation, ctx.userId());
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(evaluation.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_SCORE_UPSERTED)
                 .entityType("EvaluationScore")
                 .entityId(row.getId())

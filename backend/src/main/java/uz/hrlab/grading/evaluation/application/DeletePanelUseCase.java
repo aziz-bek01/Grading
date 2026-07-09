@@ -127,10 +127,8 @@ public class DeletePanelUseCase {
         assignments.deleteAllByTenantIdAndPanelId(ctx.tenantId(), panel.getId());
         panels.deleteByIdAndTenantId(panel.getId(), ctx.tenantId());
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(panel.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_PANEL_DELETED)
                 .entityType("EvaluationPanel")
                 .entityId(panel.getId())

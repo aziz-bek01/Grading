@@ -461,7 +461,7 @@ class MethodologyControllerSecurityTest {
         v.setApprovedBy(approverId);
         v.setLockedAt(OffsetDateTime.now());
         v.setLockedBy(lockerId);
-        given(queries.listVersions(methodologyId)).willReturn(List.of(v));
+        given(queries.listVersions(methodologyId)).willReturn(List.of(v.toDomain()));
         given(actorNames.resolve(eq(approverId))).willReturn("Anvar Asqarov");
         given(actorNames.resolve(eq(lockerId))).willReturn("Bobur Mirzo");
 

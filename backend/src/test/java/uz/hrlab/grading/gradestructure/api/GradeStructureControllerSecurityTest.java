@@ -136,9 +136,11 @@ class GradeStructureControllerSecurityTest {
                 uz.hrlab.grading.gradestructure.domain.GradeStructureStatus.DRAFT,
                 1, null, null);
         e.setNameI18n(Map.of("ru-RU", "X"));
-        Page<GradeStructureJpaEntity> page = new PageImpl<>(List.of(e));
+        // BE-035 — the query now returns the enriched wire DTO (grade_count folded
+        // in in-tx) directly; the controller is a thin PageResponse wrapper.
+        Page<GradeStructureResponse> page = new PageImpl<>(List.of(
+                GradeStructureResponse.fromList(e, 14)));
         given(queries.findByProject(any(), any(), any())).willReturn(page);
-        given(queries.gradeCountsByStructureIds(any())).willReturn(Map.of(id, 14));
 
         mvc.perform(get("/api/v1/grade-structures")
                         .with(jwt().authorities(() -> "GRADE_READ")))

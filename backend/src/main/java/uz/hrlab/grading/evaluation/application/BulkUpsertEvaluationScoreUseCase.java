@@ -113,9 +113,7 @@ public class BulkUpsertEvaluationScoreUseCase {
     private void recordSummary(TenantContext ctx, UUID factorId, UUID factorLevelId,
                                int updated, int skipped, String reason) {
         try {
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            audit.record(AuditEvent.builder(ctx)
                     .action(AuditAction.EVALUATION_BULK_SCORE_SET)
                     .entityType("Factor")
                     .entityId(factorId)

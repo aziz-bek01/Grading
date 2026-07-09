@@ -110,10 +110,8 @@ public class LockRosterUseCase {
         panel.setStatus(EvaluationPanelStatus.AWAITING_EVALUATIONS);
         panels.save(panel);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(panel.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_PANEL_ROSTER_LOCKED)
                 .entityType("EvaluationPanel")
                 .entityId(panelId)

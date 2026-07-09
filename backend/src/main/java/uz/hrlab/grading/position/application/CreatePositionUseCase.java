@@ -69,10 +69,8 @@ public class CreatePositionUseCase {
         if (!dept.getProjectId().equals(cmd.projectId())) {
             // Cross-project department reference — refuse but do NOT reveal that the
             // department exists in another project; audit and 400.
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
+            audit.record(AuditEvent.builder(ctx)
                     .projectId(cmd.projectId())
-                    .actorUserId(ctx.userId())
                     .action(AuditAction.CROSS_TENANT_OR_PROJECT_ACCESS_ATTEMPT)
                     .entityType("Department")
                     .entityId(cmd.departmentId())
@@ -99,10 +97,8 @@ public class CreatePositionUseCase {
                 PositionStatus.DRAFT);
         positions.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(cmd.projectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.POSITION_CREATED)
                 .entityType("Position")
                 .entityId(id)

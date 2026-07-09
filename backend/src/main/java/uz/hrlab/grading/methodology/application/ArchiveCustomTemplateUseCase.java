@@ -54,9 +54,7 @@ public class ArchiveCustomTemplateUseCase {
         entity.setStatus(MethodologyTemplateStatus.ARCHIVED);
         customTemplates.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
                 .action(AuditAction.METHODOLOGY_TEMPLATE_ARCHIVED)
                 .entityType("MethodologyTemplate")
                 .entityId(templateId)

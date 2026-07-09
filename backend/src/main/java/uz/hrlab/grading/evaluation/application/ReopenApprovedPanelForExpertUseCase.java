@@ -182,10 +182,8 @@ public class ReopenApprovedPanelForExpertUseCase {
         panels.save(panel);
         averages.deleteAllByTenantIdAndPanelId(ctx.tenantId(), panelId);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(panel.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_PANEL_REOPENED_FOR_EXPERT)
                 .entityType("EvaluationPanel")
                 .entityId(panelId)

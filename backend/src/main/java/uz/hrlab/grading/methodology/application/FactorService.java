@@ -96,10 +96,8 @@ public class FactorService {
         factors.save(f);
 
         var afterJson = snapshot.of(f);
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(vctx.methodology.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.FACTOR_CREATED)
                 .entityType("Factor")
                 .entityId(id)
@@ -137,10 +135,8 @@ public class FactorService {
         factors.save(f);
 
         var afterJson = snapshot.of(f);
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(vctx.methodology.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.FACTOR_UPDATED)
                 .entityType("Factor")
                 .entityId(factorId)
@@ -179,10 +175,8 @@ public class FactorService {
             f.setDeprecatedBy(ctx.userId());
             factors.save(f);
             var afterJson = snapshot.of(f);
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
+            audit.record(AuditEvent.builder(ctx)
                     .projectId(vctx.methodology.getProjectId())
-                    .actorUserId(ctx.userId())
                     .action(AuditAction.FACTOR_DEPRECATED)
                     .entityType("Factor")
                     .entityId(factorId)
@@ -201,10 +195,8 @@ public class FactorService {
             throw new ValidationException("FACTOR_REFERENCED_BY_EVALUATIONS",
                     "Factor is referenced by existing evaluations and cannot be deleted");
         }
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(vctx.methodology.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.FACTOR_REMOVED)
                 .entityType("Factor")
                 .entityId(factorId)
@@ -255,10 +247,8 @@ public class FactorService {
             factors.save(f);
         }
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(vctx.methodology.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.FACTOR_REORDERED)
                 .entityType("MethodologyVersion")
                 .entityId(methodologyVersionId)

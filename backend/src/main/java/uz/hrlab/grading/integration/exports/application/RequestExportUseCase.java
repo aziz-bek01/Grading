@@ -54,10 +54,8 @@ public class RequestExportUseCase {
         job.setTraceId(UUID.randomUUID().toString());
         jobs.save(job);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(projectId)
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EXPORT_REQUESTED)
                 .entityType("ExportJob")
                 .entityId(jobId)

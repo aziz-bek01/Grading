@@ -45,10 +45,8 @@ public class DeleteCommentUseCase {
         entity.setDeletedAt(OffsetDateTime.now());
         comments.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.COMMENT_DELETED)
                 .entityType("Comment")
                 .entityId(entity.getId())

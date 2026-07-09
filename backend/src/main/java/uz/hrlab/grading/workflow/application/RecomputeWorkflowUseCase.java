@@ -45,10 +45,8 @@ public class RecomputeWorkflowUseCase {
         abacGate.enforceCanReadProject(ctx, project.getId(), project.getStatus());
 
         ProjectWorkflow result = recompute.recompute(projectId);
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(projectId)
-                .actorUserId(ctx.userId())
                 .action(AuditAction.WORKFLOW_RECOMPUTED)
                 .entityType("ProjectWorkflow")
                 .entityId(result.id())

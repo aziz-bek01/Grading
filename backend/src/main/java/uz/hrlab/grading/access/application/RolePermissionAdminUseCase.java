@@ -286,11 +286,9 @@ public class RolePermissionAdminUseCase {
     }
 
     private void auditChange(TenantContext ctx, RoleJpaEntity role, String permissionCode, String action) {
-        audit.record(AuditEvent.builder()
+        audit.record(AuditEvent.builder(ctx)
                 // Roles are global control-plane data — no tenant scope. The actor's
                 // active tenant is still recorded for forensics on WHO acted.
-                .tenantId(ctx.tenantId())
-                .actorUserId(ctx.userId())
                 .action(action)
                 .entityType("RolePermission")
                 .entityId(role.getId())

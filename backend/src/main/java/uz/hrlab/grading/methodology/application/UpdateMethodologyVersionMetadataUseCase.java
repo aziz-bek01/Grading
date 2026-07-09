@@ -96,10 +96,8 @@ public class UpdateMethodologyVersionMetadataUseCase {
         if (targetTotalPoints != null) v.setTargetTotalPoints(targetTotalPoints);
         versions.save(v);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(m.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_VERSION_UPDATED)
                 .entityType("MethodologyVersion")
                 .entityId(versionId)

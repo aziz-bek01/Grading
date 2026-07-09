@@ -99,10 +99,8 @@ public class CreateGradeStructureVersionUseCase {
             });
         }
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(source.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_STRUCTURE_REVISION_CREATED)
                 .entityType("GradeStructure")
                 .entityId(newId)

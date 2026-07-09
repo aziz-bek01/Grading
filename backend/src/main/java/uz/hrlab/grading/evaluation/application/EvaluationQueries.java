@@ -13,6 +13,8 @@ import uz.hrlab.grading.common.i18n.I18nText;
 import uz.hrlab.grading.evaluation.api.EvaluationByFactorRow;
 import uz.hrlab.grading.evaluation.api.EvaluationResponse;
 import uz.hrlab.grading.evaluation.api.MyEvaluationRow;
+import uz.hrlab.grading.evaluation.domain.EvaluationCalibrationEvent;
+import uz.hrlab.grading.evaluation.domain.EvaluationScore;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventJpaEntity;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationCalibrationEventRepository;
@@ -371,8 +373,9 @@ public class EvaluationQueries {
         return out;
     }
 
+    // BE-035 — returns the domain EvaluationScore list (mapped in-tx), never the JpaEntity.
     @Transactional(readOnly = true)
-    public List<EvaluationScoreJpaEntity> findScoresByEvaluationId(UUID evaluationId) {
+    public List<EvaluationScore> findScoresByEvaluationId(UUID evaluationId) {
         TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         // Tenant guard — ensure evaluation belongs to the active tenant first.
         EvaluationJpaEntity evaluation = evaluations.findByIdAndTenantId(evaluationId, ctx.tenantId())
@@ -382,7 +385,9 @@ public class EvaluationQueries {
         // BE-11 — bias-isolation: peer score read blocked while collecting
         // (REQ-ISO-2/-4; 404/empty + denial audit on a foreign sheet).
         panelBiasGuard.enforceCanReadSheet(ctx, evaluation);
-        return scores.findAllByTenantIdAndEvaluationId(ctx.tenantId(), evaluationId);
+        return scores.findAllByTenantIdAndEvaluationId(ctx.tenantId(), evaluationId).stream()
+                .map(EvaluationScoreJpaEntity::toDomain)
+                .toList();
     }
 
     /**
@@ -548,8 +553,9 @@ public class EvaluationQueries {
     }
 
 
+    // BE-035 — returns the domain EvaluationCalibrationEvent list (mapped in-tx).
     @Transactional(readOnly = true)
-    public List<EvaluationCalibrationEventJpaEntity> findCalibrationHistory(UUID evaluationId) {
+    public List<EvaluationCalibrationEvent> findCalibrationHistory(UUID evaluationId) {
         TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_READ);
         EvaluationJpaEntity evaluation = evaluations.findByIdAndTenantId(evaluationId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
@@ -559,7 +565,9 @@ public class EvaluationQueries {
         // sheet — blocked for peers while collecting.
         panelBiasGuard.enforceCanReadSheet(ctx, evaluation);
         return calibrationEvents
-                .findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(ctx.tenantId(), evaluationId);
+                .findAllByTenantIdAndEvaluationIdOrderByDecidedAtDesc(ctx.tenantId(), evaluationId).stream()
+                .map(EvaluationCalibrationEventJpaEntity::toDomain)
+                .toList();
     }
 
     /**

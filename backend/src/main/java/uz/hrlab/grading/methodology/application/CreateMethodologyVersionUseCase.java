@@ -115,10 +115,8 @@ public class CreateMethodologyVersionUseCase {
             }
         }
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(m.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_VERSION_REVISION_CREATED)
                 .entityType("MethodologyVersion")
                 .entityId(newVersionId)

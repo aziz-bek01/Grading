@@ -72,10 +72,8 @@ public class ArchiveMethodologyVersionUseCase {
         v.setStatus(MethodologyVersionStatus.ARCHIVED);
         versions.save(v);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(m.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_VERSION_ARCHIVED)
                 .entityType("MethodologyVersion")
                 .entityId(versionId)

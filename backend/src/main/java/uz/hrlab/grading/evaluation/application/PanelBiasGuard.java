@@ -145,10 +145,8 @@ public class PanelBiasGuard {
 
     private void recordDenial(TenantContext ctx, EvaluationJpaEntity evaluation, UUID panelId) {
         try {
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
+            audit.record(AuditEvent.builder(ctx)
                     .projectId(evaluation.getProjectId())
-                    .actorUserId(ctx.userId())
                     .action(AuditAction.ACCESS_DENIED_BY_ABAC)
                     .entityType("Evaluation")
                     .entityId(evaluation.getId())

@@ -84,10 +84,8 @@ public class CreateQuestionnaireUseCase {
                 questions);
         questionnaires.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(position.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.JOB_ANALYSIS_QUESTIONNAIRE_CREATED)
                 .entityType("JobAnalysisQuestionnaire")
                 .entityId(id)

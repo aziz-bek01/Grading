@@ -97,14 +97,12 @@ public class DownloadExportFileUseCase {
             job.setDownloadedAt(OffsetDateTime.now());
             jobs.save(job);
         }
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId()).projectId(job.getProjectId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
+                .projectId(job.getProjectId())
                 .action(AuditAction.EXPORT_DOWNLOADED)
                 .entityType("ExportJob").entityId(job.getId()).build());
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId()).projectId(job.getProjectId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
+                .projectId(job.getProjectId())
                 .action(AuditAction.FILE_DOWNLOADED)
                 .entityType("ExportJob").entityId(job.getId()).build());
 

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.reporting.api.ReportResponse;
 import uz.hrlab.grading.reporting.domain.ReportStatus;
 import uz.hrlab.grading.reporting.domain.ReportType;
 import uz.hrlab.grading.reporting.infrastructure.ReportJpaEntity;
@@ -22,32 +23,35 @@ public class ReportQueries {
 
     public ReportQueries(ReportRepository reports) { this.reports = reports; }
 
+    // BE-035 — returns the wire DTO (mapped in-tx), not the JpaEntity, so the
+    // persistence type never crosses into the controller. Mirrors the existing
+    // EvaluationQueries.list / PanelQueries.list convention.
     @Transactional(readOnly = true)
-    public Page<ReportJpaEntity> list(UUID projectId, ReportStatus status,
-                                      ReportType type, UUID requestedBy, Pageable pageable) {
+    public Page<ReportResponse> list(UUID projectId, ReportStatus status,
+                                     ReportType type, UUID requestedBy, Pageable pageable) {
         TenantContext ctx = requireRead();
+        Page<ReportJpaEntity> page;
         if (requestedBy != null) {
-            return reports.findAllByTenantIdAndRequestedBy(ctx.tenantId(), requestedBy, pageable);
-        }
-        if (status != null && projectId != null) {
-            return reports.findAllByTenantIdAndProjectIdAndStatus(
+            page = reports.findAllByTenantIdAndRequestedBy(ctx.tenantId(), requestedBy, pageable);
+        } else if (status != null && projectId != null) {
+            page = reports.findAllByTenantIdAndProjectIdAndStatus(
                     ctx.tenantId(), projectId, status, pageable);
-        }
-        if (type != null && projectId != null) {
-            return reports.findAllByTenantIdAndProjectIdAndReportType(
+        } else if (type != null && projectId != null) {
+            page = reports.findAllByTenantIdAndProjectIdAndReportType(
                     ctx.tenantId(), projectId, type, pageable);
+        } else if (projectId != null) {
+            page = reports.findAllByTenantIdAndProjectId(ctx.tenantId(), projectId, pageable);
+        } else {
+            page = reports.findAllByTenantId(ctx.tenantId(), pageable);
         }
-        if (projectId != null) {
-            return reports.findAllByTenantIdAndProjectId(ctx.tenantId(), projectId, pageable);
-        }
-        return reports.findAllByTenantId(ctx.tenantId(), pageable);
+        return page.map(ReportResponse::from);
     }
 
     @Transactional(readOnly = true)
-    public ReportJpaEntity get(UUID id) {
+    public ReportResponse get(UUID id) {
         TenantContext ctx = requireRead();
-        return reports.findByIdAndTenantId(id, ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new);
+        return ReportResponse.from(reports.findByIdAndTenantId(id, ctx.tenantId())
+                .orElseThrow(TenantAccessDeniedException::new));
     }
 
     private TenantContext requireRead() {

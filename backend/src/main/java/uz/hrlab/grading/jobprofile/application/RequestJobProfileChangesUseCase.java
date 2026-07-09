@@ -84,10 +84,8 @@ public class RequestJobProfileChangesUseCase {
         entity.setSubmittedBy(null);
         profiles.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.JOB_PROFILE_CHANGES_REQUESTED)
                 .entityType("JobProfile")
                 .entityId(id)

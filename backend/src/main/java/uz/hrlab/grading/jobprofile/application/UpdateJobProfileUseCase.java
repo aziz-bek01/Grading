@@ -88,10 +88,8 @@ public class UpdateJobProfileUseCase {
 
         profiles.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.JOB_PROFILE_UPDATED)
                 .entityType("JobProfile")
                 .entityId(id)

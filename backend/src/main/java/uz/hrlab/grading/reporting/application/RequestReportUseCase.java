@@ -108,10 +108,8 @@ public class RequestReportUseCase {
         report.setTraceId(UUID.randomUUID().toString());
         reports.save(report);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(projectId)
-                .actorUserId(ctx.userId())
                 .action(AuditAction.REPORT_REQUESTED)
                 .entityType("Report")
                 .entityId(id)

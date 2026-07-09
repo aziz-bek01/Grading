@@ -58,9 +58,7 @@ public class UpdateCustomTemplateUseCase {
         }
         customTemplates.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
                 .action(AuditAction.METHODOLOGY_TEMPLATE_UPDATED)
                 .entityType("MethodologyTemplate")
                 .entityId(templateId)

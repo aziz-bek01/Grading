@@ -136,10 +136,8 @@ public class ApproveGradeStructureUseCase {
         s.setApprovedBy(ctx.userId());
         structures.save(s);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_STRUCTURE_APPROVED)
                 .entityType("GradeStructure")
                 .entityId(structureId)

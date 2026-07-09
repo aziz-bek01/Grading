@@ -75,10 +75,8 @@ public class CreateDepartmentUseCase {
                 cmd.nameI18n(), cmd.type(), DepartmentStatus.ACTIVE);
         departments.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(cmd.projectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.DEPARTMENT_CREATED)
                 .entityType("Department")
                 .entityId(id)

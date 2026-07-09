@@ -111,10 +111,8 @@ public class CreatePanelUseCase {
                 minEvaluators);
         panels.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(position.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_PANEL_CREATED)
                 .entityType("EvaluationPanel")
                 .entityId(entity.getId())

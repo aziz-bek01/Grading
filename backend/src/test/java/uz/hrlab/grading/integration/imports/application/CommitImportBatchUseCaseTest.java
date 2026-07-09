@@ -12,6 +12,7 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.integration.excel.ExcelParser;
+import uz.hrlab.grading.integration.imports.api.ImportBatchResponse;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatus;
 import uz.hrlab.grading.integration.imports.domain.ImportTemplateCode;
 import uz.hrlab.grading.integration.imports.infrastructure.ImportBatchJpaEntity;
@@ -120,9 +121,9 @@ class CommitImportBatchUseCaseTest {
                 List.of("external_id", "name"),
                 List.of(row("OK-1"), row("OK-2"), row("OK-3"))));
 
-        ImportBatchJpaEntity out = useCase.commit(batchId);
-        assertThat(out.getStatus()).isEqualTo(ImportBatchStatus.COMMITTED);
-        assertThat(out.getCommittedRowCount()).isEqualTo(3);
+        ImportBatchResponse out = useCase.commit(batchId);
+        assertThat(out.status()).isEqualTo(ImportBatchStatus.COMMITTED);
+        assertThat(out.committedRowCount()).isEqualTo(3);
         assertThat(fakeCommitter.successCount).isEqualTo(3);
     }
 
@@ -132,9 +133,9 @@ class CommitImportBatchUseCaseTest {
                 List.of("external_id", "name"),
                 List.of(row("OK-1"), row("BAD-2"), row("OK-3"))));
 
-        ImportBatchJpaEntity out = useCase.commit(batchId);
-        assertThat(out.getStatus()).isEqualTo(ImportBatchStatus.PARTIALLY_COMMITTED);
-        assertThat(out.getCommittedRowCount()).isEqualTo(2);
+        ImportBatchResponse out = useCase.commit(batchId);
+        assertThat(out.status()).isEqualTo(ImportBatchStatus.PARTIALLY_COMMITTED);
+        assertThat(out.committedRowCount()).isEqualTo(2);
 
         // One per-row error row was persisted.
         ArgumentCaptor<ImportErrorJpaEntity> errCap = ArgumentCaptor.forClass(ImportErrorJpaEntity.class);
@@ -148,9 +149,9 @@ class CommitImportBatchUseCaseTest {
                 List.of("external_id", "name"),
                 List.of(row("BAD-1"), row("BAD-2"))));
 
-        ImportBatchJpaEntity out = useCase.commit(batchId);
-        assertThat(out.getStatus()).isEqualTo(ImportBatchStatus.FAILED);
-        assertThat(out.getCommittedRowCount()).isZero();
+        ImportBatchResponse out = useCase.commit(batchId);
+        assertThat(out.status()).isEqualTo(ImportBatchStatus.FAILED);
+        assertThat(out.committedRowCount()).isZero();
     }
 
     @Test

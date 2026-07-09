@@ -76,10 +76,8 @@ public class UpdatePositionUseCase {
         if (cmd.jobLevel() != null) entity.setJobLevel(cmd.jobLevel());
         positions.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.POSITION_UPDATED)
                 .entityType("Position")
                 .entityId(id)

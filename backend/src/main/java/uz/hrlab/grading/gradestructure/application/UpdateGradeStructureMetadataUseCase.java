@@ -54,10 +54,8 @@ public class UpdateGradeStructureMetadataUseCase {
         if (descriptionI18n != null) s.setDescriptionI18n(descriptionI18n);
         structures.save(s);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_STRUCTURE_UPDATED)
                 .entityType("GradeStructure")
                 .entityId(s.getId())

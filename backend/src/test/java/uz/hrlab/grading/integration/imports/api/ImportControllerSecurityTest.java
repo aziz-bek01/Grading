@@ -114,7 +114,7 @@ class ImportControllerSecurityTest {
     void uploadAuthenticatedHits200() throws Exception {
         UUID id = UUID.randomUUID();
         given(upload.upload(any(), any(), any())).willReturn(id);
-        given(queries.get(eq(id))).willReturn(stubBatch(id));
+        given(queries.get(eq(id))).willReturn(ImportBatchResponse.from(stubBatch(id)));
         MockMultipartFile file = new MockMultipartFile("file", "x.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "header\nrow1".getBytes());

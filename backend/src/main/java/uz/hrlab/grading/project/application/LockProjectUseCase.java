@@ -41,10 +41,8 @@ public class LockProjectUseCase {
         }
         entity.setStatus(ProjectStatus.LOCKED);
         projects.save(entity);
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(id)
-                .actorUserId(ctx.userId())
                 .action(AuditAction.PROJECT_LOCKED)
                 .entityType("Project")
                 .entityId(id)

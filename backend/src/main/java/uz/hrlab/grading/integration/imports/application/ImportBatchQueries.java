@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.integration.imports.api.ImportBatchResponse;
+import uz.hrlab.grading.integration.imports.api.ImportErrorResponse;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatus;
 import uz.hrlab.grading.integration.imports.domain.ImportErrorLevel;
 import uz.hrlab.grading.integration.imports.infrastructure.ImportBatchJpaEntity;
@@ -35,20 +37,24 @@ public class ImportBatchQueries {
         this.errors = errors;
     }
 
+    // BE-035 — returns the wire DTO (mapped in-tx), never the JpaEntity.
     @Transactional(readOnly = true)
-    public Page<ImportBatchJpaEntity> list(UUID projectId, ImportBatchStatus status, Pageable pageable) {
+    public Page<ImportBatchResponse> list(UUID projectId, ImportBatchStatus status, Pageable pageable) {
         TenantContext ctx = requireRead();
+        Page<ImportBatchJpaEntity> page;
         if (status == null) {
-            return batches.findAllByTenantIdAndProjectId(ctx.tenantId(), projectId, pageable);
+            page = batches.findAllByTenantIdAndProjectId(ctx.tenantId(), projectId, pageable);
+        } else {
+            page = batches.findAllByTenantIdAndProjectIdAndStatus(ctx.tenantId(), projectId, status, pageable);
         }
-        return batches.findAllByTenantIdAndProjectIdAndStatus(ctx.tenantId(), projectId, status, pageable);
+        return page.map(ImportBatchResponse::from);
     }
 
     @Transactional(readOnly = true)
-    public ImportBatchJpaEntity get(UUID batchId) {
+    public ImportBatchResponse get(UUID batchId) {
         TenantContext ctx = requireRead();
-        return batches.findByIdAndTenantId(batchId, ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new);
+        return ImportBatchResponse.from(batches.findByIdAndTenantId(batchId, ctx.tenantId())
+                .orElseThrow(TenantAccessDeniedException::new));
     }
 
     @Transactional(readOnly = true)
@@ -60,15 +66,19 @@ public class ImportBatchQueries {
         return rows.findAllByTenantIdAndImportBatchId(ctx.tenantId(), batchId, pageable);
     }
 
+    // BE-035 — returns the wire DTO (mapped in-tx), never the JpaEntity.
     @Transactional(readOnly = true)
-    public Page<ImportErrorJpaEntity> listErrors(UUID batchId, ImportErrorLevel level, Pageable pageable) {
+    public Page<ImportErrorResponse> listErrors(UUID batchId, ImportErrorLevel level, Pageable pageable) {
         TenantContext ctx = requireRead();
         batches.findByIdAndTenantId(batchId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
+        Page<ImportErrorJpaEntity> page;
         if (level == null) {
-            return errors.findAllByTenantIdAndImportBatchId(ctx.tenantId(), batchId, pageable);
+            page = errors.findAllByTenantIdAndImportBatchId(ctx.tenantId(), batchId, pageable);
+        } else {
+            page = errors.findAllByTenantIdAndImportBatchIdAndErrorLevel(ctx.tenantId(), batchId, level, pageable);
         }
-        return errors.findAllByTenantIdAndImportBatchIdAndErrorLevel(ctx.tenantId(), batchId, level, pageable);
+        return page.map(ImportErrorResponse::from);
     }
 
     private TenantContext requireRead() {

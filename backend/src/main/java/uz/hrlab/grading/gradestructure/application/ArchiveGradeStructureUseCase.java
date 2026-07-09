@@ -66,10 +66,8 @@ public class ArchiveGradeStructureUseCase {
         s.setArchivedBy(ctx.userId());
         structures.save(s);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_STRUCTURE_ARCHIVED)
                 .entityType("GradeStructure")
                 .entityId(structureId)

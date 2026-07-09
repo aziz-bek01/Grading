@@ -73,10 +73,8 @@ public class ApproveEvaluationUseCase {
         gradeAssignment.assignFromScore(evaluation, ctx.userId());
         evaluations.save(evaluation);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(evaluation.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_APPROVED)
                 .entityType("Evaluation")
                 .entityId(evaluation.getId())

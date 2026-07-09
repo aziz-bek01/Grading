@@ -190,9 +190,7 @@ public class BulkCreatePanelsUseCase {
         // BE-6 — ONE wrapper audit event so a department commission setup is
         // traceable as a single operation, in addition to every inherited
         // per-panel EVALUATION_PANEL_CREATED and per-seat assign audit.
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
                 .action(AuditAction.EVALUATION_PANEL_BULK_CREATED)
                 .entityType("EvaluationPanel")
                 .reason("methodology_version_id=" + command.methodologyVersionId()

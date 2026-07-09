@@ -51,10 +51,8 @@ public class UpdateProjectUseCase {
         if (cmd.endDate() != null) entity.setEndDate(cmd.endDate());
         projects.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(id)
-                .actorUserId(ctx.userId())
                 .action(AuditAction.PROJECT_UPDATED)
                 .entityType("Project")
                 .entityId(id)

@@ -21,7 +21,6 @@
         <java.version>21</java.version>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <mapstruct.version>1.6.2</mapstruct.version>
         <springdoc.version>2.6.0</springdoc.version>
         <testcontainers.version>1.20.3</testcontainers.version>
     </properties>
@@ -81,12 +80,14 @@
             <artifactId>liquibase-core</artifactId>
         </dependency>
 
-        <!-- MapStruct -->
-        <dependency>
-            <groupId>org.mapstruct</groupId>
-            <artifactId>mapstruct</artifactId>
-            <version>${mapstruct.version}</version>
-        </dependency>
+        <!-- BE-037 — MapStruct intentionally NOT used. This codebase maps by hand:
+             every DTO carries an explicit static `from(...)` factory (44 mappers,
+             e.g. PositionResponse.from(...), and the PanelLoader assembly pattern).
+             Hand mapping is the deliberate, enforced convention here — it keeps
+             tenant/salary field-stripping and localization decisions visible and
+             greppable rather than hidden behind generated code. The MapStruct
+             dependency + its annotation-processor path were removed after audit
+             showed 0% usage; do NOT re-add them. -->
 
         <!-- OpenAPI -->
         <dependency>
@@ -243,13 +244,9 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.mapstruct</groupId>
-                            <artifactId>mapstruct-processor</artifactId>
-                            <version>${mapstruct.version}</version>
-                        </path>
-                    </annotationProcessorPaths>
+                    <!-- No annotationProcessorPaths: BE-037 removed the MapStruct
+                         processor (0% used; hand-written `from(...)` mappers are the
+                         convention). -parameters stays for Spring/Jackson param names. -->
                     <compilerArgs>
                         <arg>-parameters</arg>
                     </compilerArgs>

@@ -53,9 +53,7 @@ public class ArchiveGradeTemplateUseCase {
         entity.setStatus(GradeTemplateStatus.ARCHIVED);
         customTemplates.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
                 .action(AuditAction.GRADE_TEMPLATE_ARCHIVED)
                 .entityType("GradeTemplate")
                 .entityId(templateId)

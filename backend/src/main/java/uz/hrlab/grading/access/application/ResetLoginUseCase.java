@@ -185,9 +185,7 @@ public class ResetLoginUseCase {
         }
 
         // 6) Audit — subject id + email + re-link flag ONLY. NEVER the password.
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
                 .action(AuditAction.USER_LOGIN_RESET)
                 .entityType("User")
                 .entityId(userId)

@@ -107,10 +107,8 @@ public class SaveAsGradeTemplateUseCase {
         entity.setDescriptionI18n(descriptionI18n);
         customTemplates.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(structure.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_TEMPLATE_CREATED)
                 .entityType("GradeTemplate")
                 .entityId(templateId)

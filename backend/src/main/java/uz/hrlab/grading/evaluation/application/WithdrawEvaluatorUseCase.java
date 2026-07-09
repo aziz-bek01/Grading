@@ -71,10 +71,8 @@ public class WithdrawEvaluatorUseCase {
         row.setAssignmentStatus(PanelAssignmentStatus.WITHDRAWN);
         assignments.save(row);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(panel.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_PANEL_EVALUATOR_WITHDRAWN)
                 .entityType("EvaluationPanel")
                 .entityId(panelId)

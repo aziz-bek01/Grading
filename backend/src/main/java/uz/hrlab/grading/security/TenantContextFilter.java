@@ -176,9 +176,7 @@ public class TenantContextFilter extends OncePerRequestFilter {
                 ctx.userId(), ctx.tenantId(), ctx.tenantMemberships(),
                 request.getRequestURI(), correlationId);
         try {
-            auditService.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
-                    .actorUserId(ctx.userId())
+            auditService.record(AuditEvent.builder(ctx)
                     .action(AuditAction.TENANT_MEMBERSHIP_MISMATCH)
                     .entityType("HTTP_REQUEST")
                     .reason(request.getMethod() + " " + request.getRequestURI())

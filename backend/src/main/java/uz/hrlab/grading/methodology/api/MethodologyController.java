@@ -1,7 +1,6 @@
 package uz.hrlab.grading.methodology.api;
 
 import jakarta.validation.Valid;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,11 +26,8 @@ import uz.hrlab.grading.methodology.application.SaveAsTemplateUseCase;
 import uz.hrlab.grading.methodology.application.UpdateMethodologyMetadataUseCase;
 import uz.hrlab.grading.common.api.PageResponse;
 import uz.hrlab.grading.common.api.Pagination;
-import uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity;
-import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /** Methodology container endpoints. */
@@ -94,15 +90,9 @@ public class MethodologyController {
     public PageResponse<MethodologyResponse> list(@RequestParam(required = false) UUID projectId,
                                                   Pageable pageable) {
         Pageable safePageable = Pagination.clamp(pageable);
-        Page<MethodologyJpaEntity> page = queries.findByProject(projectId, safePageable);
-        // Batch-load every version of the page in one query (no N+1), then enrich
-        // each row with latest/active version pointers + audit timestamps.
-        List<UUID> ids = page.getContent().stream()
-                .map(MethodologyJpaEntity::getId).toList();
-        Map<UUID, List<MethodologyVersionJpaEntity>> versionsById =
-                queries.versionsByMethodologyIds(ids);
-        return PageResponse.of(page, e -> MethodologyResponse.fromList(
-                e, versionsById.getOrDefault(e.getId(), List.of())));
+        // BE-035 — the query returns the enriched wire DTO directly (batched
+        // version enrichment done in-tx); no JpaEntity in the controller.
+        return PageResponse.from(queries.findByProject(projectId, safePageable));
     }
 
     /**
@@ -117,14 +107,9 @@ public class MethodologyController {
     @GetMapping("/my")
     @PreAuthorize("hasAuthority('EVALUATION_READ')")
     public List<MethodologyResponse> listMine(@RequestParam UUID projectId) {
-        List<MethodologyJpaEntity> rows = queries.findMyMethodologiesInProject(projectId);
-        List<UUID> ids = rows.stream().map(MethodologyJpaEntity::getId).toList();
-        Map<UUID, List<MethodologyVersionJpaEntity>> versionsById =
-                queries.versionsByMethodologyIds(ids);
-        return rows.stream()
-                .map(e -> MethodologyResponse.fromList(
-                        e, versionsById.getOrDefault(e.getId(), List.of())))
-                .toList();
+        // BE-035 — the query returns the enriched wire DTO directly (batched
+        // version enrichment done in-tx); no JpaEntity in the controller.
+        return queries.findMyMethodologiesInProject(projectId);
     }
 
     @GetMapping("/{id}")
@@ -194,7 +179,6 @@ public class MethodologyController {
     @PreAuthorize("hasAuthority('METHODOLOGY_READ') or hasAuthority('EVALUATION_READ')")
     public java.util.List<MethodologyVersionResponse> listVersions(@PathVariable UUID id) {
         return queries.listVersions(id).stream()
-                .map(v -> v.toDomain())
                 .map(d -> MethodologyVersionResponse.from(d,
                         actorNames.resolve(d.approvedBy()),
                         actorNames.resolve(d.lockedBy())))

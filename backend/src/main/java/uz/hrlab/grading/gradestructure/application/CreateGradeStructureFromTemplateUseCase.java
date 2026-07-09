@@ -106,10 +106,8 @@ public class CreateGradeStructureFromTemplateUseCase {
             bandList.add(b.toDomain());
         }
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(cmd.projectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_STRUCTURE_CREATED)
                 .entityType("GradeStructure")
                 .entityId(structureId)

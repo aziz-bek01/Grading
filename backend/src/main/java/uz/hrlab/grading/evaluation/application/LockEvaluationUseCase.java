@@ -59,10 +59,8 @@ public class LockEvaluationUseCase {
         evaluation.setLockedBy(ctx.userId());
         evaluations.save(evaluation);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(evaluation.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_LOCKED)
                 .entityType("Evaluation")
                 .entityId(evaluation.getId())

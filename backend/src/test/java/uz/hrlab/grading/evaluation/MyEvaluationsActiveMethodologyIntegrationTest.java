@@ -20,6 +20,7 @@ import uz.hrlab.grading.methodology.application.FactorService;
 import uz.hrlab.grading.methodology.application.MethodologyAggregate;
 import uz.hrlab.grading.methodology.application.MethodologyQueries;
 import uz.hrlab.grading.methodology.application.RestoreMethodologyUseCase;
+import uz.hrlab.grading.methodology.api.MethodologyResponse;
 import uz.hrlab.grading.methodology.domain.Factor;
 import uz.hrlab.grading.methodology.domain.Methodology;
 import uz.hrlab.grading.methodology.domain.MethodologyStatus;
@@ -133,10 +134,10 @@ class MyEvaluationsActiveMethodologyIntegrationTest extends AbstractIntegrationT
         archiveAs(archived);
 
         actAs(me, assigned.tenantId, assigned.projectId);
-        List<MethodologyJpaEntity> mine =
+        List<MethodologyResponse> mine =
                 methodologyQueries.findMyMethodologiesInProject(assigned.projectId);
 
-        assertThat(mine).extracting(MethodologyJpaEntity::getId)
+        assertThat(mine).extracting(MethodologyResponse::id)
                 .containsExactly(assigned.methodologyId)
                 .doesNotContain(unassigned.methodologyId, archived.methodologyId);
     }

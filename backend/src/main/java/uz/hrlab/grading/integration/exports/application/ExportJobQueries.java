@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.integration.exports.api.ExportJobResponse;
 import uz.hrlab.grading.integration.exports.domain.ExportJobStatus;
 import uz.hrlab.grading.integration.exports.domain.ExportType;
 import uz.hrlab.grading.integration.exports.infrastructure.ExportJobJpaEntity;
@@ -24,24 +25,27 @@ public class ExportJobQueries {
         this.jobs = jobs;
     }
 
+    // BE-035 — returns the wire DTO (mapped in-tx), never the JpaEntity.
     @Transactional(readOnly = true)
-    public Page<ExportJobJpaEntity> list(UUID projectId, ExportJobStatus status,
-                                         ExportType type, Pageable pageable) {
+    public Page<ExportJobResponse> list(UUID projectId, ExportJobStatus status,
+                                        ExportType type, Pageable pageable) {
         TenantContext ctx = requireRead();
+        Page<ExportJobJpaEntity> page;
         if (status != null) {
-            return jobs.findAllByTenantIdAndProjectIdAndStatus(ctx.tenantId(), projectId, status, pageable);
+            page = jobs.findAllByTenantIdAndProjectIdAndStatus(ctx.tenantId(), projectId, status, pageable);
+        } else if (type != null) {
+            page = jobs.findAllByTenantIdAndProjectIdAndExportType(ctx.tenantId(), projectId, type, pageable);
+        } else {
+            page = jobs.findAllByTenantIdAndProjectId(ctx.tenantId(), projectId, pageable);
         }
-        if (type != null) {
-            return jobs.findAllByTenantIdAndProjectIdAndExportType(ctx.tenantId(), projectId, type, pageable);
-        }
-        return jobs.findAllByTenantIdAndProjectId(ctx.tenantId(), projectId, pageable);
+        return page.map(ExportJobResponse::from);
     }
 
     @Transactional(readOnly = true)
-    public ExportJobJpaEntity get(UUID jobId) {
+    public ExportJobResponse get(UUID jobId) {
         TenantContext ctx = requireRead();
-        return jobs.findByIdAndTenantId(jobId, ctx.tenantId())
-                .orElseThrow(TenantAccessDeniedException::new);
+        return ExportJobResponse.from(jobs.findByIdAndTenantId(jobId, ctx.tenantId())
+                .orElseThrow(TenantAccessDeniedException::new));
     }
 
     private TenantContext requireRead() {

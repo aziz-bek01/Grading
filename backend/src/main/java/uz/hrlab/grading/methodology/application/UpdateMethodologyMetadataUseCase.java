@@ -86,10 +86,8 @@ public class UpdateMethodologyMetadataUseCase {
         if (methodologyType != null) m.setMethodologyType(methodologyType);
         methodologies.save(m);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(m.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_UPDATED)
                 .entityType("Methodology")
                 .entityId(id)

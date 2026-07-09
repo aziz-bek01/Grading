@@ -181,7 +181,7 @@ public class EvaluationController {
     @PreAuthorize("hasAuthority('EVALUATION_READ')")
     public List<EvaluationScoreResponse> listScores(@PathVariable UUID id) {
         return queries.findScoresByEvaluationId(id).stream()
-                .map(s -> EvaluationScoreResponse.from(s.toDomain()))
+                .map(EvaluationScoreResponse::from)
                 .toList();
     }
 
@@ -189,7 +189,7 @@ public class EvaluationController {
     @PreAuthorize("hasAuthority('EVALUATION_READ')")
     public List<CalibrationEventResponse> listCalibrationHistory(@PathVariable UUID id) {
         return queries.findCalibrationHistory(id).stream()
-                .map(c -> CalibrationEventResponse.from(c.toDomain()))
+                .map(CalibrationEventResponse::from)
                 .toList();
     }
 

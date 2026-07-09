@@ -7,6 +7,7 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.integration.imports.api.ImportBatchResponse;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatus;
 import uz.hrlab.grading.integration.imports.domain.ImportBatchStatusTransitionPolicy;
 import uz.hrlab.grading.integration.imports.infrastructure.ImportBatchJpaEntity;
@@ -27,22 +28,21 @@ public class CancelImportBatchUseCase {
         this.audit = audit;
     }
 
+    // BE-035 — returns the wire DTO (mapped in-tx), never the JpaEntity.
     @Transactional
-    public ImportBatchJpaEntity cancel(UUID batchId) {
+    public ImportBatchResponse cancel(UUID batchId) {
         TenantContext ctx = TenantContextHolder.requireActive().requireAny(
                 PermissionCodes.IMPORT_CANCEL, PermissionCodes.ORG_IMPORT);
         ImportBatchJpaEntity batch = batches.findByIdAndTenantId(batchId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
         ImportBatchStatusTransitionPolicy.assertAllowed(batch.getStatus(), ImportBatchStatus.CANCELLED);
         batch.setStatus(ImportBatchStatus.CANCELLED);
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(batch.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.IMPORT_CANCELLED)
                 .entityType("ImportBatch")
                 .entityId(batch.getId())
                 .build());
-        return batches.save(batch);
+        return ImportBatchResponse.from(batches.save(batch));
     }
 }

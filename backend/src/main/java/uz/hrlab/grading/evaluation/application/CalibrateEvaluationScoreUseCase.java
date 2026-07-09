@@ -171,10 +171,8 @@ public class CalibrateEvaluationScoreUseCase {
         }
         evaluations.save(evaluation);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(evaluation.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.EVALUATION_SCORE_CALIBRATED)
                 .entityType("EvaluationScore")
                 .entityId(row.getId())

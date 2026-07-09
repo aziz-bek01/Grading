@@ -64,10 +64,8 @@ public class UpdateDepartmentUseCase {
         if (cmd.type() != null) entity.setType(cmd.type());
         departments.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.DEPARTMENT_UPDATED)
                 .entityType("Department")
                 .entityId(id)

@@ -69,10 +69,8 @@ public class RestoreMethodologyUseCase {
         m.setStatus(MethodologyStatus.ACTIVE);
         methodologies.save(m);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(m.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.METHODOLOGY_RESTORED)
                 .entityType("Methodology")
                 .entityId(id)

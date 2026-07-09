@@ -81,10 +81,8 @@ public class SubmitJobProfileForReviewUseCase {
         entity.setSubmittedBy(ctx.userId());
         profiles.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.JOB_PROFILE_SUBMITTED)
                 .entityType("JobProfile")
                 .entityId(id)

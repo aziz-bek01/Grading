@@ -33,7 +33,6 @@ import uz.hrlab.grading.gradestructure.application.SaveAsGradeTemplateUseCase;
 import uz.hrlab.grading.gradestructure.application.UpdateGradeStructureMetadataUseCase;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureStatus;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureType;
-import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureJpaEntity;
 import uz.hrlab.grading.common.api.PageResponse;
 import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.methodology.api.ReorderRequest;
@@ -125,14 +124,9 @@ public class GradeStructureController {
                                                      @RequestParam(required = false) GradeStructureStatus status,
                                                      Pageable pageable) {
         Pageable safe = Pagination.clamp(pageable);
-        Page<GradeStructureJpaEntity> page = queries.findByProject(projectId, status, safe);
-        // Batch-load the grade count of every structure on the page in one query
-        // (no N+1), then enrich each row with grade_count + audit timestamps.
-        List<UUID> ids = page.getContent().stream()
-                .map(GradeStructureJpaEntity::getId).toList();
-        Map<UUID, Integer> counts = queries.gradeCountsByStructureIds(ids);
-        return PageResponse.of(page, e ->
-                GradeStructureResponse.fromList(e, counts.getOrDefault(e.getId(), 0)));
+        // BE-035 — the query returns the enriched wire DTO directly (batched
+        // grade_count + fromList mapping done in-tx); no JpaEntity in the controller.
+        return PageResponse.from(queries.findByProject(projectId, status, safe));
     }
 
     @GetMapping("/{id}")

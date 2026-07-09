@@ -58,9 +58,7 @@ public class UpdateGradeTemplateUseCase {
         }
         customTemplates.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
-                .actorUserId(ctx.userId())
+        audit.record(AuditEvent.builder(ctx)
                 .action(AuditAction.GRADE_TEMPLATE_UPDATED)
                 .entityType("GradeTemplate")
                 .entityId(templateId)

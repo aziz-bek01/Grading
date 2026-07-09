@@ -10,6 +10,7 @@ import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.gradestructure.domain.Grade;
+import uz.hrlab.grading.gradestructure.domain.GradeBand;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureImmutabilityPolicy;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeBandJpaEntity;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeBandRepository;
@@ -79,10 +80,8 @@ public class GradeService {
         g.setDescriptionI18n(cmd.descriptionI18n());
         grades.save(g);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_CREATED)
                 .entityType("Grade")
                 .entityId(gradeId)
@@ -106,10 +105,8 @@ public class GradeService {
         if (cmd.descriptionI18n() != null) g.setDescriptionI18n(cmd.descriptionI18n());
         grades.save(g);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_UPDATED)
                 .entityType("Grade")
                 .entityId(g.getId())
@@ -132,10 +129,8 @@ public class GradeService {
         bands.findByTenantIdAndGradeId(ctx.tenantId(), gradeId).ifPresent(bands::delete);
         grades.delete(g);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_REMOVED)
                 .entityType("Grade")
                 .entityId(gradeId)
@@ -143,8 +138,9 @@ public class GradeService {
                 .build());
     }
 
+    // BE-035 — returns the domain GradeBand (mapped in-tx), never the JpaEntity.
     @Transactional
-    public GradeBandJpaEntity upsertBand(UUID gradeId, GradeCommand.UpsertBand cmd) {
+    public GradeBand upsertBand(UUID gradeId, GradeCommand.UpsertBand cmd) {
         TenantContext ctx = requireEdit();
         if (cmd.minScore() == null || cmd.maxScore() == null) {
             throw new ValidationException("GRADE_BAND_RANGE_REQUIRED",
@@ -171,17 +167,15 @@ public class GradeService {
         }
         bands.save(existing);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_BAND_UPSERTED)
                 .entityType("GradeBand")
                 .entityId(existing.getId())
                 .beforeJson(before)
                 .afterJson(snapshot.of(existing))
                 .build());
-        return existing;
+        return existing.toDomain();
     }
 
     /**
@@ -227,10 +221,8 @@ public class GradeService {
             result.add(g.toDomain());
         }
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_REORDERED)
                 .entityType("GradeStructure")
                 .entityId(structureId)
@@ -260,10 +252,8 @@ public class GradeService {
         var before = snapshot.of(band);
         bands.delete(band);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(s.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.GRADE_BAND_REMOVED)
                 .entityType("GradeBand")
                 .entityId(band.getId())

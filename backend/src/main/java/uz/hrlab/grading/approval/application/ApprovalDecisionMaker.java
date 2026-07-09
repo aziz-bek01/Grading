@@ -156,10 +156,8 @@ public class ApprovalDecisionMaker {
         }
         requests.save(req);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(req.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(action)
                 .entityType("ApprovalStep")
                 .entityId(step.getId())

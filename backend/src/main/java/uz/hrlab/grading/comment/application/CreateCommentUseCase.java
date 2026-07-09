@@ -63,10 +63,8 @@ public class CreateCommentUseCase {
                 cmd.body(), mentions, cmd.parentCommentId());
         comments.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(cmd.projectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.COMMENT_CREATED)
                 .entityType("Comment")
                 .entityId(entity.getId())
@@ -74,10 +72,8 @@ public class CreateCommentUseCase {
                 .build());
 
         for (UUID mentionedUser : mentions) {
-            audit.record(AuditEvent.builder()
-                    .tenantId(ctx.tenantId())
+            audit.record(AuditEvent.builder(ctx)
                     .projectId(cmd.projectId())
-                    .actorUserId(ctx.userId())
                     .action(AuditAction.COMMENT_MENTION)
                     .entityType("Comment")
                     .entityId(entity.getId())

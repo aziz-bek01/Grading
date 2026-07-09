@@ -57,10 +57,8 @@ public class UpdateCommentUseCase {
         entity.setMentionedUserIds(mentions);
         comments.save(entity);
 
-        audit.record(AuditEvent.builder()
-                .tenantId(ctx.tenantId())
+        audit.record(AuditEvent.builder(ctx)
                 .projectId(entity.getProjectId())
-                .actorUserId(ctx.userId())
                 .action(AuditAction.COMMENT_UPDATED)
                 .entityType("Comment")
                 .entityId(entity.getId())

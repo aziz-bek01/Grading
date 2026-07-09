@@ -1,5 +1,6 @@
 import { httpClient } from '@/shared/api/httpClient';
 import { endpoints } from '@/shared/api/endpoints';
+import { fetchAllPages } from '@/shared/api/fetchAllPages';
 import type {
   Project,
   ProjectCreatePayload,
@@ -23,15 +24,38 @@ export const projectKeys = {
   workflowProgress: (id: string) => ['projects', 'workflow-progress', id] as const,
 };
 
+/** One page of the tenant's projects — the raw wire fetch `fetchAllPages` drives. */
+async function fetchProjectsPage(page: number, size: number): Promise<ProjectList> {
+  const res = await httpClient.get<ProjectList>(endpoints.projects.list, {
+    params: { page, size },
+  });
+  return res.data;
+}
+
 /**
- * Fetch the projects visible to the active tenant.
+ * Fetch EVERY project visible to the active tenant.
  *
  * Tenant is resolved by the backend from the JWT — we MUST NOT send
  * `tenant_id` / `tenantId` in the query string or body. See D-202 / F-208.
+ *
+ * Pages to completion via the shared `fetchAllPages` helper instead of a
+ * single unbounded GET: the backend applies its own default page size (20)
+ * when none is requested, which used to silently cap this list at 20 — a
+ * tenant with more projects lost the rest with no error, and pickers built on
+ * top of it (AccessScopeSection's project-scope checklist) could never grant
+ * access to project #21+ (EPIC-013). Bounded by `fetchAllPages`'s safety cap;
+ * `truncated` surfaces if that cap is ever hit — see `ProjectList.truncated`.
  */
 export async function fetchProjects(): Promise<ProjectList> {
-  const res = await httpClient.get<ProjectList>(endpoints.projects.list);
-  return res.data;
+  const { items, totalElements, truncated } = await fetchAllPages(fetchProjectsPage);
+  return {
+    items,
+    page: 0,
+    size: items.length,
+    total_elements: totalElements,
+    total_pages: 1,
+    truncated,
+  };
 }
 
 export async function fetchProject(id: string): Promise<Project> {

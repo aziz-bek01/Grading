@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Search } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { EmptyState } from '@/shared/components/feedback/EmptyState';
+import { PaginationBar } from './PaginationBar';
 import { cn } from '@/shared/lib/cn';
 
 export interface DataTableColumn<T> {
@@ -39,6 +40,24 @@ export interface DataTableProps<T> {
   emptyTitle?: string;
   emptyBody?: string;
   pageSize?: number;
+  /**
+   * Opt-in SERVER-driven pagination — `rows` is already exactly the current
+   * server page (a real browsable/large list, e.g. the Position Catalog).
+   * When set, DataTable stops re-paginating `rows` client-side (that would
+   * double-paginate an already-server-sliced page) and renders the shared
+   * `PaginationBar` — the SAME pager component `EvaluationByFactorView`
+   * already uses — instead of its own built-in Prev/Next footer.
+   *
+   * Omit this prop (the default) for the existing client-paginated behaviour
+   * — every current caller is unaffected.
+   */
+  serverPagination?: {
+    page: number;
+    totalPages: number;
+    total: number;
+    pageSize: number;
+    onPageChange: (page: number) => void;
+  };
   onRowClick?: (row: T) => void;
   className?: string;
   /**
@@ -67,6 +86,7 @@ export function DataTable<T>({
   emptyTitle,
   emptyBody,
   pageSize = 20,
+  serverPagination,
   onRowClick,
   className,
   rowClassName,
@@ -111,9 +131,20 @@ export function DataTable<T>({
     return copy;
   }, [filteredRows, columns, sortKey, sortDir]);
 
-  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
-  const safePage = Math.min(page, totalPages - 1);
-  const pageRows = sortedRows.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  // Server-driven mode: `rows` IS the current server page already — slicing
+  // it again client-side would double-paginate (e.g. a 20-row server page
+  // sliced to 20 more client rows would silently hide most of it behind a
+  // phantom "page 2 of 1"). Render every row we were given and defer paging
+  // entirely to `serverPagination.onPageChange`.
+  const totalPages = serverPagination
+    ? serverPagination.totalPages
+    : Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const safePage = serverPagination
+    ? serverPagination.page
+    : Math.min(page, totalPages - 1);
+  const pageRows = serverPagination
+    ? sortedRows
+    : sortedRows.slice(safePage * pageSize, safePage * pageSize + pageSize);
 
   const onHeaderClick = (col: DataTableColumn<T>) => {
     if (!col.sortable) return;
@@ -205,7 +236,7 @@ export function DataTable<T>({
               </tr>
             ) : (
               pageRows.map((row, i) => {
-                const rowIndex = safePage * pageSize + i;
+                const rowIndex = safePage * (serverPagination?.pageSize ?? pageSize) + i;
                 return (
                   <tr
                     key={rowKey(row)}
@@ -236,39 +267,52 @@ export function DataTable<T>({
         </table>
       </div>
 
-      <div className="flex items-center justify-between text-xs text-text-secondary">
-        <span>
-          {/* FE-5: current-page RANGE (from–to / total), not a start index.
-              The old `safePage*pageSize+1` value was a START index shown as a
-              COUNT, contradicting "Саҳифа 1 / 1". */}
-          {t('dataTable.showing_range', {
-            from: sortedRows.length === 0 ? 0 : safePage * pageSize + 1,
-            to: Math.min(sortedRows.length, (safePage + 1) * pageSize),
-            total: sortedRows.length,
-          })}
-        </span>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={safePage === 0}
-          >
-            {t('dataTable.previous')}
-          </Button>
-          <span aria-live="polite">
-            {t('dataTable.page_of', { page: safePage + 1, total: totalPages })}
+      {serverPagination ? (
+        // Server-driven mode reuses the SAME shared pager component
+        // EvaluationByFactorView already wires to a real server query — one
+        // pager implementation, not a second hand-rolled copy.
+        <PaginationBar
+          page={serverPagination.page}
+          totalPages={serverPagination.totalPages}
+          total={serverPagination.total}
+          pageSize={serverPagination.pageSize}
+          onPageChange={serverPagination.onPageChange}
+        />
+      ) : (
+        <div className="flex items-center justify-between text-xs text-text-secondary">
+          <span>
+            {/* FE-5: current-page RANGE (from–to / total), not a start index.
+                The old `safePage*pageSize+1` value was a START index shown as a
+                COUNT, contradicting "Саҳифа 1 / 1". */}
+            {t('dataTable.showing_range', {
+              from: sortedRows.length === 0 ? 0 : safePage * pageSize + 1,
+              to: Math.min(sortedRows.length, (safePage + 1) * pageSize),
+              total: sortedRows.length,
+            })}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={safePage >= totalPages - 1}
-          >
-            {t('dataTable.next')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+            >
+              {t('dataTable.previous')}
+            </Button>
+            <span aria-live="polite">
+              {t('dataTable.page_of', { page: safePage + 1, total: totalPages })}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+            >
+              {t('dataTable.next')}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -22,6 +22,17 @@ interface PositionTableProps {
   onEdit?: (position: Position) => void;
   /** Opens the archive confirmation for the row. Gated by POSITION_EDIT. */
   onArchive?: (position: Position) => void;
+  /**
+   * Real server-driven pagination — `rows` is already exactly the current
+   * server page (see `PositionListPage`). Forwarded straight to `DataTable`.
+   */
+  serverPagination?: {
+    page: number;
+    totalPages: number;
+    total: number;
+    pageSize: number;
+    onPageChange: (page: number) => void;
+  };
 }
 
 /**
@@ -41,6 +52,7 @@ export function PositionTable({
   toolbarRight,
   onEdit,
   onArchive,
+  serverPagination,
 }: PositionTableProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -170,6 +182,7 @@ export function PositionTable({
       emptyTitle={t('positions.empty_title')}
       emptyBody={t('positions.empty_body')}
       onRowClick={(p) => navigate(routes.projectPositionDetail(projectId, p.id))}
+      serverPagination={serverPagination}
     />
   );
 }

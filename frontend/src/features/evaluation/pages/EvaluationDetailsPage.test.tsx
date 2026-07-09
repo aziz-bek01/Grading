@@ -92,9 +92,12 @@ vi.mock('@/features/methodology/hooks/useMethodology', () => ({
   }),
 }));
 
-// The page resolves position_id -> name via usePositions; stub an empty list.
+// The page resolves position_id -> name via useAllPositions; stub an empty list.
 vi.mock('@/features/positions/hooks/usePositions', () => ({
-  usePositions: () => ({ data: { items: [] }, isLoading: false }),
+  useAllPositions: () => ({
+    data: { items: [], totalElements: 0, truncated: false },
+    isLoading: false,
+  }),
 }));
 
 // SUBMITTED-only inline approval badge — keep it inert.

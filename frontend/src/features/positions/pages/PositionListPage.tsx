@@ -20,6 +20,16 @@ import { useArchivePosition } from '../hooks/useArchivePosition';
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import type { Position, PositionStatus } from '../types/positionTypes';
 
+/**
+ * Real server page size for the browsable Position Catalog. The former
+ * `page: 0, size: 50` was HARD-CODED and never changed — every page beyond
+ * the first 50 positions was invisible with the table still reading "Page 1
+ * of 1" (EPIC-013). `page` is now real component state wired to the shared
+ * `PaginationBar` pager (via `DataTable`'s `serverPagination` prop), and
+ * `size` matches the backend's own default page size — no more guessing.
+ */
+const PAGE_SIZE = 20;
+
 export function PositionListPage() {
   const { t, i18n } = useTranslation();
   const { projectId } = useParams<{ projectId: string }>();
@@ -28,6 +38,7 @@ export function PositionListPage() {
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [status, setStatus] = useState<PositionStatus | null>(null);
   const [jobFamily, setJobFamily] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   // Drawer / CRUD state — null → create mode; a Position → edit mode
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -40,7 +51,9 @@ export function PositionListPage() {
 
   const tree = useDepartmentTree(projectId);
   const positions = usePositions(
-    projectId ? { projectId, departmentId, status, jobFamily, page: 0, size: 50 } : null,
+    projectId
+      ? { projectId, departmentId, status, jobFamily, page, size: PAGE_SIZE }
+      : null,
   );
   const createMutation = useCreatePosition();
   // useUpdatePosition requires the id at hook-call time (Rules of Hooks).
@@ -58,7 +71,10 @@ export function PositionListPage() {
         key: 'department',
         label: t('positions.filter_department'),
         value: departmentId,
-        onChange: (v) => setDepartmentId(v),
+        onChange: (v) => {
+          setDepartmentId(v);
+          setPage(0);
+        },
         options: departments
           .filter((d) => d.status !== 'ARCHIVED')
           .map((d) => ({ value: d.id, label: `${d.code} · ${pickLocalized(d.name_i18n, i18n.language)}` })),
@@ -67,7 +83,10 @@ export function PositionListPage() {
         key: 'jobFamily',
         label: t('positions.filter_job_family'),
         value: jobFamily,
-        onChange: (v) => setJobFamily(v),
+        onChange: (v) => {
+          setJobFamily(v);
+          setPage(0);
+        },
         options: Array.from(new Set(rows.map((p) => p.job_family).filter((x): x is string => !!x))).map(
           (jf) => ({ value: jf, label: jf }),
         ),
@@ -76,7 +95,10 @@ export function PositionListPage() {
         key: 'status',
         label: t('positions.filter_status'),
         value: status,
-        onChange: (v) => setStatus((v as PositionStatus | null) ?? null),
+        onChange: (v) => {
+          setStatus((v as PositionStatus | null) ?? null);
+          setPage(0);
+        },
         options: [
           { value: 'ACTIVE', label: t('status.active') },
           { value: 'DRAFT', label: t('status.draft') },
@@ -194,9 +216,17 @@ export function PositionListPage() {
                 setDepartmentId(null);
                 setStatus(null);
                 setJobFamily(null);
+                setPage(0);
               }}
             />
           }
+          serverPagination={{
+            page,
+            totalPages: positions.data?.total_pages ?? 1,
+            total: positions.data?.total_elements ?? 0,
+            pageSize: PAGE_SIZE,
+            onPageChange: setPage,
+          }}
           toolbarRight={
             <PermissionGate permission={PERMISSIONS.POSITION_CREATE}>
               <Button

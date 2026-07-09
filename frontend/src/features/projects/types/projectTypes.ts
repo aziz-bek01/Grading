@@ -34,4 +34,14 @@ export interface ProjectCreatePayload {
 
 export type ProjectUpdatePayload = Partial<ProjectCreatePayload> & { status?: ProjectStatus };
 
-export type ProjectList = PageEnvelope<Project>;
+export type ProjectList = PageEnvelope<Project> & {
+  /**
+   * True when `fetchProjects()` hit the shared `fetchAllPages` safety cap
+   * before exhausting the tenant's projects (see EPIC-013 — a picker like
+   * AccessScopeSection's project scope MUST be able to grant access to
+   * project #21+, not just whatever fits on the backend's first page).
+   * Absent/false in the common case. Callers that render a project list MUST
+   * surface this instead of silently presenting a partial set as complete.
+   */
+  truncated?: boolean;
+};

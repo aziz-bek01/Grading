@@ -49,6 +49,13 @@ export const userKeys = {
   all: ['users'] as const,
   list: (tenantScope?: string, query?: UserListQuery) =>
     ['users', 'list', tenantScope ?? null, query ?? null] as const,
+  /**
+   * Cache key for the FULL-list variant (see `useAllUsers` / `fetchAllPages`)
+   * used by pickers (EvaluatorPicker, OpenPanelDialog's roster lookup) that
+   * must be able to select ANY user, not just the backend's first page.
+   */
+  listAll: (tenantScope?: string, query?: Omit<UserListQuery, 'page' | 'size'>) =>
+    ['users', 'list-all', tenantScope ?? null, query ?? null] as const,
   detail: (id: string) => ['users', 'detail', id] as const,
   audit: (id: string, range?: { from?: string; to?: string }) =>
     ['users', 'audit', id, range ?? null] as const,

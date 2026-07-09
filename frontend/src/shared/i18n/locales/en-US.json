@@ -202,7 +202,8 @@
     "next": "Next",
     "columns": "Columns",
     "showing_x_of_y": "Showing {{shown}} of {{total}}",
-    "showing_range": "Showing {{from}}–{{to}} of {{total}}"
+    "showing_range": "Showing {{from}}–{{to}} of {{total}}",
+    "results_truncated": "Showing the first {{shown}} of {{total}} results — refine your filter to see the rest."
   },
   "projects": {
     "list_title": "Projects",

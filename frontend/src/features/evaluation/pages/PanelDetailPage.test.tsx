@@ -94,11 +94,15 @@ vi.mock('../hooks/usePanels', () => ({
   }),
 }));
 
-// The reopen-for-expert dialog mounts EvaluatorPicker, which calls useUsers.
+// The reopen-for-expert dialog mounts EvaluatorPicker, which calls useAllUsers.
 // Stub a small ACTIVE roster so the manager can pick an expert.
 vi.mock('@/features/users-access/hooks/useUsers', () => ({
-  useUsers: () => ({
-    data: { items: [{ id: 'user-x', full_name: 'Expert X', status: 'ACTIVE' }] },
+  useAllUsers: () => ({
+    data: {
+      items: [{ id: 'user-x', full_name: 'Expert X', status: 'ACTIVE' }],
+      totalElements: 1,
+      truncated: false,
+    },
     isLoading: false,
     isError: false,
   }),

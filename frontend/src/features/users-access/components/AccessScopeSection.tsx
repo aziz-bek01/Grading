@@ -227,6 +227,23 @@ export function AccessScopeSection({ userId, tenantId, readOnly }: AccessScopeSe
           <Banner banner={projectBanner} testId="project-scope-banner" />
         ) : null}
 
+        {/* Never silent: fetchProjects() pages to completion via the shared
+            fetchAllPages helper, but if its safety cap is ever hit say so
+            instead of quietly offering an incomplete project checklist —
+            EPIC-013 (project #21+ must stay grantable). */}
+        {projectsQuery.data?.truncated ? (
+          <p
+            className="text-xs text-warning-700"
+            role="status"
+            data-testid="scope-project-truncated"
+          >
+            {t('dataTable.results_truncated', {
+              shown: projectsQuery.data.items.length,
+              total: projectsQuery.data.total_elements,
+            })}
+          </p>
+        ) : null}
+
         <div className="rounded-md border border-border bg-surface max-h-60 overflow-auto p-2">
           {projectsQuery.isLoading ? (
             <p className="px-3 py-6 text-center text-sm text-text-secondary">

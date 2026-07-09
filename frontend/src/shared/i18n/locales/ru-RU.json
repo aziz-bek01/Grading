@@ -202,7 +202,8 @@
     "next": "Далее",
     "columns": "Столбцы",
     "showing_x_of_y": "Показано {{shown}} из {{total}}",
-    "showing_range": "Показано {{from}}–{{to}} из {{total}}"
+    "showing_range": "Показано {{from}}–{{to}} из {{total}}",
+    "results_truncated": "Показаны первые {{shown}} из {{total}} результатов — уточните фильтр, чтобы увидеть остальные."
   },
   "projects": {
     "list_title": "Проекты",

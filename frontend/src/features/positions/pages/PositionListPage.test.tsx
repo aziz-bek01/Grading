@@ -18,6 +18,7 @@ import type { AxiosAdapter } from 'axios';
 import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
 import { httpClient } from '@/shared/api/httpClient';
 import { createMockAdapter } from '@/shared/api/mocks/handlers';
+import { mockDb, type MockPosition } from '@/shared/api/mocks/fixtures';
 import * as positionApi from '../api/positionApi';
 import { PositionListPage } from './PositionListPage';
 
@@ -139,5 +140,88 @@ describe('<PositionListPage /> CRUD', () => {
     const banner = await screen.findByTestId('position-form-error');
     expect(banner).toHaveTextContent(/уже используется|already in use|ишлатилган|ishlatilgan/i);
     expect(screen.getByTestId('pos-code')).toBeInTheDocument();
+  });
+});
+
+/**
+ * EPIC-013 regression guard: the Position Catalog used to fetch a
+ * HARD-CODED `page: 0, size: 50` that never changed — anything past the
+ * first 50 positions was invisible while the table still read "Page 1 of 1".
+ * `page` is now real state wired to `PaginationBar` via `DataTable`'s
+ * `serverPagination` prop, so a second GET with `page=1` is what surfaces
+ * the rest — this locks that in against a regression back to a fetch-once
+ * page.
+ */
+describe('<PositionListPage /> real server pagination (EPIC-013)', () => {
+  const injectedIds: string[] = [];
+
+  afterEach(() => {
+    // mockDb is a module-level singleton (see the header note above) — undo
+    // the seed so later tests/files are unaffected.
+    for (const id of injectedIds.splice(0)) {
+      const idx = mockDb.positions.findIndex((p) => p.id === id);
+      if (idx >= 0) mockDb.positions.splice(idx, 1);
+    }
+  });
+
+  it('a row on the LAST server page is only reachable by paging through Next (page actually changes)', async () => {
+    signIn('super-admin');
+    // proj-acme-2026 already seeds a few dozen ACTIVE positions (well beyond
+    // one page) via other fixture sets — push 20 MORE distinctly-titled rows
+    // so the project definitely spans multiple pages. The target row is
+    // pushed LAST, so it is guaranteed to land on the LAST server page
+    // (array order is preserved end-to-end by filter/paginate), regardless
+    // of exactly how many fixture rows precede it.
+    const TARGET_TITLE = 'Позиция EPIC013 — последняя строка';
+    for (let i = 0; i < 20; i++) {
+      const id = `pos-epic013-${i}`;
+      const seed: MockPosition = {
+        id,
+        project_id: 'proj-acme-2026',
+        department_id: 'dep-acme-fin',
+        code: `P013-${i}`,
+        title_i18n: {
+          'ru-RU': i === 19 ? TARGET_TITLE : `Позиция EPIC013 №${i}`,
+        },
+        status: 'ACTIVE',
+        updated_at: '2026-05-01T00:00:00Z',
+      };
+      mockDb.positions.push(seed);
+      injectedIds.push(id);
+    }
+
+    render(renderPage());
+
+    // Wait for the FIRST real fetch to resolve (not just the shell to mount)
+    // — a known, always-present row proves the table has actual server data,
+    // not the pre-fetch "total_pages ?? 1" default.
+    await screen.findByText('Финансовый директор');
+
+    // The pager now honestly reports the real page count instead of the old
+    // hard-coded "Page 1 of 1" lie — read it back to know how many times to
+    // click Next (no assumption baked in about exactly how many fixture rows
+    // exist elsewhere in the shared mock DB).
+    const pagerMatch = () =>
+      /Страница (\d+) из (\d+)/.exec(
+        screen.getByText(/Страница \d+ из \d+/).textContent ?? '',
+      );
+    const initialTotalPages = Number(pagerMatch()?.[2] ?? '1');
+    expect(initialTotalPages).toBeGreaterThan(1);
+
+    // The last-pushed row must NOT be visible on page 1 — a fetch-once page
+    // (the old bug) would never even issue the second request.
+    expect(screen.queryByText(TARGET_TITLE)).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    for (let i = 1; i < initialTotalPages; i++) {
+      await user.click(screen.getByRole('button', { name: /Далее|Next/i }));
+    }
+
+    await waitFor(() =>
+      expect(screen.getByText(TARGET_TITLE)).toBeInTheDocument(),
+    );
+    // Landed on the actual last page (not just "some later page").
+    const finalMatch = pagerMatch();
+    expect(finalMatch?.[1]).toBe(String(initialTotalPages));
   });
 });

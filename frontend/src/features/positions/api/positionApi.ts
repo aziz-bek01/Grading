@@ -11,6 +11,13 @@ import type {
 export const positionKeys = {
   all: ['positions'] as const,
   list: (params: PositionListParams) => ['positions', 'list', params] as const,
+  /**
+   * Cache key for the FULL-list variant (see `useAllPositions` /
+   * `fetchAllPages`) used by lookups/pickers that need every position in the
+   * project — never just whichever ones happen to fit a guessed page size.
+   */
+  listAll: (params: Omit<PositionListParams, 'page' | 'size'>) =>
+    ['positions', 'list-all', params] as const,
   detail: (id: string) => ['positions', 'detail', id] as const,
 };
 

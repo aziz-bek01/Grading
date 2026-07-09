@@ -142,7 +142,7 @@ vi.mock('@/features/evaluation/hooks/usePanels', async (importOriginal) => {
 });
 
 vi.mock('@/features/users-access/hooks/useUsers', () => ({
-  useUsers: () => ({
+  useAllUsers: () => ({
     data: {
       items: [
         { id: 'u1', full_name: 'Evaluator One', status: 'ACTIVE' },
@@ -152,6 +152,8 @@ vi.mock('@/features/users-access/hooks/useUsers', () => ({
         { id: 'u5', full_name: 'Evaluator Five', status: 'ACTIVE' },
         { id: 'dd-1', full_name: 'Suggested Director', status: 'ACTIVE' },
       ],
+      totalElements: 6,
+      truncated: false,
     },
     isLoading: false,
     isError: false,

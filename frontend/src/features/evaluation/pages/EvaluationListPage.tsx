@@ -25,7 +25,7 @@ import {
   fetchMethodologyVersions,
   methodologyKeys,
 } from '@/features/methodology/api/methodologyApi';
-import { usePositions } from '@/features/positions/hooks/usePositions';
+import { useAllPositions } from '@/features/positions/hooks/usePositions';
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import {
   useBulkCreateEvaluations,
@@ -108,7 +108,10 @@ const STATUSES: EvaluationStatus[] = [
  * - Quick-filter chips: "Only incomplete" (status=INCOMPLETE), "Only mine"
  *   (evaluatorUserId=current user — backend supports evaluatorUserId param)
  * - Density toggle (comfortable/compact) persisted to localStorage
- * - positionsQuery size 200 → 500
+ * - positionsQuery now loads the FULL position set via the shared
+ *   `useAllPositions`/`fetchAllPages` helper (EPIC-013) instead of a guessed
+ *   `size: 200` → `size: 500` band-aid, which still silently truncated past
+ *   its ceiling.
  */
 export function EvaluationListPage() {
   const { t, i18n } = useTranslation();
@@ -238,8 +241,12 @@ export function EvaluationListPage() {
     evaluatorUserId: chipMineUserId,
   });
 
-  // Phase 1: size 200 → 500 to prevent silent truncation past 200 positions.
-  const positionsQuery = usePositions(projectId ? { projectId, size: 500 } : null);
+  // Position lookup for the department/title map, the "Add positions"
+  // candidate picker, and the completion bar — ALL of it needs the FULL
+  // project position set, not a guessed page size (the former `size: 500`
+  // band-aid still silently truncated past that ceiling — see EPIC-013).
+  // useAllPositions pages to completion via the shared fetchAllPages helper.
+  const positionsQuery = useAllPositions(projectId ? { projectId } : null);
   const methodologiesQuery = useMethodologies(projectId);
   const versionQueries = useQueries({
     queries: (methodologiesQuery.data?.items ?? []).map((meth) => ({
@@ -501,6 +508,23 @@ export function EvaluationListPage() {
           ) : null}
         </div>
       </header>
+
+      {/* Never silent: useAllPositions pages to completion via the shared
+          fetchAllPages helper, but if its safety cap is ever hit (an
+          exceptionally large project) say so instead of quietly rendering an
+          incomplete department/title map and "Add positions" candidate set. */}
+      {positionsQuery.data?.truncated ? (
+        <p
+          role="status"
+          className="text-xs text-warning-700"
+          data-testid="positions-truncated-banner"
+        >
+          {t('dataTable.results_truncated', {
+            shown: positionsQuery.data.items.length,
+            total: positionsQuery.data.totalElements,
+          })}
+        </p>
+      ) : null}
 
       {/* Mode toggle — hidden for committee scorers (locked to by-factor). */}
       {!isCommitteeScorer ? (

@@ -202,7 +202,8 @@
     "next": "Oldinga",
     "columns": "Ustunlar",
     "showing_x_of_y": "Koʻrsatildi {{shown}} / {{total}}",
-    "showing_range": "Koʻrsatildi {{from}}–{{to}} / {{total}}"
+    "showing_range": "Koʻrsatildi {{from}}–{{to}} / {{total}}",
+    "results_truncated": "Dastlabki {{shown}} / {{total}} natija koʻrsatildi — qolganini koʻrish uchun filtrni aniqlashtiring."
   },
   "projects": {
     "list_title": "Loyihalar",

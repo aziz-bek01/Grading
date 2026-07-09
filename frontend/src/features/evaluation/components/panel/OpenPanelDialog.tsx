@@ -21,7 +21,7 @@ import {
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import { useDepartmentPositionCounts } from '@/features/organization/hooks/useDepartmentPositionCounts';
 import { usePositions } from '@/features/positions/hooks/usePositions';
-import { useUsers } from '@/features/users-access/hooks/useUsers';
+import { useAllUsers } from '@/features/users-access/hooks/useUsers';
 import type { Methodology } from '@/features/methodology/types';
 import type { Position } from '@/features/positions/types/positionTypes';
 import { usePanels, useRosterSuggestions } from '../../hooks/usePanels';
@@ -267,7 +267,12 @@ function OpenPanelDialogBody({
     projectId,
     step >= 3 && departmentId ? departmentId : undefined,
   );
-  const { data: usersData } = useUsers();
+  // Full tenant roster (shared fetchAllPages helper) — this ONLY resolves the
+  // previously-used HR director's display name from a persisted id, so an HR
+  // director beyond the backend's default page-20 cap is still found (see
+  // EPIC-013). The seat pickers themselves are EvaluatorPicker, which loads
+  // its own full set independently.
+  const { data: usersData } = useAllUsers();
 
   // Advisory defaults are OVERLAID at render time (no setState-in-effect): the
   // DEPT_DIRECTOR seat is pre-filled from the advisory suggestion and the

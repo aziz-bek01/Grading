@@ -6,15 +6,17 @@ import { ApiError } from '@/shared/api/apiError';
 import { ReopenForExpertDialog } from './ReopenForExpertDialog';
 import { describeReopenForExpertError } from './reopenForExpertError';
 
-// EvaluatorPicker is data-driven from useUsers — stub a small ACTIVE roster so
-// the manager can pick an expert.
+// EvaluatorPicker is data-driven from useAllUsers — stub a small ACTIVE
+// roster so the manager can pick an expert.
 vi.mock('@/features/users-access/hooks/useUsers', () => ({
-  useUsers: () => ({
+  useAllUsers: () => ({
     data: {
       items: [
         { id: 'user-x', full_name: 'Expert X', status: 'ACTIVE' },
         { id: 'user-y', full_name: 'Expert Y', status: 'ACTIVE' },
       ],
+      totalElements: 2,
+      truncated: false,
     },
     isLoading: false,
     isError: false,

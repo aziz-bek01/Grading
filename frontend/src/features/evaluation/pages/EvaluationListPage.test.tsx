@@ -200,7 +200,27 @@ vi.mock('../hooks/useEvaluation', async () => {
 });
 
 vi.mock('@/features/positions/hooks/usePositions', () => ({
-  usePositions: () => ({ data: { items: positions }, isLoading: false }),
+  // EvaluationListPage's own project-wide lookup (department/title map,
+  // Add-positions candidates, completion bar).
+  useAllPositions: () => ({
+    data: { items: positions, totalElements: positions.length, truncated: false },
+    isLoading: false,
+  }),
+  // The dept-first panel wizard (OpenPanelDialog, mounted by the "Commission"
+  // test below) separately calls `usePositions` for its Step-2 department cut
+  // — unrelated to the full-fetch migration, so it keeps its own (filtered)
+  // behaviour here, mirroring OpenPanelDialog.test.tsx's own mock.
+  usePositions: (params: Record<string, unknown> | null) => {
+    if (!params) return { data: undefined, isLoading: false, isError: false };
+    const deptId = params.departmentId as string | undefined;
+    const statusFilter = params.status as string | undefined;
+    const items = positions.filter(
+      (p) =>
+        (!deptId || p.department_id === deptId) &&
+        (!statusFilter || p.status === statusFilter),
+    );
+    return { data: { items }, isLoading: false, isError: false };
+  },
 }));
 
 vi.mock('@/features/organization/hooks/useDepartmentTree', () => ({
@@ -232,13 +252,15 @@ vi.mock('@/features/organization/hooks/useDepartmentPositionCounts', () => ({
 }));
 
 vi.mock('@/features/users-access/hooks/useUsers', () => ({
-  useUsers: () => ({
+  useAllUsers: () => ({
     data: {
       items: [
         { id: 'u1', full_name: 'Evaluator One', status: 'ACTIVE' },
         { id: 'u2', full_name: 'Evaluator Two', status: 'ACTIVE' },
         { id: 'u3', full_name: 'Evaluator Three', status: 'ACTIVE' },
       ],
+      totalElements: 3,
+      truncated: false,
     },
     isLoading: false,
     isError: false,

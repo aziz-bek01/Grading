@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useUsers } from '@/features/users-access/hooks/useUsers';
+import { useAllUsers } from '@/features/users-access/hooks/useUsers';
 
 interface BaseProps {
   disabled?: boolean;
@@ -29,9 +29,11 @@ interface MultiProps extends BaseProps {
 type Props = SingleProps | MultiProps;
 
 /**
- * People picker for evaluator(s). DATA-DRIVEN from the active tenant's user
- * list (`useUsers` — tenant derived from JWT, never sent). Reuses the same
- * fetcher the users-access module uses.
+ * People picker for evaluator(s). DATA-DRIVEN from the active tenant's FULL
+ * user list (`useAllUsers` — tenant derived from JWT, never sent; pages
+ * through every user via the shared `fetchAllPages` helper so the 21st+
+ * active user is still selectable — see EPIC-013). Reuses the same fetcher
+ * the users-access module uses.
  *
  * `mode="single"` (default, backward-compatible) renders the original
  * single-seat `<select>` used by the panel roster rows; the server
@@ -44,7 +46,7 @@ type Props = SingleProps | MultiProps;
  */
 export function EvaluatorPicker(props: Props) {
   const { t } = useTranslation();
-  const { data, isLoading, isError } = useUsers();
+  const { data, isLoading, isError } = useAllUsers();
   const { excludeUserIds, disabled } = props;
 
   const users = useMemo(() => {
@@ -83,58 +85,89 @@ export function EvaluatorPicker(props: Props) {
     }
 
     return (
-      <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto" role="group">
-        {users.map((u) => {
-          const checked = selected.has(u.id);
-          return (
-            <label key={u.id} className="inline-flex items-center gap-2 text-sm text-text-primary">
-              <input
-                type="checkbox"
-                checked={checked}
-                disabled={disabled}
-                onChange={(e) => {
-                  const next = new Set(value);
-                  if (e.target.checked) next.add(u.id);
-                  else next.delete(u.id);
-                  onChange([...next]);
-                }}
-                className="h-4 w-4 rounded border-border-strong text-primary-500 focus:ring-primary-500 disabled:opacity-50"
-                data-testid={`${testIdPrefix}-${u.id}`}
-              />
-              <span>{u.full_name}</span>
-            </label>
-          );
-        })}
+      <div>
+        <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto" role="group">
+          {users.map((u) => {
+            const checked = selected.has(u.id);
+            return (
+              <label key={u.id} className="inline-flex items-center gap-2 text-sm text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={(e) => {
+                    const next = new Set(value);
+                    if (e.target.checked) next.add(u.id);
+                    else next.delete(u.id);
+                    onChange([...next]);
+                  }}
+                  className="h-4 w-4 rounded border-border-strong text-primary-500 focus:ring-primary-500 disabled:opacity-50"
+                  data-testid={`${testIdPrefix}-${u.id}`}
+                />
+                <span>{u.full_name}</span>
+              </label>
+            );
+          })}
+        </div>
+        {/* Never silent: the shared fetchAllPages helper hit its safety cap
+            before exhausting the tenant's users — say so instead of quietly
+            offering an incomplete roster. */}
+        {data?.truncated ? (
+          <p
+            className="mt-1 text-xs text-warning-700"
+            role="status"
+            data-testid={`${testIdPrefix}-truncated`}
+          >
+            {t('dataTable.results_truncated', {
+              shown: data.items.length,
+              total: data.totalElements,
+            })}
+          </p>
+        ) : null}
       </div>
     );
   }
 
   const { selectId, value, onChange } = props;
   return (
-    <select
-      id={selectId}
-      data-testid={selectId}
-      value={value}
-      disabled={disabled || isLoading || isError}
-      onChange={(e) => {
-        const id = e.target.value;
-        const name = users.find((u) => u.id === id)?.full_name ?? null;
-        onChange(id, name);
-      }}
-      className="w-full h-9 px-3 border border-border-strong rounded-md text-sm bg-surface disabled:opacity-50"
-    >
-      <option value="">
-        {isLoading
-          ? t('common.loading')
-          : isError
-            ? t('panel.dialog.evaluator_load_error')
-            : t('panel.dialog.evaluator_placeholder')}
-      </option>
-      {users.map((u) => (
-        <option key={u.id} value={u.id}>
-          {u.full_name}
+    <div>
+      <select
+        id={selectId}
+        data-testid={selectId}
+        value={value}
+        disabled={disabled || isLoading || isError}
+        onChange={(e) => {
+          const id = e.target.value;
+          const name = users.find((u) => u.id === id)?.full_name ?? null;
+          onChange(id, name);
+        }}
+        className="w-full h-9 px-3 border border-border-strong rounded-md text-sm bg-surface disabled:opacity-50"
+      >
+        <option value="">
+          {isLoading
+            ? t('common.loading')
+            : isError
+              ? t('panel.dialog.evaluator_load_error')
+              : t('panel.dialog.evaluator_placeholder')}
         </option>
-      ))}
-    </select>
+        {users.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.full_name}
+          </option>
+        ))}
+      </select>
+      {data?.truncated ? (
+        <p
+          className="mt-1 text-xs text-warning-700"
+          role="status"
+          data-testid={`${selectId}-truncated`}
+        >
+          {t('dataTable.results_truncated', {
+            shown: data.items.length,
+            total: data.totalElements,
+          })}
+        </p>
+      ) : null}
+    </div>
   );
 }

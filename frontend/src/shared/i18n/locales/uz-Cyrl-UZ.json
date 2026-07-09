@@ -202,7 +202,8 @@
     "next": "Олдинга",
     "columns": "Устунлар",
     "showing_x_of_y": "Кўрсатилди {{shown}} / {{total}}",
-    "showing_range": "Кўрсатилди {{from}}–{{to}} / {{total}}"
+    "showing_range": "Кўрсатилди {{from}}–{{to}} / {{total}}",
+    "results_truncated": "Дастлабки {{shown}} / {{total}} натижа кўрсатилди — қолганини кўриш учун филтрни аниқлаштиринг."
   },
   "projects": {
     "list_title": "Лойиҳалар",

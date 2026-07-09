@@ -121,28 +121,45 @@ export function ProjectListPage() {
       {error ? (
         <ErrorState onRetry={() => refetch()} />
       ) : (
-        <ProjectTable
-          rows={data?.items ?? []}
-          loading={isLoading}
-          onEdit={openEdit}
-          onArchive={(p) => {
-            setArchiveError(null);
-            setArchiveTarget(p);
-          }}
-          toolbarRight={
-            <PermissionGate permission={PERMISSIONS.PROJECT_CREATE}>
-              <Button
-                variant="primary"
-                size="sm"
-                leadingIcon={<Plus size={14} />}
-                onClick={openCreate}
-                data-testid="new-project-button"
-              >
-                {t('projects.new_project')}
-              </Button>
-            </PermissionGate>
-          }
-        />
+        <>
+          {/* Never silent: fetchProjects() pages to completion via the shared
+              fetchAllPages helper; if its safety cap is ever hit say so rather
+              than quietly presenting a partial catalog as the whole list. */}
+          {data?.truncated ? (
+            <p
+              className="text-xs text-warning-700"
+              role="status"
+              data-testid="projects-list-truncated"
+            >
+              {t('dataTable.results_truncated', {
+                shown: data.items.length,
+                total: data.total_elements,
+              })}
+            </p>
+          ) : null}
+          <ProjectTable
+            rows={data?.items ?? []}
+            loading={isLoading}
+            onEdit={openEdit}
+            onArchive={(p) => {
+              setArchiveError(null);
+              setArchiveTarget(p);
+            }}
+            toolbarRight={
+              <PermissionGate permission={PERMISSIONS.PROJECT_CREATE}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leadingIcon={<Plus size={14} />}
+                  onClick={openCreate}
+                  data-testid="new-project-button"
+                >
+                  {t('projects.new_project')}
+                </Button>
+              </PermissionGate>
+            }
+          />
+        </>
       )}
 
       <ProjectFormDrawer

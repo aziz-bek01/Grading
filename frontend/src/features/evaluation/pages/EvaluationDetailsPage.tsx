@@ -33,7 +33,7 @@ import { AssignedGradeBadge } from '@/features/grade-structure/components/Assign
 import { CommentThread } from '@/features/comment/components/CommentThread';
 import { ApprovalStatusBadge } from '@/features/approval/components/ApprovalStatusBadge';
 import { useApprovalRequests } from '@/features/approval/hooks/useApprovals';
-import { usePositions } from '@/features/positions/hooks/usePositions';
+import { useAllPositions } from '@/features/positions/hooks/usePositions';
 import { pickLocalized } from '@/shared/lib/localized';
 
 type Tab = 'matrix' | 'breakdown' | 'calibration' | 'comments' | 'audit';
@@ -69,8 +69,11 @@ export function EvaluationDetailsPage() {
   // T3: resolve position_id -> localized name + human code, mirroring the map
   // EvaluationListPage builds from the same positions query. A raw UUID must
   // never surface as the page heading; it only ever appears in a title=
-  // tooltip when the position is genuinely unresolved.
-  const positions = usePositions(projectId ? { projectId, size: 200 } : null);
+  // tooltip when the position is genuinely unresolved. Loads the FULL project
+  // position set (shared fetchAllPages helper) — a guessed `size: 200` used
+  // to make this lookup silently miss any position beyond that ceiling and
+  // fall back to the raw-UUID tooltip (EPIC-013).
+  const positions = useAllPositions(projectId ? { projectId } : null);
   const positionInfo = useMemo(() => {
     const positionId = evaluation.data?.position_id;
     if (!positionId) return null;

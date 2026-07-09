@@ -83,7 +83,6 @@ class PanelControllerWireTest {
     @MockBean ArchivePanelUseCase archiveUseCase;
     @MockBean ReopenPanelUseCase reopenUseCase;
     @MockBean ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
-    @MockBean uz.hrlab.grading.evaluation.migration.PanelApprovalReconciliationRunner reconciliationRunner;
     @MockBean PanelQueries queries;
     @MockBean uz.hrlab.grading.audit.application.AuditService auditService;
 
@@ -126,13 +125,6 @@ class PanelControllerWireTest {
     @Test
     void submitRequiresPanelManage() throws Exception {
         mvc.perform(post("/api/v1/panels/{id}/submit", UUID.randomUUID())
-                        .with(jwt().authorities(() -> "EVALUATION_READ")))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void reconcileApprovalsRequiresPanelManage() throws Exception {
-        mvc.perform(post("/api/v1/panels/reconcile-approvals")
                         .with(jwt().authorities(() -> "EVALUATION_READ")))
                 .andExpect(status().isForbidden());
     }

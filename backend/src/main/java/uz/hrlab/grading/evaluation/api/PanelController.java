@@ -1,7 +1,6 @@
 package uz.hrlab.grading.evaluation.api;
 
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -33,9 +32,6 @@ import uz.hrlab.grading.evaluation.application.WithdrawEvaluatorUseCase;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanel;
 import uz.hrlab.grading.evaluation.domain.EvaluationPanelStatus;
 import uz.hrlab.grading.evaluation.domain.PanelAssignment;
-import uz.hrlab.grading.evaluation.migration.BackfillPanelApprovalsMigration;
-import uz.hrlab.grading.evaluation.migration.PanelApprovalReconciliationRunner;
-import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.List;
 import java.util.UUID;
@@ -63,11 +59,6 @@ public class PanelController {
     private final ArchivePanelUseCase archiveUseCase;
     private final ReopenPanelUseCase reopenUseCase;
     private final ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase;
-    // Lazy/optional: the runner is @Profile("!migrate"), so the bean is ABSENT in
-    // the one-shot migrate JVM (which still instantiates controllers). ObjectProvider
-    // lets this controller construct there; the endpoint is only ever called under
-    // the runtime profile, where the bean exists.
-    private final ObjectProvider<PanelApprovalReconciliationRunner> reconciliationRunner;
     private final PanelQueries queries;
 
     public PanelController(CreatePanelUseCase createUseCase,
@@ -80,7 +71,6 @@ public class PanelController {
                           ArchivePanelUseCase archiveUseCase,
                           ReopenPanelUseCase reopenUseCase,
                           ReopenApprovedPanelForExpertUseCase reopenForExpertUseCase,
-                          ObjectProvider<PanelApprovalReconciliationRunner> reconciliationRunner,
                           PanelQueries queries) {
         this.createUseCase = createUseCase;
         this.bulkCreateUseCase = bulkCreateUseCase;
@@ -92,7 +82,6 @@ public class PanelController {
         this.archiveUseCase = archiveUseCase;
         this.reopenUseCase = reopenUseCase;
         this.reopenForExpertUseCase = reopenForExpertUseCase;
-        this.reconciliationRunner = reconciliationRunner;
         this.queries = queries;
     }
 
@@ -236,29 +225,6 @@ public class PanelController {
                                          @Valid @RequestBody ReopenForExpertRequest req) {
         return PanelResponse.ofMutation(
                 reopenForExpertUseCase.reopen(id, req.additionalEvaluatorUserId(), req.reason()));
-    }
-
-    /**
-     * Ops repair — on-demand trigger for the panel-approval reconciliation against
-     * the CALLER's tenant, without waiting for an API restart. Reuses the exact
-     * idempotent {@link PanelApprovalReconciliationRunner#runForTenant(UUID)} that
-     * runs on boot: it recomputes empty {@code panel_factor_averages} for SUBMITTED
-     * panels from their existing scores AND opens the missing {@code EVALUATION_PANEL}
-     * CEO approvals (so backfilled panels become signable + show their average).
-     *
-     * <p>Why this exists separately from the boot sweep: the startup runner visits
-     * only ACTIVE tenants, so a non-ACTIVE (e.g. pilot) tenant is silently skipped.
-     * This targets the active tenant DIRECTLY (RLS-bound — never another tenant) and
-     * is safe to call repeatedly. Gated on {@code EVALUATION_PANEL_MANAGE}.
-     */
-    @PostMapping("/reconcile-approvals")
-    @PreAuthorize("hasAuthority('EVALUATION_PANEL_MANAGE')")
-    public ReconcileApprovalsResponse reconcileApprovals() {
-        UUID tenantId = TenantContextHolder.requireActive().tenantId();
-        BackfillPanelApprovalsMigration.Result r =
-                reconciliationRunner.getObject().runForTenant(tenantId);
-        return new ReconcileApprovalsResponse(
-                tenantId, r.cancelledLegacyApprovals(), r.openedPanelApprovals());
     }
 
     /**

@@ -5,7 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
@@ -42,15 +43,19 @@ import java.util.UUID;
  *       re-running it is harmless.</li>
  * </ul>
  *
- * <p>Excluded from the one-shot {@code migrate} profile (mirrors
- * {@code WorkerReQueuer}/{@code WorkerSchedulingConfig}): the DDL migrator JVM
- * runs Liquibase only and must exit; it also connects as {@code grading_migrator}
- * (not the RLS-enforcing runtime role). A kill-switch
- * ({@code grading.migration.panel-approval-reconciliation.enabled}, default
- * {@code true}) lets operators disable it without a code change once it has run.
+ * <p>BE-044 — the bean is now UNCONDITIONALLY present (no {@code @Profile}) so the
+ * ops endpoint can inject the concrete type directly (no {@code ObjectProvider}
+ * indirection). The BOOT SWEEP, however, stays a runtime-profile concern: under the
+ * one-shot {@code migrate} profile it is a no-op (mirrors why {@code WorkerReQueuer}
+ * / {@code WorkerSchedulingConfig} are {@code @Profile("!migrate")}). The DDL migrator
+ * JVM runs Liquibase only and must exit; it also connects as {@code grading_migrator}
+ * (not the RLS-enforcing runtime role), so its boot sweep must not touch tenant data.
+ * A kill-switch ({@code grading.migration.panel-approval-reconciliation.enabled},
+ * default {@code true}) lets operators disable the sweep without a code change once it
+ * has run. The on-demand {@link #runForTenant(UUID)} path is unaffected by either
+ * gate — it only ever runs under the runtime profile via the ops endpoint.
  */
 @Component
-@Profile("!migrate")
 public class PanelApprovalReconciliationRunner implements ApplicationRunner {
 
     private static final Logger log =
@@ -59,19 +64,31 @@ public class PanelApprovalReconciliationRunner implements ApplicationRunner {
     private final TenantRepository tenants;
     private final BackfillPanelApprovalsMigration migration;
     private final boolean enabled;
+    /** True only in the one-shot DDL migrator JVM; makes the boot sweep a no-op there. */
+    private final boolean migrateProfile;
 
     public PanelApprovalReconciliationRunner(
             TenantRepository tenants,
             BackfillPanelApprovalsMigration migration,
             @Value("${grading.migration.panel-approval-reconciliation.enabled:true}")
-            boolean enabled) {
+            boolean enabled,
+            Environment environment) {
         this.tenants = tenants;
         this.migration = migration;
         this.enabled = enabled;
+        this.migrateProfile = environment.acceptsProfiles(Profiles.of("migrate"));
     }
 
     @Override
     public void run(ApplicationArguments args) {
+        if (migrateProfile) {
+            // Migrate JVM runs Liquibase only (grading_migrator role, outside the RLS
+            // runtime aspect) and must exit — the boot sweep is a runtime concern. The
+            // bean is still present so the ops endpoint can inject it; only the sweep
+            // no-ops here (BE-044 replaces the old @Profile("!migrate") bean absence).
+            log.info("PanelApprovalReconciliation boot sweep skipped under 'migrate' profile");
+            return;
+        }
         if (!enabled) {
             log.info("PanelApprovalReconciliation disabled by configuration — skipping");
             return;

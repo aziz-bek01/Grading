@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.env.StandardEnvironment;
 import uz.hrlab.grading.tenancy.domain.TenantStatus;
 import uz.hrlab.grading.tenancy.infrastructure.TenantJpaEntity;
 import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
@@ -56,6 +57,19 @@ class PanelApprovalReconciliationRunnerTest {
     }
 
     @Test
+    void migrateProfileMakesBootSweepANoOp() {
+        // BE-044 — the bean is now unconditionally present, but under the one-shot
+        // 'migrate' profile the boot sweep must not touch tenant data.
+        StandardEnvironment migrateEnv = new StandardEnvironment();
+        migrateEnv.setActiveProfiles("migrate");
+
+        new PanelApprovalReconciliationRunner(tenants, migration, true, migrateEnv).run(null);
+
+        verify(tenants, never()).findAll();
+        verify(migration, never()).runForTenant(any());
+    }
+
+    @Test
     void oneTenantFailureDoesNotAbortOthers() {
         UUID failId = UUID.randomUUID();
         UUID okId = UUID.randomUUID();
@@ -75,7 +89,10 @@ class PanelApprovalReconciliationRunnerTest {
     // --------------------------------------------------------------- helpers
 
     private PanelApprovalReconciliationRunner runner(boolean enabled) {
-        return new PanelApprovalReconciliationRunner(tenants, migration, enabled);
+        // Non-migrate runtime profile (StandardEnvironment has no active profiles,
+        // so acceptsProfiles("migrate") is false) — exercises the real boot sweep.
+        return new PanelApprovalReconciliationRunner(
+                tenants, migration, enabled, new StandardEnvironment());
     }
 
     private static TenantJpaEntity tenant(UUID id, TenantStatus status) {

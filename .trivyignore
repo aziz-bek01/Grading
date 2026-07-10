@@ -1,0 +1,47 @@
+# =============================================================================
+# .trivyignore — SEC-009 SCA gate allowlist (grading.hrlab.uz)
+# =============================================================================
+# This is the EXPLICIT, per-CVE allowlist for the CI dependency/SCA gate in
+# .github/workflows/ci.yml (jobs "03 · backend-deps-scan" and
+# "04 · frontend-deps-scan"). trivy reads it via `--ignorefile .trivyignore`.
+# Any id listed here is suppressed for the `trivy fs` scan and will NOT block
+# the build. It does NOT affect deploy.yml (production deploy is decoupled from
+# the ci quality matrix by design — do not re-wire it here).
+#
+# POLICY (read before adding anything):
+#   * The gate blocks only FIXABLE (patch-available) HIGH/CRITICAL findings
+#     (`--ignore-unfixed`). The correct first response to a finding is to BUMP
+#     the dependency, NOT to allowlist it.
+#   * Allowlist a CVE ONLY when a fix is not yet available, the upgrade is
+#     genuinely blocked, or the vuln is not exploitable in this app — and only
+#     with security sign-off.
+#   * Every entry MUST be a single CVE/GHSA id — NO blanket or wildcard ignores —
+#     and MUST carry, in the comment block directly above it:
+#       - Justification (why it is accepted / not exploitable here)
+#       - Owner / approver
+#       - Review-by date (re-evaluate on/before this date; default +90 days)
+#   * Entries past their Review-by date must be re-justified or removed. Treat
+#     this file as auditable, time-boxed security debt — not a mute button.
+#
+# FORMAT (one id per line):
+#
+#   # Justification: <why accepted / not exploitable in this app>
+#   # Owner: <name/role>   Review-by: <YYYY-MM-DD>
+#   CVE-XXXX-XXXXX
+#
+# -----------------------------------------------------------------------------
+# NO ACTIVE SUPPRESSIONS.
+#
+# The FIRST gated CI run is expected to surface pre-existing FIXABLE
+# HIGH/CRITICAL findings (see the SEC-009 report). The most likely tripwire is
+# the embedded Tomcat shipped transitively by Spring Boot 3.3.4 (end-of-OSS-
+# support), e.g. CVE-2025-24813 (CVSS 9.8). Each surfaced finding must be either
+# FIXED (bump the dependency — preferred) or added below WITH a justification
+# and a review date. Do NOT blanket-ignore.
+# -----------------------------------------------------------------------------
+#
+# Example (commented out — copy the shape, never leave a bare id):
+# # Justification: no fix released upstream yet; the affected code path (feature
+# #   X) is disabled in SecurityConfig, so it is not reachable in this deployment.
+# # Owner: security-engineer   Review-by: 2026-10-08
+# CVE-2025-00000

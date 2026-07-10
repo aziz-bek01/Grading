@@ -2,7 +2,8 @@ name: ci
 
 # Implements the 28-stage pipeline from docs/mvp1/04-devops-sre-blueprint.md §7.
 # Blocking gates: tenant-isolation / audit / salary / architecture tests,
-# container scans, secret scans, image build & push (on main).
+# dependency/SCA gate (trivy fs, HIGH/CRITICAL), container scans, secret scans,
+# image build & push (on main).
 
 on:
   push:
@@ -95,7 +96,11 @@ jobs:
           GITLEAKS_ENABLE_SUMMARY: "true"
 
   # ===========================================================================
-  # Stage 4 — Dependency scans (Maven + npm + trivy fs)
+  # Stage 4 — Dependency / SCA scans (trivy fs).
+  #   SEC-009: trivy fs is a BUILD-FAILING GATE on fixable HIGH/CRITICAL
+  #   findings (see /.trivyignore for the per-CVE allowlist). npm audit stays
+  #   informational — trivy fs already gates the npm lockfile, so gating on
+  #   npm audit too would just double-count a noisier source.
   # ===========================================================================
   backend-deps-scan:
     name: "03 · backend-deps-scan"
@@ -115,14 +120,31 @@ jobs:
 
       # trivy-action@v0.x pins an internal setup-trivy version GitHub can no
       # longer resolve (fails at job setup, before steps run). Install the CLI
-      # directly. Informational: --exit-code 0 + continue-on-error keep it
-      # non-blocking; findings still surface in the SARIF / Security tab.
-      - name: Trivy filesystem scan (backend)
+      # directly. Fail-closed: if the scanner cannot install the gate fails
+      # rather than silently skipping the SCA check.
+      - name: Install trivy
+        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.1
+
+      # SEC-009 — SCA GATE. trivy fs parses backend/pom.xml and FAILS the job on
+      # any FIXABLE (--ignore-unfixed) HIGH/CRITICAL not explicitly allow-listed
+      # in /.trivyignore (per-CVE, with justification + review date). Unfixable /
+      # false-positive noise cannot spuriously break CI. Table output so the
+      # offending CVEs are visible directly in the job log.
+      - name: Trivy filesystem SCA gate (backend) [HIGH,CRITICAL]
+        run: |
+          trivy fs --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
+            --ignorefile .trivyignore --exit-code 1 --format table backend
+
+      # Informational re-run (never fails) emitting SARIF for the Security tab.
+      # Same severity + same .trivyignore so it mirrors exactly what the gate
+      # enforced; trivy reuses the vuln DB cached by the gate step above.
+      - name: Trivy SARIF (backend, informational)
+        if: always()
         continue-on-error: true
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.1
           trivy fs --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
-            --format sarif --output trivy-backend-fs.sarif --exit-code 0 backend
+            --ignorefile .trivyignore --exit-code 0 \
+            --format sarif --output trivy-backend-fs.sarif backend
 
       - name: Upload SARIF
         if: always()
@@ -157,13 +179,27 @@ jobs:
           npm audit --audit-level=high || echo "::warning::npm audit found high-severity advisories (non-blocking)"
 
       # See backend-deps-scan: install the trivy CLI directly (the action's
-      # internal setup-trivy pin no longer resolves). Informational, non-blocking.
-      - name: Trivy filesystem scan (frontend)
+      # internal setup-trivy pin no longer resolves). Fail-closed.
+      - name: Install trivy
+        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.1
+
+      # SEC-009 — SCA GATE. trivy fs parses frontend/package-lock.json and FAILS
+      # the job on any FIXABLE HIGH/CRITICAL not allow-listed in /.trivyignore.
+      # This is the enforcing gate for npm deps; `npm audit` above stays
+      # informational to avoid double-gating with a noisier source.
+      - name: Trivy filesystem SCA gate (frontend) [HIGH,CRITICAL]
+        run: |
+          trivy fs --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
+            --ignorefile .trivyignore --exit-code 1 --format table frontend
+
+      # Informational re-run (never fails) emitting SARIF for the Security tab.
+      - name: Trivy SARIF (frontend, informational)
+        if: always()
         continue-on-error: true
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.1
           trivy fs --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed \
-            --format sarif --output trivy-frontend-fs.sarif --exit-code 0 frontend
+            --ignorefile .trivyignore --exit-code 0 \
+            --format sarif --output trivy-frontend-fs.sarif frontend
 
       - name: Upload SARIF
         if: always()

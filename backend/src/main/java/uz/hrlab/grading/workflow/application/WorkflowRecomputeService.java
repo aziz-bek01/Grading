@@ -88,36 +88,66 @@ public class WorkflowRecomputeService {
         Map<WorkflowStage, ProjectWorkflowStageJpaEntity> byStage = new HashMap<>();
         for (var e : existing) byStage.put(e.getStage(), e);
 
+        // BE-028 — write-only-when-changed. GET /workflow-progress polls this
+        // every 30s. Recomputing on the request thread is acceptable (the counts
+        // above are cheap indexed reads that take NO write locks) but the OLD code
+        // mutated and persisted all 11 stage rows + the workflow row on EVERY call,
+        // which was the reported defect. Two write triggers existed:
+        //   (1) an explicit stages.save()/workflows.save() on every poll; and
+        //   (2) an unconditional row.setCompletionPercent(...) that re-set the
+        //       NOT_STARTED / LOCKED_FUTURE rows to a scale-0 BigDecimal.ZERO. That
+        //       never equals() the scale-2 NUMERIC(5,2) value reloaded from
+        //       Postgres, so Hibernate dirty-checking flushed an UPDATE for those
+        //       rows on every poll (row locks + WAL) even when nothing had changed.
+        // We now compare with compareTo (scale-insensitive) and ONLY mutate + save a
+        // row when its derived status or completion actually differs. In the steady
+        // state (no source change between polls) NO managed entity is dirtied, so
+        // Hibernate flushes nothing and the call is a pure read. Correctness is
+        // preserved because the returned snapshot is ALWAYS the freshly-derived
+        // state — inserts, hard-deletes and status transitions all surface in the
+        // counts, so the comparison can never let a stale value through.
         OffsetDateTime now = OffsetDateTime.now();
         List<ProjectWorkflowStageJpaEntity> persisted = new ArrayList<>(11);
         for (WorkflowStage stage : WorkflowStage.values()) {
             WorkflowStageMetrics m = metrics.get(stage);
             ProjectWorkflowStageJpaEntity row = byStage.get(stage);
             if (row == null) {
+                // New stage row — must be inserted.
                 row = new ProjectWorkflowStageJpaEntity(
                         UUID.randomUUID(), ctx.tenantId(), workflow.getId(), projectId,
                         stage, m.status(), m.completionPercent(), stage.sortOrder());
+                persisted.add(stages.save(row));
+                continue;
             }
             boolean changed = row.getStatus() != m.status()
                     || row.getCompletionPercent().compareTo(m.completionPercent()) != 0;
-            row.setStatus(m.status());
-            row.setCompletionPercent(m.completionPercent());
             if (changed) {
+                row.setStatus(m.status());
+                row.setCompletionPercent(m.completionPercent());
                 row.setLastUpdatedAt(now);
                 row.setLastUpdatedBy(ctx.userId());
+                persisted.add(stages.save(row));
+            } else {
+                // No logical change — leave the managed entity untouched (so it is
+                // never flushed) and reuse it as-is for the response.
+                persisted.add(row);
             }
-            persisted.add(stages.save(row));
         }
 
         // current_stage tracker: pick the first stage that isn't COMPLETE or LOCKED_FUTURE
         WorkflowStage newCurrent = computeCurrentStage(metrics);
+        boolean workflowChanged = false;
         if (workflow.getCurrentStage() != newCurrent) {
             workflow.setCurrentStage(newCurrent);
+            workflowChanged = true;
         }
         if (project.getStatus() == ProjectStatus.ARCHIVED && workflow.getArchivedAt() == null) {
             workflow.setArchivedAt(now);
+            workflowChanged = true;
         }
-        workflows.save(workflow);
+        if (workflowChanged) {
+            workflows.save(workflow);
+        }
 
         return toDomain(workflow, persisted);
     }

@@ -51,7 +51,11 @@ public class GetProjectWorkflowQuery {
                 .orElseThrow(TenantAccessDeniedException::new);
         abacGate.enforceCanReadProject(ctx, project.getId(), project.getStatus());
 
-        // Lazy init + recompute on first call (always recompute on read for freshness).
+        // BE-028 — recompute() derives the snapshot from live (cheap, indexed)
+        // counts on every read for freshness, but now persists ONLY when a stage
+        // or the current-stage pointer actually changed. In the steady state this
+        // GET issues no writes and takes no locks; the returned snapshot is always
+        // the freshly-derived state, so it can never be stale.
         return recompute.recompute(projectId);
     }
 

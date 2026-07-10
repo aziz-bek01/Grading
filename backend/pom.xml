@@ -124,18 +124,31 @@
 
         <!-- MVP 2 Phase 3 — MinIO/S3 object storage SDK. Drives
              MinioObjectStorageAdapter (the real adapter behind
-             grading.storage.type=minio). 8.6.0 (SEC-009 bump from 8.5.17) moves
-             its bundled HTTP client to okhttp 5.1.0. spring-boot-dependencies
-             3.5.14 no longer manages okhttp, and this codebase never touches
-             okhttp directly (the SDK owns it end-to-end), so there is no
-             version skew or compile impact. The client is built LAZILY (no
-             network I/O in the constructor) so the one-shot `migrate` profile
-             can instantiate this bean with MinIO unreachable and still exit
-             cleanly (see MinioObjectStorageAdapter javadoc). -->
+             grading.storage.type=minio). 8.6.0 (SEC-009 bump from 8.5.17, clears
+             CVE-2025-59952) moves its bundled HTTP client to okhttp 5.1.0.
+             MinioClient.builder() exposes okhttp3.HttpUrl in its API, so okhttp
+             classes ARE required on the compile classpath. The client is built
+             LAZILY (no network I/O in the constructor) so the one-shot `migrate`
+             profile can instantiate this bean with MinIO unreachable and still
+             exit cleanly (see MinioObjectStorageAdapter javadoc). -->
         <dependency>
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
             <version>8.6.0</version>
+        </dependency>
+        <!-- okhttp 5.x is a Kotlin-Multiplatform artifact: com.squareup.okhttp3:okhttp
+             is an EMPTY 767-byte KMP stub whose JVM class files (incl.
+             okhttp3.HttpUrl) live in okhttp-jvm. Maven resolves the .pom, not the
+             Gradle-module metadata, so it pulls only the empty stub and the build
+             fails with "class file for okhttp3.HttpUrl not found". spring-boot
+             3.5.14 no longer manages okhttp, so pull the JVM variant explicitly,
+             pinned to the exact version minio 8.6.0 was compiled against (avoids
+             the okhttp 4→5 binary-incompatibility of forcing 4.x). Keep this
+             version aligned with io.minio:minio's transitive okhttp on each bump. -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp-jvm</artifactId>
+            <version>5.1.0</version>
         </dependency>
 
         <!-- Actuator -->

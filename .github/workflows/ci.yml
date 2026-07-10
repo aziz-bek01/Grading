@@ -118,6 +118,18 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
+      # trivy fs resolves backend/pom.xml's Spring Boot parent + imported BOMs to
+      # build the dependency graph. By default it fetches those POMs from
+      # repo1.maven.org, which intermittently 429-rate-limits the shared CI egress
+      # on freshly-bumped coordinates (e.g. spring-boot-starter-parent 3.5.14) and
+      # flakily fails this gate. Pre-populate ~/.m2 (kept warm across runs by
+      # setup-java's maven cache) so trivy resolves those POMs from the LOCAL repo
+      # instead of the network — this is Trivy's own documented remedy for the 429.
+      # retryHandler rides out a cold-cache blip on the first run after a bump.
+      - name: Warm local Maven repo for trivy (resolve parent POM + BOMs into ~/.m2)
+        working-directory: backend
+        run: ./mvnw -B -ntp -q -Dmaven.wagon.http.retryHandler.count=5 dependency:resolve
+
       # trivy-action@v0.x pins an internal setup-trivy version GitHub can no
       # longer resolve (fails at job setup). The shared composite installs the
       # CLI from a version-pinned installer with retry + a fail-closed version

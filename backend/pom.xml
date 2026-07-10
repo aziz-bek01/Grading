@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.4</version>
+        <version>3.3.13</version>
         <relativePath/>
     </parent>
 
@@ -100,7 +100,7 @@
              MinioObjectStorageAdapter (the real adapter behind
              grading.storage.type=minio). 8.5.17 is the latest stable in the
              8.5.x line and pins okhttp 4.12.0, which spring-boot-dependencies
-             3.3.4 already manages — so no HTTP-client version skew. The client
+             3.3.13 already manages — so no HTTP-client version skew. The client
              is built LAZILY (no network I/O in the constructor) so the one-shot
              `migrate` profile can instantiate this bean with MinIO unreachable
              and still exit cleanly (see MinioObjectStorageAdapter javadoc). -->

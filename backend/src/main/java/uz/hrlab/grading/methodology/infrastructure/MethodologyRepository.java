@@ -7,6 +7,7 @@ import uz.hrlab.grading.methodology.domain.MethodologyStatus;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -17,6 +18,17 @@ public interface MethodologyRepository
         extends TenantAwareRepository<MethodologyJpaEntity, UUID> {
 
     boolean existsByTenantIdAndProjectIdAndCode(UUID tenantId, UUID projectId, String code);
+
+    /**
+     * Tenant- + project-scoped resolution of a methodology container by its
+     * business {@code code}. Used by {@code MethodologyFactorsRowCommitter} to
+     * find-or-create the target methodology of an import (mirrors the
+     * {@code findByTenantIdAndProjectIdAndCode} used by the position / department
+     * committers). Tenant is pinned, so a same-code methodology in another tenant
+     * is invisible (never the BOLA-prone {@code findByCode}).
+     */
+    Optional<MethodologyJpaEntity> findByTenantIdAndProjectIdAndCode(
+            UUID tenantId, UUID projectId, String code);
 
     Page<MethodologyJpaEntity> findAllByTenantIdAndProjectId(
             UUID tenantId, UUID projectId, Pageable pageable);

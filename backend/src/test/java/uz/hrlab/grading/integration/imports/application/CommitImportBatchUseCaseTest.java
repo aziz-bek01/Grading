@@ -156,20 +156,32 @@ class CommitImportBatchUseCaseTest {
 
     @Test
     void unsupportedTemplate_throwsValidationException() {
+        // Every SHIPPING template now has a committer (JOB_PROFILE_V1 and
+        // METHODOLOGY_FACTORS_V1 included), so we can no longer point at a real
+        // template to exercise the "no committer registered" rejection. Use a
+        // SYNTHETIC template that IS registered (passes the template-lookup +
+        // permission gates) but has NO committer — keeping the COMMIT_NOT_SUPPORTED
+        // branch genuinely meaningful.
+        String fakeCode = "FAKE_NO_COMMITTER_V1";
+        ImportTemplateRegistry fakeTemplates = mock(ImportTemplateRegistry.class);
+        given(fakeTemplates.find(fakeCode)).willReturn(Optional.of(
+                new ImportTemplateDefinition(fakeCode, "Fake (no committer)",
+                        List.of("x"), List.of(), List.of("x"), List.of(),
+                        PermissionCodes.ORG_IMPORT, "Fake", false)));
+        CommitImportBatchUseCase localUseCase = new CommitImportBatchUseCase(
+                batches, errors, fakeTemplates, committers, storage, parser, abacGate, audit);
+
         batch = new ImportBatchJpaEntity(batchId, tenantId, projectId,
-                ImportTemplateCode.JOB_PROFILE_V1, ImportBatchStatus.READY_FOR_REVIEW,
+                fakeCode, ImportBatchStatus.READY_FOR_REVIEW,
                 "file.xlsx", "k", 1024L, "c", userId, OffsetDateTime.now());
-        // Override the membership check so this caller has JOB_PROFILE_EDIT
-        TenantContextHolder.set(new TenantContext(
-                userId, tenantId, Set.of(projectId),
-                Set.of("HRLAB_PROJECT_MANAGER"),
-                Set.of(PermissionCodes.JOB_PROFILE_EDIT),
-                Set.of(), false, "ru-RU"));
+        // Caller holds the fake template's required permission (ORG_IMPORT) —
+        // already granted by the setUp() context — so the reject is purely about
+        // the missing committer, not authz.
         given(batches.findByIdAndTenantId(eq(batchId), eq(tenantId)))
                 .willReturn(Optional.of(batch));
 
         ValidationException err = (ValidationException) org.junit.jupiter.api.Assertions
-                .assertThrows(ValidationException.class, () -> useCase.commit(batchId));
+                .assertThrows(ValidationException.class, () -> localUseCase.commit(batchId));
         assertThat(err.getCode()).isEqualTo("COMMIT_NOT_SUPPORTED");
     }
 

@@ -317,17 +317,52 @@ public class ImportTemplateGuide {
     }
 
     /**
-     * METHODOLOGY_FACTORS_V1 — required columns/fields per
-     * {@code ImportTemplateRegistry}; commit deferred.
+     * METHODOLOGY_FACTORS_V1 — see {@code MethodologyFactorsRowCommitter}. The
+     * file carries ONE methodology: the methodology-level metadata columns
+     * ({@code methodology_code}, {@code methodology_name}, {@code methodology_type},
+     * {@code scoring_mode}, {@code target_total_points}) are repeated identically
+     * on every row, plus one row per {@code factor + level}. Commit is
+     * create-or-upsert into the project's DRAFT methodology of that code.
      */
     private static List<ColumnSpec> methodologyColumns() {
-        String defer = "Эслатма: шаблон ҳозирча фақат текширилади. Примечание: шаблон пока только валидируется.";
+        String sameOnEveryRow = "Ҳар бир қаторда бир хил ёзилсин (файлда битта методология). "
+                + "Указывайте одинаково в каждой строке (одна методология на файл).";
         return List.of(
+                new ColumnSpec("methodology_code", true,
+                        "Матн / Текст. Лойиҳа ичида методология коди. Код методологии в проекте.",
+                        "Ихтиёрий код / Любой код (масалан ACME-GRADING)",
+                        "ACME-GRADING",
+                        "Мавжуд методология DRAFT бўлмаса қатор рад этилади "
+                                + "(METHODOLOGY_NOT_DRAFT). Если методология не в статусе DRAFT — "
+                                + "строка отклоняется (METHODOLOGY_NOT_DRAFT). " + sameOnEveryRow),
+                new ColumnSpec("methodology_name", true,
+                        "Матн / Текст (асосий тил ru-RU). Текст (основной язык ru-RU).",
+                        "Эркин матн / Свободный текст",
+                        "Методология грейдирования ACME",
+                        "Бўш қолдириш мумкин эмас. Нельзя оставлять пустым. " + sameOnEveryRow),
+                new ColumnSpec("methodology_type", true,
+                        "Код (катта ҳарф) / Код (верхний регистр).",
+                        "CLASSIC_8_FACTOR, EXTENDED_11_CRITERIA, CUSTOM",
+                        "CLASSIC_8_FACTOR",
+                        "Нотўғри қиймат → INVALID_METHODOLOGY_TYPE. "
+                                + "Недопустимое значение → INVALID_METHODOLOGY_TYPE. " + sameOnEveryRow),
+                new ColumnSpec("scoring_mode", true,
+                        "Код (катта ҳарф) / Код (верхний регистр).",
+                        "DIRECT_POINTS, WEIGHTED_POINTS, WEIGHTED_SCALE",
+                        "WEIGHTED_POINTS",
+                        "Нотўғри қиймат → INVALID_SCORING_MODE. "
+                                + "Недопустимое значение → INVALID_SCORING_MODE. " + sameOnEveryRow),
+                new ColumnSpec("target_total_points", true,
+                        "Сон / Число (нуқта билан / с точкой)",
+                        "Мусбат сон / Положительное число",
+                        "1000",
+                        "Матн эмас, сон. Не текст, а число → INVALID_TOTAL_POINTS. " + sameOnEveryRow),
                 new ColumnSpec("factor_code", true,
                         "Матн / Текст (катта ҳарф тавсия этилади). Текст (рекомендуется верхний регистр).",
                         "Масалан KNOWLEDGE, EXPERIENCE / Например KNOWLEDGE, EXPERIENCE",
                         "KNOWLEDGE",
-                        defer),
+                        "Бир файлда бир фактор коди такрорланиб, ҳар хил даражаларга эга бўлади. "
+                                + "Один код фактора повторяется на несколько уровней в файле."),
                 new ColumnSpec("factor_name", true,
                         "Матн / Текст",
                         "Эркин матн / Свободный текст",

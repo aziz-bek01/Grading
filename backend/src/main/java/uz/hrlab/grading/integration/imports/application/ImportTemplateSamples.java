@@ -254,7 +254,22 @@ public class ImportTemplateSamples {
         return r;
     }
 
+    /**
+     * Methodology sample — ONE approvable CLASSIC_8_FACTOR methodology. The
+     * methodology-level metadata columns are repeated identically on every row
+     * (one methodology per file, per {@code MethodologyFactorsRowCommitter});
+     * 8 factors × 5 levels = 40 factor/level rows. Weights are 12.5 each so the
+     * sum is 100 — valid for {@code WEIGHTED_POINTS} — and every factor has ≥2
+     * levels, so the imported DRAFT passes {@code ApproveMethodologyVersionUseCase}.
+     */
     private List<Map<String, String>> methodologyFactorsSample() {
+        // Methodology-level metadata — identical on every row (one per file).
+        String methodologyCode = "ACME-GRADING";
+        String methodologyName = "Методология грейдирования ACME";
+        String methodologyType = "CLASSIC_8_FACTOR";
+        String scoringMode = "WEIGHTED_POINTS";
+        String targetTotalPoints = "1000";
+
         String[] factors = {
                 "KNOWLEDGE",        "Knowledge",
                 "EXPERIENCE",       "Experience",
@@ -267,7 +282,7 @@ public class ImportTemplateSamples {
         };
         String[] levels = { "L1 Basic", "L2 Beginning", "L3 Intermediate", "L4 Advanced", "L5 Expert" };
         int[]    points = { 40, 80, 120, 160, 200 };
-        String   weight = "12.5";
+        String   weight = "12.5"; // 8 × 12.5 = 100 → valid WEIGHTED_POINTS sum
 
         List<Map<String, String>> out = new ArrayList<>();
         for (int f = 0; f < factors.length; f += 2) {
@@ -275,6 +290,13 @@ public class ImportTemplateSamples {
             String name = factors[f + 1];
             for (int l = 0; l < levels.length; l++) {
                 Map<String, String> r = new LinkedHashMap<>();
+                // Methodology-level metadata (same on every row).
+                r.put("methodology_code", methodologyCode);
+                r.put("methodology_name", methodologyName);
+                r.put("methodology_type", methodologyType);
+                r.put("scoring_mode", scoringMode);
+                r.put("target_total_points", targetTotalPoints);
+                // Per-factor/level columns.
                 r.put("factor_code", code);
                 r.put("factor_name", name);
                 // Registry-required columns for METHODOLOGY_FACTORS_V1.

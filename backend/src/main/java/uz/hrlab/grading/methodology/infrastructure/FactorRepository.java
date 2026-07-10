@@ -4,6 +4,7 @@ import uz.hrlab.grading.common.infrastructure.TenantAwareRepository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Factor repository — tenant-aware. */
@@ -45,6 +46,15 @@ public interface FactorRepository
                     UUID tenantId, UUID methodologyVersionId);
 
     boolean existsByTenantIdAndMethodologyVersionIdAndCode(
+            UUID tenantId, UUID methodologyVersionId, String code);
+
+    /**
+     * Tenant-scoped resolution of a factor by its {@code code} within a
+     * methodology version — the find-half of the import find-or-create upsert
+     * ({@code MethodologyFactorsRowCommitter}). Tenant is pinned so a foreign
+     * row never resolves.
+     */
+    Optional<FactorJpaEntity> findByTenantIdAndMethodologyVersionIdAndCode(
             UUID tenantId, UUID methodologyVersionId, String code);
 
     boolean existsByTenantIdAndMethodologyVersionIdAndSortOrder(

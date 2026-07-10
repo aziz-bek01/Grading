@@ -34,12 +34,15 @@ interface TemplateRow {
   code: ImportTemplateCode;
   permission: PermissionCode;
   /**
-   * Whether the backend can actually COMMIT this template. Only templates with
-   * a registered `ImportRowCommitter` (ORG_STRUCTURE_V1, POSITION_CATALOG_V1,
-   * JOB_PROFILE_V1, GRADE_BANDS_V1) can be committed; METHODOLOGY_FACTORS_V1
-   * has no committer and `CommitImportBatchUseCase` rejects it with
-   * `COMMIT_NOT_SUPPORTED`. We keep it visible (so users know it's coming) but
-   * non-selectable so nobody completes the whole wizard then hits a hard error.
+   * Whether the backend can actually COMMIT this template. Templates without a
+   * registered `ImportRowCommitter` are rejected by `CommitImportBatchUseCase`
+   * with `COMMIT_NOT_SUPPORTED`. We keep unsupported templates visible (so
+   * users know they're coming) but non-selectable so nobody completes the
+   * whole wizard then hits a hard error. All current templates — including
+   * METHODOLOGY_FACTORS_V1, which now upserts a methodology + its factors and
+   * levels — have a committer, so this flag is currently `true` everywhere.
+   * Leave the mechanism in place for future templates that land ahead of
+   * their committer.
    */
   commitSupported: boolean;
 }
@@ -48,7 +51,7 @@ const TEMPLATES: TemplateRow[] = [
   { code: 'ORG_STRUCTURE_V1', permission: PERMISSIONS.ORG_IMPORT, commitSupported: true },
   { code: 'POSITION_CATALOG_V1', permission: PERMISSIONS.POSITION_IMPORT, commitSupported: true },
   { code: 'JOB_PROFILE_V1', permission: PERMISSIONS.POSITION_IMPORT, commitSupported: true },
-  { code: 'METHODOLOGY_FACTORS_V1', permission: PERMISSIONS.METHODOLOGY_IMPORT, commitSupported: false },
+  { code: 'METHODOLOGY_FACTORS_V1', permission: PERMISSIONS.METHODOLOGY_IMPORT, commitSupported: true },
   { code: 'GRADE_BANDS_V1', permission: PERMISSIONS.GRADE_IMPORT, commitSupported: true },
 ];
 

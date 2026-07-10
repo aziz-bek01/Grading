@@ -55,10 +55,16 @@ public class ImportTemplateRegistry {
         register(new ImportTemplateDefinition(
                 ImportTemplateCode.METHODOLOGY_FACTORS_V1,
                 "Methodology Factors + Levels",
-                List.of("factor_code", "factor_name", "level_code", "level_name", "weight", "score"),
+                // Methodology-level metadata (repeated on every row — one methodology
+                // per file) FIRST, then the per-factor/level columns.
+                List.of("methodology_code", "methodology_name", "methodology_type",
+                        "scoring_mode", "target_total_points",
+                        "factor_code", "factor_name", "level_code", "level_name", "weight", "score"),
                 List.of(),
-                List.of("factor_code", "factor_name", "level_code", "level_name"),
-                List.of("factor_name", "level_name"),
+                List.of("methodology_code", "methodology_name", "methodology_type",
+                        "scoring_mode", "target_total_points",
+                        "factor_code", "factor_name", "level_code", "level_name"),
+                List.of("methodology_name", "factor_name", "level_name"),
                 "METHODOLOGY_IMPORT",
                 "Methodology",
                 false));

@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.13</version>
+        <version>3.5.14</version>
         <relativePath/>
     </parent>
 
@@ -21,8 +21,25 @@
         <java.version>21</java.version>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <springdoc.version>2.6.0</springdoc.version>
+        <!-- springdoc-openapi 2.8.x is the line aligned with Spring Boot 3.5 /
+             Spring Framework 6.2 (2.6.x targeted Boot 3.3). -->
+        <springdoc.version>2.8.9</springdoc.version>
         <testcontainers.version>1.20.3</testcontainers.version>
+
+        <!-- SEC-009 SCA-gate overrides of spring-boot-dependencies 3.5.14 pins that
+             sit BELOW the Trivy "fixed" threshold. These re-pin every managed
+             artifact in their family (tomcat-embed-*, org.postgresql:*, jackson-*).
+             Only raise, never lower — spring-framework 6.2.18 / spring-security
+             6.5.10 already clear their thresholds and stay BOM-managed. Re-check
+             these on each Boot bump. -->
+        <tomcat.version>10.1.55</tomcat.version>       <!-- BOM 10.1.54 → clears CVE set (incl. 3 CRITICAL) -->
+        <postgresql.version>42.7.11</postgresql.version> <!-- BOM 42.7.10 → 42.7.11 -->
+        <!-- jackson: the minio 8.6.0 transitive drags jackson-databind up to
+             2.21.2, but CVE-2026-54512/54513 are only fixed at 2.21.4 in the
+             2.21 branch (2.19.0–2.21.3 stay vulnerable). Pin the whole jackson
+             BOM to 2.21.4 so every jackson-* module clears the threshold in
+             lockstep (dependencyManagement wins over the transitive). -->
+        <jackson-bom.version>2.21.4</jackson-bom.version>
     </properties>
 
     <dependencyManagement>
@@ -33,6 +50,15 @@
                 <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- SEC-009 — force Bouncy Castle up from the 1.78.1 that docx4j
+                 (docx4j-JAXB-ReferenceImpl 11.5.1) drags in transitively. 1.78.1
+                 carries a CRITICAL CVE; 1.81.1 clears it. docx4j only uses BC for
+                 optional signing paths we do not exercise, so the bump is API-safe. -->
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>1.81.1</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -98,16 +124,18 @@
 
         <!-- MVP 2 Phase 3 — MinIO/S3 object storage SDK. Drives
              MinioObjectStorageAdapter (the real adapter behind
-             grading.storage.type=minio). 8.5.17 is the latest stable in the
-             8.5.x line and pins okhttp 4.12.0, which spring-boot-dependencies
-             3.3.13 already manages — so no HTTP-client version skew. The client
-             is built LAZILY (no network I/O in the constructor) so the one-shot
-             `migrate` profile can instantiate this bean with MinIO unreachable
-             and still exit cleanly (see MinioObjectStorageAdapter javadoc). -->
+             grading.storage.type=minio). 8.6.0 (SEC-009 bump from 8.5.17) moves
+             its bundled HTTP client to okhttp 5.1.0. spring-boot-dependencies
+             3.5.14 no longer manages okhttp, and this codebase never touches
+             okhttp directly (the SDK owns it end-to-end), so there is no
+             version skew or compile impact. The client is built LAZILY (no
+             network I/O in the constructor) so the one-shot `migrate` profile
+             can instantiate this bean with MinIO unreachable and still exit
+             cleanly (see MinioObjectStorageAdapter javadoc). -->
         <dependency>
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
-            <version>8.5.17</version>
+            <version>8.6.0</version>
         </dependency>
 
         <!-- Actuator -->
@@ -193,22 +221,12 @@
             <version>5.3.0</version>
         </dependency>
 
-        <!-- MVP 2 Phase 3 — PDF report generation (OpenPDF; Jasper kept for future .jrxml). -->
-        <dependency>
-            <groupId>net.sf.jasperreports</groupId>
-            <artifactId>jasperreports</artifactId>
-            <version>6.21.3</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.lowagie</groupId>
-                    <artifactId>itext</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.eclipse.jdt</groupId>
-                    <artifactId>ecj</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
+        <!-- MVP 2 Phase 3 — PDF report generation (OpenPDF, com.lowagie.text.*).
+             The PdfBuilder writes directly against OpenPDF; there is no
+             JasperReports dependency (the old net.sf.jasperreports artifact was
+             unused — 0 imports — and was removed in SEC-009, which also cleared
+             its transitive commons-beanutils 1.9.4 CVE). If .jrxml templating is
+             ever needed, add JasperReports back then. -->
         <dependency>
             <groupId>com.github.librepdf</groupId>
             <artifactId>openpdf</artifactId>

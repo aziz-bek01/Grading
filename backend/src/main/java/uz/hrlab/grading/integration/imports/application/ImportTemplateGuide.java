@@ -388,6 +388,14 @@ public class ImportTemplateGuide {
                         "Мусбат сон / Положительное число",
                         "40",
                         "Матн киритманг, фақат сон. Не вводите текст, только число."),
+                new ColumnSpec("scale_value", false,
+                        "Сон / Число. Фақат WEIGHTED_SCALE учун мажбурий. "
+                                + "Обязательно ТОЛЬКО для WEIGHTED_SCALE.",
+                        "Даража шкаласи (масалан 1, 2, 3). Значение шкалы уровня (например 1, 2, 3).",
+                        "3",
+                        "scoring_mode=WEIGHTED_SCALE бўлса бўш қолдирманг → MISSING_SCALE_VALUE "
+                                + "(бўш бўлса баҳо 0 бўлади). При WEIGHTED_SCALE не оставляйте пустым → "
+                                + "MISSING_SCALE_VALUE (иначе оценка = 0)."),
                 new ColumnSpec("factor_weight", false,
                         "Ўнли сон / Десятичное число (дубликат маълумот / дублирующее поле)",
                         "0–100",

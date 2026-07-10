@@ -382,6 +382,10 @@ public class ImportTemplateSamples {
             case ImportTemplateCode.METHODOLOGY_FACTORS_V1 -> {
                 // registry calls them factor_weight as 'weight' / 'score' — map names
                 // are already added; keep order stable.
+                // scale_value is optional (blank for DIRECT_POINTS/WEIGHTED_POINTS)
+                // but REQUIRED per row when scoring_mode=WEIGHTED_SCALE — shipped as a
+                // documented column so a WEIGHTED_SCALE import has somewhere to put it.
+                if (!headers.contains("scale_value")) headers.add("scale_value");
                 if (!headers.contains("factor_weight")) headers.add("factor_weight");
                 if (!headers.contains("level_points")) headers.add("level_points");
                 if (!headers.contains("level_order")) headers.add("level_order");

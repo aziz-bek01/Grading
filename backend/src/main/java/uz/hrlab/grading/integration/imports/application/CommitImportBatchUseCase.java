@@ -34,10 +34,11 @@ import java.util.UUID;
  *
  * <p>PO-11: for each template that has a registered
  * {@link ImportRowCommitter} (ORG_STRUCTURE_V1, POSITION_CATALOG_V1,
- * GRADE_BANDS_V1, JOB_PROFILE_V1), every parsed row is materialized into a
- * real domain entity (Department, Position, GradeBand, JobProfile). Templates
- * still without a committer (METHODOLOGY_FACTORS_V1) reject the commit
- * explicitly — no silent no-op.
+ * GRADE_BANDS_V1, JOB_PROFILE_V1, METHODOLOGY_FACTORS_V1), every parsed row is
+ * materialized into a real domain entity (Department, Position, GradeBand,
+ * JobProfile, Methodology + Factor/FactorLevel). A template with NO registered
+ * committer rejects the commit explicitly (COMMIT_NOT_SUPPORTED) — no silent
+ * no-op.
  *
  * <p>Failure handling per row: an {@link ImportRowCommitException} is logged
  * as an {@link ImportErrorJpaEntity}; the row is counted as failed and the

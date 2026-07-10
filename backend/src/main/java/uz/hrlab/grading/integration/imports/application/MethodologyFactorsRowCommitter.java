@@ -67,9 +67,21 @@ import java.util.UUID;
  * methodology is byte-shaped identically to a hand-built one. Tenant is ALWAYS
  * {@code ctx.tenantId()} — never the row.
  *
- * <p><b>Idempotency:</b> a repeated {@code (factor_code, level_code)} within one
- * file is an upsert — the level is updated in place (LAST-WINS on conflicting
- * data), so re-running a file is safe and never duplicates rows.
+ * <p><b>Idempotency + correction (last-wins):</b> re-running a file never
+ * duplicates rows AND applies corrections. A repeated {@code (factor_code,
+ * level_code)} updates the level in place; on an existing factor the mutable
+ * fields ({@code weight}, ru-RU {@code name}, inferred {@code maxPoints}) resync
+ * last-wins; and the existing DRAFT methodology's ru-RU {@code name_i18n} resyncs
+ * last-wins — so re-uploading a corrected file (fixed weight / name typo) takes
+ * effect instead of being silently dropped.
+ *
+ * <p><b>Scoring modes:</b> {@code DIRECT_POINTS} / {@code WEIGHTED_POINTS} score
+ * off level {@code points}; {@code WEIGHTED_SCALE} scores off a per-level
+ * {@code scale_value} (the optional {@code scale_value} column). For
+ * {@code WEIGHTED_SCALE} the column is REQUIRED per row — a missing value would
+ * make {@code EvaluationScoringEngine.weightedScale} treat the level as 0, so it
+ * is rejected ({@code MISSING_SCALE_VALUE}) at commit rather than silently
+ * scoring nothing.
  */
 @Component
 public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
@@ -118,8 +130,10 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
         BigDecimal levelPoints = parsePoints(row);
         FactorJpaEntity factor = resolveFactor(row, version.getId(), levelPoints, ctx);
 
-        // 4) Level: upsert by (factorId, level_code).
-        return upsertLevel(row, factor, levelPoints, ctx);
+        // 4) Level: upsert by (factorId, level_code). scale_value is required for
+        //    WEIGHTED_SCALE (else the scoring engine silently scores 0).
+        BigDecimal scaleValue = parseScaleValue(row, meta.mode());
+        return upsertLevel(row, factor, levelPoints, scaleValue, ctx);
     }
 
     // -----------------------------------------------------------------
@@ -191,6 +205,12 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
                         "Methodology '" + meta.code() + "' already exists with different "
                                 + "type/scoring_mode/target_total_points than the imported file");
             }
+            // Resync the mutable ru-RU name last-wins so a re-import corrects a
+            // methodology-name typo (identity fields above stay frozen).
+            if (!meta.name().equals(m.getNameI18n().get(PRIMARY_LOCALE))) {
+                m.setNameI18n(Map.of(PRIMARY_LOCALE, meta.name()));
+                methodologies.save(m);
+            }
             return latest;
         }
 
@@ -229,13 +249,15 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
                         ctx.tenantId(), versionId, factorCode);
         if (existing.isPresent()) {
             FactorJpaEntity f = existing.get();
-            // maxPoints is inferred as the max level.points seen for the factor
-            // (no max_points column in the template): bump it as bigger levels
-            // arrive on later rows.
+            // Resync mutable fields last-wins so a re-import corrects a weight /
+            // name typo. maxPoints is inferred as the max level.points seen for
+            // the factor (no max_points column): keep the running max across rows.
+            f.setWeight(weight);
+            f.setNameI18n(Map.of(PRIMARY_LOCALE, factorName));
             if (levelPoints.compareTo(f.getMaxPoints()) > 0) {
                 f.setMaxPoints(levelPoints);
-                factors.save(f);
             }
+            factors.save(f);
             return f;
         }
 
@@ -256,7 +278,8 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
     // -----------------------------------------------------------------
 
     private CommitResult upsertLevel(Map<String, String> row, FactorJpaEntity factor,
-                                     BigDecimal levelPoints, ImportRowCommitContext ctx) {
+                                     BigDecimal levelPoints, BigDecimal scaleValue,
+                                     ImportRowCommitContext ctx) {
         String levelCode = req(row, "level_code");
         String levelName = req(row, "level_name");
         String levelDescription = opt(row, "level_description");
@@ -268,6 +291,7 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
             // LAST-WINS upsert — a repeated level_code updates in place.
             FactorLevelJpaEntity l = existing.get();
             l.setPoints(levelPoints);
+            l.setScaleValue(scaleValue);
             if (levelOrder != null) {
                 l.setLevelOrder(levelOrder);
             }
@@ -283,7 +307,7 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
         int order = levelOrder != null ? levelOrder : nextLevelOrder(ctx.tenantId(), factor.getId());
         UUID id = UUID.randomUUID();
         FactorLevelJpaEntity l = new FactorLevelJpaEntity(
-                id, ctx.tenantId(), factor.getId(), levelCode, order, levelPoints, null);
+                id, ctx.tenantId(), factor.getId(), levelCode, order, levelPoints, scaleValue);
         l.setLabelI18n(Map.of(PRIMARY_LOCALE, levelName));
         if (levelDescription != null) {
             l.setDescriptionI18n(Map.of(PRIMARY_LOCALE, levelDescription));
@@ -329,6 +353,30 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
         } catch (NumberFormatException e) {
             throw new ImportRowCommitException("INVALID_LEVEL_POINTS",
                     "score is not a valid number: " + raw);
+        }
+    }
+
+    /**
+     * Per-level {@code scale_value}. REQUIRED for {@code WEIGHTED_SCALE} (a blank
+     * would make the scoring engine treat the level as 0 → silent zero scores);
+     * optional otherwise (stored if present, else null — harmless for
+     * DIRECT_POINTS / WEIGHTED_POINTS which score off {@code points}).
+     */
+    private static BigDecimal parseScaleValue(Map<String, String> row, ScoringMode mode) {
+        String raw = opt(row, "scale_value");
+        if (raw == null) {
+            if (mode == ScoringMode.WEIGHTED_SCALE) {
+                throw new ImportRowCommitException("MISSING_SCALE_VALUE",
+                        "scale_value is required for WEIGHTED_SCALE scoring (a blank "
+                                + "value would score 0)");
+            }
+            return null;
+        }
+        try {
+            return new BigDecimal(raw);
+        } catch (NumberFormatException e) {
+            throw new ImportRowCommitException("INVALID_SCALE_VALUE",
+                    "scale_value is not a valid number: " + raw);
         }
     }
 

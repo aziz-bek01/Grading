@@ -123,6 +123,9 @@ class MethodologyFactorsRowCommitterTest {
         MethodologyJpaEntity m = mock(MethodologyJpaEntity.class);
         given(m.getId()).willReturn(UUID.randomUUID());
         given(m.getMethodologyType()).willReturn(MethodologyType.CLASSIC_8_FACTOR);
+        // Name already matches the row → the last-wins name resync is a no-op,
+        // so the container is never re-saved.
+        given(m.getNameI18n()).willReturn(Map.of("ru-RU", "ACME grading"));
         given(methodologies.findByTenantIdAndProjectIdAndCode(eq(tenantId), eq(projectId), eq("ACME-GRADING")))
                 .willReturn(Optional.of(m));
 
@@ -263,6 +266,116 @@ class MethodologyFactorsRowCommitterTest {
         ImportRowCommitException err = assertThrows(ImportRowCommitException.class,
                 () -> committer.commit(baseRow(), noProject));
         assertThat(err.getCode()).isEqualTo("PROJECT_REQUIRED");
+    }
+
+    // ---------------------------------------------------------- WEIGHTED_SCALE
+
+    @Test
+    void weightedScale_withScaleValue_persistsScaleValueOnLevel() {
+        Map<String, String> row = baseRow();
+        row.put("scoring_mode", "WEIGHTED_SCALE");
+        row.put("scale_value", "3");
+
+        committer.commit(row, ctx);
+
+        ArgumentCaptor<FactorLevelJpaEntity> cap = ArgumentCaptor.forClass(FactorLevelJpaEntity.class);
+        verify(levels).save(cap.capture());
+        // The P0 fix: scaleValue is non-null and carries the parsed value, so the
+        // scoring engine's weightedScale() no longer treats it as 0.
+        assertThat(cap.getValue().getScaleValue()).isEqualByComparingTo(new BigDecimal("3"));
+    }
+
+    @Test
+    void weightedScale_withoutScaleValue_rejected() {
+        Map<String, String> row = baseRow();
+        row.put("scoring_mode", "WEIGHTED_SCALE");
+        // scale_value intentionally absent.
+        ImportRowCommitException err = assertThrows(ImportRowCommitException.class,
+                () -> committer.commit(row, ctx));
+        assertThat(err.getCode()).isEqualTo("MISSING_SCALE_VALUE");
+        verify(levels, never()).save(any());
+    }
+
+    @Test
+    void invalidScaleValue_rejected() {
+        Map<String, String> row = baseRow();
+        row.put("scoring_mode", "WEIGHTED_SCALE");
+        row.put("scale_value", "wide");
+        ImportRowCommitException err = assertThrows(ImportRowCommitException.class,
+                () -> committer.commit(row, ctx));
+        assertThat(err.getCode()).isEqualTo("INVALID_SCALE_VALUE");
+    }
+
+    @Test
+    void weightedPoints_blankScaleValue_isAllowed_andStoredNull() {
+        // scale_value is optional for non-WEIGHTED_SCALE modes.
+        committer.commit(baseRow(), ctx); // baseRow is WEIGHTED_POINTS, no scale_value
+        ArgumentCaptor<FactorLevelJpaEntity> cap = ArgumentCaptor.forClass(FactorLevelJpaEntity.class);
+        verify(levels).save(cap.capture());
+        assertThat(cap.getValue().getScaleValue()).isNull();
+    }
+
+    // ------------------------------------------------------- re-import resync
+
+    @Test
+    void reImport_resyncsExistingFactorWeightAndName_lastWins() {
+        MethodologyJpaEntity m = mock(MethodologyJpaEntity.class);
+        given(m.getId()).willReturn(UUID.randomUUID());
+        given(m.getMethodologyType()).willReturn(MethodologyType.CLASSIC_8_FACTOR);
+        given(m.getNameI18n()).willReturn(Map.of("ru-RU", "ACME grading"));
+        given(methodologies.findByTenantIdAndProjectIdAndCode(any(), any(), any()))
+                .willReturn(Optional.of(m));
+        MethodologyVersionJpaEntity v = mock(MethodologyVersionJpaEntity.class);
+        given(v.getId()).willReturn(UUID.randomUUID());
+        given(v.getStatus()).willReturn(MethodologyVersionStatus.DRAFT);
+        given(v.getScoringMode()).willReturn(ScoringMode.WEIGHTED_POINTS);
+        given(v.getTargetTotalPoints()).willReturn(new BigDecimal("1000"));
+        given(versions.findFirstByTenantIdAndMethodologyIdOrderByVersionNumberDesc(any(), any()))
+                .willReturn(Optional.of(v));
+
+        FactorJpaEntity existingFactor = mock(FactorJpaEntity.class);
+        given(existingFactor.getId()).willReturn(UUID.randomUUID());
+        given(existingFactor.getMaxPoints()).willReturn(new BigDecimal("200"));
+        given(factors.findByTenantIdAndMethodologyVersionIdAndCode(any(), any(), eq("KNOWLEDGE")))
+                .willReturn(Optional.of(existingFactor));
+
+        // Re-import the same factor with a CORRECTED weight + name.
+        Map<String, String> row = baseRow();
+        row.put("weight", "15.0");
+        row.put("factor_name", "Knowledge (corrected)");
+
+        committer.commit(row, ctx);
+
+        // The existing factor is updated in place (not recreated) with the new
+        // weight + ru-RU name — the P1 fix. The setter calls on the resolved
+        // existing factor (rather than a freshly-constructed one) prove the
+        // update path, not the create path.
+        verify(existingFactor).setWeight(new BigDecimal("15.0"));
+        verify(existingFactor).setNameI18n(Map.of("ru-RU", "Knowledge (corrected)"));
+        verify(factors).save(existingFactor);
+    }
+
+    @Test
+    void reImport_resyncsExistingMethodologyName_lastWins() {
+        MethodologyJpaEntity m = mock(MethodologyJpaEntity.class);
+        given(m.getId()).willReturn(UUID.randomUUID());
+        given(m.getMethodologyType()).willReturn(MethodologyType.CLASSIC_8_FACTOR);
+        given(m.getNameI18n()).willReturn(Map.of("ru-RU", "Old name"));
+        given(methodologies.findByTenantIdAndProjectIdAndCode(any(), any(), any()))
+                .willReturn(Optional.of(m));
+        MethodologyVersionJpaEntity v = mock(MethodologyVersionJpaEntity.class);
+        given(v.getId()).willReturn(UUID.randomUUID());
+        given(v.getStatus()).willReturn(MethodologyVersionStatus.DRAFT);
+        given(v.getScoringMode()).willReturn(ScoringMode.WEIGHTED_POINTS);
+        given(v.getTargetTotalPoints()).willReturn(new BigDecimal("1000"));
+        given(versions.findFirstByTenantIdAndMethodologyIdOrderByVersionNumberDesc(any(), any()))
+                .willReturn(Optional.of(v));
+
+        committer.commit(baseRow(), ctx); // baseRow name = "ACME grading"
+
+        // The DRAFT methodology's ru-RU name resyncs last-wins.
+        verify(m).setNameI18n(Map.of("ru-RU", "ACME grading"));
+        verify(methodologies).save(m);
     }
 
     // ------------------------------------------------------------ tenant isolation

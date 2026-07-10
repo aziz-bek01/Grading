@@ -60,8 +60,19 @@ RUN groupadd --system --gid 10001 grading \
  && chown -R grading:grading /app /tmp/grading
 
 # curl is required for the HEALTHCHECK probe. Keep the layer thin.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends curl ca-certificates \
+# Retried: apt-get intermittently fails with exit code 100 against the
+# Ubuntu/Debian mirror (transient — e.g. "Could not connect", reset mid-fetch).
+# -o Acquire::Retries=5 makes apt itself retry each package fetch; the outer
+# shell retry (2 extra attempts, 5s/10s backoff, each logged) additionally
+# covers a total mirror-connect failure that Acquire::Retries alone won't
+# retry (e.g. apt-get update itself can't reach the mirror at all). Installed
+# packages are UNCHANGED (curl ca-certificates) — only the fetch is hardened.
+RUN ( apt-get update -o Acquire::Retries=5 \
+      && apt-get install -y --no-install-recommends curl ca-certificates ) \
+   || { echo '>> apt-get failed (transient mirror); retry 1/2 in 5s'; sleep 5; \
+        apt-get update -o Acquire::Retries=5 && apt-get install -y --no-install-recommends curl ca-certificates; } \
+   || { echo '>> apt-get failed; retry 2/2 in 10s'; sleep 10; \
+        apt-get update -o Acquire::Retries=5 && apt-get install -y --no-install-recommends curl ca-certificates; } \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

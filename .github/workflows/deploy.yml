@@ -231,7 +231,60 @@ jobs:
 
       # Copy ONLY what the VPS needs to run the prod stack. Never source code or
       # secrets — secrets live in /opt/grading/.env.prod ON the VPS.
-      - name: Copy deploy artifacts to VPS
+      #
+      # RETRIED 3x: appleboy/scp-action has no native retry, and this step has
+      # been observed to fail transiently with "connection reset by peer".
+      # Rather than pull in a new third-party retry action (none is currently
+      # used anywhere in this repo's workflows), the SAME pinned
+      # appleboy/scp-action@v0.1.7 is simply re-invoked with backoff — each
+      # attempt opens a fresh SSH/SCP connection, which is exactly what rides
+      # out a transient blip. Only the LAST attempt lacks continue-on-error,
+      # so a genuine persistent failure still fails the job (subsequent steps
+      # — the roll — are skipped, same as before this change).
+      - name: Copy deploy artifacts to VPS (attempt 1/3)
+        id: scp_attempt_1
+        continue-on-error: true
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          source: "docker-compose.prod.yml,infra/db/prod/*,infra/frontend/config.json,infra/reverse-proxy/*"
+          target: ${{ env.REMOTE_DIR }}
+          overwrite: true
+          strip_components: 0
+
+      - name: Wait before scp retry (2/3)
+        if: steps.scp_attempt_1.outcome == 'failure'
+        run: |
+          echo "::warning::scp attempt 1/3 failed (possible transient network issue, e.g. connection reset by peer) - retrying in 10s"
+          sleep 10
+
+      - name: Copy deploy artifacts to VPS (attempt 2/3)
+        id: scp_attempt_2
+        if: steps.scp_attempt_1.outcome == 'failure'
+        continue-on-error: true
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          source: "docker-compose.prod.yml,infra/db/prod/*,infra/frontend/config.json,infra/reverse-proxy/*"
+          target: ${{ env.REMOTE_DIR }}
+          overwrite: true
+          strip_components: 0
+
+      - name: Wait before scp retry (3/3)
+        if: steps.scp_attempt_1.outcome == 'failure' && steps.scp_attempt_2.outcome == 'failure'
+        run: |
+          echo "::warning::scp attempt 2/3 failed - retrying in 20s"
+          sleep 20
+
+      - name: Copy deploy artifacts to VPS (attempt 3/3, final)
+        id: scp_attempt_3
+        if: steps.scp_attempt_1.outcome == 'failure' && steps.scp_attempt_2.outcome == 'failure'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -271,13 +324,37 @@ jobs:
               echo "IMAGE_TAG=${IMAGE_TAG}" >> .env.prod
             fi
 
+            # Bounded retry helper for TRANSIENT network operations ONLY (GHCR
+            # login / image pull have been observed to fail intermittently on
+            # this VPS with "dial tcp ...:443: connect: no route to host",
+            # "TLS handshake timeout", and "connection reset by peer"). 5
+            # attempts, exponential backoff 5s/10s/20s/40s, each attempt
+            # logged. A genuine persistent failure still fails the job after
+            # the 5th attempt — this does NOT swallow real errors, and nothing
+            # else in the roll (migrator, roll, prune, smoke) is touched.
+            retry_net() {
+              desc="$1"; cmd="$2"
+              attempt=1; max=5; delay=5
+              until eval "$cmd"; do
+                if [ "$attempt" -ge "$max" ]; then
+                  echo "FATAL: ${desc} failed after ${max} attempts." >&2
+                  return 1
+                fi
+                echo "::warning::${desc} failed (attempt ${attempt}/${max}) - retrying in ${delay}s..." >&2
+                sleep "$delay"
+                attempt=$((attempt + 1))
+                delay=$((delay * 2))
+              done
+              echo "${desc}: OK (attempt ${attempt}/${max})"
+            }
+
             # Authenticate to GHCR with the ephemeral run token (packages:read).
-            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_ACTOR}" --password-stdin
+            retry_net "docker login ghcr.io" 'echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_ACTOR}" --password-stdin'
 
             COMPOSE="docker compose -f ${{ env.COMPOSE_FILE }} --env-file .env.prod"
 
             echo '== Pulling immutable images =='
-            $COMPOSE --profile db --profile migrate pull
+            retry_net "docker compose pull" '$COMPOSE --profile db --profile migrate pull'
 
             echo '== Ensuring the dedicated grading Postgres is up (bundled-DB mode) =='
             if grep -q '^GRADING_USE_EXTERNAL_DB=false' .env.prod; then

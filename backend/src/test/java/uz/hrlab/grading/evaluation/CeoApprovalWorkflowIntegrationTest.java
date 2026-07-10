@@ -374,15 +374,27 @@ class CeoApprovalWorkflowIntegrationTest extends AbstractIntegrationTest {
 
         // An APPROVED grade structure covering the panel's averaged total, so the
         // CEO-approve path assigns a REAL grade (REQ-CEO-3 / EvaluationGradeAssignmentService).
-        GradeStructureJpaEntity structure = gradeStructures.save(new GradeStructureJpaEntity(
+        //
+        // The 018 immutability trigger (prevent_grade_changes_on_locked_structure)
+        // REJECTS any grade / grade_band write once the parent structure is
+        // APPROVED/LOCKED/ARCHIVED. So seed the structure DRAFT, insert the grade +
+        // band while it is still mutable, THEN transition DRAFT -> APPROVED (an
+        // allowed status move per prevent_grade_structure_status_regression). The
+        // structure still ends APPROVED, so the grade-assignment path is unchanged.
+        // saveAndFlush pins the SQL order (grade/band INSERT before the status
+        // UPDATE) so Hibernate's action-queue ordering cannot flush the APPROVED
+        // UPDATE ahead of the child INSERTs and re-trip the trigger.
+        GradeStructureJpaEntity structure = gradeStructures.saveAndFlush(new GradeStructureJpaEntity(
                 UUID.randomUUID(), tenant, proj.getId(), codePrefix + "-GS",
-                GradeStructureType.CUSTOM, GradeStructureStatus.APPROVED,
+                GradeStructureType.CUSTOM, GradeStructureStatus.DRAFT,
                 1, null, GradeBandGapPolicy.STRICT_NO_GAPS));
-        GradeJpaEntity grade = grades.save(new GradeJpaEntity(
+        GradeJpaEntity grade = grades.saveAndFlush(new GradeJpaEntity(
                 UUID.randomUUID(), tenant, structure.getId(), GRADE_NUMBER, 1));
-        gradeBands.save(new GradeBandJpaEntity(
+        gradeBands.saveAndFlush(new GradeBandJpaEntity(
                 UUID.randomUUID(), tenant, grade.getId(), structure.getId(),
                 new BigDecimal("0.0000"), new BigDecimal("1000.0000")));
+        structure.setStatus(GradeStructureStatus.APPROVED);
+        gradeStructures.saveAndFlush(structure);
 
         return new Seed(tenant, proj.getId(), dpt.getId(), pos.getId(), versionId,
                 f1.id(), l1.id(), manager, ceo);

@@ -1,0 +1,37 @@
+name: Install trivy
+description: >-
+  Install a pinned trivy CLI onto PATH (/usr/local/bin). Fail-closed and
+  retried so a transient GitHub download blip cannot silently skip the SCA
+  gate. Single source of truth for every trivy install in the pipeline.
+
+inputs:
+  version:
+    description: trivy release tag (must exist as a GitHub release).
+    required: false
+    default: v0.58.1
+
+runs:
+  using: composite
+  steps:
+    - name: Install trivy ${{ inputs.version }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        ver='${{ inputs.version }}'
+        # Pin the installer script to the SAME release tag as the binary. The
+        # previous code fetched contrib/install.sh from `main`, which drifts
+        # independently of the pinned version and has failed at job setup
+        # (resolves the tag, then exits 1 before placing the binary), leaving
+        # `trivy` off PATH. Fetching install.sh at the tag keeps script and
+        # binary in lockstep. Retry to ride out transient network failures.
+        for attempt in 1 2 3; do
+          if curl -sfL "https://raw.githubusercontent.com/aquasecurity/trivy/${ver}/contrib/install.sh" \
+               | sh -s -- -b /usr/local/bin "${ver}"; then
+            break
+          fi
+          echo "::warning::trivy install attempt ${attempt}/3 failed; retrying in $((attempt * 5))s" >&2
+          sleep "$((attempt * 5))"
+        done
+        # Fail-closed: assert the CLI is actually runnable, so a failed install
+        # breaks the gate instead of silently skipping the SCA check.
+        trivy --version

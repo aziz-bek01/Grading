@@ -119,11 +119,12 @@ jobs:
           cache: maven
 
       # trivy-action@v0.x pins an internal setup-trivy version GitHub can no
-      # longer resolve (fails at job setup, before steps run). Install the CLI
-      # directly. Fail-closed: if the scanner cannot install the gate fails
-      # rather than silently skipping the SCA check.
+      # longer resolve (fails at job setup). The shared composite installs the
+      # CLI from a version-pinned installer with retry + a fail-closed version
+      # assert (see .github/actions/install-trivy) — one source of truth for
+      # every trivy install below.
       - name: Install trivy
-        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.1
+        uses: ./.github/actions/install-trivy
 
       # SEC-009 — SCA GATE. trivy fs parses backend/pom.xml and FAILS the job on
       # any FIXABLE (--ignore-unfixed) HIGH/CRITICAL not explicitly allow-listed
@@ -178,10 +179,9 @@ jobs:
           # fail the quality gate on transitive high-severity advisories.
           npm audit --audit-level=high || echo "::warning::npm audit found high-severity advisories (non-blocking)"
 
-      # See backend-deps-scan: install the trivy CLI directly (the action's
-      # internal setup-trivy pin no longer resolves). Fail-closed.
+      # See backend-deps-scan: shared version-pinned + fail-closed trivy install.
       - name: Install trivy
-        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.1
+        uses: ./.github/actions/install-trivy
 
       # SEC-009 — SCA GATE. trivy fs parses frontend/package-lock.json and FAILS
       # the job on any FIXABLE HIGH/CRITICAL not allow-listed in /.trivyignore.
@@ -673,18 +673,20 @@ jobs:
       packages: read
       security-events: write
     steps:
+      - uses: actions/checkout@v4
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Direct trivy CLI (the action's internal setup-trivy pin no longer
-      # resolves). Informational, non-blocking image CVE scan.
+      # Shared version-pinned trivy install (see .github/actions/install-trivy).
+      - name: Install trivy
+        uses: ./.github/actions/install-trivy
+      # Informational, non-blocking image CVE scan.
       - name: Trivy image scan
         continue-on-error: true
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.1
           trivy image --severity CRITICAL,HIGH --ignore-unfixed \
             --format sarif --output trivy-backend-image.sarif --exit-code 0 \
             ${{ env.IMAGE_BACKEND }}:sha-${{ github.sha }}
@@ -707,18 +709,20 @@ jobs:
       packages: read
       security-events: write
     steps:
+      - uses: actions/checkout@v4
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Direct trivy CLI (the action's internal setup-trivy pin no longer
-      # resolves). Informational, non-blocking image CVE scan.
+      # Shared version-pinned trivy install (see .github/actions/install-trivy).
+      - name: Install trivy
+        uses: ./.github/actions/install-trivy
+      # Informational, non-blocking image CVE scan.
       - name: Trivy image scan
         continue-on-error: true
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.1
           trivy image --severity CRITICAL,HIGH --ignore-unfixed \
             --format sarif --output trivy-frontend-image.sarif --exit-code 0 \
             ${{ env.IMAGE_FRONTEND }}:sha-${{ github.sha }}

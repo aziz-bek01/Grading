@@ -1,37 +1,48 @@
 name: Install trivy
 description: >-
-  Install a pinned trivy CLI onto PATH (/usr/local/bin). Fail-closed and
-  retried so a transient GitHub download blip cannot silently skip the SCA
-  gate. Single source of truth for every trivy install in the pipeline.
-
-inputs:
-  version:
-    description: trivy release tag (must exist as a GitHub release).
-    required: false
-    default: v0.58.1
+  Install the trivy CLI from Aqua's official APT repository. Fail-closed and
+  retried so a transient blip cannot silently skip the SCA gate. Single source
+  of truth for every trivy install in the pipeline.
 
 runs:
   using: composite
   steps:
-    - name: Install trivy ${{ inputs.version }}
+    - name: Install trivy (Aqua APT repo)
       shell: bash
       run: |
         set -euo pipefail
-        ver='${{ inputs.version }}'
-        # Pin the installer script to the SAME release tag as the binary. The
-        # previous code fetched contrib/install.sh from `main`, which drifts
-        # independently of the pinned version and has failed at job setup
-        # (resolves the tag, then exits 1 before placing the binary), leaving
-        # `trivy` off PATH. Fetching install.sh at the tag keeps script and
-        # binary in lockstep. Retry to ride out transient network failures.
-        for attempt in 1 2 3; do
-          if curl -sfL "https://raw.githubusercontent.com/aquasecurity/trivy/${ver}/contrib/install.sh" \
-               | sh -s -- -b /usr/local/bin "${ver}"; then
-            break
-          fi
-          echo "::warning::trivy install attempt ${attempt}/3 failed; retrying in $((attempt * 5))s" >&2
-          sleep "$((attempt * 5))"
-        done
+        # The godownloader contrib/install.sh (curl | sh) resolves the version
+        # ("found version: 0.58.1") then exits non-zero WITHOUT placing the
+        # binary on current GitHub runners — deterministically, even pinned to a
+        # release tag. Use Aqua's APT repo instead: the officially documented
+        # Debian/Ubuntu install path, served from separate infra
+        # (aquasecurity.github.io + apt), so it does not depend on the broken
+        # release-asset download the installer script relies on.
+        #
+        # retry() rides out transient apt / network blips (apt can exit 100 on a
+        # momentary mirror hiccup) with exponential backoff.
+        retry() {
+          local n=0 max=4
+          until "$@"; do
+            n=$((n + 1))
+            if [ "$n" -ge "$max" ]; then
+              echo "::error::'$*' failed after ${max} attempts" >&2
+              return 1
+            fi
+            echo "::warning::'$*' failed (attempt ${n}/${max}); retrying in $((n * 5))s" >&2
+            sleep "$((n * 5))"
+          done
+        }
+
+        retry sudo apt-get update -qq
+        retry sudo apt-get install -y -qq wget gnupg
+        retry bash -c 'wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+          | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg >/dev/null'
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+          | sudo tee /etc/apt/sources.list.d/trivy.list >/dev/null
+        retry sudo apt-get update -qq
+        retry sudo apt-get install -y -qq trivy
+
         # Fail-closed: assert the CLI is actually runnable, so a failed install
         # breaks the gate instead of silently skipping the SCA check.
         trivy --version

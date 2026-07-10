@@ -381,20 +381,21 @@ class CeoApprovalWorkflowIntegrationTest extends AbstractIntegrationTest {
         // band while it is still mutable, THEN transition DRAFT -> APPROVED (an
         // allowed status move per prevent_grade_structure_status_regression). The
         // structure still ends APPROVED, so the grade-assignment path is unchanged.
-        // saveAndFlush pins the SQL order (grade/band INSERT before the status
-        // UPDATE) so Hibernate's action-queue ordering cannot flush the APPROVED
-        // UPDATE ahead of the child INSERTs and re-trip the trigger.
-        GradeStructureJpaEntity structure = gradeStructures.saveAndFlush(new GradeStructureJpaEntity(
+        // This test is NOT @Transactional (@SpringBootTest only), so each repo
+        // save() commits in its own transaction: the DRAFT structure is durably
+        // visible before the grade/band inserts run, and the APPROVED flip lands
+        // after them — no shared-flush ordering to reason about.
+        GradeStructureJpaEntity structure = gradeStructures.save(new GradeStructureJpaEntity(
                 UUID.randomUUID(), tenant, proj.getId(), codePrefix + "-GS",
                 GradeStructureType.CUSTOM, GradeStructureStatus.DRAFT,
                 1, null, GradeBandGapPolicy.STRICT_NO_GAPS));
-        GradeJpaEntity grade = grades.saveAndFlush(new GradeJpaEntity(
+        GradeJpaEntity grade = grades.save(new GradeJpaEntity(
                 UUID.randomUUID(), tenant, structure.getId(), GRADE_NUMBER, 1));
-        gradeBands.saveAndFlush(new GradeBandJpaEntity(
+        gradeBands.save(new GradeBandJpaEntity(
                 UUID.randomUUID(), tenant, grade.getId(), structure.getId(),
                 new BigDecimal("0.0000"), new BigDecimal("1000.0000")));
         structure.setStatus(GradeStructureStatus.APPROVED);
-        gradeStructures.saveAndFlush(structure);
+        gradeStructures.save(structure);
 
         return new Seed(tenant, proj.getId(), dpt.getId(), pos.getId(), versionId,
                 f1.id(), l1.id(), manager, ceo);

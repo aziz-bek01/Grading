@@ -6,24 +6,11 @@
  * 4-decimal precision (BigDecimal 18,4 on the backend).
  */
 import { z } from 'zod';
+import { localizedStringOptional, localizedStringRequiredPrimary } from '@/shared/lib/localizedSchema';
 
-const localizedNameRequiredPrimary = z
-  .object({
-    'ru-RU': z.string().trim().min(1, 'validation_primary_required').max(256),
-    'uz-Cyrl-UZ': z.string().trim().max(256).optional(),
-    'uz-Latn-UZ': z.string().trim().max(256).optional(),
-    'en-US': z.string().trim().max(256).optional(),
-  })
-  .passthrough();
+const localizedNameRequiredPrimary = localizedStringRequiredPrimary({ maxLength: 256, passthrough: true });
 
-const localizedDescriptionOptional = z
-  .object({
-    'ru-RU': z.string().trim().max(2000).optional(),
-    'uz-Cyrl-UZ': z.string().trim().max(2000).optional(),
-    'uz-Latn-UZ': z.string().trim().max(2000).optional(),
-    'en-US': z.string().trim().max(2000).optional(),
-  })
-  .passthrough();
+const localizedDescriptionOptional = localizedStringOptional({ maxLength: 2000, passthrough: true });
 
 export const GradeStructureTypeSchema = z.enum(['GRADE_14', 'GRADE_16', 'CUSTOM']);
 export const GradeStructureTemplateCodeSchema = z.enum(['GRADE_14', 'GRADE_16', 'CUSTOM']);

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { localizedStringOptional, localizedStringRequiredPrimary } from '@/shared/lib/localizedSchema';
 import { JOB_PROFILE_FIELDS } from '../types';
 
 /**
@@ -6,23 +7,9 @@ import { JOB_PROFILE_FIELDS } from '../types';
  * locales optional. Matches design-foundation §11 (Uzbek length budget) and
  * PRD MVP1-E6-1 "primary locale required" rule.
  */
-const localizedLongTextRequiredPrimary = z
-  .object({
-    'ru-RU': z.string().trim().min(1, 'validation_primary_required').max(4000),
-    'uz-Cyrl-UZ': z.string().trim().max(4000).optional(),
-    'uz-Latn-UZ': z.string().trim().max(4000).optional(),
-    'en-US': z.string().trim().max(4000).optional(),
-  })
-  .passthrough();
+const localizedLongTextRequiredPrimary = localizedStringRequiredPrimary({ maxLength: 4000, passthrough: true });
 
-const localizedLongTextOptional = z
-  .object({
-    'ru-RU': z.string().trim().max(4000).optional(),
-    'uz-Cyrl-UZ': z.string().trim().max(4000).optional(),
-    'uz-Latn-UZ': z.string().trim().max(4000).optional(),
-    'en-US': z.string().trim().max(4000).optional(),
-  })
-  .passthrough();
+const localizedLongTextOptional = localizedStringOptional({ maxLength: 4000, passthrough: true });
 
 /** Used during DRAFT auto-save: every field is optional. */
 export const JobProfileDraftSchema = z

@@ -7,8 +7,7 @@
  * methodology archive, evaluation calibration — see master plan §14).
  */
 import { z } from 'zod';
-
-const localeEnum = z.enum(['ru-RU', 'uz-Cyrl-UZ', 'uz-Latn-UZ', 'en-US']);
+import { localeEnum } from '@/shared/lib/localizedSchema';
 
 const isolationModeEnum = z.enum(['SCHEMA', 'DATABASE']);
 

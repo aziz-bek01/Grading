@@ -24,8 +24,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Eye, EyeOff, Wand2 } from 'lucide-react';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
+import { PasswordField } from '@/shared/components/form/PasswordField';
 import { ApiError } from '@/shared/api/apiError';
 import {
   ResetLoginSchema,
@@ -135,52 +135,23 @@ export function ResetLoginDialog({ open, onClose, onSubmit }: ResetLoginDialogPr
         </div>
       ) : null}
 
-      <div>
-        <label htmlFor="reset-login-password" className="text-sm font-medium text-text-primary">
-          {t('users.resetLogin.password')} <span className="text-danger-700">*</span>
-        </label>
-        <div className="mt-1 flex items-stretch gap-2">
-          <div className="relative flex-1">
-            <input
-              id="reset-login-password"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              {...register('password')}
-              className="w-full h-10 pl-3 pr-10 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
-              data-testid="reset-login-password-input"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              aria-label={
-                showPassword
-                  ? t('users.resetLogin.passwordHide')
-                  : t('users.resetLogin.passwordShow')
-              }
-              aria-pressed={showPassword}
-              className="absolute inset-y-0 right-0 flex items-center px-3 text-text-secondary hover:text-text-primary"
-              data-testid="reset-login-password-toggle"
-            >
-              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={onGeneratePassword}
-            className="inline-flex items-center gap-1.5 h-10 px-3 border border-border-strong rounded-md text-sm text-text-primary bg-surface hover:bg-divider whitespace-nowrap"
-            data-testid="reset-login-password-generate"
-          >
-            <Wand2 size={14} />
-            {t('users.resetLogin.passwordGenerate')}
-          </button>
-        </div>
-        <p className="text-xs text-text-muted mt-1">{t('users.resetLogin.passwordHint')}</p>
-        {errors.password ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
-            {errKey(errors.password.message)}
-          </p>
-        ) : null}
-      </div>
+      <PasswordField
+        id="reset-login-password"
+        label={t('users.resetLogin.password')}
+        required
+        showPassword={showPassword}
+        onToggleShow={() => setShowPassword((v) => !v)}
+        onGenerate={onGeneratePassword}
+        hint={t('users.resetLogin.passwordHint')}
+        error={errKey(errors.password?.message)}
+        showLabel={t('users.resetLogin.passwordShow')}
+        hideLabel={t('users.resetLogin.passwordHide')}
+        generateLabel={t('users.resetLogin.passwordGenerate')}
+        testId="reset-login-password-input"
+        toggleTestId="reset-login-password-toggle"
+        generateTestId="reset-login-password-generate"
+        registration={register('password')}
+      />
 
       {isSubmitting ? <p className="text-xs text-text-muted">{t('app.loading')}</p> : null}
     </DrawerForm>

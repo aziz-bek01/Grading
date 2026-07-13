@@ -1,6 +1,5 @@
 import { z } from 'zod';
-
-const localeEnum = z.enum(['ru-RU', 'uz-Cyrl-UZ', 'uz-Latn-UZ', 'en-US']);
+import { localeEnum } from '@/shared/lib/localizedSchema';
 
 /**
  * Canonical catalog of SYSTEM role codes — mirrors the backend `roles` table

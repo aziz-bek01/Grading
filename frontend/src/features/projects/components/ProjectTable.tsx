@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Pencil, Trash2 } from 'lucide-react';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
+import { IconButton } from '@/shared/components/ui/IconButton';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { pickLocalized } from '@/shared/lib/localized';
 import { formatDateSafe } from '@/shared/lib/dates';
-import { cn } from '@/shared/lib/cn';
 import { routes } from '@/shared/config/routes';
 import type { Project } from '../types/projectTypes';
 import { ProjectStatusBadge } from './ProjectStatusBadge';
@@ -144,34 +144,5 @@ export function ProjectTable({ rows, loading, toolbarRight, onEdit, onArchive }:
       toolbarRight={toolbarRight}
       caption={t('projects.list_title')}
     />
-  );
-}
-
-interface IconButtonProps {
-  label: string;
-  testId: string;
-  danger?: boolean;
-  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
-  children: React.ReactNode;
-}
-
-function IconButton({ label, testId, danger, onClick, children }: IconButtonProps) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      data-testid={testId}
-      onClick={onClick}
-      className={cn(
-        'inline-flex items-center justify-center h-8 w-8 rounded-md transition-colors',
-        'focus:outline-none focus:ring-2 focus:ring-primary-500',
-        danger
-          ? 'text-danger-700 hover:bg-danger-50'
-          : 'text-text-secondary hover:bg-divider hover:text-text-primary',
-      )}
-    >
-      {children}
-    </button>
   );
 }

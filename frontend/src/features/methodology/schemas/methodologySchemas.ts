@@ -5,24 +5,11 @@
  * "PRIMARY_LOCALE_INCOMPLETE" rejection rule.
  */
 import { z } from 'zod';
+import { localizedStringOptional, localizedStringRequiredPrimary } from '@/shared/lib/localizedSchema';
 
-const localizedNameRequiredPrimary = z
-  .object({
-    'ru-RU': z.string().trim().min(1, 'validation_primary_required').max(256),
-    'uz-Cyrl-UZ': z.string().trim().max(256).optional(),
-    'uz-Latn-UZ': z.string().trim().max(256).optional(),
-    'en-US': z.string().trim().max(256).optional(),
-  })
-  .passthrough();
+const localizedNameRequiredPrimary = localizedStringRequiredPrimary({ maxLength: 256, passthrough: true });
 
-const localizedDescriptionOptional = z
-  .object({
-    'ru-RU': z.string().trim().max(2000).optional(),
-    'uz-Cyrl-UZ': z.string().trim().max(2000).optional(),
-    'uz-Latn-UZ': z.string().trim().max(2000).optional(),
-    'en-US': z.string().trim().max(2000).optional(),
-  })
-  .passthrough();
+const localizedDescriptionOptional = localizedStringOptional({ maxLength: 2000, passthrough: true });
 
 export const MethodologyTypeSchema = z.enum(['CLASSIC_8_FACTOR', 'EXTENDED_11_CRITERIA', 'CUSTOM']);
 export const ScoringModeSchema = z.enum(['DIRECT_POINTS', 'WEIGHTED_POINTS', 'WEIGHTED_SCALE']);

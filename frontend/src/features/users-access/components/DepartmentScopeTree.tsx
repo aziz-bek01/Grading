@@ -15,29 +15,15 @@
  */
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  ChevronRight,
-  ChevronDown,
-  Building2,
-  Network as Sitemap,
-  Layers,
-  Users,
-} from 'lucide-react';
+import { ChevronRight, ChevronDown } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
 import { buildDepartmentTree, collectDescendantIds } from '@/features/organization/lib/tree';
+import { departmentTypeIcon } from '@/features/organization/lib/departmentTypeIcon';
 import type {
   Department,
   DepartmentTreeNode,
-  DepartmentType,
 } from '@/features/organization/types/organizationTypes';
-
-const typeIcon: Record<DepartmentType, React.ReactNode> = {
-  BRANCH: <Building2 size={14} aria-hidden />,
-  DEPARTMENT: <Sitemap size={14} aria-hidden />,
-  DIVISION: <Layers size={14} aria-hidden />,
-  UNIT: <Users size={14} aria-hidden />,
-};
 
 interface DepartmentScopeTreeProps {
   items: Department[];
@@ -159,7 +145,7 @@ function DepartmentScopeNode({
           )}
         >
           <span aria-hidden className="text-text-secondary">
-            {typeIcon[node.type]}
+            {departmentTypeIcon[node.type]}
           </span>
           <span className="font-medium text-xs text-text-muted">{node.code}</span>
           <span className="truncate">{pickLocalized(node.name_i18n, locale)}</span>

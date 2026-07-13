@@ -31,8 +31,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Eye, EyeOff, Wand2 } from 'lucide-react';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
+import { PasswordField } from '@/shared/components/form/PasswordField';
 import { ApiError } from '@/shared/api/apiError';
 import {
   EDITABLE_USER_STATUSES,
@@ -219,48 +219,22 @@ export function EditUserDialog({ open, user, onClose, onSubmit }: EditUserDialog
         ) : null}
       </div>
 
-      <div>
-        <label htmlFor="edit-password" className="text-sm font-medium text-text-primary">
-          {t('users.edit.password')}
-        </label>
-        <div className="mt-1 flex items-stretch gap-2">
-          <div className="relative flex-1">
-            <input
-              id="edit-password"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              {...register('password')}
-              className="w-full h-10 pl-3 pr-10 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
-              data-testid="edit-password"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              aria-label={showPassword ? t('users.edit.passwordHide') : t('users.edit.passwordShow')}
-              aria-pressed={showPassword}
-              className="absolute inset-y-0 right-0 flex items-center px-3 text-text-secondary hover:text-text-primary"
-              data-testid="edit-password-toggle"
-            >
-              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={onGeneratePassword}
-            className="inline-flex items-center gap-1.5 h-10 px-3 border border-border-strong rounded-md text-sm text-text-primary bg-surface hover:bg-divider whitespace-nowrap"
-            data-testid="edit-password-generate"
-          >
-            <Wand2 size={14} />
-            {t('users.edit.passwordGenerate')}
-          </button>
-        </div>
-        <p className="text-xs text-text-muted mt-1">{t('users.edit.passwordHint')}</p>
-        {errors.password ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
-            {errKey(errors.password.message)}
-          </p>
-        ) : null}
-      </div>
+      <PasswordField
+        id="edit-password"
+        label={t('users.edit.password')}
+        showPassword={showPassword}
+        onToggleShow={() => setShowPassword((v) => !v)}
+        onGenerate={onGeneratePassword}
+        hint={t('users.edit.passwordHint')}
+        error={errKey(errors.password?.message)}
+        showLabel={t('users.edit.passwordShow')}
+        hideLabel={t('users.edit.passwordHide')}
+        generateLabel={t('users.edit.passwordGenerate')}
+        testId="edit-password"
+        toggleTestId="edit-password-toggle"
+        generateTestId="edit-password-generate"
+        registration={register('password')}
+      />
 
       <div>
         <label htmlFor="edit-locale" className="text-sm font-medium text-text-primary">

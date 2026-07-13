@@ -21,8 +21,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Eye, EyeOff, Wand2 } from 'lucide-react';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
+import { PasswordField } from '@/shared/components/form/PasswordField';
 import { ApiError } from '@/shared/api/apiError';
 import { useAuthStore } from '@/features/auth/authStore';
 import { RolePicker } from './RolePicker';
@@ -173,48 +173,23 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
         ) : null}
       </div>
 
-      <div>
-        <label htmlFor="invite-password" className="text-sm font-medium text-text-primary">
-          {t('users.invite.password')} <span className="text-danger-700">*</span>
-        </label>
-        <div className="mt-1 flex items-stretch gap-2">
-          <div className="relative flex-1">
-            <input
-              id="invite-password"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              {...register('password')}
-              className="w-full h-10 pl-3 pr-10 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
-              data-testid="invite-password"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              aria-label={showPassword ? t('users.invite.passwordHide') : t('users.invite.passwordShow')}
-              aria-pressed={showPassword}
-              className="absolute inset-y-0 right-0 flex items-center px-3 text-text-secondary hover:text-text-primary"
-              data-testid="invite-password-toggle"
-            >
-              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={onGeneratePassword}
-            className="inline-flex items-center gap-1.5 h-10 px-3 border border-border-strong rounded-md text-sm text-text-primary bg-surface hover:bg-divider whitespace-nowrap"
-            data-testid="invite-password-generate"
-          >
-            <Wand2 size={14} />
-            {t('users.invite.passwordGenerate')}
-          </button>
-        </div>
-        <p className="text-xs text-text-muted mt-1">{t('users.invite.passwordHint')}</p>
-        {errors.password ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
-            {errKey(errors.password.message)}
-          </p>
-        ) : null}
-      </div>
+      <PasswordField
+        id="invite-password"
+        label={t('users.invite.password')}
+        required
+        showPassword={showPassword}
+        onToggleShow={() => setShowPassword((v) => !v)}
+        onGenerate={onGeneratePassword}
+        hint={t('users.invite.passwordHint')}
+        error={errKey(errors.password?.message)}
+        showLabel={t('users.invite.passwordShow')}
+        hideLabel={t('users.invite.passwordHide')}
+        generateLabel={t('users.invite.passwordGenerate')}
+        testId="invite-password"
+        toggleTestId="invite-password-toggle"
+        generateTestId="invite-password-generate"
+        registration={register('password')}
+      />
 
       <div>
         <label htmlFor="invite-locale" className="text-sm font-medium text-text-primary">

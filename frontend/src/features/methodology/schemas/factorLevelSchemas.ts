@@ -5,24 +5,11 @@
  * decides which one drives the total. UI surfaces only the relevant field.
  */
 import { z } from 'zod';
+import { localizedStringOptional, localizedStringRequiredPrimary } from '@/shared/lib/localizedSchema';
 
-const localizedLabelRequiredPrimary = z
-  .object({
-    'ru-RU': z.string().trim().min(1, 'validation_primary_required').max(256),
-    'uz-Cyrl-UZ': z.string().trim().max(256).optional(),
-    'uz-Latn-UZ': z.string().trim().max(256).optional(),
-    'en-US': z.string().trim().max(256).optional(),
-  })
-  .passthrough();
+const localizedLabelRequiredPrimary = localizedStringRequiredPrimary({ maxLength: 256, passthrough: true });
 
-const localizedDescriptionOptional = z
-  .object({
-    'ru-RU': z.string().trim().max(2000).optional(),
-    'uz-Cyrl-UZ': z.string().trim().max(2000).optional(),
-    'uz-Latn-UZ': z.string().trim().max(2000).optional(),
-    'en-US': z.string().trim().max(2000).optional(),
-  })
-  .passthrough();
+const localizedDescriptionOptional = localizedStringOptional({ maxLength: 2000, passthrough: true });
 
 export const FactorLevelCreateSchema = z.object({
   code: z

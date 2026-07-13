@@ -1,17 +1,10 @@
 import { z } from 'zod';
+import { localizedStringAnyRequired } from '@/shared/lib/localizedSchema';
 
-const localeKeys = ['ru-RU', 'uz-Cyrl-UZ', 'uz-Latn-UZ', 'en-US'] as const;
-
-const localizedTitleSchema = z
-  .object({
-    'ru-RU': z.string().trim().max(180).optional(),
-    'uz-Cyrl-UZ': z.string().trim().max(180).optional(),
-    'uz-Latn-UZ': z.string().trim().max(180).optional(),
-    'en-US': z.string().trim().max(180).optional(),
-  })
-  .refine((v) => localeKeys.some((k) => v[k] && v[k]!.trim().length > 0), {
-    message: 'validation_title_required',
-  });
+const localizedTitleSchema = localizedStringAnyRequired({
+  maxLength: 180,
+  message: 'validation_title_required',
+});
 
 export const PositionCreateSchema = z.object({
   project_id: z.string().min(1),

@@ -2,7 +2,19 @@ import { z } from 'zod';
 
 const localeKeys = ['ru-RU', 'uz-Cyrl-UZ', 'uz-Latn-UZ', 'en-US'] as const;
 
-/** Localised string: ru-RU is the primary locale and is required. */
+/**
+ * Localised string: ru-RU is the primary locale and is required.
+ *
+ * NOTE: kept intentionally distinct from the shared
+ * `localizedStringAnyRequired` / `localizedStringRequiredPrimary` builders in
+ * `@/shared/lib/localizedSchema` (DUP sweep) — this is the only call site
+ * where `ru-RU` is a genuinely REQUIRED (non-optional) field with the
+ * default Zod message on `.min(1)`, layered under an "any locale" `.refine`.
+ * position/department's "any required" schemas make `ru-RU` optional; the
+ * methodology/factor/grade-structure/job-profile "required primary" schemas
+ * pass a custom message to `.min(1)`. Forcing this one into either shared
+ * builder would change the validation error text — left as-is.
+ */
 const localizedStringSchema = z
   .object({
     'ru-RU': z.string().trim().min(1).max(120),

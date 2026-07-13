@@ -1,5 +1,4 @@
-import { useTranslation } from 'react-i18next';
-import { cn } from '@/shared/lib/cn';
+import { TypeChip } from '@/shared/components/data/TypeChip';
 import type { ReportType } from '../types';
 
 interface Props {
@@ -13,16 +12,12 @@ interface Props {
  * signal on each row.
  */
 export function ReportTypeBadge({ type, className }: Props) {
-  const { t } = useTranslation();
   return (
-    <span
-      className={cn(
-        'inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-md border border-border bg-divider text-text-secondary',
-        className,
-      )}
+    <TypeChip
+      value={type}
+      labelPrefix="report.type"
+      className={className}
       data-testid="report-type-badge"
-    >
-      {t(`report.type.${type}`)}
-    </span>
+    />
   );
 }

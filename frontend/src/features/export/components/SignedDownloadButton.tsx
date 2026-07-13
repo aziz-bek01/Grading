@@ -9,11 +9,16 @@
  * therefore pull the bytes through the shared httpClient (`useDownloadExport`
  * → downloadAuthenticatedFile), build an object URL, and click a temporary
  * `<a download>` with the server-authoritative filename.
+ *
+ * Thin wrapper around the shared `SignedDownloadButton`
+ * (`@/shared/components/download/SignedDownloadButton`) — see that file for
+ * the shared markup/state machine. This wrapper supplies the export-specific
+ * download call, i18n keys, error-key mapping, and the MSW-demo-mode
+ * warning banner (export only).
  */
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Download, Loader2 } from 'lucide-react';
+import { SignedDownloadButton as SharedSignedDownloadButton } from '@/shared/components/download/SignedDownloadButton';
 import { ApiError } from '@/shared/api/apiError';
+import { env } from '@/shared/config/env';
 import { useDownloadExport } from '../hooks/useExports';
 import type { ExportFormat, ExportType } from '../types';
 
@@ -43,53 +48,21 @@ export function SignedDownloadButton({
   disabled,
   className,
 }: Props) {
-  const { t } = useTranslation();
   const downloader = useDownloadExport();
-  const [errorMsgKey, setErrorMsgKey] = useState<string | null>(null);
-
-  const onClick = async () => {
-    setErrorMsgKey(null);
-    try {
-      await downloader.mutateAsync({ id: exportId, type: exportType, format });
-    } catch (err) {
-      setErrorMsgKey(errorKey(err));
-    }
-  };
-
-  const isMsw =
-    typeof import.meta !== 'undefined' &&
-    (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_USE_MSW === 'true';
 
   return (
-    <div className="inline-flex flex-col items-stretch gap-1" data-testid="signed-download-button">
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled || downloader.isPending}
-        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary-500 text-text-inverse text-sm disabled:opacity-50 ${className ?? ''}`}
-      >
-        {downloader.isPending ? (
-          <>
-            <Loader2 className="animate-spin" size={14} aria-hidden />
-            {t('export.download.downloading')}
-          </>
-        ) : (
-          <>
-            <Download size={14} aria-hidden />
-            {t('export.download.cta')}
-          </>
-        )}
-      </button>
-      {errorMsgKey ? (
-        <span className="text-xs text-danger-700" role="alert">
-          {t(errorMsgKey)}
-        </span>
-      ) : null}
-      {isMsw && !errorMsgKey ? (
-        <span className="text-[10px] text-text-muted">
-          {t('export.download.demo_warning')}
-        </span>
-      ) : null}
-    </div>
+    <SharedSignedDownloadButton
+      id={exportId}
+      onDownload={(id) => downloader.mutateAsync({ id, type: exportType, format })}
+      isDownloading={downloader.isPending}
+      ctaKey="export.download.cta"
+      downloadingKey="export.download.downloading"
+      resolveErrorKey={errorKey}
+      testId="signed-download-button"
+      showMswWarning={env.useMockApi}
+      mswWarningKey="export.download.demo_warning"
+      disabled={disabled}
+      className={className}
+    />
   );
 }

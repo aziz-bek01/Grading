@@ -1,5 +1,4 @@
-import { useTranslation } from 'react-i18next';
-import { cn } from '@/shared/lib/cn';
+import { TypeChip } from '@/shared/components/data/TypeChip';
 import type { ExportType } from '../types';
 
 interface Props {
@@ -8,15 +7,5 @@ interface Props {
 }
 
 export function ExportTypeBadge({ type, className }: Props) {
-  const { t } = useTranslation();
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-md border border-border bg-divider text-text-secondary',
-        className,
-      )}
-    >
-      {t(`export.type.${type}`)}
-    </span>
-  );
+  return <TypeChip value={type} labelPrefix="export.type" className={className} />;
 }

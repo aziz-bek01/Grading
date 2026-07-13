@@ -10,6 +10,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { Routes, Route } from 'react-router-dom';
 import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
+import { useAuthStore } from '@/features/auth/authStore';
+import { PERMISSIONS } from '@/shared/types/permissions';
 import { httpClient } from '@/shared/api/httpClient';
 import { ApiError } from '@/shared/api/apiError';
 import { ExportCenterPage } from './ExportCenterPage';
@@ -108,5 +110,42 @@ describe('ExportCenterPage', () => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
     expect(screen.queryByText(/No exports yet|Экспортов ещё нет/i)).toBeNull();
+  });
+
+  // Correctness fix: the "+ New export" CTA drives POST /exports/request,
+  // which backend gates on EXPORT_REQUEST (ExportTypePermissions /
+  // RequestExportUseCase). It previously rendered unconditionally; it now
+  // mirrors ReportsCenterPage's `canCreate` (REPORT_CREATE) gating pattern.
+  it('shows the "+ New export" CTA for users with EXPORT_REQUEST', async () => {
+    vi.spyOn(httpClient, 'get').mockResolvedValue({
+      data: { items: [], page: 0, size: 0, total_elements: 0, total_pages: 0 },
+    } as Awaited<ReturnType<typeof httpClient.get>>);
+
+    mountAt();
+    await waitFor(() => {
+      expect(screen.getByTestId('export-center-page')).toBeInTheDocument();
+    });
+    // CTA visible for the super-admin role (carries EXPORT_REQUEST).
+    expect(screen.getByTestId('export-new-button')).toBeInTheDocument();
+  });
+
+  it('hides the "+ New export" CTA when EXPORT_REQUEST is missing', async () => {
+    // Strip EXPORT_REQUEST from the active user permissions.
+    const session = useAuthStore.getState();
+    const u = session.user!;
+    useAuthStore.getState().setSession(
+      { ...u, permissions: u.permissions.filter((p) => p !== PERMISSIONS.EXPORT_REQUEST) },
+      { value: 'test', expiresAt: Date.now() + 60_000 },
+    );
+
+    vi.spyOn(httpClient, 'get').mockResolvedValue({
+      data: { items: [], page: 0, size: 0, total_elements: 0, total_pages: 0 },
+    } as Awaited<ReturnType<typeof httpClient.get>>);
+
+    mountAt();
+    await waitFor(() => {
+      expect(screen.getByTestId('export-center-page')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('export-new-button')).toBeNull();
   });
 });

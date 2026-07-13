@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
+import { useAuthStore } from '@/features/auth/authStore';
+import { PERMISSIONS } from '@/shared/types/permissions';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { EmptyState } from '@/shared/components/feedback/EmptyState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
@@ -17,6 +19,12 @@ export function ExportCenterPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { projectId = '' } = useParams<{ projectId: string }>();
+  const user = useAuthStore((s) => s.user);
+  // POST /exports/request requires EXPORT_REQUEST server-side (see
+  // ExportTypePermissions / RequestExportUseCase). Gating the CTA on it here
+  // mirrors ReportsCenterPage's `canCreate` (REPORT_CREATE) pattern — this is
+  // UX only, the backend remains the source of truth.
+  const canCreate = !!user?.permissions.includes(PERMISSIONS.EXPORT_REQUEST);
   const [dialogOpen, setDialogOpen] = useState(false);
   const query = useExports({ projectId, page: 0, size: 50 });
 
@@ -27,14 +35,16 @@ export function ExportCenterPage() {
           <h1 className="text-2xl font-semibold">{t('export.center.title')}</h1>
           <p className="text-sm text-text-muted">{t('export.center.subtitle')}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setDialogOpen(true)}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary-500 text-text-inverse hover:bg-primary-700 text-sm"
-          data-testid="export-new-button"
-        >
-          <Plus size={16} /> {t('export.center.new')}
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={() => setDialogOpen(true)}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary-500 text-text-inverse hover:bg-primary-700 text-sm"
+            data-testid="export-new-button"
+          >
+            <Plus size={16} /> {t('export.center.new')}
+          </button>
+        ) : null}
       </header>
 
       {query.isError ? (

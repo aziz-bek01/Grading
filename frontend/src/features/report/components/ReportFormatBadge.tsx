@@ -1,5 +1,4 @@
-import { useTranslation } from 'react-i18next';
-import { cn } from '@/shared/lib/cn';
+import { FormatChip } from '@/shared/components/data/FormatChip';
 import type { ReportFormat } from '../types';
 
 interface Props {
@@ -20,18 +19,13 @@ const TONE: Record<ReportFormat, string> = {
 };
 
 export function ReportFormatBadge({ format, className }: Props) {
-  const { t } = useTranslation();
   return (
-    <span
-      className={cn(
-        'inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-md border',
-        TONE[format],
-        className,
-      )}
-      title={t(`report.format.${format}`)}
+    <FormatChip
+      value={format}
+      labelPrefix="report.format"
+      toneMap={TONE}
+      className={className}
       data-testid="report-format-badge"
-    >
-      {format}
-    </span>
+    />
   );
 }

@@ -1,4 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+/**
+ * TanStack Query hooks over the 5 export fetchers.
+ *
+ * The list/detail-polling/request/cancel scaffolding is shared with
+ * `features/report/hooks/useReports` via `createAsyncJobQueries` (see
+ * `@/shared/hooks/asyncJobQueryFactory`) — only the fetchers, query-key
+ * builders (`exportKeys`), filter shape, and in-flight status set are
+ * export-specific. Query keys, the 2s polling interval, and the
+ * invalidation behavior are unchanged from before the extraction.
+ */
+import { createAsyncJobQueries } from '@/shared/hooks/asyncJobQueryFactory';
+import { useMutation } from '@tanstack/react-query';
 import {
   cancelExport,
   downloadExport,
@@ -9,7 +20,9 @@ import {
 } from '../api/exportApi';
 import type {
   ExportFormat,
+  ExportJob,
   ExportJobStatus,
+  ExportPage,
   ExportRequestPayload,
   ExportType,
 } from '../types';
@@ -20,51 +33,49 @@ const IN_FLIGHT: ReadonlySet<ExportJobStatus> = new Set<ExportJobStatus>([
   'GENERATING',
 ]);
 
-export function useExports(filters: {
+interface ExportListFilters {
   projectId?: string;
   status?: ExportJobStatus;
   type?: ExportType;
   page?: number;
   size?: number;
-}) {
-  return useQuery({
-    queryKey: exportKeys.list(filters.projectId, filters.status, filters.type),
-    queryFn: () => fetchExports(filters),
-    enabled: !!filters.projectId,
-  });
+}
+
+const exportJobQueries = createAsyncJobQueries<
+  ExportJob,
+  ExportJobStatus,
+  ExportListFilters,
+  ExportPage<ExportJob>,
+  ExportRequestPayload
+>({
+  keys: {
+    all: exportKeys.all,
+    list: (filters) => exportKeys.list(filters.projectId, filters.status, filters.type),
+    detail: exportKeys.detail,
+  },
+  fetchers: {
+    fetchList: fetchExports,
+    fetchDetail: fetchExport,
+    request: requestExport,
+    cancel: cancelExport,
+  },
+  inFlightStatuses: IN_FLIGHT,
+});
+
+export function useExports(filters: ExportListFilters) {
+  return exportJobQueries.useList(filters);
 }
 
 export function useExport(id: string | undefined, opts?: { pollWhileInFlight?: boolean }) {
-  return useQuery({
-    queryKey: id ? exportKeys.detail(id) : ['exports', 'detail', null],
-    queryFn: () => fetchExport(id!),
-    enabled: !!id,
-    refetchInterval: (query) => {
-      if (!opts?.pollWhileInFlight) return false;
-      const data = query.state.data as { status?: ExportJobStatus } | undefined;
-      if (!data) return 2000;
-      return IN_FLIGHT.has(data.status as ExportJobStatus) ? 2000 : false;
-    },
-  });
+  return exportJobQueries.useDetail(id, opts);
 }
 
 export function useRequestExport() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: ExportRequestPayload) => requestExport(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: exportKeys.all }),
-  });
+  return exportJobQueries.useRequest();
 }
 
 export function useCancelExport(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => cancelExport(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: exportKeys.all });
-      qc.invalidateQueries({ queryKey: exportKeys.detail(id) });
-    },
-  });
+  return exportJobQueries.useCancel(id);
 }
 
 /**

@@ -1,11 +1,19 @@
 /**
  * TanStack Query hooks over the 5 report fetchers.
  *
+ * The list/detail-polling/request/cancel scaffolding is shared with
+ * `features/export/hooks/useExports` via `createAsyncJobQueries` (see
+ * `@/shared/hooks/asyncJobQueryFactory`) — only the fetchers, query-key
+ * builders (`reportKeys`), filter shape, and in-flight status set are
+ * report-specific. Query keys, the 2s polling interval, and the
+ * invalidation behavior are unchanged from before the extraction.
+ *
  * `useReport(id, { pollWhileInFlight })` polls every 2 s while the report
  * is in the REQUESTED / QUEUED / GENERATING set so the UI tracks the async
  * worker pipeline (architecture §17 worker FSM).
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { createAsyncJobQueries } from '@/shared/hooks/asyncJobQueryFactory';
+import { useMutation } from '@tanstack/react-query';
 import {
   cancelReport,
   downloadReport,
@@ -16,58 +24,59 @@ import {
 } from '../api/reportApi';
 import { REPORT_IN_FLIGHT_STATUSES } from '../types';
 import type {
+  Report,
   ReportFormat,
+  ReportPage,
   ReportRequestPayload,
   ReportStatus,
   ReportType,
 } from '../types';
 
-export function useReports(filters: {
+interface ReportListFilters {
   projectId?: string;
   status?: ReportStatus;
   type?: ReportType;
   format?: ReportFormat;
   page?: number;
   size?: number;
-}) {
-  return useQuery({
-    queryKey: reportKeys.list(filters.projectId, filters.status, filters.type, filters.format),
-    queryFn: () => fetchReports(filters),
-    enabled: !!filters.projectId,
-  });
+}
+
+const reportJobQueries = createAsyncJobQueries<
+  Report,
+  ReportStatus,
+  ReportListFilters,
+  ReportPage<Report>,
+  ReportRequestPayload
+>({
+  keys: {
+    all: reportKeys.all,
+    list: (filters) =>
+      reportKeys.list(filters.projectId, filters.status, filters.type, filters.format),
+    detail: reportKeys.detail,
+  },
+  fetchers: {
+    fetchList: fetchReports,
+    fetchDetail: fetchReport,
+    request: requestReport,
+    cancel: cancelReport,
+  },
+  inFlightStatuses: REPORT_IN_FLIGHT_STATUSES,
+});
+
+export function useReports(filters: ReportListFilters) {
+  return reportJobQueries.useList(filters);
 }
 
 export function useReport(id: string | undefined, opts?: { pollWhileInFlight?: boolean }) {
-  return useQuery({
-    queryKey: id ? reportKeys.detail(id) : ['reports', 'detail', null],
-    queryFn: () => fetchReport(id!),
-    enabled: !!id,
-    refetchInterval: (query) => {
-      if (!opts?.pollWhileInFlight) return false;
-      const data = query.state.data as { status?: ReportStatus } | undefined;
-      if (!data) return 2000;
-      return REPORT_IN_FLIGHT_STATUSES.has(data.status as ReportStatus) ? 2000 : false;
-    },
-  });
+  return reportJobQueries.useDetail(id, opts);
 }
 
 export function useRequestReport() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: ReportRequestPayload) => requestReport(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reportKeys.all }),
-  });
+  return reportJobQueries.useRequest();
 }
 
 export function useCancelReport(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => cancelReport(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: reportKeys.all });
-      qc.invalidateQueries({ queryKey: reportKeys.detail(id) });
-    },
-  });
+  return reportJobQueries.useCancel(id);
 }
 
 /**
@@ -78,7 +87,6 @@ export function useCancelReport(id: string) {
  */
 export function useDownloadReport() {
   return useMutation({
-    mutationFn: (args: { id: string; type?: ReportType }) =>
-      downloadReport(args.id, { type: args.type }),
+    mutationFn: (args: { id: string; type?: ReportType }) => downloadReport(args.id, { type: args.type }),
   });
 }

@@ -1,5 +1,4 @@
-import { useTranslation } from 'react-i18next';
-import { cn } from '@/shared/lib/cn';
+import { FormatChip } from '@/shared/components/data/FormatChip';
 import type { ExportFormat } from '../types';
 
 interface Props {
@@ -15,17 +14,7 @@ const TONE: Record<ExportFormat, string> = {
 };
 
 export function ExportFormatBadge({ format, className }: Props) {
-  const { t } = useTranslation();
   return (
-    <span
-      className={cn(
-        'inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-md border',
-        TONE[format],
-        className,
-      )}
-      title={t(`export.format.${format}`)}
-    >
-      {format}
-    </span>
+    <FormatChip value={format} labelPrefix="export.format" toneMap={TONE} className={className} />
   );
 }

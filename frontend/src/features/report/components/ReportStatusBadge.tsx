@@ -1,5 +1,5 @@
-import { useTranslation } from 'react-i18next';
-import { StatusBadge, type StatusTone } from '@/shared/components/status/StatusBadge';
+import { AsyncJobStatusBadge } from '@/shared/components/data/AsyncJobStatusBadge';
+import type { StatusTone } from '@/shared/components/status/StatusBadge';
 import type { ReportStatus } from '../types';
 
 /**
@@ -31,11 +31,11 @@ interface Props {
 }
 
 export function ReportStatusBadge({ status, className }: Props) {
-  const { t } = useTranslation();
   return (
-    <StatusBadge
-      tone={TONE_MAP[status] ?? 'draft'}
-      label={t(`report.status.${status}`)}
+    <AsyncJobStatusBadge
+      status={status}
+      toneMap={TONE_MAP}
+      labelPrefix="report.status"
       className={className}
     />
   );

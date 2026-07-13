@@ -158,7 +158,7 @@ export function ProjectWorkspacePage() {
             )}
           </Card>
           <Card title={t('workflow.recent_activity')} compact>
-            <RecentActivityList projectId={project.data.id} limit={20} />
+            <RecentActivityList entityType="PROJECT" entityId={project.data.id} limit={20} />
           </Card>
         </div>
       </div>

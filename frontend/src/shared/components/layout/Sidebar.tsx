@@ -104,6 +104,21 @@ export function Sidebar({ className }: SidebarProps = {}) {
     { to: routes.projectEvaluation(projectIdForRoutes), label: t('nav.evaluation'), icon: <CheckSquare size={18} aria-hidden />, permission: PERMISSIONS.EVALUATION_READ },
     { to: routes.projectGrades(projectIdForRoutes), label: t('nav.grades'), icon: <Layers size={18} aria-hidden />, permission: PERMISSIONS.GRADE_READ },
     { to: routes.projectReports(projectIdForRoutes), label: t('nav.reports'), icon: <FileText size={18} aria-hidden />, permission: PERMISSIONS.REPORT_READ },
+    {
+      // Project-scoped approval history/queue (all statuses, filterable) — was
+      // registered in router.tsx (permission-gated) but had no nav entry,
+      // making it unreachable except by typing the URL. Same permission set
+      // as the global "approvals" inbox item (governanceItems below) and the
+      // router.tsx route guard — mirrors the sibling reports/grades items.
+      to: routes.projectApprovals(projectIdForRoutes),
+      label: t('nav.project_approvals'),
+      icon: <Inbox size={18} aria-hidden />,
+      permission: [
+        PERMISSIONS.APPROVAL_REQUEST_CREATE,
+        PERMISSIONS.APPROVAL_REQUEST_DECIDE,
+        PERMISSIONS.APPROVAL_STEP_APPROVE,
+      ],
+    },
   ].map((item) => ({
     ...item,
     disabled: activeProjectId === null,

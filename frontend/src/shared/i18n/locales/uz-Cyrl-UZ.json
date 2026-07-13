@@ -48,7 +48,9 @@
     "unknown_user": "Номаълум фойдаланувчи",
     "untitled": "Номсиз",
     "dismiss": "Ёпиш",
-    "loading": "Юкланмоқда…"
+    "loading": "Юкланмоқда…",
+    "locale_tab_filled": "{{locale}} таржимаси киритилган",
+    "locale_tab_empty": "{{locale}} таржимаси киритилмаган"
   },
   "nav": {
     "dashboard": "Бошқарув панели",
@@ -64,6 +66,7 @@
     "grades": "Грейдлар",
     "compensation": "Компенсация",
     "reports": "Ҳисоботлар",
+    "project_approvals": "Лойиҳа тасдиқлари",
     "files": "Файллар",
     "ai_assist": "СИ-ёрдамчи",
     "audit": "Аудит журнали",
@@ -335,7 +338,7 @@
     },
     "next_action": "Кейинги қадам",
     "recent_activity": "Сўнгги фаолият",
-    "no_activity": "Лойиҳада сўнгги фаолият йўқ.",
+    "no_activity": "Сўнгги фаолият йўқ.",
     "blockers": "Тўсиқлар",
     "completion": "{{percent}}% бажарилди",
     "responsible": "Масъул",
@@ -1034,7 +1037,6 @@
     "empty_body": "Тасдиқланган методология бўйича лавозимларни баҳолашни бошланг.",
     "empty_for_position_title": "Баҳолаш мавжуд эмас",
     "empty_for_position_body": "Грейд белгилаш учун бу лавозимни баҳоланг.",
-    "audit_placeholder": "Баҳолаш бўйича аудит хронологияси MVP 2да тақдим этилади.",
     "column": {
       "position": "Лавозим",
       "department": "Бўлим",

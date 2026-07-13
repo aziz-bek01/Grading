@@ -39,7 +39,12 @@ describe('<RecentActivityList />', () => {
   });
 
   it('renders project-related events from the audit feed', async () => {
-    render(renderWithProviders(<RecentActivityList projectId="proj-acme-2026" />, ['/app']));
+    render(
+      renderWithProviders(
+        <RecentActivityList entityType="PROJECT" entityId="proj-acme-2026" />,
+        ['/app'],
+      ),
+    );
     await waitFor(
       () => {
         // Seed contains PROJECT_CREATED / proj-acme-2026 → list should appear.
@@ -54,9 +59,37 @@ describe('<RecentActivityList />', () => {
     signOut();
     signIn('viewer'); // viewer in devAuth has no AUDIT_READ
     activateAcme();
-    render(renderWithProviders(<RecentActivityList projectId="proj-acme-2026" />, ['/app']));
+    render(
+      renderWithProviders(
+        <RecentActivityList entityType="PROJECT" entityId="proj-acme-2026" />,
+        ['/app'],
+      ),
+    );
     expect(screen.getByTestId('recent-activity-no-access')).toBeInTheDocument();
     // No fetch should occur — the loading placeholder must not appear.
     expect(screen.queryByTestId('recent-activity-loading')).not.toBeInTheDocument();
+  });
+
+  // FE audit-tab hardening: the generalized `entityType`/`entityId` API is what
+  // EvaluationDetailsPage / PositionDetailsPage now reuse for their audit tabs
+  // (Finding 2) — prove a non-PROJECT entity type renders real rows straight
+  // from the shared audit feed, no PROJECT heuristic involved.
+  it('renders real rows for a non-PROJECT entity type (generic reuse)', async () => {
+    render(
+      renderWithProviders(
+        <RecentActivityList entityType="EVALUATION" entityId="ev-001" />,
+        ['/app'],
+      ),
+    );
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('recent-activity-list')).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+    // Seed has EVALUATION_CREATED (a-013) / EVALUATION_SUBMITTED (a-015) /
+    // EVALUATION_APPROVED (a-016), all entityId=ev-001 — real rows, not a stub.
+    expect(screen.getByTestId('recent-activity-row-a-013')).toBeInTheDocument();
+    expect(screen.getByTestId('recent-activity-row-a-016')).toBeInTheDocument();
   });
 });

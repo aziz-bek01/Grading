@@ -26,6 +26,7 @@ import { EvaluationStatusBadge } from '@/features/evaluation/components/Evaluati
 import { useMethodologies } from '@/features/methodology/hooks/useMethodology';
 import { AssignedGradeBadge } from '@/features/grade-structure/components/AssignedGradeBadge';
 import { CommentThread } from '@/features/comment/components/CommentThread';
+import { RecentActivityList } from '@/features/projects/components/RecentActivityList';
 import { pickLocalized } from '@/shared/lib/localized';
 import { cn } from '@/shared/lib/cn';
 
@@ -336,7 +337,7 @@ export function PositionDetailsPage() {
           }
         >
           <Card title={t('audit.log')}>
-            <EmptyState body={t('states.empty_body')} />
+            <RecentActivityList entityType="POSITION" entityId={positionId} />
           </Card>
         </PermissionGate>
       ) : null}

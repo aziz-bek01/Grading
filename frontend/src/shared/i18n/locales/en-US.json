@@ -48,7 +48,9 @@
     "unknown_user": "Unknown user",
     "untitled": "Untitled",
     "dismiss": "Dismiss",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "locale_tab_filled": "{{locale}} translation provided",
+    "locale_tab_empty": "{{locale}} translation missing"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -64,6 +66,7 @@
     "grades": "Grades",
     "compensation": "Compensation",
     "reports": "Reports",
+    "project_approvals": "Project approvals",
     "files": "Files",
     "ai_assist": "AI Assist",
     "audit": "Audit log",
@@ -335,7 +338,7 @@
     },
     "next_action": "Next action",
     "recent_activity": "Recent activity",
-    "no_activity": "No recent activity for this project.",
+    "no_activity": "No recent activity.",
     "blockers": "Blockers",
     "completion": "{{percent}}% complete",
     "responsible": "Responsible",
@@ -1034,7 +1037,6 @@
     "empty_body": "Start evaluating positions against an approved methodology.",
     "empty_for_position_title": "No evaluation yet",
     "empty_for_position_body": "Run an evaluation for this position to assign a grade.",
-    "audit_placeholder": "Per-evaluation audit timeline ships in MVP 2.",
     "column": {
       "position": "Position",
       "department": "Department",

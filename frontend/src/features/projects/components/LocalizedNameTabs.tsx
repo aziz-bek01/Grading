@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CheckCircle2, Circle } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import type { Locale, LocalizedString } from '@/shared/types/common';
 
@@ -40,6 +41,11 @@ export function LocalizedNameTabs({
         {LOCALES.map((loc) => {
           const isActive = active === loc;
           const isPrimary = loc === primary;
+          // Per-tab fill indicator (FE i18n hardening): lets the editor see at
+          // a glance which locales still need translating without switching
+          // tabs. Purely a UX affordance — never touches validation.
+          const isFilled = (value?.[loc] ?? '').trim().length > 0;
+          const localeName = t(`language.${loc}`);
           return (
             <button
               key={loc}
@@ -48,11 +54,27 @@ export function LocalizedNameTabs({
               aria-selected={isActive}
               onClick={() => setActive(loc)}
               className={cn(
-                'px-3 py-1 text-xs rounded-md',
+                'inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md',
                 isActive ? 'bg-surface text-text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary',
               )}
             >
-              {t(`language.${loc}`)}
+              <span
+                className={isFilled ? 'text-success-600' : 'text-text-muted'}
+                data-testid={`locale-tab-indicator-${loc}`}
+                data-filled={isFilled || undefined}
+              >
+                {isFilled ? (
+                  <CheckCircle2 size={11} aria-hidden />
+                ) : (
+                  <Circle size={11} aria-hidden />
+                )}
+                <span className="sr-only">
+                  {isFilled
+                    ? t('common.locale_tab_filled', { locale: localeName })
+                    : t('common.locale_tab_empty', { locale: localeName })}
+                </span>
+              </span>
+              {localeName}
               {isPrimary ? <span className="ml-1 text-danger-700">*</span> : null}
             </button>
           );

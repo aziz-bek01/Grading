@@ -1,12 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
+import type { AxiosAdapter } from 'axios';
 import {
   renderWithProviders,
   signInWithPermissions,
   signOut,
 } from '@/test/testUtils';
 import { PERMISSIONS } from '@/shared/types/permissions';
+import { httpClient } from '@/shared/api/httpClient';
+import { createMockAdapter } from '@/shared/api/mocks/handlers';
 import { EvaluationDetailsPage } from './EvaluationDetailsPage';
 import type { Evaluation } from '../types';
 import type { MethodologyVersion } from '@/features/methodology/types';
@@ -112,8 +116,8 @@ vi.mock('../components/EvaluationMatrix', () => ({
 
 const REAL_ROUTE = '/app/projects/:projectId/evaluation/:evaluationId';
 
-function renderPage(entry: string) {
-  signInWithPermissions([PERMISSIONS.EVALUATION_READ]);
+function renderPage(entry: string, permissions: string[] = [PERMISSIONS.EVALUATION_READ]) {
+  signInWithPermissions(permissions);
   return render(
     renderWithProviders(
       <Routes>
@@ -186,5 +190,54 @@ describe('<EvaluationDetailsPage /> route-param contract', () => {
     renderPage('/app/projects/proj-77/evaluation/eval-42');
     expect(screen.queryByTestId('evaluation-self-role')).not.toBeInTheDocument();
     expect(screen.queryByTestId('panel-blind-banner')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Audit tab (Finding 2 — FE audit-tab hardening).
+ *
+ * Mirrors the AUDIT_READ gating pattern used by PositionDetailsPage's audit
+ * tab (`PermissionGate` + the shared `states.no_access_*` fallback) and
+ * reuses the SAME `RecentActivityList` the Project Workspace "Recent
+ * activity" panel already renders — no bespoke list, no placeholder.
+ */
+describe('<EvaluationDetailsPage /> audit tab', () => {
+  let originalAdapter: AxiosAdapter | undefined;
+
+  beforeEach(() => {
+    evaluationIdSpy.mockClear();
+    evalOverride = {};
+    originalAdapter = httpClient.defaults.adapter as AxiosAdapter | undefined;
+  });
+
+  afterEach(() => {
+    httpClient.defaults.adapter = originalAdapter;
+    signOut();
+  });
+
+  it('hides real audit content behind AUDIT_READ (no-access state, not the raw activity feed)', async () => {
+    const user = userEvent.setup();
+    renderPage('/app/projects/proj-77/evaluation/eval-42', [PERMISSIONS.EVALUATION_READ]);
+    await user.click(screen.getByTestId('tab-audit'));
+    expect(await screen.findByText(/Нет доступа|No access|Рухсат йўқ|Ruxsat yo/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('recent-activity-list')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('recent-activity-empty')).not.toBeInTheDocument();
+  });
+
+  it('renders the shared RecentActivityList with real rows when AUDIT_READ is granted', async () => {
+    httpClient.defaults.adapter = createMockAdapter(originalAdapter);
+    const user = userEvent.setup();
+    // ev-001 matches the seeded EVALUATION audit events (EVALUATION_CREATED /
+    // SUBMITTED / APPROVED) in the shared audit mock fixtures.
+    renderPage('/app/projects/proj-77/evaluation/ev-001', [
+      PERMISSIONS.EVALUATION_READ,
+      PERMISSIONS.AUDIT_READ,
+    ]);
+    await user.click(screen.getByTestId('tab-audit'));
+    await waitFor(() => {
+      expect(screen.getByTestId('recent-activity-list')).toBeInTheDocument();
+    });
+    // Real rows from the audit feed — not the old MVP-2 placeholder text.
+    expect(screen.queryByText(/MVP 2/i)).not.toBeInTheDocument();
   });
 });

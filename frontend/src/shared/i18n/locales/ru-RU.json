@@ -48,7 +48,9 @@
     "unknown_user": "Неизвестный пользователь",
     "untitled": "Без названия",
     "dismiss": "Закрыть",
-    "loading": "Загрузка…"
+    "loading": "Загрузка…",
+    "locale_tab_filled": "Перевод на {{locale}} заполнен",
+    "locale_tab_empty": "Перевод на {{locale}} не заполнен"
   },
   "nav": {
     "dashboard": "Главная",
@@ -64,6 +66,7 @@
     "grades": "Грейды",
     "compensation": "Компенсация",
     "reports": "Отчёты",
+    "project_approvals": "Согласования проекта",
     "files": "Файлы",
     "ai_assist": "ИИ-ассистент",
     "audit": "Журнал аудита",
@@ -335,7 +338,7 @@
     },
     "next_action": "Следующий шаг",
     "recent_activity": "Недавняя активность",
-    "no_activity": "По проекту нет недавней активности.",
+    "no_activity": "Недавняя активность отсутствует.",
     "blockers": "Блокеры",
     "completion": "Выполнено {{percent}}%",
     "responsible": "Ответственный",
@@ -1034,7 +1037,6 @@
     "empty_body": "Начните оценивать должности по утверждённой методологии.",
     "empty_for_position_title": "Оценка отсутствует",
     "empty_for_position_body": "Запустите оценку этой должности, чтобы присвоить грейд.",
-    "audit_placeholder": "Хронология аудита по оценке появится в MVP 2.",
     "column": {
       "position": "Должность",
       "department": "Подразделение",

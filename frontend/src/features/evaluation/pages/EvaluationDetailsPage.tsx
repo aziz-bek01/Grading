@@ -6,6 +6,9 @@ import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { EmptyState } from '@/shared/components/feedback/EmptyState';
+import { PermissionGate } from '@/shared/components/access/PermissionGate';
+import { PERMISSIONS } from '@/shared/types/permissions';
+import { RecentActivityList } from '@/features/projects/components/RecentActivityList';
 import { AIRecommendationPanel } from '@/features/job-profiles/components/AIRecommendationPanel';
 import { useMethodologyVersion } from '@/features/methodology/hooks/useMethodology';
 import { cn } from '@/shared/lib/cn';
@@ -299,9 +302,18 @@ export function EvaluationDetailsPage() {
       ) : null}
 
       {tab === 'audit' ? (
-        <Card title={t('audit.log')}>
-          <EmptyState body={t('evaluation.audit_placeholder')} />
-        </Card>
+        <PermissionGate
+          permission={PERMISSIONS.AUDIT_READ}
+          fallback={
+            <Card>
+              <EmptyState body={t('states.no_access_body')} title={t('states.no_access_title')} />
+            </Card>
+          }
+        >
+          <Card title={t('audit.log')}>
+            <RecentActivityList entityType="EVALUATION" entityId={evaluation.data.id} />
+          </Card>
+        </PermissionGate>
       ) : null}
 
       <CalibrationDialog

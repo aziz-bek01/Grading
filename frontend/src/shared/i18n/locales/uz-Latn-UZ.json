@@ -48,7 +48,9 @@
     "unknown_user": "Nomaʼlum foydalanuvchi",
     "untitled": "Nomsiz",
     "dismiss": "Yopish",
-    "loading": "Yuklanmoqda…"
+    "loading": "Yuklanmoqda…",
+    "locale_tab_filled": "{{locale}} tarjimasi kiritilgan",
+    "locale_tab_empty": "{{locale}} tarjimasi kiritilmagan"
   },
   "nav": {
     "dashboard": "Boshqaruv paneli",
@@ -64,6 +66,7 @@
     "grades": "Greydlar",
     "compensation": "Kompensatsiya",
     "reports": "Hisobotlar",
+    "project_approvals": "Loyiha tasdiqlari",
     "files": "Fayllar",
     "ai_assist": "SI-yordamchi",
     "audit": "Audit jurnali",
@@ -335,7 +338,7 @@
     },
     "next_action": "Keyingi qadam",
     "recent_activity": "Soʻnggi faoliyat",
-    "no_activity": "Loyihada soʻnggi faoliyat yoʻq.",
+    "no_activity": "Soʻnggi faoliyat yoʻq.",
     "blockers": "Toʻsiqlar",
     "completion": "{{percent}}% bajarildi",
     "responsible": "Masʼul",
@@ -1034,7 +1037,6 @@
     "empty_body": "Tasdiqlangan metodologiya bo'yicha lavozimlarni baholashni boshlang.",
     "empty_for_position_title": "Baholash mavjud emas",
     "empty_for_position_body": "Greyd belgilash uchun bu lavozimni baholang.",
-    "audit_placeholder": "Baholash bo'yicha audit xronologiyasi MVP 2da taqdim etiladi.",
     "column": {
       "position": "Lavozim",
       "department": "Boʻlim",

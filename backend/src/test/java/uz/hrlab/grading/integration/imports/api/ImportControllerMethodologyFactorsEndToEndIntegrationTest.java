@@ -140,7 +140,8 @@ class ImportControllerMethodologyFactorsEndToEndIntegrationTest extends Abstract
                         .with(devAuth(userId, tenantId, projectId, "METHODOLOGY_IMPORT")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("COMMITTED"))
-                .andExpect(jsonPath("$.committedRowCount").value(4))
+                // API serializes snake_case (committed_row_count), not camelCase.
+                .andExpect(jsonPath("$.committed_row_count").value(4))
                 .andReturn();
         ImportBatchResponse committed = objectMapper.readValue(
                 commitResult.getResponse().getContentAsString(), ImportBatchResponse.class);

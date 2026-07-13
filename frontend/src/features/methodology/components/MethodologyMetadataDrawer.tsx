@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
-import { LocalizedNameTabs } from '@/features/projects/components/LocalizedNameTabs';
+import { TemplateMetadataDrawer } from '@/shared/components/template-management/TemplateMetadataDrawer';
 import { ApiError } from '@/shared/api/apiError';
-import type { LocalizedString } from '@/shared/types/common';
 import type {
   Methodology,
   MethodologyType,
@@ -62,10 +60,16 @@ const SCORING_OPTIONS: { value: ScoringMode; labelKey: string }[] = [
  *    pass `editable` so the scoring fields stay hidden; the backend independently
  *    enforces DRAFT-only.
  *
- * The container `code` is immutable post-create — shown read-only, never PATCHed.
- * Reuses DrawerForm + LocalizedNameTabs (no new primitives).
+ * The container `code` is immutable post-create — shown read-only, never
+ * PATCHed. Thin wrapper around the shared entity-agnostic
+ * `TemplateMetadataDrawer`; the type/scoring/target fields are this entity's
+ * extra-fields slot.
  */
-export function MethodologyMetadataDrawer({ open, methodology, ...rest }: MethodologyMetadataDrawerProps) {
+export function MethodologyMetadataDrawer({
+  open,
+  methodology,
+  ...rest
+}: MethodologyMetadataDrawerProps) {
   // Keyed remount per (methodology, version) so the body seeds straight from props.
   if (!open || !methodology) return null;
   return (
@@ -85,10 +89,6 @@ function MethodologyMetadataDrawerBody({
   onSubmit,
 }: Omit<MethodologyMetadataDrawerProps, 'open'> & { methodology: Methodology }) {
   const { t } = useTranslation();
-  const [name, setName] = useState<LocalizedString>(methodology.name_i18n ?? {});
-  const [description, setDescription] = useState<LocalizedString>(methodology.description_i18n ?? {});
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   // Scoring fields only ever editable in builder mode against a DRAFT version.
   const scoringEditable = !!editable && version?.status === 'DRAFT';
@@ -103,161 +103,116 @@ function MethodologyMetadataDrawerBody({
 
   const scoringModeChanged = scoringEditable && scoringMode !== originalScoringMode;
 
-  const handleSubmit = async () => {
-    // Accept a name in ANY supported locale — hard-requiring ru-RU trapped
-    // users working in the uz/en tab (same locale-trap fixed in FactorEditor /
-    // FactorLevelEditor). The backend only validates locale KEYS.
-    if (!Object.values(name).some((v) => v?.trim())) {
-      setError(t('methodology.metadata.name_primary_required'));
-      return;
-    }
-
-    // Container patch — `code` is intentionally excluded (immutable container).
-    const methodologyPatch: MethodologyUpdatePayload = {
-      name_i18n: name,
-      description_i18n: description,
-    };
-    let versionPatch: MethodologyVersionMetadataUpdatePayload | undefined;
-
-    if (scoringEditable) {
-      methodologyPatch.methodology_type = methodologyType;
-      versionPatch = { scoring_mode: scoringMode };
-      if (scoringMode === 'WEIGHTED_SCALE') {
-        const tt = Number.parseFloat(targetTotalPoints);
-        if (Number.isNaN(tt) || tt <= 0) {
-          setError(t('methodology.create.target_total_invalid'));
-          return;
-        }
-        versionPatch.target_total_points = tt;
-      }
-    }
-
-    setError(null);
-    setSubmitting(true);
-    try {
-      await onSubmit({ methodology: methodologyPatch, version: versionPatch });
-    } catch (e) {
-      // Surface known backend conflict codes inline; fall back to a generic msg.
-      if (e instanceof ApiError) {
-        if (e.code === 'METHODOLOGY_TYPE_LOCKED') {
-          setError(t('methodology.metadata.type_locked'));
-        } else if (e.code === 'SCORING_TARGET_REQUIRED') {
-          setError(t('methodology.create.target_total_invalid'));
-        } else if (e.code === 'METHODOLOGY_VERSION_TRANSITION_REJECTED') {
-          setError(t('methodology.metadata.version_not_editable'));
-        } else {
-          setError(t('methodology.metadata.save_failed'));
-        }
-      } else {
-        setError(t('methodology.metadata.save_failed'));
-      }
-      return;
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
-    <DrawerForm
-      open
+    <TemplateMetadataDrawer<MethodologyMetadataPatch>
       title={t('methodology.metadata.edit_title')}
       subtitle={t('methodology.metadata.edit_subtitle')}
-      onClose={onClose}
-      onSubmit={() => {
-        if (!submitting) void handleSubmit();
+      code={methodology.code}
+      codeImmutableHint={t('methodology.metadata.code_immutable')}
+      initialName={methodology.name_i18n ?? {}}
+      initialDescription={methodology.description_i18n ?? {}}
+      // Accept a name in ANY supported locale — hard-requiring ru-RU trapped
+      // users working in the uz/en tab (same locale-trap fixed in FactorEditor /
+      // FactorLevelEditor). The backend only validates locale KEYS.
+      validateName={(name) => Object.values(name).some((v) => v?.trim())}
+      nameRequiredError={t('methodology.metadata.name_primary_required')}
+      buildPatch={({ name_i18n, description_i18n }) => {
+        // Container patch — `code` is intentionally excluded (immutable container).
+        const methodologyPatch: MethodologyUpdatePayload = { name_i18n, description_i18n };
+        let versionPatch: MethodologyVersionMetadataUpdatePayload | undefined;
+
+        if (scoringEditable) {
+          methodologyPatch.methodology_type = methodologyType;
+          versionPatch = { scoring_mode: scoringMode };
+          if (scoringMode === 'WEIGHTED_SCALE') {
+            const tt = Number.parseFloat(targetTotalPoints);
+            if (Number.isNaN(tt) || tt <= 0) {
+              return { ok: false, error: t('methodology.create.target_total_invalid') };
+            }
+            versionPatch.target_total_points = tt;
+          }
+        }
+        return { ok: true, patch: { methodology: methodologyPatch, version: versionPatch } };
       }}
+      mapError={(e) => {
+        // Surface known backend conflict codes inline; fall back to a generic msg.
+        if (e instanceof ApiError) {
+          if (e.code === 'METHODOLOGY_TYPE_LOCKED') {
+            return t('methodology.metadata.type_locked');
+          }
+          if (e.code === 'SCORING_TARGET_REQUIRED') {
+            return t('methodology.create.target_total_invalid');
+          }
+          if (e.code === 'METHODOLOGY_VERSION_TRANSITION_REJECTED') {
+            return t('methodology.metadata.version_not_editable');
+          }
+        }
+        return t('methodology.metadata.save_failed');
+      }}
+      onClose={onClose}
+      onSubmit={onSubmit}
+      testIdPrefix="metadata"
     >
-      <div className="space-y-4">
-        <label className="block text-sm font-medium text-text-primary">
-          <span>{t('common.code')}</span>
-          <input
-            type="text"
-            value={methodology.code}
-            readOnly
-            disabled
-            className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-divider text-text-secondary font-mono cursor-not-allowed"
-            data-testid="metadata-code"
-          />
-          <span className="mt-1 block text-xs text-text-muted">
-            {t('methodology.metadata.code_immutable')}
-          </span>
-        </label>
+      {scoringEditable ? (
+        <>
+          <label className="block text-sm font-medium text-text-primary">
+            <span>{t('common.type')}</span>
+            <select
+              value={methodologyType}
+              onChange={(e) => setMethodologyType(e.target.value as MethodologyType)}
+              className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
+              data-testid="metadata-type"
+            >
+              {TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {t(opt.labelKey)}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <LocalizedNameTabs value={name} onChange={setName} label={t('common.name')} />
+          <label className="block text-sm font-medium text-text-primary">
+            <span>{t('methodology.scoring_mode')}</span>
+            <select
+              value={scoringMode}
+              onChange={(e) => setScoringMode(e.target.value as ScoringMode)}
+              className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
+              data-testid="metadata-scoring-mode"
+            >
+              {SCORING_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {t(opt.labelKey)}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <LocalizedNameTabs
-          value={description}
-          onChange={setDescription}
-          label={t('common.description')}
-        />
+          {scoringModeChanged ? (
+            <p
+              className="rounded-md border border-warning-500/30 bg-warning-50 px-3 py-2 text-xs text-warning-700"
+              role="status"
+              data-testid="metadata-scoring-change-warning"
+            >
+              {t('methodology.metadata.scoring_mode_change_warning')}
+            </p>
+          ) : null}
 
-        {scoringEditable ? (
-          <>
+          {scoringMode === 'WEIGHTED_SCALE' ? (
             <label className="block text-sm font-medium text-text-primary">
-              <span>{t('common.type')}</span>
-              <select
-                value={methodologyType}
-                onChange={(e) => setMethodologyType(e.target.value as MethodologyType)}
-                className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
-                data-testid="metadata-type"
-              >
-                {TYPE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {t(opt.labelKey)}
-                  </option>
-                ))}
-              </select>
+              <span>{t('methodology.create.target_total_points')}</span>
+              <input
+                type="number"
+                step="any"
+                min="1"
+                value={targetTotalPoints}
+                onChange={(e) => setTargetTotalPoints(e.target.value)}
+                className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500 tabular-nums"
+                data-testid="metadata-target-total"
+              />
             </label>
-
-            <label className="block text-sm font-medium text-text-primary">
-              <span>{t('methodology.scoring_mode')}</span>
-              <select
-                value={scoringMode}
-                onChange={(e) => setScoringMode(e.target.value as ScoringMode)}
-                className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
-                data-testid="metadata-scoring-mode"
-              >
-                {SCORING_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {t(opt.labelKey)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {scoringModeChanged ? (
-              <p
-                className="rounded-md border border-warning-500/30 bg-warning-50 px-3 py-2 text-xs text-warning-700"
-                role="status"
-                data-testid="metadata-scoring-change-warning"
-              >
-                {t('methodology.metadata.scoring_mode_change_warning')}
-              </p>
-            ) : null}
-
-            {scoringMode === 'WEIGHTED_SCALE' ? (
-              <label className="block text-sm font-medium text-text-primary">
-                <span>{t('methodology.create.target_total_points')}</span>
-                <input
-                  type="number"
-                  step="any"
-                  min="1"
-                  value={targetTotalPoints}
-                  onChange={(e) => setTargetTotalPoints(e.target.value)}
-                  className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500 tabular-nums"
-                  data-testid="metadata-target-total"
-                />
-              </label>
-            ) : null}
-          </>
-        ) : null}
-
-        {error ? (
-          <p className="text-xs text-danger-700" role="alert" data-testid="metadata-error">
-            {error}
-          </p>
-        ) : null}
-      </div>
-    </DrawerForm>
+          ) : null}
+        </>
+      ) : null}
+    </TemplateMetadataDrawer>
   );
 }

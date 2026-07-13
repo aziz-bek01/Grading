@@ -1,7 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Lock, FilePlus2 } from 'lucide-react';
-import { Button } from '@/shared/components/ui/Button';
-import { PermissionGate } from '@/shared/components/access/PermissionGate';
+import { LockedEntityHeader } from '@/shared/components/template-management/LockedEntityHeader';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import type { GradeStructure } from '../types';
 
@@ -18,7 +16,8 @@ interface LockedGradeStructureHeaderProps {
  * NOTE: the wire never carries `approved_by_name` / `locked_by_name`
  * (BE-1) — only opaque UUIDs. We therefore show a name-less fallback
  * (timestamp + "system" actor key) rather than rendering a raw UUID, and the
- * archive reason (audit-only) is not shown here.
+ * archive reason (audit-only) is not shown here. Thin wrapper around the
+ * shared entity-agnostic `LockedEntityHeader`.
  */
 export function LockedGradeStructureHeader({
   structure,
@@ -37,40 +36,23 @@ export function LockedGradeStructureHeader({
     : 'gradeStructure.locked_header_body_approved';
 
   return (
-    <section
-      data-testid="locked-grade-structure-header"
-      data-status={structure.status}
-      role="status"
-      className="rounded-lg border border-locked/40 bg-locked-bg p-4 flex items-start gap-3"
-    >
-      <Lock size={18} className="text-locked mt-0.5" aria-hidden />
-      <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-semibold text-text-primary inline-flex items-center gap-2">
-          {t(titleKey)}
-        </h3>
-        <p className="text-xs text-text-secondary mt-1" data-testid="locked-actor-time">
-          {t(bodyKey, { actor, timestamp })}
-        </p>
-        {isLocked && structure.approved_at ? (
-          <p className="text-xs text-text-secondary mt-1" data-testid="locked-approved-by">
-            {t('gradeStructure.locked_header_body_approved', {
+    <LockedEntityHeader
+      status={structure.status}
+      testId="locked-grade-structure-header"
+      title={t(titleKey)}
+      body={t(bodyKey, { actor, timestamp })}
+      approvedByLine={
+        isLocked && structure.approved_at
+          ? t('gradeStructure.locked_header_body_approved', {
               actor,
               timestamp: structure.approved_at,
-            })}
-          </p>
-        ) : null}
-      </div>
-      <PermissionGate permission={PERMISSIONS.GRADE_EDIT}>
-        <Button
-          variant="primary"
-          size="sm"
-          leadingIcon={<FilePlus2 size={14} />}
-          onClick={onCreateNewVersion}
-          data-testid="grade-structure-create-new-version"
-        >
-          {t('gradeStructure.create_new_version')}
-        </Button>
-      </PermissionGate>
-    </section>
+            })
+          : null
+      }
+      permission={PERMISSIONS.GRADE_EDIT}
+      onCreateNewVersion={onCreateNewVersion}
+      createNewVersionLabel={t('gradeStructure.create_new_version')}
+      createNewVersionTestId="grade-structure-create-new-version"
+    />
   );
 }

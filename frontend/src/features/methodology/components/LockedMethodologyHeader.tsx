@@ -1,7 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Lock, FilePlus2 } from 'lucide-react';
-import { Button } from '@/shared/components/ui/Button';
-import { PermissionGate } from '@/shared/components/access/PermissionGate';
+import { LockedEntityHeader } from '@/shared/components/template-management/LockedEntityHeader';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { formatDateSafe } from '@/shared/lib/dates';
 import type { MethodologyVersion } from '../types';
@@ -15,8 +13,9 @@ interface LockedMethodologyHeaderProps {
  * Read-only banner shown above approved / locked methodology versions.
  * Per design-foundation §13: "Locked by [actor] on [timestamp]" + CTA.
  *
- * Pure UI — `PermissionGate` decides whether the "Create new version" CTA
- * even renders; backend remains source of truth.
+ * Pure UI — `PermissionGate` (inside the shared `LockedEntityHeader`) decides
+ * whether the "Create new version" CTA even renders; backend remains source
+ * of truth. Thin wrapper around the shared entity-agnostic `LockedEntityHeader`.
  */
 export function LockedMethodologyHeader({
   version,
@@ -47,51 +46,28 @@ export function LockedMethodologyHeader({
     : 'methodology.locked_header_body_approved';
 
   return (
-    <section
-      data-testid="locked-methodology-header"
-      data-status={version.status}
-      role="status"
-      className="rounded-lg border border-locked/40 bg-locked-bg p-4 flex items-start gap-3"
-    >
-      <Lock size={18} className="text-locked mt-0.5" aria-hidden />
-      <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-semibold text-text-primary inline-flex items-center gap-2">
-          {t(titleKey)}
-        </h3>
-        <p className="text-xs text-text-secondary mt-1" data-testid="locked-actor-time">
-          {t(bodyKey, {
-            actor,
-            timestamp: formatTs(timestamp),
-          })}
-        </p>
-        {/*
-          D-407 — if both APPROVED + LOCKED metadata are present, show the
-          approval line separately so the user sees "Approved by X on Y" in
-          addition to the locked banner.
-        */}
-        {isLocked && version.approved_by_name && version.approved_at && (
-          <p
-            className="text-xs text-text-secondary mt-1"
-            data-testid="locked-approved-by"
-          >
-            {t('methodology.locked_header_body_approved', {
+    <LockedEntityHeader
+      status={version.status}
+      testId="locked-methodology-header"
+      title={t(titleKey)}
+      body={t(bodyKey, { actor, timestamp: formatTs(timestamp) })}
+      /*
+       * D-407 — if both APPROVED + LOCKED metadata are present, show the
+       * approval line separately so the user sees "Approved by X on Y" in
+       * addition to the locked banner.
+       */
+      approvedByLine={
+        isLocked && version.approved_by_name && version.approved_at
+          ? t('methodology.locked_header_body_approved', {
               actor: version.approved_by_name,
               timestamp: formatTs(version.approved_at),
-            })}
-          </p>
-        )}
-      </div>
-      <PermissionGate permission={PERMISSIONS.METHODOLOGY_EDIT}>
-        <Button
-          variant="primary"
-          size="sm"
-          leadingIcon={<FilePlus2 size={14} />}
-          onClick={onCreateNewVersion}
-          data-testid="locked-create-new-version"
-        >
-          {t('methodology.create_new_version')}
-        </Button>
-      </PermissionGate>
-    </section>
+            })
+          : null
+      }
+      permission={PERMISSIONS.METHODOLOGY_EDIT}
+      onCreateNewVersion={onCreateNewVersion}
+      createNewVersionLabel={t('methodology.create_new_version')}
+      createNewVersionTestId="locked-create-new-version"
+    />
   );
 }

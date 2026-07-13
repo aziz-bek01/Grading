@@ -1,12 +1,10 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers, Layers3, Sparkles, Pencil, Archive } from 'lucide-react';
-import { Button } from '@/shared/components/ui/Button';
-import { Modal } from '@/shared/components/ui/Modal';
-import { PermissionGate } from '@/shared/components/access/PermissionGate';
-import { StatusBadge } from '@/shared/components/status/StatusBadge';
+import { Layers, Layers3, Sparkles } from 'lucide-react';
+import {
+  TemplatePicker,
+  type TemplatePickerOption,
+} from '@/shared/components/template-management/TemplatePicker';
 import { PERMISSIONS } from '@/shared/types/permissions';
-import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
 import { useGradeTemplates } from '../hooks/useGradeStructure';
 import type { Locale } from '@/shared/types/common';
@@ -73,7 +71,8 @@ const FALLBACK_OPTIONS: {
  *
  * Each custom template carries a "Custom" badge; built-ins carry a "Built-in"
  * badge. For CUSTOM templates the picker offers Rename / Archive, gated by
- * GRADE_EDIT; built-ins are read-only. Mirrors the methodology TemplateCatalog.
+ * GRADE_EDIT; built-ins are read-only. Thin wrapper around the shared
+ * entity-agnostic `TemplatePicker` (mirrors the methodology twin).
  */
 export function GradeStructureTemplatePicker({
   open,
@@ -81,16 +80,6 @@ export function GradeStructureTemplatePicker({
 }: GradeStructureTemplatePickerProps) {
   if (!open) return null;
   return <GradeStructureTemplatePickerBody {...rest} />;
-}
-
-interface PickerOption {
-  code: string;
-  structureType: GradeStructureType;
-  title: string;
-  body: string;
-  icon: React.ReactNode;
-  isCustom: boolean;
-  template?: GradeStructureTemplate;
 }
 
 function GradeStructureTemplatePickerBody({
@@ -101,141 +90,42 @@ function GradeStructureTemplatePickerBody({
   onArchiveTemplate,
 }: Omit<GradeStructureTemplatePickerProps, 'open'>) {
   const { t, i18n } = useTranslation();
-  const [selected, setSelected] = useState<string | null>(null);
   const templatesQuery = useGradeTemplates();
   const activeLocale = (locale ?? (i18n.language as Locale)) as Locale;
 
   const remote = templatesQuery.data?.items ?? [];
   const useRemote = !templatesQuery.isError && remote.length > 0;
 
-  const options: PickerOption[] = useRemote
-    ? buildRemoteOptions(remote, activeLocale, t)
-    : FALLBACK_OPTIONS.map((opt) => ({
-        code: opt.code,
-        structureType: opt.code,
-        title: t(opt.titleKey),
-        body: t(opt.bodyKey),
-        icon: ICONS[opt.code],
-        isCustom: false,
-      }));
-
-  const selectedOption = options.find((o) => o.code === selected) ?? null;
+  const options: TemplatePickerOption<GradeTemplateSelection, GradeStructureTemplate>[] =
+    useRemote
+      ? buildRemoteOptions(remote, activeLocale, t)
+      : FALLBACK_OPTIONS.map((opt) => ({
+          code: opt.code,
+          title: t(opt.titleKey),
+          body: t(opt.bodyKey),
+          icon: ICONS[opt.code],
+          isCustom: false,
+          canManage: false,
+          selection: { code: opt.code, structureType: opt.code, isCustom: false },
+        }));
 
   return (
-    <Modal
-      open
-      onClose={onCancel}
-      labelledBy="gs-template-picker-title"
-      size="xl"
-      className="bg-surface rounded-xl shadow-lg border border-border p-6"
-    >
-      <>
-        <h2 id="gs-template-picker-title" className="text-lg text-text-primary">
-          {t('gradeStructure.template_picker.title')}
-        </h2>
-        <p className="text-sm text-text-secondary mt-1">
-          {t('gradeStructure.template_picker.body')}
-        </p>
-
-        <ul className="mt-4 space-y-2 max-h-[60vh] overflow-y-auto" role="radiogroup">
-          {options.map((opt) => {
-            const active = selected === opt.code;
-            const canManage = opt.isCustom && !!opt.template?.id;
-            return (
-              <li key={opt.code}>
-                <div
-                  className={cn(
-                    'w-full rounded-lg border p-3 flex items-start gap-3',
-                    active
-                      ? 'border-primary-500 bg-primary-50'
-                      : 'border-border bg-surface hover:bg-divider',
-                  )}
-                >
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => setSelected(opt.code)}
-                    data-testid={`gs-template-option-${opt.code}`}
-                    className="flex-1 min-w-0 text-left flex items-start gap-3"
-                  >
-                    <span className="text-primary-600 mt-0.5" aria-hidden>
-                      {opt.icon}
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-text-primary">
-                          {opt.title}
-                        </span>
-                        {opt.isCustom ? (
-                          <StatusBadge
-                            tone="ai-suggestion"
-                            label={t('gradeStructure.template_source.custom')}
-                          />
-                        ) : (
-                          <StatusBadge
-                            tone="approved"
-                            label={t('gradeStructure.template_source.builtin')}
-                          />
-                        )}
-                      </span>
-                      <span className="block text-xs text-text-secondary mt-1">
-                        {opt.body}
-                      </span>
-                    </span>
-                  </button>
-
-                  {canManage ? (
-                    <PermissionGate permission={PERMISSIONS.GRADE_EDIT}>
-                      <span className="flex items-center gap-1 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={t('gradeStructure.manage_templates.rename')}
-                          data-testid={`gs-template-${opt.code}-rename`}
-                          onClick={() => opt.template && onRenameTemplate?.(opt.template)}
-                        >
-                          <Pencil size={14} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={t('gradeStructure.manage_templates.archive')}
-                          data-testid={`gs-template-${opt.code}-archive`}
-                          onClick={() => opt.template && onArchiveTemplate?.(opt.template)}
-                        >
-                          <Archive size={14} className="text-danger-700" />
-                        </Button>
-                      </span>
-                    </PermissionGate>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-
-        <div className="flex justify-end gap-2 mt-6">
-          <Button variant="secondary" onClick={onCancel}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            disabled={!selectedOption}
-            onClick={() =>
-              selectedOption &&
-              onSelect({
-                code: selectedOption.code,
-                structureType: selectedOption.structureType,
-                isCustom: selectedOption.isCustom,
-              })
-            }
-            data-testid="gs-template-picker-continue"
-          >
-            {t('common.continue')}
-          </Button>
-        </div>
-      </>
-    </Modal>
+    <TemplatePicker
+      titleId="gs-template-picker-title"
+      title={t('gradeStructure.template_picker.title')}
+      body={t('gradeStructure.template_picker.body')}
+      options={options}
+      customBadgeLabel={t('gradeStructure.template_source.custom')}
+      builtinBadgeLabel={t('gradeStructure.template_source.builtin')}
+      renameLabel={t('gradeStructure.manage_templates.rename')}
+      archiveLabel={t('gradeStructure.manage_templates.archive')}
+      permission={PERMISSIONS.GRADE_EDIT}
+      onCancel={onCancel}
+      onSelect={onSelect}
+      onRenameTemplate={onRenameTemplate}
+      onArchiveTemplate={onArchiveTemplate}
+      testIdPrefix="gs-template"
+    />
   );
 }
 
@@ -249,7 +139,7 @@ function buildRemoteOptions(
   remote: GradeStructureTemplate[],
   locale: Locale,
   t: (key: string) => string,
-): PickerOption[] {
+): TemplatePickerOption<GradeTemplateSelection, GradeStructureTemplate>[] {
   const fallbackTitle: Record<GradeStructureType, string> = {
     GRADE_14: 'gradeStructure.type.grade_14',
     GRADE_16: 'gradeStructure.type.grade_16',
@@ -261,33 +151,38 @@ function buildRemoteOptions(
     CUSTOM: 'gradeStructure.template_picker.custom_body',
   };
 
-  const mapped: PickerOption[] = remote.map((tpl) => {
-    const structureType = tpl.structure_type ?? 'CUSTOM';
-    const title =
-      pickLocalized(tpl.name_i18n, locale) || t(fallbackTitle[structureType] ?? fallbackTitle.CUSTOM);
-    const body =
-      pickLocalized(tpl.description_i18n, locale) ||
-      t(fallbackBody[structureType] ?? fallbackBody.CUSTOM);
-    return {
-      code: tpl.code,
-      structureType,
-      title,
-      body,
-      icon: ICONS[structureType] ?? ICONS.CUSTOM,
-      isCustom: !tpl.is_builtin,
-      template: tpl,
-    };
-  });
+  const mapped: TemplatePickerOption<GradeTemplateSelection, GradeStructureTemplate>[] =
+    remote.map((tpl) => {
+      const structureType = tpl.structure_type ?? 'CUSTOM';
+      const title =
+        pickLocalized(tpl.name_i18n, locale) ||
+        t(fallbackTitle[structureType] ?? fallbackTitle.CUSTOM);
+      const body =
+        pickLocalized(tpl.description_i18n, locale) ||
+        t(fallbackBody[structureType] ?? fallbackBody.CUSTOM);
+      const isCustom = !tpl.is_builtin;
+      return {
+        code: tpl.code,
+        title,
+        body,
+        icon: ICONS[structureType] ?? ICONS.CUSTOM,
+        isCustom,
+        canManage: isCustom && !!tpl.id,
+        selection: { code: tpl.code, structureType, isCustom },
+        template: tpl,
+      };
+    });
 
   // Ensure the empty-from-scratch CUSTOM option is always present.
   if (!mapped.some((o) => o.code === 'CUSTOM')) {
     mapped.push({
       code: 'CUSTOM',
-      structureType: 'CUSTOM',
       title: t(fallbackTitle.CUSTOM),
       body: t(fallbackBody.CUSTOM),
       icon: ICONS.CUSTOM,
       isCustom: false,
+      canManage: false,
+      selection: { code: 'CUSTOM', structureType: 'CUSTOM', isCustom: false },
     });
   }
   return mapped;

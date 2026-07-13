@@ -61,9 +61,13 @@ public class ImportTemplateRegistry {
                         "scoring_mode", "target_total_points",
                         "factor_code", "factor_name", "level_code", "level_name", "weight", "score"),
                 List.of(),
+                // requiredFields (Level-3 blank-cell check) includes weight + score:
+                // the committer requires both on every row, so catch a blank cell at
+                // upload time rather than surfacing it as a per-row commit failure.
                 List.of("methodology_code", "methodology_name", "methodology_type",
                         "scoring_mode", "target_total_points",
-                        "factor_code", "factor_name", "level_code", "level_name"),
+                        "factor_code", "factor_name", "level_code", "level_name",
+                        "weight", "score"),
                 List.of("methodology_name", "factor_name", "level_name"),
                 "METHODOLOGY_IMPORT",
                 "Methodology",

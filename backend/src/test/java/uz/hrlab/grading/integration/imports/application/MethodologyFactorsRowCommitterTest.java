@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.hrlab.grading.audit.application.AuditAction;
+import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.methodology.domain.MethodologyType;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionStatus;
@@ -22,7 +23,9 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -31,6 +34,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -118,6 +122,37 @@ class MethodologyFactorsRowCommitterTest {
         assertThat(levelCap.getValue().getLabelI18n()).containsEntry("ru-RU", "Basic");
     }
 
+    /**
+     * Coverage gap closed: no existing test asserted WHICH audit events the
+     * committer actually emits (the per-entity {@code audit.record(...)} calls
+     * inside {@code resolveDraftVersion}/{@code resolveFactor}/{@code
+     * upsertLevel} were previously unverified — only the returned {@code
+     * CommitResult.auditAction()} was checked, which is a DIFFERENT code path).
+     * Audit completeness for sensitive create actions is a mandatory pack
+     * (CLAUDE.md "audit ~20 events"); this locks the exact action sequence and
+     * proves every audit row is scoped to the AUTHENTICATED tenant, never a
+     * row-supplied one.
+     */
+    @Test
+    void newMethodology_emitsExpectedAuditEventsForEachCreatedEntity_scopedToAuthenticatedTenant() {
+        committer.commit(baseRow(), ctx);
+
+        ArgumentCaptor<AuditEvent> cap = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(audit, times(4)).record(cap.capture());
+        java.util.List<String> actions = cap.getAllValues().stream()
+                .map(AuditEvent::action).toList();
+
+        assertThat(actions).containsExactly(
+                AuditAction.METHODOLOGY_CREATED,
+                AuditAction.METHODOLOGY_VERSION_CREATED,
+                AuditAction.FACTOR_CREATED,
+                AuditAction.FACTOR_LEVEL_CREATED);
+        assertThat(cap.getAllValues())
+                .as("every audit row must carry the AUTHENTICATED tenant (ctx.tenantId()), "
+                        + "never a tenant id sourced from the imported row")
+                .allSatisfy(evt -> assertThat(evt.tenantId()).isEqualTo(tenantId));
+    }
+
     @Test
     void existingDraft_matchingMetadata_upsertsWithoutCreatingContainer() {
         MethodologyJpaEntity m = mock(MethodologyJpaEntity.class);
@@ -180,6 +215,107 @@ class MethodologyFactorsRowCommitterTest {
         verify(existingLevel).setPoints(any());
         verify(existingLevel).setLabelI18n(any());
         verify(levels).save(existingLevel);
+    }
+
+    // --------------------------------------------------------- multi-row grouping
+
+    /**
+     * Coverage gap closed: the ONLY existing proof that levels group correctly
+     * under their factor ACROSS ROWS (factor created once on first sighting,
+     * subsequent rows for the same {@code factor_code} accumulate levels rather
+     * than creating a duplicate factor) lived exclusively in
+     * {@code MethodologyImportApprovableIntegrationTest}, which requires Docker
+     * (Testcontainers Postgres) and cannot run in this environment. This is a
+     * fast, Docker-free unit-level equivalent: it drives FOUR sequential
+     * {@code commit()} calls (2 factors x 2 levels, exactly mirroring a real
+     * parsed METHODOLOGY_FACTORS_V1 sheet) against the SAME committer instance,
+     * re-stubbing the repository finders between rows to return the REAL objects
+     * captured from the previous row's {@code save()} — faithfully simulating
+     * what a real Postgres SELECT would resolve inside the same commit
+     * transaction — and asserts the row count collapses to exactly 2 distinct
+     * Factor ids and exactly 1 Methodology / 1 MethodologyVersion, never 4
+     * factors or 4 methodologies.
+     */
+    @Test
+    void fourRowsTwoFactorsTwoLevelsEach_groupsLevelsUnderTwoFactors_notFour() {
+        // Row 1 — KNOWLEDGE / L1: creates methodology + v1 + factor + level.
+        committer.commit(groupingRow("KNOWLEDGE", "Knowledge", "L1", "Basic", "40"), ctx);
+
+        ArgumentCaptor<MethodologyJpaEntity> mCap = ArgumentCaptor.forClass(MethodologyJpaEntity.class);
+        verify(methodologies, times(1)).save(mCap.capture());
+        MethodologyJpaEntity savedMethodology = mCap.getValue();
+
+        ArgumentCaptor<MethodologyVersionJpaEntity> vCap = ArgumentCaptor.forClass(MethodologyVersionJpaEntity.class);
+        verify(versions, times(1)).save(vCap.capture());
+        MethodologyVersionJpaEntity savedVersion = vCap.getValue();
+
+        ArgumentCaptor<FactorJpaEntity> f1Cap = ArgumentCaptor.forClass(FactorJpaEntity.class);
+        verify(factors, times(1)).save(f1Cap.capture());
+        FactorJpaEntity knowledgeFactor = f1Cap.getValue();
+
+        // From row 2 onward, the methodology/version/factor already exist —
+        // reconfigure the tenant-scoped finders exactly as a real Postgres
+        // SELECT would resolve them inside the same commit transaction.
+        given(methodologies.findByTenantIdAndProjectIdAndCode(eq(tenantId), eq(projectId), eq("ACME-GRADING")))
+                .willReturn(Optional.of(savedMethodology));
+        given(versions.findFirstByTenantIdAndMethodologyIdOrderByVersionNumberDesc(
+                eq(tenantId), eq(savedMethodology.getId())))
+                .willReturn(Optional.of(savedVersion));
+        given(factors.findByTenantIdAndMethodologyVersionIdAndCode(
+                eq(tenantId), eq(savedVersion.getId()), eq("KNOWLEDGE")))
+                .willReturn(Optional.of(knowledgeFactor));
+
+        // Row 2 — SAME factor_code, a SECOND level_code: must accumulate under
+        // the SAME factor, never create a duplicate KNOWLEDGE factor.
+        committer.commit(groupingRow("KNOWLEDGE", "Knowledge", "L2", "Advanced", "80"), ctx);
+        verify(factors, times(2)).save(any());       // row1 create + row2 resync, same entity
+        verify(methodologies, times(1)).save(any());  // no re-save — name unchanged
+        verify(versions, times(1)).save(any());       // no new version
+
+        // Row 3 — a DIFFERENT factor_code: a genuinely NEW factor.
+        committer.commit(groupingRow("EXPERIENCE", "Experience", "L1", "Basic", "40"), ctx);
+        ArgumentCaptor<FactorJpaEntity> f2Cap = ArgumentCaptor.forClass(FactorJpaEntity.class);
+        verify(factors, times(3)).save(f2Cap.capture());
+        FactorJpaEntity experienceFactor = f2Cap.getValue(); // most recent = row3's create
+        assertThat(experienceFactor.getId()).isNotEqualTo(knowledgeFactor.getId());
+
+        given(factors.findByTenantIdAndMethodologyVersionIdAndCode(
+                eq(tenantId), eq(savedVersion.getId()), eq("EXPERIENCE")))
+                .willReturn(Optional.of(experienceFactor));
+
+        // Row 4 — EXPERIENCE / L2: accumulates under the EXPERIENCE factor.
+        committer.commit(groupingRow("EXPERIENCE", "Experience", "L2", "Advanced", "80"), ctx);
+
+        // ------------------------------------------------------ final assertions
+        verify(factors, times(4)).save(any());        // 2 creates + 2 resyncs
+        verify(methodologies, times(1)).save(any());   // exactly ONE methodology, ever
+        verify(versions, times(1)).save(any());        // exactly ONE version, ever
+
+        ArgumentCaptor<FactorLevelJpaEntity> levelCap = ArgumentCaptor.forClass(FactorLevelJpaEntity.class);
+        verify(levels, times(4)).save(levelCap.capture());
+        Set<UUID> distinctLevelIds = levelCap.getAllValues().stream()
+                .map(FactorLevelJpaEntity::getId).collect(Collectors.toSet());
+        assertThat(distinctLevelIds)
+                .as("4 rows across 2 factors must create 4 distinct FactorLevel rows")
+                .hasSize(4);
+    }
+
+    /** Row helper for the multi-row grouping test — metadata fixed, factor/level vary. */
+    private static Map<String, String> groupingRow(String factorCode, String factorName,
+                                                    String levelCode, String levelName, String score) {
+        Map<String, String> r = new LinkedHashMap<>();
+        r.put("methodology_code", "ACME-GRADING");
+        r.put("methodology_name", "ACME grading");
+        r.put("methodology_type", "CLASSIC_8_FACTOR");
+        r.put("scoring_mode", "WEIGHTED_POINTS");
+        r.put("target_total_points", "1000");
+        r.put("factor_code", factorCode);
+        r.put("factor_name", factorName);
+        r.put("weight", "50");
+        r.put("score", score);
+        r.put("level_code", levelCode);
+        r.put("level_name", levelName);
+        return r;
     }
 
     // --------------------------------------------------------------- rejections

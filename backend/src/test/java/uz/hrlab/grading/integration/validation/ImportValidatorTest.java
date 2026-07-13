@@ -3,8 +3,12 @@ package uz.hrlab.grading.integration.validation;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import uz.hrlab.grading.integration.excel.ExcelParser;
+import uz.hrlab.grading.integration.imports.application.ImportTemplateDefinition;
+import uz.hrlab.grading.integration.imports.application.ImportTemplateRegistry;
 import uz.hrlab.grading.integration.imports.domain.ImportErrorLevel;
+import uz.hrlab.grading.integration.imports.domain.ImportTemplateCode;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -86,6 +90,47 @@ class ImportValidatorTest {
                 List.of(Map.of("name", "")));
         ValidationResult r = validator.validateRows(sheet, List.of("name"));
         assertThat(r.countByLevel(ImportErrorLevel.ERROR)).isEqualTo(1);
+    }
+
+    /**
+     * QA-gate finding, now FIXED: {@link ImportTemplateRegistry}'s
+     * {@code METHODOLOGY_FACTORS_V1} definition now lists {@code weight} and
+     * {@code score} in BOTH {@code requiredColumns} (Level-2 — the COLUMN HEADER
+     * must be present) AND {@code requiredFields} (Level-3 — a BLANK CELL in an
+     * existing column is flagged). The committer requires both on every row, so
+     * a blank {@code weight}/{@code score} cell is now caught up front at
+     * upload-time validation instead of surfacing one stage too late as a
+     * per-row {@code MISSING_REQUIRED_FIELD} COMMIT failure. This test locks the
+     * fix: a blank {@code weight} cell IS a Level-3 blocker.
+     */
+    @Test
+    void methodologyFactorsV1_blankWeightCell_isCaughtAtLevel3RowValidation() {
+        ImportTemplateDefinition def = new ImportTemplateRegistry()
+                .find(ImportTemplateCode.METHODOLOGY_FACTORS_V1)
+                .orElseThrow();
+
+        Map<String, String> rowMissingWeight = new LinkedHashMap<>();
+        rowMissingWeight.put("methodology_code", "ACME-GRADING");
+        rowMissingWeight.put("methodology_name", "ACME grading");
+        rowMissingWeight.put("methodology_type", "CLASSIC_8_FACTOR");
+        rowMissingWeight.put("scoring_mode", "WEIGHTED_POINTS");
+        rowMissingWeight.put("target_total_points", "1000");
+        rowMissingWeight.put("factor_code", "KNOWLEDGE");
+        rowMissingWeight.put("factor_name", "Knowledge");
+        rowMissingWeight.put("level_code", "L1");
+        rowMissingWeight.put("level_name", "Basic");
+        rowMissingWeight.put("weight", ""); // BLANK — the committer requires this
+        rowMissingWeight.put("score", "40");
+
+        ExcelParser.ParsedSheet sheet = new ExcelParser.ParsedSheet(
+                List.copyOf(rowMissingWeight.keySet()), List.of(rowMissingWeight));
+
+        ValidationResult r = validator.validateRows(sheet, def.requiredFields());
+
+        assertThat(r.countByLevel(ImportErrorLevel.ERROR))
+                .as("METHODOLOGY_FACTORS_V1.requiredFields() now includes weight/score, "
+                        + "so a blank weight cell IS caught at Level-3 row validation")
+                .isPositive();
     }
 
     // -------- Level 5 — Security validation ---------------------------------

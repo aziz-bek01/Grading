@@ -52,15 +52,21 @@ public class ExportController {
         this.cancelUseCase = cancelUseCase;
     }
 
+    // Controller-level backstop (F2, defense-in-depth) mirrors the type-dependent
+    // permissions the use case enforces via ExportTypePermissions#requiredPermission
+    // (salary types→SALARY_EXPORT, executive report→REPORT_EXPORT, everything
+    // else→EXPORT_REQUEST). The exact per-type check still runs in
+    // RequestExportUseCase — salary-bearing exports are re-gated on SALARY_EXPORT.
     @PostMapping("/request")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('EXPORT_REQUEST','REPORT_EXPORT','SALARY_EXPORT')")
     public ExportJobResponse request(@Valid @RequestBody RequestExportRequest req) {
         UUID id = requestUseCase.request(req.exportType(), req.format(), req.projectId(), req.filterParams());
         return queries.get(id);
     }
 
+    // Read backstop (F2) mirrors ExportJobQueries#requireRead.
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('EXPORT_READ','EXPORT_REQUEST','REPORT_EXPORT','SALARY_EXPORT')")
     public PageResponse<ExportJobResponse> list(
             @RequestParam(required = false) UUID projectId,
             @RequestParam(required = false) ExportJobStatus status,
@@ -72,7 +78,7 @@ public class ExportController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('EXPORT_READ','EXPORT_REQUEST','REPORT_EXPORT','SALARY_EXPORT')")
     public ExportJobResponse get(@PathVariable("id") UUID id) {
         return queries.get(id);
     }
@@ -84,8 +90,10 @@ public class ExportController {
      * the URL. Salary-bearing exports are re-checked for {@code SALARY_EXPORT}
      * inside the use case.
      */
+    // Backstop (F2) mirrors the type-dependent permission re-checked by
+    // IssueDownloadUrlUseCase via ExportTypePermissions#requiredPermission.
     @GetMapping("/{id}/download-url")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('EXPORT_REQUEST','REPORT_EXPORT','SALARY_EXPORT')")
     public Map<String, String> downloadUrl(@PathVariable("id") UUID id) {
         String url = downloadUseCase.issue(id);
         return Map.of("url", url);
@@ -117,6 +125,10 @@ public class ExportController {
                 .body(new ByteArrayResource(payload.bytes()));
     }
 
+    // Intentionally isAuthenticated() (F2): CancelExportJobUseCase authorizes by
+    // tenant ownership only (findByIdAndTenantId → 404 cross-tenant) and checks
+    // NO permission code, so there is no code to mirror here — inventing one would
+    // diverge from the enforced behavior.
     @PostMapping("/{id}/cancel")
     @PreAuthorize("isAuthenticated()")
     public ExportJobResponse cancel(@PathVariable("id") UUID id) {

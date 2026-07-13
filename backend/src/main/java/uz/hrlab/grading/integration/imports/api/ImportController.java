@@ -83,11 +83,18 @@ public class ImportController {
      * Download an empty XLSX template for the given import template code.
      * Returns the canonical header row (8/9/11/8/5 columns depending on
      * template) plus a single banner row carrying the DEMO marker so users
-     * always see something even before they edit. Permission: {@code IMPORT_READ}.
+     * always see something even before they edit.
+     *
+     * <p>Gate mirrors the import read-set enforced by
+     * {@link ImportBatchQueries#list} (F4): anyone who may read or perform an
+     * import can pull the blank template they need to prepare an upload. The
+     * previous {@code hasAuthority('IMPORT_READ') or isAuthenticated()} was a
+     * nullified gate — the {@code or isAuthenticated()} let ANY logged-in user
+     * through, making the specific-permission check dead.
      */
     @GetMapping(value = "/templates/{templateCode}/empty.xlsx",
             produces = XLSX_MIME)
-    @PreAuthorize("hasAuthority('IMPORT_READ') or isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('IMPORT_READ','ORG_IMPORT','POSITION_IMPORT','METHODOLOGY_IMPORT','GRADE_IMPORT')")
     public ResponseEntity<byte[]> downloadEmptyTemplate(
             @PathVariable("templateCode") String templateCode) {
         templateRegistry.find(templateCode)
@@ -99,13 +106,14 @@ public class ImportController {
     }
 
     /**
-     * Download a sample XLSX template populated with realistic ACME Holdings
-     * data so users can either edit it or use it as a starting point.
-     * Permission: {@code IMPORT_READ}.
+     * Download a sample XLSX template populated with fictional ACME Holdings
+     * demo data (no real tenant data) so users can either edit it or use it as
+     * a starting point. Same import read-set gate as {@link #downloadEmptyTemplate}
+     * (F4) — {@code or isAuthenticated()} removed so the permission check is real.
      */
     @GetMapping(value = "/templates/{templateCode}/sample.xlsx",
             produces = XLSX_MIME)
-    @PreAuthorize("hasAuthority('IMPORT_READ') or isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('IMPORT_READ','ORG_IMPORT','POSITION_IMPORT','METHODOLOGY_IMPORT','GRADE_IMPORT')")
     public ResponseEntity<byte[]> downloadSampleTemplate(
             @PathVariable("templateCode") String templateCode) {
         templateRegistry.find(templateCode)
@@ -135,8 +143,14 @@ public class ImportController {
      * row — never producing an {@code ImportBatch} or storage write
      * (integration-review F3).
      */
+    // Controller-level backstop (F2, defense-in-depth) mirrors the template-
+    // dependent write permissions the use case enforces via
+    // ImportTemplateDefinition#requiredPermission (ORG_STRUCTURE→ORG_IMPORT,
+    // POSITION_CATALOG→POSITION_IMPORT, METHODOLOGY_FACTORS→METHODOLOGY_IMPORT,
+    // GRADE_BANDS→GRADE_IMPORT, JOB_PROFILE→JOB_PROFILE_EDIT). The exact
+    // per-template check still runs in UploadImportFileUseCase.
     @PostMapping("/upload")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('ORG_IMPORT','POSITION_IMPORT','METHODOLOGY_IMPORT','GRADE_IMPORT','JOB_PROFILE_EDIT')")
     public ImportBatchResponse upload(@RequestPart("file") MultipartFile file,
                                       @RequestParam("templateCode") @NotBlank String templateCode,
                                       @RequestParam(value = "projectId", required = false) UUID projectId) {
@@ -176,8 +190,9 @@ public class ImportController {
         }
     }
 
+    // Read backstop (F2) mirrors ImportBatchQueries#requireRead.
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('IMPORT_READ','ORG_IMPORT','POSITION_IMPORT','METHODOLOGY_IMPORT','GRADE_IMPORT')")
     public PageResponse<ImportBatchResponse> list(
             @RequestParam(required = false) UUID projectId,
             @RequestParam(required = false) ImportBatchStatus status,
@@ -188,13 +203,13 @@ public class ImportController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('IMPORT_READ','ORG_IMPORT','POSITION_IMPORT','METHODOLOGY_IMPORT','GRADE_IMPORT')")
     public ImportBatchResponse get(@PathVariable("id") UUID id) {
         return queries.get(id);
     }
 
     @GetMapping("/{id}/errors")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('IMPORT_READ','ORG_IMPORT','POSITION_IMPORT','METHODOLOGY_IMPORT','GRADE_IMPORT')")
     public PageResponse<ImportErrorResponse> errors(
             @PathVariable("id") UUID id,
             @RequestParam(required = false) ImportErrorLevel level,
@@ -204,14 +219,17 @@ public class ImportController {
         return PageResponse.from(queries.listErrors(id, level, pageable));
     }
 
+    // Commit re-runs the same template-dependent write permission the upload
+    // checked; backstop (F2) mirrors that write-permission set.
     @PostMapping("/{id}/commit")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('ORG_IMPORT','POSITION_IMPORT','METHODOLOGY_IMPORT','GRADE_IMPORT','JOB_PROFILE_EDIT')")
     public ImportBatchResponse commit(@PathVariable("id") UUID id) {
         return commitUseCase.commit(id);
     }
 
+    // Backstop (F2) mirrors CancelImportBatchUseCase#requireAny(IMPORT_CANCEL, ORG_IMPORT).
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyAuthority('IMPORT_CANCEL','ORG_IMPORT')")
     public ImportBatchResponse cancel(@PathVariable("id") UUID id) {
         return cancelUseCase.cancel(id);
     }

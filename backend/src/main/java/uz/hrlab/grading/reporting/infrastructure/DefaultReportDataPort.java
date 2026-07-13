@@ -38,8 +38,8 @@ import uz.hrlab.grading.position.infrastructure.PositionJpaEntity;
 import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.project.infrastructure.ProjectJpaEntity;
 import uz.hrlab.grading.project.infrastructure.ProjectRepository;
-import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
-import uz.hrlab.grading.reporting.application.template.ReportDataPort;
+import uz.hrlab.grading.integration.reportdata.EvaluationReportFilter;
+import uz.hrlab.grading.integration.reportdata.ReportDataPort;
 import uz.hrlab.grading.reporting.application.template.ReportLabels;
 import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
 

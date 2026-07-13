@@ -3,10 +3,10 @@ package uz.hrlab.grading.reporting.application.template.impl;
 import com.lowagie.text.Document;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
-import uz.hrlab.grading.reporting.application.template.DocxBuilder;
-import uz.hrlab.grading.reporting.application.template.PdfBuilder;
+import uz.hrlab.grading.integration.docs.DocxBuilder;
+import uz.hrlab.grading.integration.docs.PdfBuilder;
 import uz.hrlab.grading.reporting.application.template.ReportGenerationContext;
-import uz.hrlab.grading.reporting.application.template.ReportTemplateException;
+import uz.hrlab.grading.common.exception.ReportTemplateException;
 
 import java.io.OutputStream;
 import java.time.OffsetDateTime;

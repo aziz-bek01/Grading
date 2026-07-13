@@ -1,6 +1,7 @@
 package uz.hrlab.grading.reporting.application.template;
 
 import org.springframework.stereotype.Component;
+import uz.hrlab.grading.common.exception.ReportTemplateException;
 import uz.hrlab.grading.reporting.domain.ReportFormat;
 import uz.hrlab.grading.reporting.domain.ReportType;
 

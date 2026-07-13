@@ -1,5 +1,6 @@
-package uz.hrlab.grading.reporting.application.template;
+package uz.hrlab.grading.integration.docs;
 
+import uz.hrlab.grading.common.exception.ReportTemplateException;
 import org.docx4j.openpackaging.exceptions.Docx4JException;
 import org.docx4j.openpackaging.packages.WordprocessingMLPackage;
 import org.docx4j.openpackaging.parts.WordprocessingML.MainDocumentPart;

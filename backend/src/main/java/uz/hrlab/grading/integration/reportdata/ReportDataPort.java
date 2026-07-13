@@ -1,4 +1,4 @@
-package uz.hrlab.grading.reporting.application.template;
+package uz.hrlab.grading.integration.reportdata;
 
 import java.time.OffsetDateTime;
 import java.util.List;

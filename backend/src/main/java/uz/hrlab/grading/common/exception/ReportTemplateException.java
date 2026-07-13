@@ -1,8 +1,6 @@
-package uz.hrlab.grading.reporting.application.template;
+package uz.hrlab.grading.common.exception;
 
-import uz.hrlab.grading.common.exception.BaseDomainException;
-
-/** Rendering failure inside a {@link ReportTemplate}. */
+/** Rendering failure inside a report template. */
 public class ReportTemplateException extends BaseDomainException {
 
     public ReportTemplateException(String safeMessage) {

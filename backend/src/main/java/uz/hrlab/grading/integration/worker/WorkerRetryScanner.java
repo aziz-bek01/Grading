@@ -5,7 +5,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.integration.exports.infrastructure.ExportJobRepository;
 import uz.hrlab.grading.integration.imports.infrastructure.ImportBatchRepository;
-import uz.hrlab.grading.reporting.infrastructure.ReportRepository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -31,14 +30,14 @@ public class WorkerRetryScanner {
 
     private final ExportJobRepository exportJobs;
     private final ImportBatchRepository importBatches;
-    private final ReportRepository reports;
+    private final ReportRetryScanPort reportScan;
 
     public WorkerRetryScanner(ExportJobRepository exportJobs,
                               ImportBatchRepository importBatches,
-                              ReportRepository reports) {
+                              ReportRetryScanPort reportScan) {
         this.exportJobs = exportJobs;
         this.importBatches = importBatches;
-        this.reports = reports;
+        this.reportScan = reportScan;
     }
 
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
@@ -57,8 +56,9 @@ public class WorkerRetryScanner {
 
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public List<WorkerReQueuer.DueRow> dueReports(UUID tenantId, OffsetDateTime now) {
-        return reports.findRetryDue(tenantId, now, WorkerRetryPolicy.MAX_ATTEMPTS).stream()
-                .map(r -> new WorkerReQueuer.DueRow(r.getId(), r.getProjectId(), r.getAttemptCount()))
-                .toList();
+        // The entity → DueRow projection lives in the reporting-side adapter
+        // (ReportRetryScanPort impl); it runs INSIDE this REQUIRES_NEW read-only
+        // tx, so the RLS binding + tenant_id predicate are unchanged.
+        return reportScan.findRetryDue(tenantId, now, WorkerRetryPolicy.MAX_ATTEMPTS);
     }
 }

@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
-import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
+import uz.hrlab.grading.integration.reportdata.EvaluationReportFilter;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
 import java.util.HashSet;

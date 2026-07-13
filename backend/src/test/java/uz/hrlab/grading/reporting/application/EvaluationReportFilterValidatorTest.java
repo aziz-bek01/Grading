@@ -7,7 +7,7 @@ import uz.hrlab.grading.methodology.domain.MethodologyVersionStatus;
 import uz.hrlab.grading.methodology.domain.ScoringMode;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
-import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
+import uz.hrlab.grading.integration.reportdata.EvaluationReportFilter;
 import uz.hrlab.grading.reporting.domain.ReportType;
 
 import java.util.List;

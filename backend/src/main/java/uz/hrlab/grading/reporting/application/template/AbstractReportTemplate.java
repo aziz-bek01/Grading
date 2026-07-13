@@ -1,5 +1,6 @@
 package uz.hrlab.grading.reporting.application.template;
 
+import uz.hrlab.grading.common.exception.ReportTemplateException;
 import uz.hrlab.grading.reporting.domain.ReportFormat;
 
 import java.io.OutputStream;

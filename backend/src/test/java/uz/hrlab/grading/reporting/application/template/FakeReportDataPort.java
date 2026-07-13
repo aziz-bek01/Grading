@@ -1,5 +1,8 @@
 package uz.hrlab.grading.reporting.application.template;
 
+import uz.hrlab.grading.integration.reportdata.EvaluationReportFilter;
+import uz.hrlab.grading.integration.reportdata.ReportDataPort;
+
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;

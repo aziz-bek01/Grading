@@ -529,25 +529,36 @@ class ArchitectureTest {
     //  countInProgressEvaluations) through the module-owned outbound port
     //  MethodologyReferencePort (impl EvaluationMethodologyReferenceAdapter in
     //  the evaluation module), so the static arrow now flows evaluation →
-    //  methodology only. This rule pins that: no new dependency may re-introduce
-    //  a cycle between these two modules.
+    //  methodology only.
     //
-    //  SCOPE: deliberately narrowed to the {evaluation, methodology} slice pair.
-    //  A whole-app beFreeOfCycles() is RED today — the modular monolith carries
-    //  many other pre-existing package cycles (e.g. access ↔ project, and the
-    //  still-open integration ↔ reporting cycle, which needs an invasive
-    //  storage/excel/worker port extraction that is out of scope for this
-    //  behavior-preserving change). Widen the SLICE_FILTER as each further pair
-    //  is genuinely cleaned; do NOT flip it to the whole app until every pair is.
+    //  The integration ↔ reporting cycle was subsequently broken (arch-hardening
+    //  2026-07-13, follow-up) by inverting the three upward integration →
+    //  reporting edges: (1) the shared read SPI ReportDataPort + its row records
+    //  + EvaluationReportFilter were relocated to integration.reportdata and the
+    //  DocxBuilder/PdfBuilder document primitives to integration.docs (siblings
+    //  of integration.excel.ExcelWriter), so ExportContentGenerator no longer
+    //  reaches up into reporting; (2)/(3) the WorkerReQueuer / WorkerRetryScanner
+    //  now depend on the integration-owned ports ReportGenerationPort /
+    //  ReportRetryScanPort, implemented by reporting-side adapters. The static
+    //  arrow now flows reporting → integration only.
+    //
+    //  SCOPE: the cleaned slice set is {evaluation, methodology, integration,
+    //  reporting} — proven a DAG (reporting → {integration, evaluation} →
+    //  methodology, evaluation → methodology). A whole-app beFreeOfCycles() is
+    //  still RED — the modular monolith carries other pre-existing package cycles
+    //  (e.g. access ↔ project). Widen this set as each further pair is genuinely
+    //  cleaned; do NOT flip it to the whole app until every pair is.
     // ---------------------------------------------------------------------
 
     /** Slices whose mutual dependencies are now proven cycle-free and must stay so. */
     private static final DescribedPredicate<Slice> CYCLE_FREE_MODULE_PAIR =
-            new DescribedPredicate<>("in the cycle-free module set [evaluation, methodology]") {
+            new DescribedPredicate<>(
+                    "in the cycle-free module set [evaluation, methodology, integration, reporting]") {
                 @Override
                 public boolean test(Slice slice) {
                     String module = slice.getNamePart(1);
-                    return "evaluation".equals(module) || "methodology".equals(module);
+                    return "evaluation".equals(module) || "methodology".equals(module)
+                            || "integration".equals(module) || "reporting".equals(module);
                 }
             };
 
@@ -557,11 +568,11 @@ class ArchitectureTest {
                 .matching(BASE_PACKAGE + ".(*)..")
                 .that(CYCLE_FREE_MODULE_PAIR)
                 .should().beFreeOfCycles()
-                .because("arch-hardening 2026-07-13 — the evaluation ↔ methodology package "
-                        + "cycle was inverted via MethodologyReferencePort; no new dependency "
-                        + "may re-introduce a cycle between these modules. (integration ↔ "
-                        + "reporting remains an open, documented cycle requiring an invasive "
-                        + "port extraction — excluded from this scoped rule, not weakened.)");
+                .because("arch-hardening 2026-07-13 — the evaluation ↔ methodology cycle was "
+                        + "inverted via MethodologyReferencePort, and the integration ↔ reporting "
+                        + "cycle via the integration-owned ReportDataPort/ReportGenerationPort/"
+                        + "ReportRetryScanPort ports; no new dependency may re-introduce a cycle "
+                        + "among {evaluation, methodology, integration, reporting}.");
         rule.check(CLASSES);
     }
 

@@ -46,7 +46,7 @@ class RequestReportUseCaseAuditTest {
         // Validator parses with a real ObjectMapper so the use case receives the
         // structured filter (we only need the cardinality wiring here).
         when(validator.validate(any(), any(), any())).thenAnswer(inv ->
-                uz.hrlab.grading.reporting.application.template.EvaluationReportFilter
+                uz.hrlab.grading.integration.reportdata.EvaluationReportFilter
                         .parse(inv.getArgument(2), new com.fasterxml.jackson.databind.ObjectMapper()));
         RequestReportUseCase useCase =
                 new RequestReportUseCase(reports, worker, audit, validator, cancelUseCase);

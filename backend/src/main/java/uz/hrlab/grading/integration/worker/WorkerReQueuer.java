@@ -9,7 +9,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.metrics.WorkerMetrics;
-import uz.hrlab.grading.reporting.infrastructure.ReportGenerationJob;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 import uz.hrlab.grading.tenancy.domain.TenantStatus;
@@ -70,7 +69,7 @@ public class WorkerReQueuer {
     private final WorkerRetryScanner scanner;
     private final ExportGenerationJob exportWorker;
     private final ImportProcessingJob importWorker;
-    private final ReportGenerationJob reportWorker;
+    private final ReportGenerationPort reportWorker;
     private final AuditService audit;
     private final WorkerMetrics metrics;
 
@@ -78,7 +77,7 @@ public class WorkerReQueuer {
                           WorkerRetryScanner scanner,
                           ExportGenerationJob exportWorker,
                           ImportProcessingJob importWorker,
-                          ReportGenerationJob reportWorker,
+                          ReportGenerationPort reportWorker,
                           AuditService audit,
                           WorkerMetrics metrics) {
         this.tenants = tenants;

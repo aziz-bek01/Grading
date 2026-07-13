@@ -11,7 +11,7 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.reporting.application.template.EvaluationReportFilter;
+import uz.hrlab.grading.integration.reportdata.EvaluationReportFilter;
 import uz.hrlab.grading.reporting.application.template.ReportTitleResolver;
 import uz.hrlab.grading.reporting.domain.ReportFormat;
 import uz.hrlab.grading.reporting.domain.ReportStatus;

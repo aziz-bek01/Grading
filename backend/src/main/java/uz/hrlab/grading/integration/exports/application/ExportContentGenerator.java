@@ -7,9 +7,9 @@ import uz.hrlab.grading.integration.excel.ExcelWriter;
 import uz.hrlab.grading.integration.excel.SafeCellWriter;
 import uz.hrlab.grading.integration.exports.domain.ExportFormat;
 import uz.hrlab.grading.integration.exports.domain.ExportType;
-import uz.hrlab.grading.reporting.application.template.DocxBuilder;
-import uz.hrlab.grading.reporting.application.template.PdfBuilder;
-import uz.hrlab.grading.reporting.application.template.ReportDataPort;
+import uz.hrlab.grading.integration.docs.DocxBuilder;
+import uz.hrlab.grading.integration.docs.PdfBuilder;
+import uz.hrlab.grading.integration.reportdata.ReportDataPort;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -134,7 +134,7 @@ public class ExportContentGenerator {
         // Exports are unfiltered (the structured report filter is EVALUATION_SUMMARY
         // report-only, out of scope for the export path) — pass the no-op filter.
         ReportDataPort.EvaluationMatrix m = data.loadEvaluations(tenantId, projectId, locale,
-                uz.hrlab.grading.reporting.application.template.EvaluationReportFilter.none());
+                uz.hrlab.grading.integration.reportdata.EvaluationReportFilter.none());
         // Header label keeps the factor code for export-sheet stability; the
         // score lookup is keyed by code.
         List<String> headers = new ArrayList<>();
@@ -179,7 +179,7 @@ public class ExportContentGenerator {
         // Exports stay unfiltered (out of scope) — pass the no-op filter, exactly
         // as this generator already does for loadEvaluations.
         ReportDataPort.ExecutiveKpi kpi = data.loadExecutiveKpi(tenantId, projectId, locale,
-                uz.hrlab.grading.reporting.application.template.EvaluationReportFilter.none());
+                uz.hrlab.grading.integration.reportdata.EvaluationReportFilter.none());
         List<List<String>> rows = new ArrayList<>();
         rows.add(List.of("Project", nz(kpi.projectName())));
         rows.add(List.of("Status", nz(kpi.projectStatus())));

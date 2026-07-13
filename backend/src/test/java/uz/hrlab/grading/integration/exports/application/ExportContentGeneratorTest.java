@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import uz.hrlab.grading.integration.excel.ExcelWriter;
 import uz.hrlab.grading.integration.exports.domain.ExportFormat;
 import uz.hrlab.grading.integration.exports.domain.ExportType;
-import uz.hrlab.grading.reporting.application.template.ReportDataPort;
+import uz.hrlab.grading.integration.reportdata.ReportDataPort;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -138,7 +138,7 @@ class ExportContentGeneratorTest {
 
         @Override
         public EvaluationMatrix loadEvaluations(UUID tenantId, UUID projectId, String locale,
-                uz.hrlab.grading.reporting.application.template.EvaluationReportFilter filter) {
+                uz.hrlab.grading.integration.reportdata.EvaluationReportFilter filter) {
             return new EvaluationMatrix("Proj", "M (v1)", 1, 1,
                     List.of(new FactorRef("KNOWLEDGE", "Knowledge"),
                             new FactorRef("PROBLEM_SOLVING", "Problem solving")),
@@ -148,7 +148,7 @@ class ExportContentGeneratorTest {
 
         @Override
         public ExecutiveKpi loadExecutiveKpi(UUID tenantId, UUID projectId, String locale,
-                uz.hrlab.grading.reporting.application.template.EvaluationReportFilter filter) {
+                uz.hrlab.grading.integration.reportdata.EvaluationReportFilter filter) {
             return new ExecutiveKpi("Proj", "Active", "2026-01-01", "2026-12-31",
                     10, 8, 6, 3, 100, List.of());
         }

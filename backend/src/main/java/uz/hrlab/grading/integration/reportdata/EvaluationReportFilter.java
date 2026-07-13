@@ -1,4 +1,4 @@
-package uz.hrlab.grading.reporting.application.template;
+package uz.hrlab.grading.integration.reportdata;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

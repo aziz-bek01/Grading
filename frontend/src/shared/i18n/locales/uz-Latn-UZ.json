@@ -285,6 +285,7 @@
     "column_job_family": "Oila",
     "column_job_level": "Daraja",
     "column_status": "Holat",
+    "column_job_profile": "Lavozim profili",
     "column_updated": "Yangilangan",
     "filter_department": "Boʻlim",
     "filter_job_family": "Oila",
@@ -353,8 +354,8 @@
     "empty_title": "Voqealar topilmadi",
     "no_access": "Audit jurnalini koʻrish uchun AUDIT_READ huquqi talab qilinadi.",
     "export_csv": "CSV koʻrinishida yuklab olish",
-    "hash_chain_valid": "Xesh zanjiri butun",
-    "hash_chain_valid_hint": "Joriy voqea xeshi oldingisi bilan muvofiq. Toʻliq zanjir tekshiruvi — bekendda.",
+    "hash_chain_unverified": "Mustaqil tekshirilmagan",
+    "hash_chain_unverified_hint": "Ushbu hodisaning xesh zanjiri mustaqil tekshirilmagan. Toʻliq kriptografik tekshiruv hozircha mavjud boʻlmagan backend xizmati orqali amalga oshiriladi.",
     "hash_chain_broken": "Xesh zanjiri buzilgan",
     "filter": {
       "from": "Sanadan",
@@ -472,7 +473,8 @@
       "draft": "Qoralama",
       "under_review": "Tekshiruvda",
       "approved": "Tasdiqlangan",
-      "archived": "Arxivda"
+      "archived": "Arxivda",
+      "missing": "Yoʻq"
     },
     "section": {
       "role": "Rol va masʼuliyat",

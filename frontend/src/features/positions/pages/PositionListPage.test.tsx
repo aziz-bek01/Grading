@@ -57,6 +57,32 @@ describe('<PositionListPage /> CRUD', () => {
     expect(screen.getByText('Технический директор')).toBeInTheDocument();
   });
 
+  // PAGE-2: the "Job profile" column reuses the Position Catalog (no
+  // duplicate "Job Profiles" page) — the sidebar / workflow-stepper "Job
+  // Profiles" destination and the "Positions" destination are the SAME page,
+  // but this column is what makes that destination meaningful for job
+  // profiles instead of a generic list with no job-profile signal.
+  //
+  // Runs BEFORE the rename test below — it targets CFO/CTO by their PRISTINE
+  // seed titles, and the next test renames CTO (mockDb is a persistent
+  // module-level singleton across this file's tests; see the header note).
+  it('surfaces job profile status per position (fixture: CFO has an approved profile, CTO has none)', async () => {
+    signIn('super-admin');
+    render(renderPage());
+
+    const cfoCell = await screen.findByText('Финансовый директор');
+    const cfoRow = cfoCell.closest('tr')!;
+    await waitFor(() =>
+      expect(within(cfoRow).getByText(/Утверждено|Approved/i)).toBeInTheDocument(),
+    );
+
+    const ctoCell = screen.getByText('Технический директор');
+    const ctoRow = ctoCell.closest('tr')!;
+    await waitFor(() =>
+      expect(within(ctoRow).getByText(/Отсутствует|Missing/i)).toBeInTheDocument(),
+    );
+  });
+
   it('edit opens the drawer prefilled and renames via updatePosition WITHOUT sending code', async () => {
     signIn('super-admin');
     const updateSpy = vi.spyOn(positionApi, 'updatePosition');

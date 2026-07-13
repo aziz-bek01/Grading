@@ -285,6 +285,7 @@
     "column_job_family": "Семейство",
     "column_job_level": "Уровень",
     "column_status": "Статус",
+    "column_job_profile": "Должностной профиль",
     "column_updated": "Обновлено",
     "filter_department": "Подразделение",
     "filter_job_family": "Семейство",
@@ -353,8 +354,8 @@
     "empty_title": "События не найдены",
     "no_access": "Для просмотра журнала аудита требуется право AUDIT_READ.",
     "export_csv": "Экспорт в CSV",
-    "hash_chain_valid": "Цепочка хешей цела",
-    "hash_chain_valid_hint": "Хеш текущего события согласуется с предыдущим. Полная проверка цепочки — на бэкенде.",
+    "hash_chain_unverified": "Не проверено независимо",
+    "hash_chain_unverified_hint": "Фронтенд не проверяет цепочку хешей. Криптографическая проверка требует эндпоинта на бэкенде, которого пока не существует.",
     "hash_chain_broken": "Цепочка хешей нарушена",
     "filter": {
       "from": "С даты",
@@ -472,7 +473,8 @@
       "draft": "Черновик",
       "under_review": "На проверке",
       "approved": "Утверждено",
-      "archived": "В архиве"
+      "archived": "В архиве",
+      "missing": "Отсутствует"
     },
     "section": {
       "role": "Роль и ответственность",

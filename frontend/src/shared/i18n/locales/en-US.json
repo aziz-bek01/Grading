@@ -285,6 +285,7 @@
     "column_job_family": "Job family",
     "column_job_level": "Job level",
     "column_status": "Status",
+    "column_job_profile": "Job profile",
     "column_updated": "Updated",
     "filter_department": "Department",
     "filter_job_family": "Job family",
@@ -353,8 +354,8 @@
     "empty_title": "No events found",
     "no_access": "The AUDIT_READ permission is required to view the audit log.",
     "export_csv": "Export CSV",
-    "hash_chain_valid": "Hash chain intact",
-    "hash_chain_valid_hint": "The current event hash matches the previous one. Full chain verification runs on the backend.",
+    "hash_chain_unverified": "Not independently verified",
+    "hash_chain_unverified_hint": "The frontend does not verify the hash chain. Cryptographic verification requires a backend endpoint that does not exist yet.",
     "hash_chain_broken": "Hash chain broken",
     "filter": {
       "from": "From",
@@ -472,7 +473,8 @@
       "draft": "Draft",
       "under_review": "Under review",
       "approved": "Approved",
-      "archived": "Archived"
+      "archived": "Archived",
+      "missing": "Missing"
     },
     "section": {
       "role": "Role & responsibility",

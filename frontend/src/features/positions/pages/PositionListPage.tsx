@@ -18,6 +18,8 @@ import { useCreatePosition } from '../hooks/useCreatePosition';
 import { useUpdatePosition } from '../hooks/useUpdatePosition';
 import { useArchivePosition } from '../hooks/useArchivePosition';
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
+import { useJobProfileStatusesByPositions } from '@/features/job-profiles/hooks/useJobProfile';
+import { usePermission } from '@/features/auth/usePermission';
 import type { Position, PositionStatus } from '../types/positionTypes';
 
 /**
@@ -64,6 +66,20 @@ export function PositionListPage() {
 
   const departments = useMemo(() => tree.data ?? [], [tree.data]);
   const rows = useMemo(() => positions.data?.items ?? [], [positions.data]);
+
+  // PAGE-2: surface job-profile context directly in the Position Catalog so
+  // the sidebar "Job Profiles" entry (and the workflow stepper's JOB_PROFILES
+  // stage) — which both route here — land somewhere meaningful instead of a
+  // generic position list with no job-profile signal. Bounded to the CURRENT
+  // server page's ids (never the whole project — no bulk backend endpoint
+  // exists; see `useJobProfileStatusesByPositions`). Hidden entirely (UX-only
+  // gate; backend remains source of truth) for users without JOB_PROFILE_READ.
+  const { can } = usePermission();
+  const canReadJobProfiles = can(PERMISSIONS.JOB_PROFILE_READ);
+  const positionIds = useMemo(() => rows.map((p) => p.id), [rows]);
+  const jobProfileByPositionId = useJobProfileStatusesByPositions(
+    canReadJobProfiles ? positionIds : [],
+  );
 
   const filters: FilterDefinition[] = useMemo(
     () => [
@@ -205,6 +221,7 @@ export function PositionListPage() {
           departments={departments}
           loading={positions.isFetching}
           onEdit={openEdit}
+          jobProfileByPositionId={canReadJobProfiles ? jobProfileByPositionId : undefined}
           onArchive={(p) => {
             setArchiveError(null);
             setArchiveTarget(p);

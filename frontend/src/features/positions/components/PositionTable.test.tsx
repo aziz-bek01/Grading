@@ -6,6 +6,7 @@ import { renderWithProviders } from '@/test/testUtils';
 import { signIn } from '@/test/testUtils';
 import type { Position } from '../types/positionTypes';
 import type { Department } from '@/features/organization/types/organizationTypes';
+import type { JobProfile } from '@/features/job-profiles/types';
 
 const departments: Department[] = [
   { id: 'd1', project_id: 'p', parent_id: null, code: 'IT', name_i18n: { 'ru-RU': 'ИТ' }, type: 'DIVISION', status: 'ACTIVE', updated_at: '' },
@@ -89,6 +90,52 @@ describe('<PositionTable />', () => {
     );
     await user.click(screen.getByTestId('position-archive-pos1'));
     expect(onArchive).toHaveBeenCalledWith(rows[0]);
+  });
+
+  // PAGE-2: the "Job profile" column is entirely opt-in — omitted by default
+  // (all tests above pass no `jobProfileByPositionId`), so it must not
+  // appear unless the caller explicitly supplies the map.
+  it('does not render a "Job profile" column when jobProfileByPositionId is omitted', () => {
+    render(renderWithProviders(<PositionTable projectId="p" rows={rows} departments={departments} />));
+    expect(screen.queryByText(/Должностной профиль|Job profile/i)).not.toBeInTheDocument();
+  });
+
+  it('renders job profile status per row when jobProfileByPositionId is provided', () => {
+    const approvedProfile = { status: 'APPROVED' } as JobProfile;
+    const jobProfileByPositionId = new Map<string, JobProfile | null | undefined>([
+      ['pos1', approvedProfile], // has an active profile
+      ['pos2', null], // confirmed no active profile
+    ]);
+    render(
+      renderWithProviders(
+        <PositionTable
+          projectId="p"
+          rows={rows}
+          departments={departments}
+          jobProfileByPositionId={jobProfileByPositionId}
+        />,
+      ),
+    );
+    expect(screen.getByText(/Должностной профиль|Job profile/i)).toBeInTheDocument();
+    expect(screen.getByText(/Утверждено|Approved/i)).toBeInTheDocument();
+    expect(screen.getByText(/Отсутствует|Missing/i)).toBeInTheDocument();
+  });
+
+  it('renders a neutral loading placeholder for rows missing from jobProfileByPositionId', () => {
+    // pos2 intentionally absent from the map — still "loading" from the
+    // caller's perspective; must never be guessed as present or missing.
+    const jobProfileByPositionId = new Map<string, JobProfile | null | undefined>([['pos1', null]]);
+    render(
+      renderWithProviders(
+        <PositionTable
+          projectId="p"
+          rows={rows}
+          departments={departments}
+          jobProfileByPositionId={jobProfileByPositionId}
+        />,
+      ),
+    );
+    expect(screen.getByTestId('position-job-profile-loading-pos2')).toBeInTheDocument();
   });
 
   it('shows dash instead of action buttons for ARCHIVED rows', () => {

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   approveJobProfile,
   archiveJobProfile,
@@ -12,7 +12,7 @@ import {
   requestChangesJobProfile,
   submitJobProfile,
 } from '../api/jobProfileApi';
-import type { JobProfilePatch, JobProfileReasonPayload } from '../types';
+import type { JobProfile, JobProfilePatch, JobProfileReasonPayload } from '../types';
 
 export function useJobProfile(profileId: string | undefined) {
   return useQuery({
@@ -30,6 +30,42 @@ export function useJobProfileByPosition(positionId: string | undefined) {
     queryFn: () => fetchJobProfileByPosition(positionId!),
     enabled: !!positionId,
   });
+}
+
+/**
+ * Bulk (client-fan-out) job-profile lookup for a bounded set of position ids —
+ * e.g. one server page of the Position Catalog (PAGE-2 fix). There is no
+ * backend "list job profiles for many positions" endpoint (only per-position
+ * `GET /positions/{id}/job-profile` and per-profile `GET /job-profiles/{id}`),
+ * so this fires one request per id via `useQueries`, sharing the SAME cache
+ * key as `useJobProfileByPosition` (no duplicate fetches when a user opens a
+ * position's Job Profile tab right after browsing the catalog).
+ *
+ * Callers MUST bound `positionIds` to something small (a single paginated
+ * table page, not a whole project) — this is a real fan-out, not a bulk
+ * endpoint, and issuing one request per row of an unbounded list would be an
+ * N+1 anti-pattern.
+ *
+ * Map values: `undefined` = still loading (or fetch failed) — render a
+ * neutral placeholder, never guess; `null` = confirmed no active profile
+ * exists yet; a `JobProfile` = the active profile.
+ */
+export function useJobProfileStatusesByPositions(
+  positionIds: string[],
+): Map<string, JobProfile | null | undefined> {
+  const queries = useQueries({
+    queries: positionIds.map((positionId) => ({
+      queryKey: jobProfileKeys.byPosition(positionId),
+      queryFn: () => fetchJobProfileByPosition(positionId),
+    })),
+  });
+
+  const byPositionId = new Map<string, JobProfile | null | undefined>();
+  positionIds.forEach((id, index) => {
+    const result = queries[index];
+    byPositionId.set(id, result?.isSuccess ? result.data : undefined);
+  });
+  return byPositionId;
 }
 
 export function useJobProfileRevisions(positionId: string | undefined) {

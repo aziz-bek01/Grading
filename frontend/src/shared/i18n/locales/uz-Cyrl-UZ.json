@@ -285,6 +285,7 @@
     "column_job_family": "Оила",
     "column_job_level": "Даража",
     "column_status": "Ҳолат",
+    "column_job_profile": "Лавозим профили",
     "column_updated": "Янгиланган",
     "filter_department": "Бўлим",
     "filter_job_family": "Оила",
@@ -353,8 +354,8 @@
     "empty_title": "Воқеалар топилмади",
     "no_access": "Аудит журналини кўриш учун AUDIT_READ ҳуқуқи талаб қилинади.",
     "export_csv": "CSV кўринишида юклаб олиш",
-    "hash_chain_valid": "Хеш занжири бутун",
-    "hash_chain_valid_hint": "Жорий воқеа хеши олдингиси билан мувофиқ. Тўлиқ занжир текшируви — бэкендда.",
+    "hash_chain_unverified": "Мустақил текширилмаган",
+    "hash_chain_unverified_hint": "Ушбу воқеанинг хеш занжири мустақил текширилмаган. Тўлиқ криптографик текширув ҳозирча мавжуд бўлмаган бэкенд хизмати орқали амалга оширилади.",
     "hash_chain_broken": "Хеш занжири бузилган",
     "filter": {
       "from": "Санадан",
@@ -472,7 +473,8 @@
       "draft": "Қоралама",
       "under_review": "Текширувда",
       "approved": "Тасдиқланган",
-      "archived": "Архивда"
+      "archived": "Архивда",
+      "missing": "Йўқ"
     },
     "section": {
       "role": "Лавозим вазифаси ва масъулияти",

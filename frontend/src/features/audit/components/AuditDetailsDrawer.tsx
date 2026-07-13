@@ -119,18 +119,21 @@ export function AuditDetailsDrawer({ event, open, onClose }: AuditDetailsDrawerP
           <dd className="text-text-primary text-xs break-all">{event.userAgent ?? '—'}</dd>
         </dl>
 
-        {/* Hash chain — placeholder badge until backend verify endpoint exists. */}
+        {/* Hash chain — NO backend verify endpoint exists yet, so the frontend
+            must never claim cryptographic verification happened. The badge is
+            intentionally neutral/muted (not success-green) and worded as an
+            honest "not verified" disclosure, not a false assurance. */}
         <div className="rounded-md border border-border bg-divider/30 p-3 text-xs">
           <div className="flex items-center justify-between mb-1">
             <span className="text-text-secondary uppercase tracking-wide">
               {t('audit.details.hash_chain')}
             </span>
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-success-100 text-success-700"
-              title={t('audit.hash_chain_valid_hint')}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-divider text-text-secondary border border-border-strong"
+              title={t('audit.hash_chain_unverified_hint')}
               data-testid="audit-hash-chain-badge"
             >
-              {t('audit.hash_chain_valid')}
+              {t('audit.hash_chain_unverified')}
             </span>
           </div>
           <div className="font-mono text-xs space-y-1">

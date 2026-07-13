@@ -7,6 +7,8 @@ import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.evaluation.infrastructure.EvaluationScoreRepository;
 import uz.hrlab.grading.methodology.application.MethodologyReferencePort;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -48,5 +50,24 @@ public class EvaluationMethodologyReferenceAdapter implements MethodologyReferen
     public long countNonArchivedEvaluationsPinnedToVersion(UUID tenantId, UUID methodologyVersionId) {
         return evaluations.countByTenantIdAndMethodologyVersionIdAndStatusNot(
                 tenantId, methodologyVersionId, EvaluationStatus.ARCHIVED);
+    }
+
+    @Override
+    public List<UUID> findNonArchivedEvaluationVersionIdsForEvaluator(
+            UUID tenantId, UUID projectId, UUID evaluatorUserId) {
+        return evaluations.findDistinctMethodologyVersionIdsByEvaluatorInProject(
+                tenantId, projectId, evaluatorUserId, EvaluationStatus.ARCHIVED);
+    }
+
+    @Override
+    public long countInProgressEvaluationsForVersions(
+            UUID tenantId, Collection<UUID> methodologyVersionIds) {
+        // Pre-submission set (DRAFT/INCOMPLETE/COMPLETE) is an evaluation-domain
+        // concern; keeping it here (not in the methodology module) preserves the
+        // evaluation → methodology dependency direction.
+        List<EvaluationStatus> inProgress = List.of(
+                EvaluationStatus.DRAFT, EvaluationStatus.INCOMPLETE, EvaluationStatus.COMPLETE);
+        return evaluations.countByTenantIdAndMethodologyVersionIdInAndStatusIn(
+                tenantId, methodologyVersionIds, inProgress);
     }
 }

@@ -1,5 +1,6 @@
 package uz.hrlab.grading.architecture;
 
+import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -13,6 +14,7 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
+import com.tngtech.archunit.library.dependencies.Slice;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -26,6 +28,7 @@ import java.util.Set;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 /**
  * ArchUnit rules from master plan §21 + security-blueprint findings F-01 /
@@ -517,6 +520,49 @@ class ArchitectureTest {
                     Object value = a.getProperties().get("value");
                     return value != null && "tenantId".equalsIgnoreCase(value.toString().trim());
                 });
+    }
+
+    // ---------------------------------------------------------------------
+    //  Rule 14 (arch-hardening 2026-07-13) — package-cycle regression guard.
+    //  The evaluation ↔ methodology cycle was broken by routing the two
+    //  MethodologyQueries reverse-edge reads (findMyMethodologiesInProject,
+    //  countInProgressEvaluations) through the module-owned outbound port
+    //  MethodologyReferencePort (impl EvaluationMethodologyReferenceAdapter in
+    //  the evaluation module), so the static arrow now flows evaluation →
+    //  methodology only. This rule pins that: no new dependency may re-introduce
+    //  a cycle between these two modules.
+    //
+    //  SCOPE: deliberately narrowed to the {evaluation, methodology} slice pair.
+    //  A whole-app beFreeOfCycles() is RED today — the modular monolith carries
+    //  many other pre-existing package cycles (e.g. access ↔ project, and the
+    //  still-open integration ↔ reporting cycle, which needs an invasive
+    //  storage/excel/worker port extraction that is out of scope for this
+    //  behavior-preserving change). Widen the SLICE_FILTER as each further pair
+    //  is genuinely cleaned; do NOT flip it to the whole app until every pair is.
+    // ---------------------------------------------------------------------
+
+    /** Slices whose mutual dependencies are now proven cycle-free and must stay so. */
+    private static final DescribedPredicate<Slice> CYCLE_FREE_MODULE_PAIR =
+            new DescribedPredicate<>("in the cycle-free module set [evaluation, methodology]") {
+                @Override
+                public boolean test(Slice slice) {
+                    String module = slice.getNamePart(1);
+                    return "evaluation".equals(module) || "methodology".equals(module);
+                }
+            };
+
+    @Test
+    void cleanedModulesMustBeFreeOfCycles() {
+        ArchRule rule = slices()
+                .matching(BASE_PACKAGE + ".(*)..")
+                .that(CYCLE_FREE_MODULE_PAIR)
+                .should().beFreeOfCycles()
+                .because("arch-hardening 2026-07-13 — the evaluation ↔ methodology package "
+                        + "cycle was inverted via MethodologyReferencePort; no new dependency "
+                        + "may re-introduce a cycle between these modules. (integration ↔ "
+                        + "reporting remains an open, documented cycle requiring an invasive "
+                        + "port extraction — excluded from this scoped rule, not weakened.)");
+        rule.check(CLASSES);
     }
 
     @Test

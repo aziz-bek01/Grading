@@ -1,5 +1,7 @@
 package uz.hrlab.grading.methodology.application;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -36,4 +38,25 @@ public interface MethodologyReferencePort {
      * {@code METHODOLOGY_APPROVED_EDIT} umbrella audit event (BE-5).
      */
     long countNonArchivedEvaluationsPinnedToVersion(UUID tenantId, UUID methodologyVersionId);
+
+    /**
+     * Distinct methodology-version ids the given evaluator has at least one OWN,
+     * NON-archived evaluation under, within a project (tenant + project + evaluator
+     * pinned). Backs the evaluator-scoped methodology list
+     * ({@code GET /api/v1/methodologies/my}). The ARCHIVED exclusion is an
+     * evaluation-domain concern owned by the adapter, so the methodology module
+     * never needs the {@code EvaluationStatus} enum.
+     */
+    List<UUID> findNonArchivedEvaluationVersionIdsForEvaluator(
+            UUID tenantId, UUID projectId, UUID evaluatorUserId);
+
+    /**
+     * Count of IN-PROGRESS (pre-submission: DRAFT / INCOMPLETE / COMPLETE)
+     * evaluations across a set of methodology versions (tenant-scoped). Backs the
+     * deactivate/archive confirmation dialog. The pre-submission status set is an
+     * evaluation-domain concern owned by the adapter (single source of truth:
+     * {@code EvaluationStatus.isPreSubmission}).
+     */
+    long countInProgressEvaluationsForVersions(
+            UUID tenantId, Collection<UUID> methodologyVersionIds);
 }

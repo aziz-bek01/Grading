@@ -8,8 +8,6 @@ import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
-import uz.hrlab.grading.evaluation.infrastructure.EvaluationRepository;
 import uz.hrlab.grading.methodology.api.MethodologyResponse;
 import uz.hrlab.grading.methodology.domain.Factor;
 import uz.hrlab.grading.methodology.domain.FactorLevel;
@@ -41,20 +39,23 @@ public class MethodologyQueries {
     private final MethodologyVersionRepository versions;
     private final FactorRepository factors;
     private final FactorLevelRepository levels;
-    private final EvaluationRepository evaluations;
+    // Consult the evaluation module through the module-owned outbound port so the
+    // static dependency direction stays evaluation → methodology (no cycle). The
+    // impl (EvaluationMethodologyReferenceAdapter) lives in the evaluation module.
+    private final MethodologyReferencePort evaluationReference;
     private final AbacGate abacGate;
 
     public MethodologyQueries(MethodologyRepository methodologies,
                               MethodologyVersionRepository versions,
                               FactorRepository factors,
                               FactorLevelRepository levels,
-                              EvaluationRepository evaluations,
+                              MethodologyReferencePort evaluationReference,
                               AbacGate abacGate) {
         this.methodologies = methodologies;
         this.versions = versions;
         this.factors = factors;
         this.levels = levels;
-        this.evaluations = evaluations;
+        this.evaluationReference = evaluationReference;
         this.abacGate = abacGate;
     }
 
@@ -155,10 +156,10 @@ public class MethodologyQueries {
             return List.of();
         }
 
-        // Distinct version ids the caller has an own, non-ARCHIVED evaluation under.
-        List<UUID> versionIds = evaluations
-                .findDistinctMethodologyVersionIdsByEvaluatorInProject(
-                        tenant, projectId, me, EvaluationStatus.ARCHIVED);
+        // Distinct version ids the caller has an own, non-ARCHIVED evaluation under
+        // (ARCHIVED exclusion owned by the evaluation-side port impl).
+        List<UUID> versionIds = evaluationReference
+                .findNonArchivedEvaluationVersionIdsForEvaluator(tenant, projectId, me);
         if (versionIds.isEmpty()) {
             return List.of();
         }
@@ -243,10 +244,8 @@ public class MethodologyQueries {
         if (versionIds.isEmpty()) {
             return 0L;
         }
-        List<EvaluationStatus> inProgress = List.of(
-                EvaluationStatus.DRAFT, EvaluationStatus.INCOMPLETE, EvaluationStatus.COMPLETE);
-        return evaluations.countByTenantIdAndMethodologyVersionIdInAndStatusIn(
-                tenant, versionIds, inProgress);
+        // In-progress (pre-submission) status set owned by the evaluation-side port impl.
+        return evaluationReference.countInProgressEvaluationsForVersions(tenant, versionIds);
     }
 
     @Transactional(readOnly = true)

@@ -10,8 +10,8 @@ import uz.hrlab.grading.approval.application.CreateApprovalRequestCommand;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.gradestructure.domain.GradeBand;
 import uz.hrlab.grading.gradestructure.domain.GradeBandGapDetector;
@@ -60,10 +60,9 @@ public class ApproveGradeStructureUseCase {
     private final GradeStructureStatusTransitionPolicy transitionPolicy;
     private final GradeBandOverlapValidator overlapValidator;
     private final GradeBandGapDetector gapDetector;
-    private final AbacGate abacGate;
-    private final AuditService audit;
     private final GradeStructureAuditSnapshot snapshot;
     private final CreateApprovalRequestUseCase createApprovalRequest;
+    private final StatusTransitionExecutor transitions;
 
     public ApproveGradeStructureUseCase(GradeStructureRepository structures,
                                         GradeRepository grades,
@@ -81,10 +80,9 @@ public class ApproveGradeStructureUseCase {
         this.transitionPolicy = transitionPolicy;
         this.overlapValidator = overlapValidator;
         this.gapDetector = gapDetector;
-        this.abacGate = abacGate;
-        this.audit = audit;
         this.snapshot = snapshot;
         this.createApprovalRequest = createApprovalRequest;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -92,11 +90,30 @@ public class ApproveGradeStructureUseCase {
         TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.GRADE_STRUCTURE_APPROVE);
         GradeStructureJpaEntity s = structures.findByIdAndTenantId(structureId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
-        if (s.getProjectId() != null) {
-            abacGate.enforceCanWriteInProject(ctx, s.getProjectId());
-        }
-        transitionPolicy.check(s.getStatus(), GradeStructureTransition.APPROVE);
 
+        OffsetDateTime now = OffsetDateTime.now();
+        transitions.transition(ctx)
+                .abacProjectWrite(s.getProjectId())
+                .checkTransition(() -> transitionPolicy.check(s.getStatus(), GradeStructureTransition.APPROVE))
+                .beforeMutate(() -> validateGradesAndBands(ctx, structureId, s))
+                .snapshot(() -> snapshot.of(s))
+                .mutate(() -> {
+                    s.setStatus(GradeStructureStatus.APPROVED);
+                    s.setApprovedAt(now);
+                    s.setApprovedBy(ctx.userId());
+                })
+                .save(() -> structures.save(s))
+                .audit(AuditAction.GRADE_STRUCTURE_APPROVED, "GradeStructure",
+                        structureId, s.getProjectId())
+                // PO-9: auto-record ApprovalRequest (single-step, already APPROVED) for
+                // GradeStructure approvals. Skipped for tenant-level grade structures
+                // (projectId == null) — they are templates, not project-scoped data.
+                .afterSave(() -> autoRecordApprovalRequest(structureId, s))
+                .execute();
+        return s.toDomain();
+    }
+
+    private void validateGradesAndBands(TenantContext ctx, UUID structureId, GradeStructureJpaEntity s) {
         List<GradeJpaEntity> gradeRows = grades
                 .findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(ctx.tenantId(), structureId);
         if (gradeRows.isEmpty()) {
@@ -140,26 +157,9 @@ public class ApproveGradeStructureUseCase {
             log.warn("Grade structure {} approved with {} band gap(s); gap policy ALLOW_GAPS_WARN",
                     structureId, gaps.size());
         }
+    }
 
-        var before = snapshot.of(s);
-        OffsetDateTime now = OffsetDateTime.now();
-        s.setStatus(GradeStructureStatus.APPROVED);
-        s.setApprovedAt(now);
-        s.setApprovedBy(ctx.userId());
-        structures.save(s);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(s.getProjectId())
-                .action(AuditAction.GRADE_STRUCTURE_APPROVED)
-                .entityType("GradeStructure")
-                .entityId(structureId)
-                .beforeJson(before)
-                .afterJson(snapshot.of(s))
-                .build());
-
-        // PO-9: auto-record ApprovalRequest (single-step, already APPROVED) for
-        // GradeStructure approvals. Skipped for tenant-level grade structures
-        // (projectId == null) — they are templates, not project-scoped data.
+    private void autoRecordApprovalRequest(UUID structureId, GradeStructureJpaEntity s) {
         if (s.getProjectId() != null) {
             createApprovalRequest.createSystemAndAutoApproveFirstStep(
                     CreateApprovalRequestCommand.singleStep(
@@ -169,6 +169,5 @@ public class ApproveGradeStructureUseCase {
                             PermissionCodes.GRADE_STRUCTURE_APPROVE),
                     null);
         }
-        return s.toDomain();
     }
 }

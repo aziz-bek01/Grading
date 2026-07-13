@@ -8,8 +8,8 @@ import uz.hrlab.grading.approval.application.CreateApprovalRequestCommand;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.jobprofile.domain.JobProfile;
 import uz.hrlab.grading.jobprofile.domain.JobProfileStatus;
@@ -36,11 +36,10 @@ public class SubmitJobProfileForReviewUseCase {
 
     private final JobProfileRepository profiles;
     private final PositionRepository positions;
-    private final AuditService audit;
-    private final AbacGate abacGate;
     private final JobProfileStatusTransitionPolicy transitionPolicy;
     private final JobProfileAuditSnapshot snapshot;
     private final CreateApprovalRequestUseCase createApprovalRequest;
+    private final StatusTransitionExecutor transitions;
 
     public SubmitJobProfileForReviewUseCase(JobProfileRepository profiles,
                                             PositionRepository positions,
@@ -51,11 +50,10 @@ public class SubmitJobProfileForReviewUseCase {
                                             CreateApprovalRequestUseCase createApprovalRequest) {
         this.profiles = profiles;
         this.positions = positions;
-        this.audit = audit;
-        this.abacGate = abacGate;
         this.transitionPolicy = transitionPolicy;
         this.snapshot = snapshot;
         this.createApprovalRequest = createApprovalRequest;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -68,31 +66,27 @@ public class SubmitJobProfileForReviewUseCase {
                 .findByIdAndTenantId(entity.getPositionId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
 
-        abacGate.enforceCanWriteInProject(ctx, entity.getProjectId());
-        abacGate.enforceCanWriteInDepartment(ctx, entity.getProjectId(),
-                position.getDepartmentId());
+        transitions.transition(ctx)
+                .abacProjectAndDepartmentWrite(entity.getProjectId(), position.getDepartmentId())
+                .checkTransition(() -> transitionPolicy.check(entity.getStatus(), JobProfileTransition.SUBMIT_FOR_REVIEW))
+                .beforeMutate(() -> requirePrimaryLocaleFields(entity))
+                .snapshot(() -> snapshot.of(entity))
+                .mutate(() -> {
+                    entity.setStatus(JobProfileStatus.UNDER_REVIEW);
+                    entity.setSubmittedAt(OffsetDateTime.now());
+                    entity.setSubmittedBy(ctx.userId());
+                })
+                .save(() -> profiles.save(entity))
+                .audit(AuditAction.JOB_PROFILE_SUBMITTED, "JobProfile", id, entity.getProjectId())
+                // MVP 2 Phase 1 — open a single-step approval request requiring
+                // JOB_PROFILE_APPROVE. The originating user already passed JOB_PROFILE_EDIT;
+                // we use createSystem to skip the APPROVAL_REQUEST_CREATE recheck.
+                .afterSave(() -> openApprovalRequest(entity))
+                .execute();
+        return entity.toDomain();
+    }
 
-        transitionPolicy.check(entity.getStatus(), JobProfileTransition.SUBMIT_FOR_REVIEW);
-        requirePrimaryLocaleFields(entity);
-
-        var beforeJson = snapshot.of(entity);
-        entity.setStatus(JobProfileStatus.UNDER_REVIEW);
-        entity.setSubmittedAt(OffsetDateTime.now());
-        entity.setSubmittedBy(ctx.userId());
-        profiles.save(entity);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(entity.getProjectId())
-                .action(AuditAction.JOB_PROFILE_SUBMITTED)
-                .entityType("JobProfile")
-                .entityId(id)
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(entity))
-                .build());
-
-        // MVP 2 Phase 1 — open a single-step approval request requiring
-        // JOB_PROFILE_APPROVE. The originating user already passed JOB_PROFILE_EDIT;
-        // we use createSystem to skip the APPROVAL_REQUEST_CREATE recheck.
+    private void openApprovalRequest(JobProfileJpaEntity entity) {
         try {
             createApprovalRequest.createSystem(
                     CreateApprovalRequestCommand.singleStep(
@@ -109,7 +103,6 @@ public class SubmitJobProfileForReviewUseCase {
                 throw openExisting;
             }
         }
-        return entity.toDomain();
     }
 
     private static void requirePrimaryLocaleFields(JobProfileJpaEntity e) {

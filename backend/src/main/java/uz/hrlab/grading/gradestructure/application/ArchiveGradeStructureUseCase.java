@@ -5,8 +5,8 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.gradestructure.domain.GradeStructure;
@@ -29,9 +29,8 @@ public class ArchiveGradeStructureUseCase {
 
     private final GradeStructureRepository structures;
     private final GradeStructureStatusTransitionPolicy transitionPolicy;
-    private final AbacGate abacGate;
-    private final AuditService audit;
     private final GradeStructureAuditSnapshot snapshot;
+    private final StatusTransitionExecutor transitions;
 
     public ArchiveGradeStructureUseCase(GradeStructureRepository structures,
                                         GradeStructureStatusTransitionPolicy transitionPolicy,
@@ -40,9 +39,8 @@ public class ArchiveGradeStructureUseCase {
                                         GradeStructureAuditSnapshot snapshot) {
         this.structures = structures;
         this.transitionPolicy = transitionPolicy;
-        this.abacGate = abacGate;
-        this.audit = audit;
         this.snapshot = snapshot;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -54,27 +52,22 @@ public class ArchiveGradeStructureUseCase {
         }
         GradeStructureJpaEntity s = structures.findByIdAndTenantId(structureId, ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
-        if (s.getProjectId() != null) {
-            abacGate.enforceCanWriteInProject(ctx, s.getProjectId());
-        }
-        transitionPolicy.check(s.getStatus(), GradeStructureTransition.ARCHIVE);
 
-        var before = snapshot.of(s);
         OffsetDateTime now = OffsetDateTime.now();
-        s.setStatus(GradeStructureStatus.ARCHIVED);
-        s.setArchivedAt(now);
-        s.setArchivedBy(ctx.userId());
-        structures.save(s);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(s.getProjectId())
-                .action(AuditAction.GRADE_STRUCTURE_ARCHIVED)
-                .entityType("GradeStructure")
-                .entityId(structureId)
+        transitions.transition(ctx)
+                .abacProjectWrite(s.getProjectId())
+                .checkTransition(() -> transitionPolicy.check(s.getStatus(), GradeStructureTransition.ARCHIVE))
+                .snapshot(() -> snapshot.of(s))
+                .mutate(() -> {
+                    s.setStatus(GradeStructureStatus.ARCHIVED);
+                    s.setArchivedAt(now);
+                    s.setArchivedBy(ctx.userId());
+                })
+                .save(() -> structures.save(s))
                 .reason(reason)
-                .beforeJson(before)
-                .afterJson(snapshot.of(s))
-                .build());
+                .audit(AuditAction.GRADE_STRUCTURE_ARCHIVED, "GradeStructure",
+                        structureId, s.getProjectId())
+                .execute();
         return s.toDomain();
     }
 }

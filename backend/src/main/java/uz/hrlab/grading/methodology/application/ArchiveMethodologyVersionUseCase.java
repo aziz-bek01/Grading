@@ -5,9 +5,9 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditJsonRedactor;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.methodology.domain.MethodologyVersion;
@@ -29,11 +29,10 @@ public class ArchiveMethodologyVersionUseCase {
 
     private final MethodologyRepository methodologies;
     private final MethodologyVersionRepository versions;
-    private final AbacGate abacGate;
     private final MethodologyVersionStatusTransitionPolicy transitionPolicy;
-    private final AuditService audit;
     private final MethodologyAuditSnapshot snapshot;
     private final AuditJsonRedactor redactor;
+    private final StatusTransitionExecutor transitions;
 
     public ArchiveMethodologyVersionUseCase(MethodologyRepository methodologies,
                                             MethodologyVersionRepository versions,
@@ -44,11 +43,10 @@ public class ArchiveMethodologyVersionUseCase {
                                             AuditJsonRedactor redactor) {
         this.methodologies = methodologies;
         this.versions = versions;
-        this.abacGate = abacGate;
         this.transitionPolicy = transitionPolicy;
-        this.audit = audit;
         this.snapshot = snapshot;
         this.redactor = redactor;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -63,24 +61,17 @@ public class ArchiveMethodologyVersionUseCase {
                 .orElseThrow(TenantAccessDeniedException::new);
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(v.getMethodologyId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
-        if (m.getProjectId() != null) {
-            abacGate.enforceCanWriteInProject(ctx, m.getProjectId());
-        }
-        transitionPolicy.check(v.getStatus(), MethodologyVersionTransition.ARCHIVE);
 
-        var beforeJson = snapshot.of(v);
-        v.setStatus(MethodologyVersionStatus.ARCHIVED);
-        versions.save(v);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(m.getProjectId())
-                .action(AuditAction.METHODOLOGY_VERSION_ARCHIVED)
-                .entityType("MethodologyVersion")
-                .entityId(versionId)
+        transitions.transition(ctx)
+                .abacProjectWrite(m.getProjectId())
+                .checkTransition(() -> transitionPolicy.check(v.getStatus(), MethodologyVersionTransition.ARCHIVE))
+                .snapshot(() -> snapshot.of(v))
+                .mutate(() -> v.setStatus(MethodologyVersionStatus.ARCHIVED))
+                .save(() -> versions.save(v))
                 .reason(redactor.redactReason(reason))
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(v))
-                .build());
+                .audit(AuditAction.METHODOLOGY_VERSION_ARCHIVED, "MethodologyVersion",
+                        versionId, m.getProjectId())
+                .execute();
         return v.toDomain();
     }
 }

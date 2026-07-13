@@ -4,9 +4,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditJsonRedactor;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.jobanalysis.domain.JobAnalysisQuestionnaire;
@@ -29,11 +29,10 @@ public class ArchiveQuestionnaireUseCase {
 
     private final JobAnalysisQuestionnaireRepository questionnaires;
     private final PositionRepository positions;
-    private final AuditService audit;
-    private final AbacGate abacGate;
     private final QuestionnaireAuditSnapshot snapshot;
     private final AuditJsonRedactor redactor;
     private final QuestionnaireStatusTransitionPolicy transitionPolicy;
+    private final StatusTransitionExecutor transitions;
 
     public ArchiveQuestionnaireUseCase(JobAnalysisQuestionnaireRepository questionnaires,
                                        PositionRepository positions,
@@ -44,11 +43,10 @@ public class ArchiveQuestionnaireUseCase {
                                        QuestionnaireStatusTransitionPolicy transitionPolicy) {
         this.questionnaires = questionnaires;
         this.positions = positions;
-        this.audit = audit;
-        this.abacGate = abacGate;
         this.snapshot = snapshot;
         this.redactor = redactor;
         this.transitionPolicy = transitionPolicy;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -66,25 +64,16 @@ public class ArchiveQuestionnaireUseCase {
                 .findByIdAndTenantId(questionnaire.getPositionId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
 
-        abacGate.enforceCanWriteInProject(ctx, questionnaire.getProjectId());
-        abacGate.enforceCanWriteInDepartment(ctx, questionnaire.getProjectId(),
-                position.getDepartmentId());
-
-        transitionPolicy.check(questionnaire.getStatus(), QuestionnaireTransition.ARCHIVE);
-
-        var beforeJson = snapshot.of(questionnaire);
-        questionnaire.setStatus(QuestionnaireStatus.ARCHIVED);
-        questionnaires.save(questionnaire);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(questionnaire.getProjectId())
-                .action(AuditAction.JOB_ANALYSIS_ARCHIVED)
-                .entityType("JobAnalysisQuestionnaire")
-                .entityId(id)
+        transitions.transition(ctx)
+                .abacProjectAndDepartmentWrite(questionnaire.getProjectId(), position.getDepartmentId())
+                .checkTransition(() -> transitionPolicy.check(questionnaire.getStatus(), QuestionnaireTransition.ARCHIVE))
+                .snapshot(() -> snapshot.of(questionnaire))
+                .mutate(() -> questionnaire.setStatus(QuestionnaireStatus.ARCHIVED))
+                .save(() -> questionnaires.save(questionnaire))
                 .reason(redactor.redactReason(reason))
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(questionnaire))
-                .build());
+                .audit(AuditAction.JOB_ANALYSIS_ARCHIVED, "JobAnalysisQuestionnaire",
+                        id, questionnaire.getProjectId())
+                .execute();
         return questionnaire.toDomain();
     }
 }

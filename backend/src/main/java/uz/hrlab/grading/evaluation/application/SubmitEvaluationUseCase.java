@@ -8,8 +8,8 @@ import uz.hrlab.grading.approval.application.CreateApprovalRequestCommand;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.evaluation.domain.Evaluation;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatusTransitionPolicy;
@@ -48,11 +48,10 @@ public class SubmitEvaluationUseCase {
     private final EvaluationScoreRepository scores;
     private final EvaluationContextLoader loader;
     private final EvaluationStatusTransitionPolicy transitionPolicy;
-    private final AbacGate abacGate;
-    private final AuditService audit;
     private final EvaluationAuditSnapshot snapshot;
     private final CreateApprovalRequestUseCase createApprovalRequest;
     private final PositionRepository positions;
+    private final StatusTransitionExecutor transitions;
 
     public SubmitEvaluationUseCase(EvaluationRepository evaluations,
                                    EvaluationScoreRepository scores,
@@ -67,11 +66,10 @@ public class SubmitEvaluationUseCase {
         this.scores = scores;
         this.loader = loader;
         this.transitionPolicy = transitionPolicy;
-        this.abacGate = abacGate;
-        this.audit = audit;
         this.snapshot = snapshot;
         this.createApprovalRequest = createApprovalRequest;
         this.positions = positions;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -84,11 +82,37 @@ public class SubmitEvaluationUseCase {
         PositionJpaEntity position = positions
                 .findByIdAndTenantId(evaluation.getPositionId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
-        abacGate.enforceCanWriteInDepartment(
-                ctx, evaluation.getProjectId(), position.getDepartmentId());
-        transitionPolicy.check(evaluation.getStatus(), EvaluationTransition.SUBMIT);
 
-        // Defensive completeness re-check (don't trust client state).
+        OffsetDateTime now = OffsetDateTime.now();
+        transitions.transition(ctx)
+                .abacDepartmentWrite(evaluation.getProjectId(), position.getDepartmentId())
+                .checkTransition(() -> transitionPolicy.check(evaluation.getStatus(), EvaluationTransition.SUBMIT))
+                .beforeMutate(() -> requireAllRequiredFactorsScored(ctx, context, evaluation))
+                .snapshot(() -> snapshot.of(evaluation))
+                .mutate(() -> {
+                    evaluation.setStatus(EvaluationStatus.SUBMITTED);
+                    evaluation.setSubmittedAt(now);
+                    evaluation.setSubmittedBy(ctx.userId());
+                })
+                .save(() -> evaluations.save(evaluation))
+                .audit(AuditAction.EVALUATION_SUBMITTED, "Evaluation",
+                        evaluation.getId(), evaluation.getProjectId())
+                // Consolidated panel flow — a panel member's submit must NOT open its own
+                // per-EVALUATION approval request. A panel carries a SINGLE CEO approval on
+                // the PANEL (opened automatically once the panel averages, see
+                // PanelCompletionWatcher -> SubmitPanelToCeoUseCase.submitSystem), so the
+                // member's sheet only contributes to that panel: it still transitions to
+                // SUBMITTED and writes its EVALUATION_SUBMITTED audit above, but opens no
+                // approval. Only a NON-panel (single-evaluator) evaluation opens the
+                // per-EVALUATION approval requiring EVALUATION_APPROVE (unchanged).
+                .afterSave(() -> openPerEvaluationApprovalIfNonPanel(evaluation))
+                .execute();
+        return evaluation.toDomain();
+    }
+
+    /** Defensive completeness re-check (don't trust client state). */
+    private void requireAllRequiredFactorsScored(TenantContext ctx, EvaluationContext context,
+                                                 EvaluationJpaEntity evaluation) {
         Set<UUID> scored = new HashSet<>();
         scores.findAllByTenantIdAndEvaluationId(ctx.tenantId(), evaluation.getId())
                 .forEach(s -> scored.add(s.getFactorId()));
@@ -99,31 +123,9 @@ public class SubmitEvaluationUseCase {
             throw new EvaluationTransitionRejectedException(
                     "Cannot submit — " + missing.size() + " required factor(s) not scored");
         }
+    }
 
-        var beforeJson = snapshot.of(evaluation);
-        OffsetDateTime now = OffsetDateTime.now();
-        evaluation.setStatus(EvaluationStatus.SUBMITTED);
-        evaluation.setSubmittedAt(now);
-        evaluation.setSubmittedBy(ctx.userId());
-        evaluations.save(evaluation);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(evaluation.getProjectId())
-                .action(AuditAction.EVALUATION_SUBMITTED)
-                .entityType("Evaluation")
-                .entityId(evaluation.getId())
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(evaluation))
-                .build());
-
-        // Consolidated panel flow — a panel member's submit must NOT open its own
-        // per-EVALUATION approval request. A panel carries a SINGLE CEO approval on
-        // the PANEL (opened automatically once the panel averages, see
-        // PanelCompletionWatcher -> SubmitPanelToCeoUseCase.submitSystem), so the
-        // member's sheet only contributes to that panel: it still transitions to
-        // SUBMITTED and writes its EVALUATION_SUBMITTED audit above, but opens no
-        // approval. Only a NON-panel (single-evaluator) evaluation opens the
-        // per-EVALUATION approval requiring EVALUATION_APPROVE (unchanged).
+    private void openPerEvaluationApprovalIfNonPanel(EvaluationJpaEntity evaluation) {
         if (evaluation.getPanelId() == null) {
             try {
                 createApprovalRequest.createSystem(
@@ -140,6 +142,5 @@ public class SubmitEvaluationUseCase {
                 }
             }
         }
-        return evaluation.toDomain();
     }
 }

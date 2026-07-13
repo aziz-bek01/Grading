@@ -5,8 +5,8 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.evaluation.domain.Evaluation;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
@@ -29,9 +29,8 @@ public class ArchiveEvaluationUseCase {
     private final EvaluationRepository evaluations;
     private final EvaluationContextLoader loader;
     private final EvaluationStatusTransitionPolicy transitionPolicy;
-    private final AbacGate abacGate;
-    private final AuditService audit;
     private final EvaluationAuditSnapshot snapshot;
+    private final StatusTransitionExecutor transitions;
 
     public ArchiveEvaluationUseCase(EvaluationRepository evaluations,
                                     EvaluationContextLoader loader,
@@ -42,9 +41,8 @@ public class ArchiveEvaluationUseCase {
         this.evaluations = evaluations;
         this.loader = loader;
         this.transitionPolicy = transitionPolicy;
-        this.abacGate = abacGate;
-        this.audit = audit;
         this.snapshot = snapshot;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -54,26 +52,22 @@ public class ArchiveEvaluationUseCase {
             throw new ValidationException(
                     "reason is required (min " + MIN_REASON_LENGTH + " chars)");
         }
-        EvaluationContext context = loader.load(evaluationId, ctx.tenantId());
-        EvaluationJpaEntity evaluation = context.evaluation();
-        abacGate.enforceCanWriteInProject(ctx, evaluation.getProjectId());
-        transitionPolicy.check(evaluation.getStatus(), EvaluationTransition.ARCHIVE);
+        EvaluationJpaEntity evaluation = loader.load(evaluationId, ctx.tenantId()).evaluation();
 
-        var beforeJson = snapshot.of(evaluation);
-        evaluation.setStatus(EvaluationStatus.ARCHIVED);
-        evaluation.setArchivedAt(OffsetDateTime.now());
-        evaluation.setArchivedBy(ctx.userId());
-        evaluations.save(evaluation);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(evaluation.getProjectId())
-                .action(AuditAction.EVALUATION_ARCHIVED)
-                .entityType("Evaluation")
-                .entityId(evaluation.getId())
+        transitions.transition(ctx)
+                .abacProjectWrite(evaluation.getProjectId())
+                .checkTransition(() -> transitionPolicy.check(evaluation.getStatus(), EvaluationTransition.ARCHIVE))
+                .snapshot(() -> snapshot.of(evaluation))
+                .mutate(() -> {
+                    evaluation.setStatus(EvaluationStatus.ARCHIVED);
+                    evaluation.setArchivedAt(OffsetDateTime.now());
+                    evaluation.setArchivedBy(ctx.userId());
+                })
+                .save(() -> evaluations.save(evaluation))
                 .reason(reason)
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(evaluation))
-                .build());
+                .audit(AuditAction.EVALUATION_ARCHIVED, "Evaluation",
+                        evaluation.getId(), evaluation.getProjectId())
+                .execute();
         return evaluation.toDomain();
     }
 }

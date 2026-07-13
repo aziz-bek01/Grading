@@ -8,8 +8,8 @@ import uz.hrlab.grading.approval.application.CreateApprovalRequestCommand;
 import uz.hrlab.grading.approval.application.CreateApprovalRequestUseCase;
 import uz.hrlab.grading.approval.domain.ApprovalEntityType;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.methodology.domain.MethodologyVersion;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionPrimaryLocaleValidator;
@@ -55,13 +55,12 @@ public class ApproveMethodologyVersionUseCase {
     private final MethodologyVersionRepository versions;
     private final FactorRepository factors;
     private final FactorLevelRepository levels;
-    private final AbacGate abacGate;
     private final MethodologyVersionStatusTransitionPolicy transitionPolicy;
     private final MethodologyWeightValidationPolicy weightPolicy;
     private final MethodologyVersionPrimaryLocaleValidator localeValidator;
-    private final AuditService audit;
     private final MethodologyAuditSnapshot snapshot;
     private final CreateApprovalRequestUseCase createApprovalRequest;
+    private final StatusTransitionExecutor transitions;
 
     public ApproveMethodologyVersionUseCase(MethodologyRepository methodologies,
                                             MethodologyVersionRepository versions,
@@ -78,13 +77,12 @@ public class ApproveMethodologyVersionUseCase {
         this.versions = versions;
         this.factors = factors;
         this.levels = levels;
-        this.abacGate = abacGate;
         this.transitionPolicy = transitionPolicy;
         this.weightPolicy = weightPolicy;
         this.localeValidator = localeValidator;
-        this.audit = audit;
         this.snapshot = snapshot;
         this.createApprovalRequest = createApprovalRequest;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -94,11 +92,33 @@ public class ApproveMethodologyVersionUseCase {
                 .orElseThrow(TenantAccessDeniedException::new);
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(v.getMethodologyId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
-        if (m.getProjectId() != null) {
-            abacGate.enforceCanWriteInProject(ctx, m.getProjectId());
-        }
-        transitionPolicy.check(v.getStatus(), MethodologyVersionTransition.APPROVE);
 
+        OffsetDateTime now = OffsetDateTime.now();
+        transitions.transition(ctx)
+                .abacProjectWrite(m.getProjectId())
+                .checkTransition(() -> transitionPolicy.check(v.getStatus(), MethodologyVersionTransition.APPROVE))
+                .beforeMutate(() -> validateFactorsAndWeights(ctx, versionId, v))
+                .snapshot(() -> snapshot.of(v))
+                .mutate(() -> {
+                    v.setStatus(MethodologyVersionStatus.APPROVED);
+                    v.setApprovedAt(now);
+                    v.setApprovedBy(ctx.userId());
+                })
+                .save(() -> versions.save(v))
+                .audit(AuditAction.METHODOLOGY_VERSION_APPROVED, "MethodologyVersion",
+                        versionId, m.getProjectId())
+                // PO-9: auto-record ApprovalRequest (single-step, already APPROVED) so
+                // the §23 "all approvals logged" acceptance criterion is satisfied for
+                // Methodology (which has a direct DRAFT→APPROVED state machine with no
+                // intermediate UNDER_REVIEW). Skipped for tenant-level methodologies
+                // (projectId == null).
+                .afterSave(() -> autoRecordApprovalRequest(versionId, m))
+                .execute();
+        return v.toDomain();
+    }
+
+    private void validateFactorsAndWeights(TenantContext ctx, UUID versionId,
+                                           MethodologyVersionJpaEntity v) {
         List<FactorJpaEntity> factorRows = factors
                 .findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(
                         ctx.tenantId(), versionId);
@@ -127,28 +147,9 @@ public class ApproveMethodologyVersionUseCase {
         }
         localeValidator.validate(factorRows);
         weightPolicy.validate(v.getScoringMode(), v.getTargetTotalPoints(), factorRows);
+    }
 
-        var beforeJson = snapshot.of(v);
-        OffsetDateTime now = OffsetDateTime.now();
-        v.setStatus(MethodologyVersionStatus.APPROVED);
-        v.setApprovedAt(now);
-        v.setApprovedBy(ctx.userId());
-        versions.save(v);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(m.getProjectId())
-                .action(AuditAction.METHODOLOGY_VERSION_APPROVED)
-                .entityType("MethodologyVersion")
-                .entityId(versionId)
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(v))
-                .build());
-
-        // PO-9: auto-record ApprovalRequest (single-step, already APPROVED) so
-        // the §23 "all approvals logged" acceptance criterion is satisfied for
-        // Methodology (which has a direct DRAFT→APPROVED state machine with no
-        // intermediate UNDER_REVIEW). Skipped for tenant-level methodologies
-        // (projectId == null).
+    private void autoRecordApprovalRequest(UUID versionId, MethodologyJpaEntity m) {
         if (m.getProjectId() != null) {
             createApprovalRequest.createSystemAndAutoApproveFirstStep(
                     CreateApprovalRequestCommand.singleStep(
@@ -158,6 +159,5 @@ public class ApproveMethodologyVersionUseCase {
                             PermissionCodes.METHODOLOGY_APPROVE),
                     null);
         }
-        return v.toDomain();
     }
 }

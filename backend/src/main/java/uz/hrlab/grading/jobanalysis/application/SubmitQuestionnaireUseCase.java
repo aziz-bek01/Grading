@@ -4,10 +4,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
-import uz.hrlab.grading.jobanalysis.domain.JobAnalysisAnswer;
 import uz.hrlab.grading.jobanalysis.domain.JobAnalysisQuestion;
 import uz.hrlab.grading.jobanalysis.domain.JobAnalysisQuestionnaire;
 import uz.hrlab.grading.jobanalysis.domain.QuestionnaireStatus;
@@ -40,10 +39,9 @@ public class SubmitQuestionnaireUseCase {
     private final JobAnalysisQuestionnaireRepository questionnaires;
     private final JobAnalysisAnswerRepository answers;
     private final PositionRepository positions;
-    private final AuditService audit;
-    private final AbacGate abacGate;
     private final QuestionnaireAuditSnapshot snapshot;
     private final QuestionnaireStatusTransitionPolicy transitionPolicy;
+    private final StatusTransitionExecutor transitions;
 
     public SubmitQuestionnaireUseCase(JobAnalysisQuestionnaireRepository questionnaires,
                                       JobAnalysisAnswerRepository answers,
@@ -55,10 +53,9 @@ public class SubmitQuestionnaireUseCase {
         this.questionnaires = questionnaires;
         this.answers = answers;
         this.positions = positions;
-        this.audit = audit;
-        this.abacGate = abacGate;
         this.snapshot = snapshot;
         this.transitionPolicy = transitionPolicy;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -72,14 +69,37 @@ public class SubmitQuestionnaireUseCase {
                 .findByIdAndTenantId(questionnaire.getPositionId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
 
-        abacGate.enforceCanWriteInProject(ctx, questionnaire.getProjectId());
-        abacGate.enforceCanWriteInDepartment(ctx, questionnaire.getProjectId(),
-                position.getDepartmentId());
+        // Answers are loaded post-transition-check (see beforeMutate) and reused by
+        // the mutation, so they must survive between the two hooks.
+        final var loaded = new Object() {
+            List<JobAnalysisAnswerJpaEntity> all;
+        };
+        OffsetDateTime now = OffsetDateTime.now();
 
-        transitionPolicy.check(questionnaire.getStatus(), QuestionnaireTransition.SUBMIT);
+        transitions.transition(ctx)
+                .abacProjectAndDepartmentWrite(questionnaire.getProjectId(), position.getDepartmentId())
+                .checkTransition(() -> transitionPolicy.check(questionnaire.getStatus(), QuestionnaireTransition.SUBMIT))
+                .beforeMutate(() -> {
+                    loaded.all = answers.findAllByTenantIdAndQuestionnaireId(ctx.tenantId(), questionnaireId);
+                    requireAllRequiredQuestionsAnswered(questionnaire, loaded.all);
+                })
+                .snapshot(() -> snapshot.of(questionnaire))
+                .mutate(() -> {
+                    questionnaire.setStatus(QuestionnaireStatus.COMPLETED);
+                    loaded.all.forEach(a -> {
+                        if (a.getSubmittedAt() == null) a.setSubmittedAt(now);
+                        answers.save(a);
+                    });
+                })
+                .save(() -> questionnaires.save(questionnaire))
+                .audit(AuditAction.JOB_ANALYSIS_SUBMITTED, "JobAnalysisQuestionnaire",
+                        questionnaireId, questionnaire.getProjectId())
+                .execute();
+        return questionnaire.toDomain();
+    }
 
-        List<JobAnalysisAnswerJpaEntity> all = answers
-                .findAllByTenantIdAndQuestionnaireId(ctx.tenantId(), questionnaireId);
+    private static void requireAllRequiredQuestionsAnswered(JobAnalysisQuestionnaireJpaEntity questionnaire,
+                                                            List<JobAnalysisAnswerJpaEntity> all) {
         Set<UUID> answeredQuestions = all.stream()
                 .filter(SubmitQuestionnaireUseCase::isAnswered)
                 .map(JobAnalysisAnswerJpaEntity::getQuestionId)
@@ -95,25 +115,6 @@ public class SubmitQuestionnaireUseCase {
                     "QUESTIONNAIRE_INCOMPLETE",
                     "Required questions unanswered: " + String.join(",", missing));
         }
-
-        var beforeJson = snapshot.of(questionnaire);
-        OffsetDateTime now = OffsetDateTime.now();
-        questionnaire.setStatus(QuestionnaireStatus.COMPLETED);
-        all.forEach(a -> {
-            if (a.getSubmittedAt() == null) a.setSubmittedAt(now);
-            answers.save(a);
-        });
-        questionnaires.save(questionnaire);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(questionnaire.getProjectId())
-                .action(AuditAction.JOB_ANALYSIS_SUBMITTED)
-                .entityType("JobAnalysisQuestionnaire")
-                .entityId(questionnaireId)
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(questionnaire))
-                .build());
-        return questionnaire.toDomain();
     }
 
     private static boolean isAnswered(JobAnalysisAnswerJpaEntity a) {

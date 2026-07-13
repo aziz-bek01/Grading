@@ -5,8 +5,8 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.methodology.domain.MethodologyVersion;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionStatus;
@@ -31,10 +31,9 @@ public class LockMethodologyVersionUseCase {
 
     private final MethodologyRepository methodologies;
     private final MethodologyVersionRepository versions;
-    private final AbacGate abacGate;
     private final MethodologyVersionStatusTransitionPolicy transitionPolicy;
-    private final AuditService audit;
     private final MethodologyAuditSnapshot snapshot;
+    private final StatusTransitionExecutor transitions;
 
     public LockMethodologyVersionUseCase(MethodologyRepository methodologies,
                                          MethodologyVersionRepository versions,
@@ -44,10 +43,9 @@ public class LockMethodologyVersionUseCase {
                                          MethodologyAuditSnapshot snapshot) {
         this.methodologies = methodologies;
         this.versions = versions;
-        this.abacGate = abacGate;
         this.transitionPolicy = transitionPolicy;
-        this.audit = audit;
         this.snapshot = snapshot;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -57,26 +55,21 @@ public class LockMethodologyVersionUseCase {
                 .orElseThrow(TenantAccessDeniedException::new);
         MethodologyJpaEntity m = methodologies.findByIdAndTenantId(v.getMethodologyId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
-        if (m.getProjectId() != null) {
-            abacGate.enforceCanWriteInProject(ctx, m.getProjectId());
-        }
-        transitionPolicy.check(v.getStatus(), MethodologyVersionTransition.LOCK);
 
-        var beforeJson = snapshot.of(v);
         OffsetDateTime now = OffsetDateTime.now();
-        v.setStatus(MethodologyVersionStatus.LOCKED);
-        v.setLockedAt(now);
-        v.setLockedBy(ctx.userId());
-        versions.save(v);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(m.getProjectId())
-                .action(AuditAction.METHODOLOGY_VERSION_LOCKED)
-                .entityType("MethodologyVersion")
-                .entityId(versionId)
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(v))
-                .build());
+        transitions.transition(ctx)
+                .abacProjectWrite(m.getProjectId())
+                .checkTransition(() -> transitionPolicy.check(v.getStatus(), MethodologyVersionTransition.LOCK))
+                .snapshot(() -> snapshot.of(v))
+                .mutate(() -> {
+                    v.setStatus(MethodologyVersionStatus.LOCKED);
+                    v.setLockedAt(now);
+                    v.setLockedBy(ctx.userId());
+                })
+                .save(() -> versions.save(v))
+                .audit(AuditAction.METHODOLOGY_VERSION_LOCKED, "MethodologyVersion",
+                        versionId, m.getProjectId())
+                .execute();
         return v.toDomain();
     }
 }

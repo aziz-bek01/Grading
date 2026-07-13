@@ -5,9 +5,9 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditJsonRedactor;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
 import uz.hrlab.grading.jobprofile.domain.JobProfile;
@@ -36,11 +36,10 @@ public class RequestJobProfileChangesUseCase {
 
     private final JobProfileRepository profiles;
     private final PositionRepository positions;
-    private final AuditService audit;
-    private final AbacGate abacGate;
     private final JobProfileStatusTransitionPolicy transitionPolicy;
     private final JobProfileAuditSnapshot snapshot;
     private final AuditJsonRedactor redactor;
+    private final StatusTransitionExecutor transitions;
 
     public RequestJobProfileChangesUseCase(JobProfileRepository profiles,
                                            PositionRepository positions,
@@ -51,11 +50,10 @@ public class RequestJobProfileChangesUseCase {
                                            AuditJsonRedactor redactor) {
         this.profiles = profiles;
         this.positions = positions;
-        this.audit = audit;
-        this.abacGate = abacGate;
         this.transitionPolicy = transitionPolicy;
         this.snapshot = snapshot;
         this.redactor = redactor;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
@@ -72,27 +70,19 @@ public class RequestJobProfileChangesUseCase {
                 .findByIdAndTenantId(entity.getPositionId(), ctx.tenantId())
                 .orElseThrow(TenantAccessDeniedException::new);
 
-        abacGate.enforceCanWriteInProject(ctx, entity.getProjectId());
-        abacGate.enforceCanWriteInDepartment(ctx, entity.getProjectId(),
-                position.getDepartmentId());
-
-        transitionPolicy.check(entity.getStatus(), JobProfileTransition.REQUEST_CHANGES);
-
-        var beforeJson = snapshot.of(entity);
-        entity.setStatus(JobProfileStatus.DRAFT);
-        entity.setSubmittedAt(null);
-        entity.setSubmittedBy(null);
-        profiles.save(entity);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(entity.getProjectId())
-                .action(AuditAction.JOB_PROFILE_CHANGES_REQUESTED)
-                .entityType("JobProfile")
-                .entityId(id)
+        transitions.transition(ctx)
+                .abacProjectAndDepartmentWrite(entity.getProjectId(), position.getDepartmentId())
+                .checkTransition(() -> transitionPolicy.check(entity.getStatus(), JobProfileTransition.REQUEST_CHANGES))
+                .snapshot(() -> snapshot.of(entity))
+                .mutate(() -> {
+                    entity.setStatus(JobProfileStatus.DRAFT);
+                    entity.setSubmittedAt(null);
+                    entity.setSubmittedBy(null);
+                })
+                .save(() -> profiles.save(entity))
                 .reason(redactor.redactReason(reason))
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(entity))
-                .build());
+                .audit(AuditAction.JOB_PROFILE_CHANGES_REQUESTED, "JobProfile", id, entity.getProjectId())
+                .execute();
         return entity.toDomain();
     }
 }

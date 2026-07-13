@@ -5,8 +5,8 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.application.AbacGate;
 import uz.hrlab.grading.access.application.PermissionCodes;
 import uz.hrlab.grading.audit.application.AuditAction;
-import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
+import uz.hrlab.grading.common.application.StatusTransitionExecutor;
 import uz.hrlab.grading.evaluation.domain.Evaluation;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatus;
 import uz.hrlab.grading.evaluation.domain.EvaluationStatusTransitionPolicy;
@@ -34,10 +34,9 @@ public class ApproveEvaluationUseCase {
     private final EvaluationRepository evaluations;
     private final EvaluationContextLoader loader;
     private final EvaluationStatusTransitionPolicy transitionPolicy;
-    private final AbacGate abacGate;
-    private final AuditService audit;
     private final EvaluationAuditSnapshot snapshot;
     private final EvaluationGradeAssignmentService gradeAssignment;
+    private final StatusTransitionExecutor transitions;
 
     public ApproveEvaluationUseCase(EvaluationRepository evaluations,
                                     EvaluationContextLoader loader,
@@ -49,38 +48,34 @@ public class ApproveEvaluationUseCase {
         this.evaluations = evaluations;
         this.loader = loader;
         this.transitionPolicy = transitionPolicy;
-        this.abacGate = abacGate;
-        this.audit = audit;
         this.snapshot = snapshot;
         this.gradeAssignment = gradeAssignment;
+        this.transitions = new StatusTransitionExecutor(abacGate, audit);
     }
 
     @Transactional
     public Evaluation approve(UUID evaluationId) {
         TenantContext ctx = TenantContextHolder.requireActive().require(PermissionCodes.EVALUATION_APPROVE);
-        EvaluationContext context = loader.load(evaluationId, ctx.tenantId());
-        EvaluationJpaEntity evaluation = context.evaluation();
-        abacGate.enforceCanWriteInProject(ctx, evaluation.getProjectId());
-        transitionPolicy.check(evaluation.getStatus(), EvaluationTransition.APPROVE);
+        EvaluationJpaEntity evaluation = loader.load(evaluationId, ctx.tenantId()).evaluation();
 
-        var beforeJson = snapshot.of(evaluation);
         OffsetDateTime now = OffsetDateTime.now();
-        evaluation.setStatus(EvaluationStatus.APPROVED);
-        evaluation.setApprovedAt(now);
-        evaluation.setApprovedBy(ctx.userId());
-        // Phase 6: assign grade based on rawTotalScore. Service emits its own
-        // GRADE_ASSIGNED / GRADE_REASSIGNED audit event when a band matches.
-        gradeAssignment.assignFromScore(evaluation, ctx.userId());
-        evaluations.save(evaluation);
-
-        audit.record(AuditEvent.builder(ctx)
-                .projectId(evaluation.getProjectId())
-                .action(AuditAction.EVALUATION_APPROVED)
-                .entityType("Evaluation")
-                .entityId(evaluation.getId())
-                .beforeJson(beforeJson)
-                .afterJson(snapshot.of(evaluation))
-                .build());
+        transitions.transition(ctx)
+                .abacProjectWrite(evaluation.getProjectId())
+                .checkTransition(() -> transitionPolicy.check(evaluation.getStatus(), EvaluationTransition.APPROVE))
+                .snapshot(() -> snapshot.of(evaluation))
+                .mutate(() -> {
+                    evaluation.setStatus(EvaluationStatus.APPROVED);
+                    evaluation.setApprovedAt(now);
+                    evaluation.setApprovedBy(ctx.userId());
+                    // Phase 6: assign grade based on rawTotalScore. Service emits its own
+                    // GRADE_ASSIGNED / GRADE_REASSIGNED audit event when a band matches —
+                    // recorded before the EVALUATION_APPROVED row, as in the original flow.
+                    gradeAssignment.assignFromScore(evaluation, ctx.userId());
+                })
+                .save(() -> evaluations.save(evaluation))
+                .audit(AuditAction.EVALUATION_APPROVED, "Evaluation",
+                        evaluation.getId(), evaluation.getProjectId())
+                .execute();
         return evaluation.toDomain();
     }
 }

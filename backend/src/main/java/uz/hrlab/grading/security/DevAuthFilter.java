@@ -18,13 +18,13 @@ import java.util.stream.Collectors;
 
 /**
  * Test-only authentication filter that lets developers bootstrap a
- * {@link TenantContext} via headers when running under the {@code local}
- * profile.
+ * {@link TenantContext} via headers when running under a local/CI-internal
+ * profile ({@code local} or {@code test} — see {@link #ALLOWED_PROFILES}).
  *
- * <p>HARD GUARD: the constructor refuses to start unless one of the allowed
- * dev profiles is active. If a deploy ever loads this filter outside dev,
- * Spring fails at boot time — there is no path where dev headers reach a
- * production runtime.
+ * <p>HARD GUARD: the constructor refuses to start unless one of those allowed
+ * profiles is active. If a deploy ever loads this filter outside them, Spring
+ * fails at boot time — there is no path where dev headers reach a production
+ * (or even {@code dev}, per SEC-002) runtime.
  *
  * <p>Headers (all optional except {@code X-Dev-User}):
  * <ul>

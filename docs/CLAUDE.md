@@ -41,7 +41,7 @@ Core flow:
 
 ## Tech stack
 
-- **Backend:** Java 21, Spring Boot 3.x, Spring Security, OAuth2/OIDC Resource Server, JWT, Spring Data JPA, Bean Validation, MapStruct, modular monolith (`uz.hrlab.grading.*`) with async workers prepared for later.
+- **Backend:** Java 21, Spring Boot 3.x, Spring Security, OAuth2/OIDC Resource Server, JWT, Spring Data JPA, Bean Validation, modular monolith (`uz.hrlab.grading.*`) with async workers prepared for later. (DTO↔entity mapping is hand-written — no MapStruct.)
 - **Frontend:** React 18/19, TypeScript, Vite, TailwindCSS, shadcn/ui, TanStack Query, Zustand, React Hook Form, Zod, i18next, React Router, Recharts/ECharts.
 - **Data:** PostgreSQL, Liquibase. Hybrid multi-tenancy: shared control plane (public schema) + schema-per-tenant by default + DB-per-tenant for sensitive enterprise clients. RLS-ready from MVP 1.
 - **Infra:** Docker, Kubernetes, Helm/Kustomize, Redis, S3-compatible object storage, Vault/KMS, Prometheus/Grafana/Loki/Tempo.

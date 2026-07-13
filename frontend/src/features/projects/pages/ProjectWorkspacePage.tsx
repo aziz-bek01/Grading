@@ -25,6 +25,11 @@ const STAGE_ROUTE: Partial<Record<WorkflowStageKey, (projectId: string) => strin
   JOB_PROFILES: routes.projectPositions,
   METHODOLOGY: routes.projectMethodology,
   EVALUATION: routes.projectEvaluation,
+  // Calibration is performed within the evaluation surface (the
+  // CALIBRATION_EDIT-gated actions live in EvaluationActionsBar), so the
+  // CALIBRATION workflow stage opens the evaluation page. Without this entry
+  // the stage's "Open" affordance was hidden while sibling active stages had it.
+  CALIBRATION: routes.projectEvaluation,
   GRADES: routes.projectGrades,
   COMPENSATION: routes.projectCompensation,
   REPORTS: routes.projectReports,

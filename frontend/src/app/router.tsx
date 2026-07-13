@@ -258,7 +258,7 @@ export function AppRouter() {
                       'upcoming.compensation.features.5',
                     ]}
                     targetSprintLabel="Sprint 14 · 06.07-20.07.2026"
-                    targetDate="2026-07-06"
+                    targetDate="2026-07-20"
                     mvpPhase="MVP 3 Phase 1"
                   />
                 }

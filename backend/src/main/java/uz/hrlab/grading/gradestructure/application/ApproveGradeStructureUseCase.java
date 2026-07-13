@@ -33,7 +33,9 @@ import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -102,12 +104,22 @@ public class ApproveGradeStructureUseCase {
                     "Grade structure must have at least one grade before approval");
         }
 
-        List<GradeBand> bandList = new ArrayList<>();
+        // BE — batch every grade's band in ONE structure-scoped query (was one
+        // findByTenantIdAndGradeId per grade → N+1 on the approval hot path).
+        // One band per grade (MVP 1); iterate grades in sort_order so bandList
+        // keeps its original ordering for overlap/gap validation.
+        Map<UUID, GradeBandJpaEntity> bandByGrade = new HashMap<>();
+        for (GradeBandJpaEntity b : bands
+                .findAllByTenantIdAndGradeStructureIdOrderByMinScoreAsc(ctx.tenantId(), structureId)) {
+            bandByGrade.put(b.getGradeId(), b);
+        }
+        List<GradeBand> bandList = new ArrayList<>(gradeRows.size());
         for (GradeJpaEntity g : gradeRows) {
-            GradeBandJpaEntity b = bands
-                    .findByTenantIdAndGradeId(ctx.tenantId(), g.getId())
-                    .orElseThrow(() -> new GradeStructureTransitionRejectedException(
-                            "Grade " + g.getGradeNumber() + " has no band defined"));
+            GradeBandJpaEntity b = bandByGrade.get(g.getId());
+            if (b == null) {
+                throw new GradeStructureTransitionRejectedException(
+                        "Grade " + g.getGradeNumber() + " has no band defined");
+            }
             bandList.add(b.toDomain());
         }
 

@@ -9,6 +9,7 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.gradestructure.domain.GradeStructureImmutabilityPolicy;
+import uz.hrlab.grading.gradestructure.infrastructure.GradeBandJpaEntity;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeBandRepository;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeJpaEntity;
 import uz.hrlab.grading.gradestructure.infrastructure.GradeRepository;
@@ -70,11 +71,14 @@ public class DeleteGradeStructureUseCase {
 
         var before = snapshot.of(s);
 
-        // Cascade-delete grades + their bands (FK order: bands first).
+        // Cascade-delete grades + their bands (FK order: bands first). BE —
+        // batch-load the structure's bands in ONE query (was one
+        // findByTenantIdAndGradeId per grade → N+1), then delete each.
         List<GradeJpaEntity> gs = grades
                 .findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(ctx.tenantId(), structureId);
-        for (GradeJpaEntity g : gs) {
-            bands.findByTenantIdAndGradeId(ctx.tenantId(), g.getId()).ifPresent(bands::delete);
+        for (GradeBandJpaEntity b : bands
+                .findAllByTenantIdAndGradeStructureIdOrderByMinScoreAsc(ctx.tenantId(), structureId)) {
+            bands.delete(b);
         }
         grades.deleteAll(gs);
         structures.delete(s);

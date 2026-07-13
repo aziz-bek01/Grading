@@ -23,6 +23,7 @@ import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -126,10 +127,16 @@ public class SaveAsGradeTemplateUseCase {
     private GradeTemplateSnapshot buildSnapshot(UUID tenantId, UUID structureId) {
         List<GradeJpaEntity> srcGrades = grades
                 .findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(tenantId, structureId);
+        // BE — batch every grade's band in ONE structure-scoped query (was one
+        // findByTenantIdAndGradeId per grade → N+1). One band per grade (MVP 1).
+        Map<UUID, GradeBandJpaEntity> bandByGrade = new HashMap<>();
+        for (GradeBandJpaEntity b : bands
+                .findAllByTenantIdAndGradeStructureIdOrderByMinScoreAsc(tenantId, structureId)) {
+            bandByGrade.put(b.getGradeId(), b);
+        }
         List<GradeTemplateSnapshot.GradeSnapshot> gradeSnaps = new ArrayList<>();
         for (GradeJpaEntity g : srcGrades) {
-            GradeBandJpaEntity band = bands.findByTenantIdAndGradeId(tenantId, g.getId())
-                    .orElse(null);
+            GradeBandJpaEntity band = bandByGrade.get(g.getId());
             gradeSnaps.add(new GradeTemplateSnapshot.GradeSnapshot(
                     g.getGradeNumber(), g.getSortOrder(),
                     copy(g.getNameI18n()), copy(g.getDescriptionI18n()),

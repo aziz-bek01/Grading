@@ -125,10 +125,9 @@ class SaveAsGradeTemplateUseCaseTest {
         given(structures.findByIdAndTenantId(s.getId(), tenantId)).willReturn(Optional.of(s));
         given(grades.findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(tenantId, s.getId()))
                 .willReturn(List.of(g1, g2));
-        given(bands.findByTenantIdAndGradeId(tenantId, g1.getId()))
-                .willReturn(Optional.of(seedBand(g1.getId(), s.getId(), "0", "99.9999")));
-        given(bands.findByTenantIdAndGradeId(tenantId, g2.getId()))
-                .willReturn(Optional.empty()); // grade w/o band → null scores in snapshot
+        // Batched structure-scoped band load; g2 absent → null scores in its snapshot.
+        given(bands.findAllByTenantIdAndGradeStructureIdOrderByMinScoreAsc(tenantId, s.getId()))
+                .willReturn(List.of(seedBand(g1.getId(), s.getId(), "0", "99.9999")));
         given(customTemplates.save(any())).willAnswer(inv -> inv.getArgument(0));
 
         UUID id = useCase.saveAsTemplate(s.getId(), "BANK_2026",

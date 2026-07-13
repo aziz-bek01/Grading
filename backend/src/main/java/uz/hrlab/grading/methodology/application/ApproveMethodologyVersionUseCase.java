@@ -19,6 +19,7 @@ import uz.hrlab.grading.methodology.domain.MethodologyVersionTransition;
 import uz.hrlab.grading.methodology.domain.MethodologyVersionTransitionRejectedException;
 import uz.hrlab.grading.methodology.domain.MethodologyWeightValidationPolicy;
 import uz.hrlab.grading.methodology.infrastructure.FactorJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.FactorLevelJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.FactorLevelRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity;
@@ -29,7 +30,10 @@ import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -102,11 +106,21 @@ public class ApproveMethodologyVersionUseCase {
             throw new MethodologyVersionTransitionRejectedException(
                     "Methodology version must have at least one factor before approval");
         }
-        // ≥ 2 levels per factor
+        // ≥ 2 levels per factor — batch every factor's levels in ONE tenant-scoped
+        // query (was one findAllByTenantIdAndFactorId per factor → N+1 on the
+        // approval hot path), then count per factor in memory. Iterating factorRows
+        // for the check preserves the original first-failing-factor rejection order.
+        List<UUID> factorIds = new ArrayList<>(factorRows.size());
         for (FactorJpaEntity f : factorRows) {
-            int count = levels.findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(
-                    ctx.tenantId(), f.getId()).size();
-            if (count < 2) {
+            factorIds.add(f.getId());
+        }
+        Map<UUID, Integer> levelCounts = new HashMap<>();
+        for (FactorLevelJpaEntity lvl : levels
+                .findAllByTenantIdAndFactorIdInOrderByLevelOrderAsc(ctx.tenantId(), factorIds)) {
+            levelCounts.merge(lvl.getFactorId(), 1, Integer::sum);
+        }
+        for (FactorJpaEntity f : factorRows) {
+            if (levelCounts.getOrDefault(f.getId(), 0) < 2) {
                 throw new MethodologyVersionTransitionRejectedException(
                         "Factor '" + f.getCode() + "' must have at least 2 levels");
             }

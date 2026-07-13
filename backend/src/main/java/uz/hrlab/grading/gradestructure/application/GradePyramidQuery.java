@@ -16,6 +16,7 @@ import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -66,10 +67,16 @@ public class GradePyramidQuery {
         List<GradeJpaEntity> gradeList = grades
                 .findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(
                         ctx.tenantId(), structureId);
+        // BE — batch every grade's band in ONE structure-scoped query (was one
+        // findByTenantIdAndGradeId per grade → N+1). One band per grade (MVP 1).
+        Map<UUID, GradeBandJpaEntity> bandByGrade = new HashMap<>();
+        for (GradeBandJpaEntity b : bands
+                .findAllByTenantIdAndGradeStructureIdOrderByMinScoreAsc(ctx.tenantId(), structureId)) {
+            bandByGrade.put(b.getGradeId(), b);
+        }
         List<GradePyramidRow> out = new ArrayList<>(gradeList.size());
         for (GradeJpaEntity g : gradeList) {
-            GradeBandJpaEntity band = bands
-                    .findByTenantIdAndGradeId(ctx.tenantId(), g.getId()).orElse(null);
+            GradeBandJpaEntity band = bandByGrade.get(g.getId());
             // Count evaluations / distinct positions whose grade_band_id points
             // to this grade's band (one band per grade in MVP 1) within the same
             // tenant. A grade with no band yet contributes zero counts.

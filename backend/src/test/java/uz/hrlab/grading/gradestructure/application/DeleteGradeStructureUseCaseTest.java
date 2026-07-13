@@ -102,7 +102,8 @@ class DeleteGradeStructureUseCaseTest {
         given(structures.findByIdAndTenantId(s.getId(), tenantId)).willReturn(Optional.of(s));
         given(grades.findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(tenantId, s.getId()))
                 .willReturn(List.of(g1));
-        given(bands.findByTenantIdAndGradeId(tenantId, g1.getId())).willReturn(Optional.of(b1));
+        given(bands.findAllByTenantIdAndGradeStructureIdOrderByMinScoreAsc(tenantId, s.getId()))
+                .willReturn(List.of(b1));
 
         useCase.delete(s.getId());
 

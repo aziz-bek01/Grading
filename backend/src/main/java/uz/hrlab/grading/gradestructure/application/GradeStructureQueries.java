@@ -95,12 +95,22 @@ public class GradeStructureQueries {
                 .orElseThrow(TenantAccessDeniedException::new);
         List<GradeJpaEntity> gs = grades
                 .findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(ctx.tenantId(), id);
+        // BE — batch every grade's band in ONE structure-scoped query (was one
+        // findByTenantIdAndGradeId per grade → N+1). One band per grade (MVP 1);
+        // iterate grades in sort_order so bandList keeps its original ordering.
+        Map<UUID, GradeBandJpaEntity> bandByGrade = new HashMap<>();
+        for (GradeBandJpaEntity b : bands
+                .findAllByTenantIdAndGradeStructureIdOrderByMinScoreAsc(ctx.tenantId(), id)) {
+            bandByGrade.put(b.getGradeId(), b);
+        }
         List<Grade> gradeList = new ArrayList<>(gs.size());
         List<GradeBand> bandList = new ArrayList<>();
         for (GradeJpaEntity g : gs) {
             gradeList.add(g.toDomain());
-            bands.findByTenantIdAndGradeId(ctx.tenantId(), g.getId())
-                    .ifPresent(b -> bandList.add(b.toDomain()));
+            GradeBandJpaEntity b = bandByGrade.get(g.getId());
+            if (b != null) {
+                bandList.add(b.toDomain());
+            }
         }
         return new GradeStructureAggregate(s.toDomain(), gradeList, bandList);
     }

@@ -11,7 +11,6 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.project.infrastructure.ProjectRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -34,8 +33,10 @@ import java.util.UUID;
  * {@link UserManagementPolicy#requireCanManageInTenant}); cross-tenant target →
  * 404. The target user MUST be a MEMBER of the tenant (P2-1) — not merely exist
  * globally — exactly like {@link AssignRoleUseCase}; a non-member → 404. Each
- * requested project is validated to belong to the tenant via the tenant-aware
- * {@link ProjectRepository#existsByIdAndTenantId} (anti-BOLA, never a bare
+ * requested project is validated to belong to the tenant via the access-owned
+ * {@link ProjectReferencePort#existsInTenant} (a dependency-inversion port whose
+ * project-side adapter delegates to the tenant-aware
+ * {@code ProjectRepository.existsByIdAndTenantId} — anti-BOLA, never a bare
  * {@code findById}); a foreign project → 400.
  */
 @Service
@@ -44,20 +45,20 @@ public class SetUserProjectAssignmentsUseCase {
     private final UserManagementPolicy policy;
     private final UserTenantMembershipRepository membershipRepo;
     private final UserProjectAssignmentRepository assignmentRepo;
-    private final ProjectRepository projectRepo;
+    private final ProjectReferencePort projectReference;
     private final GetUserScopesQuery scopesQuery;
     private final AuditService audit;
 
     public SetUserProjectAssignmentsUseCase(UserManagementPolicy policy,
                                             UserTenantMembershipRepository membershipRepo,
                                             UserProjectAssignmentRepository assignmentRepo,
-                                            ProjectRepository projectRepo,
+                                            ProjectReferencePort projectReference,
                                             GetUserScopesQuery scopesQuery,
                                             AuditService audit) {
         this.policy = policy;
         this.membershipRepo = membershipRepo;
         this.assignmentRepo = assignmentRepo;
-        this.projectRepo = projectRepo;
+        this.projectReference = projectReference;
         this.scopesQuery = scopesQuery;
         this.audit = audit;
     }
@@ -85,7 +86,7 @@ public class SetUserProjectAssignmentsUseCase {
         // Validate every requested project belongs to the active tenant — BEFORE
         // any write. Uses the tenant-aware repo (no bare findById).
         for (UUID projectId : desired) {
-            if (!projectRepo.existsByIdAndTenantId(projectId, tenantId)) {
+            if (!projectReference.existsInTenant(projectId, tenantId)) {
                 throw new ValidationException("USER_SCOPE_INVALID_PROJECT",
                         "One or more projects do not belong to the tenant");
             }

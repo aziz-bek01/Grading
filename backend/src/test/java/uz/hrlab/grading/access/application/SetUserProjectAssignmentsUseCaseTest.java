@@ -15,7 +15,6 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.project.infrastructure.ProjectRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -38,8 +37,8 @@ import static org.mockito.Mockito.when;
 /**
  * Offline unit tests for {@link SetUserProjectAssignmentsUseCase} (E4-S1).
  * Pure Mockito. Mirrors the department-scope assignment test: tenant-ownership
- * validation (via the tenant-aware {@code existsByIdAndTenantId}), replace-set
- * semantics, and one audit row per change.
+ * validation (via the access-owned {@link ProjectReferencePort#existsInTenant}),
+ * replace-set semantics, and one audit row per change.
  */
 @Tag("unit")
 class SetUserProjectAssignmentsUseCaseTest {
@@ -47,7 +46,7 @@ class SetUserProjectAssignmentsUseCaseTest {
     private UserManagementPolicy policy;
     private UserTenantMembershipRepository membershipRepo;
     private UserProjectAssignmentRepository assignmentRepo;
-    private ProjectRepository projectRepo;
+    private ProjectReferencePort projectReference;
     private GetUserScopesQuery scopesQuery;
     private AuditService audit;
 
@@ -62,11 +61,11 @@ class SetUserProjectAssignmentsUseCaseTest {
         policy = mock(UserManagementPolicy.class);
         membershipRepo = mock(UserTenantMembershipRepository.class);
         assignmentRepo = mock(UserProjectAssignmentRepository.class);
-        projectRepo = mock(ProjectRepository.class);
+        projectReference = mock(ProjectReferencePort.class);
         scopesQuery = mock(GetUserScopesQuery.class);
         audit = mock(AuditService.class);
         useCase = new SetUserProjectAssignmentsUseCase(
-                policy, membershipRepo, assignmentRepo, projectRepo, scopesQuery, audit);
+                policy, membershipRepo, assignmentRepo, projectReference, scopesQuery, audit);
 
         doNothing().when(policy).requireCanManageInTenant(any(), any());
         // Target is a MEMBER of the tenant by default (P2-1 happy path).
@@ -94,7 +93,7 @@ class SetUserProjectAssignmentsUseCaseTest {
         assertThatThrownBy(() -> useCase.replace(userId, tenantId, List.of(UUID.randomUUID())))
                 .isInstanceOf(TenantAccessDeniedException.class); // → 404, no existence reveal
 
-        verify(projectRepo, never()).existsByIdAndTenantId(any(), any());
+        verify(projectReference, never()).existsInTenant(any(), any());
         verify(assignmentRepo, never()).save(any());
         verify(audit, never()).record(any());
     }
@@ -102,7 +101,7 @@ class SetUserProjectAssignmentsUseCaseTest {
     @Test
     void rejectsForeignProjectBeforeAnyWrite() {
         UUID foreign = UUID.randomUUID();
-        when(projectRepo.existsByIdAndTenantId(foreign, tenantId)).thenReturn(false);
+        when(projectReference.existsInTenant(foreign, tenantId)).thenReturn(false);
 
         assertThatThrownBy(() -> useCase.replace(userId, tenantId, List.of(foreign)))
                 .isInstanceOf(ValidationException.class);
@@ -117,8 +116,8 @@ class SetUserProjectAssignmentsUseCaseTest {
         UUID add = UUID.randomUUID();
         UUID drop = UUID.randomUUID();
 
-        when(projectRepo.existsByIdAndTenantId(eq(keep), eq(tenantId))).thenReturn(true);
-        when(projectRepo.existsByIdAndTenantId(eq(add), eq(tenantId))).thenReturn(true);
+        when(projectReference.existsInTenant(eq(keep), eq(tenantId))).thenReturn(true);
+        when(projectReference.existsInTenant(eq(add), eq(tenantId))).thenReturn(true);
 
         UserProjectAssignmentJpaEntity keepRow = new UserProjectAssignmentJpaEntity(
                 UUID.randomUUID(), userId, tenantId, keep,
@@ -154,7 +153,7 @@ class SetUserProjectAssignmentsUseCaseTest {
 
         useCase.replace(userId, tenantId, List.of());
 
-        verify(projectRepo, never()).existsByIdAndTenantId(any(), any());
+        verify(projectReference, never()).existsInTenant(any(), any());
         assertThat(dropRow.getStatus()).isEqualTo(UserProjectAssignmentJpaEntity.STATUS_REVOKED);
     }
 }

@@ -542,12 +542,28 @@ class ArchitectureTest {
     //  ReportRetryScanPort, implemented by reporting-side adapters. The static
     //  arrow now flows reporting → integration only.
     //
+    //  The access ↔ project cycle was subsequently broken (arch-hardening
+    //  2026-07-14) by inverting the single upward access → project edge: the
+    //  project-existence check in SetUserProjectAssignmentsUseCase now flows
+    //  through the access-owned ProjectReferencePort (impl
+    //  project.infrastructure.AccessProjectReferenceAdapter, delegating verbatim
+    //  to the tenant-aware ProjectRepository.existsByIdAndTenantId), so the static
+    //  arrow flows project → access only — access is the low-level authorization
+    //  kernel every other module depends on.
+    //
     //  SCOPE: the cleaned slice set is {evaluation, methodology, integration,
     //  reporting} — proven a DAG (reporting → {integration, evaluation} →
     //  methodology, evaluation → methodology). A whole-app beFreeOfCycles() is
-    //  still RED — the modular monolith carries other pre-existing package cycles
-    //  (e.g. access ↔ project). Widen this set as each further pair is genuinely
-    //  cleaned; do NOT flip it to the whole app until every pair is.
+    //  still RED — the modular monolith carries other pre-existing package cycles.
+    //  NOTE: access ↔ project is now cycle-free, but access CANNOT yet join this
+    //  guarded set because a SEPARATE pre-existing cycle access ↔ integration is
+    //  still open (access → integration via IdentityProvisioningPort /
+    //  ZitadelIdpProperties in the IdP-provisioning use cases; integration →
+    //  access via AbacGate / PermissionCodes) — and integration is already in the
+    //  set, so adding access would surface it and turn this rule RED. Add
+    //  {access, project} here once that access → integration edge is inverted too.
+    //  Widen this set as each further pair is genuinely cleaned; do NOT flip it to
+    //  the whole app until every pair is.
     // ---------------------------------------------------------------------
 
     /** Slices whose mutual dependencies are now proven cycle-free and must stay so. */

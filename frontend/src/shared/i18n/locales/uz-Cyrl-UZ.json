@@ -25,6 +25,8 @@
     "back": "Орқага",
     "retry": "Қайта уриниш",
     "close": "Ёпиш",
+    "collapse": "Йиғиш",
+    "expand": "Ёйиш",
     "skip_to_content": "Мазмунга ўтиш",
     "reason_label": "Сабаб",
     "reason_required": "Сабабни киритинг (камида 20 та белги)",

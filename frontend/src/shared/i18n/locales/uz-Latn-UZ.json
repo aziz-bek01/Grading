@@ -25,6 +25,8 @@
     "back": "Orqaga",
     "retry": "Qayta urinish",
     "close": "Yopish",
+    "collapse": "Yig'ish",
+    "expand": "Yoyish",
     "skip_to_content": "Mazmunga o'tish",
     "reason_label": "Sabab",
     "reason_required": "Sababni kiriting (kamida 20 ta belgi)",

@@ -25,6 +25,8 @@
     "back": "Back",
     "retry": "Retry",
     "close": "Close",
+    "collapse": "Collapse",
+    "expand": "Expand",
     "skip_to_content": "Skip to content",
     "reason_label": "Reason",
     "reason_required": "Provide a reason (at least 20 characters)",

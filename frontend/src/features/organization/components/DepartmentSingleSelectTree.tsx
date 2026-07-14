@@ -180,7 +180,7 @@ function DepartmentNode({
           type="button"
           className="p-0.5 text-text-secondary"
           onClick={() => hasChildren && setExpanded((v) => !v)}
-          aria-label={expanded ? t('common.close') : t('common.continue')}
+          aria-label={expanded ? t('common.collapse') : t('common.expand')}
         >
           {hasChildren ? (
             expanded ? (

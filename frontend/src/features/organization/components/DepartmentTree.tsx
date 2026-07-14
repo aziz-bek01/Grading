@@ -67,6 +67,7 @@ function DepartmentNode({
   onSelect: (id: string) => void;
   locale: string;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(depth < 2);
   const hasChildren = node.children.length > 0;
   const isSelected = selectedId === node.id;
@@ -90,7 +91,7 @@ function DepartmentNode({
             e.stopPropagation();
             if (hasChildren) setExpanded((v) => !v);
           }}
-          aria-label={expanded ? 'Collapse' : 'Expand'}
+          aria-label={expanded ? t('common.collapse') : t('common.expand')}
         >
           {hasChildren ? (
             expanded ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />

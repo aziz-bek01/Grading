@@ -96,6 +96,7 @@ function DepartmentScopeNode({
   locale: string;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(depth < 2);
   const hasChildren = node.children.length > 0;
   const isChecked = selectedIds.has(node.id);
@@ -116,7 +117,7 @@ function DepartmentScopeNode({
           type="button"
           className="p-0.5 text-text-secondary"
           onClick={() => hasChildren && setExpanded((v) => !v)}
-          aria-label={expanded ? t_collapse() : t_expand()}
+          aria-label={expanded ? t('common.collapse') : t('common.expand')}
         >
           {hasChildren ? (
             expanded ? (
@@ -168,13 +169,4 @@ function DepartmentScopeNode({
       ) : null}
     </li>
   );
-}
-
-// Static aria labels — keep parity with the read-only DepartmentTree, which
-// hardcodes English aria text for the expander control.
-function t_collapse() {
-  return 'Collapse';
-}
-function t_expand() {
-  return 'Expand';
 }

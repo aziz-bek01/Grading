@@ -4,6 +4,7 @@ import type {
   JobProfilePatch,
   JobProfileReasonPayload,
   JobProfileRevisionSummary,
+  JobProfileStatusByPosition,
 } from '../types';
 
 /**
@@ -17,6 +18,14 @@ export const jobProfileKeys = {
   byPosition: (positionId: string) => ['job-profiles', 'by-position', positionId] as const,
   detail: (id: string) => ['job-profiles', 'detail', id] as const,
   revisions: (positionId: string) => ['job-profiles', 'revisions', positionId] as const,
+  /**
+   * Stable regardless of the CALLER's array order/identity — sorted + joined
+   * so React Query treats the same SET of ids as the same cache entry (a
+   * page re-render that rebuilds `positionIds` in a different order, or a new
+   * array instance with identical contents, must not trigger a refetch).
+   */
+  statusesByPositions: (positionIds: string[]) =>
+    ['job-profiles', 'statuses-by-positions', [...positionIds].sort().join(',')] as const,
 };
 
 /**
@@ -59,6 +68,25 @@ export async function fetchJobProfileByPosition(positionId: string): Promise<Job
   const body = res.data as unknown;
   if (res.status === 204 || body == null || body === '') return null;
   return res.data;
+}
+
+/**
+ * GET /job-profiles/statuses?positionIds=<uuid1>,<uuid2> — bulk lookup for a
+ * bounded set of position ids (e.g. one server page of the Position Catalog).
+ * Auth: JOB_PROFILE_READ. Backend returns a BARE JSON array with ONE element
+ * per position that HAS an active (non-ARCHIVED) profile; positions with no
+ * active profile (or outside the caller's ABAC scope) are simply ABSENT —
+ * callers must treat "id missing from the result" as "no active profile",
+ * never as an error. Bound to ≤200 ids (backend-enforced); callers already
+ * bound `positionIds` to a single paginated table page.
+ */
+export async function fetchJobProfileStatusesByPositions(
+  positionIds: string[],
+): Promise<JobProfileStatusByPosition[]> {
+  const res = await httpClient.get<JobProfileStatusByPosition[]>(`${base}/statuses`, {
+    params: { positionIds: positionIds.join(',') },
+  });
+  return res.data ?? [];
 }
 
 export async function patchJobProfile(id: string, payload: JobProfilePatch): Promise<JobProfile> {

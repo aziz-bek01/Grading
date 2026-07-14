@@ -1,4 +1,4 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   approveJobProfile,
   archiveJobProfile,
@@ -7,12 +7,13 @@ import {
   fetchJobProfileById,
   fetchJobProfileByPosition,
   fetchJobProfileRevisions,
+  fetchJobProfileStatusesByPositions,
   jobProfileKeys,
   patchJobProfile,
   requestChangesJobProfile,
   submitJobProfile,
 } from '../api/jobProfileApi';
-import type { JobProfile, JobProfilePatch, JobProfileReasonPayload } from '../types';
+import type { JobProfilePatch, JobProfileReasonPayload, JobProfileStatusByPosition } from '../types';
 
 export function useJobProfile(profileId: string | undefined) {
   return useQuery({
@@ -33,38 +34,47 @@ export function useJobProfileByPosition(positionId: string | undefined) {
 }
 
 /**
- * Bulk (client-fan-out) job-profile lookup for a bounded set of position ids —
- * e.g. one server page of the Position Catalog (PAGE-2 fix). There is no
- * backend "list job profiles for many positions" endpoint (only per-position
- * `GET /positions/{id}/job-profile` and per-profile `GET /job-profiles/{id}`),
- * so this fires one request per id via `useQueries`, sharing the SAME cache
- * key as `useJobProfileByPosition` (no duplicate fetches when a user opens a
- * position's Job Profile tab right after browsing the catalog).
+ * Bulk job-profile STATUS lookup for a bounded set of position ids — e.g. one
+ * server page of the Position Catalog (PAGE-2 fix). Backed by a SINGLE call
+ * to `GET /job-profiles/statuses?positionIds=...` (one request total, not one
+ * per row — the earlier `useQueries` client fan-out is gone now that the
+ * bulk endpoint exists).
  *
- * Callers MUST bound `positionIds` to something small (a single paginated
- * table page, not a whole project) — this is a real fan-out, not a bulk
- * endpoint, and issuing one request per row of an unbounded list would be an
- * N+1 anti-pattern.
+ * Callers MUST still bound `positionIds` to something small (a single
+ * paginated table page, not a whole project) — the endpoint caps at 200 ids.
  *
- * Map values: `undefined` = still loading (or fetch failed) — render a
- * neutral placeholder, never guess; `null` = confirmed no active profile
- * exists yet; a `JobProfile` = the active profile.
+ * This hook intentionally does NOT seed `jobProfileKeys.byPosition` / the
+ * full-profile detail cache: the bulk response only carries
+ * `{ position_id, status, job_profile_id, revision_number }`, not a full
+ * `JobProfile`, so writing it into those caches would corrupt them for any
+ * consumer expecting the complete shape (e.g. the Job Profile editor tab).
+ *
+ * Map values preserve the SAME 3-state contract the fan-out version had:
+ *  - `undefined` = still loading, OR the fetch failed — render a neutral
+ *    placeholder, never guess. Every requested id maps to `undefined` until
+ *    the single query resolves successfully (`query.isSuccess`).
+ *  - `null` = confirmed no active profile — the id was requested but is
+ *    ABSENT from the bulk response (backend omits positions with no active,
+ *    non-ARCHIVED profile, or outside the caller's ABAC scope).
+ *  - a `JobProfileStatusByPosition` = the id IS present in the response, i.e.
+ *    has an active profile.
  */
 export function useJobProfileStatusesByPositions(
   positionIds: string[],
-): Map<string, JobProfile | null | undefined> {
-  const queries = useQueries({
-    queries: positionIds.map((positionId) => ({
-      queryKey: jobProfileKeys.byPosition(positionId),
-      queryFn: () => fetchJobProfileByPosition(positionId),
-    })),
+): Map<string, JobProfileStatusByPosition | null | undefined> {
+  const query = useQuery({
+    queryKey: jobProfileKeys.statusesByPositions(positionIds),
+    queryFn: () => fetchJobProfileStatusesByPositions(positionIds),
+    enabled: positionIds.length > 0,
   });
 
-  const byPositionId = new Map<string, JobProfile | null | undefined>();
-  positionIds.forEach((id, index) => {
-    const result = queries[index];
-    byPositionId.set(id, result?.isSuccess ? result.data : undefined);
-  });
+  const byPositionId = new Map<string, JobProfileStatusByPosition | null | undefined>();
+  if (!query.isSuccess) {
+    positionIds.forEach((id) => byPositionId.set(id, undefined));
+    return byPositionId;
+  }
+  const byId = new Map(query.data.map((entry) => [entry.position_id, entry] as const));
+  positionIds.forEach((id) => byPositionId.set(id, byId.get(id) ?? null));
   return byPositionId;
 }
 

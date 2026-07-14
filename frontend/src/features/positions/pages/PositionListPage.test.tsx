@@ -66,8 +66,13 @@ describe('<PositionListPage /> CRUD', () => {
   // Runs BEFORE the rename test below — it targets CFO/CTO by their PRISTINE
   // seed titles, and the next test renames CTO (mockDb is a persistent
   // module-level singleton across this file's tests; see the header note).
-  it('surfaces job profile status per position (fixture: CFO has an approved profile, CTO has none)', async () => {
+  it('surfaces job profile status per position (fixture: CFO has an approved profile, CTO has none) via a SINGLE bulk request', async () => {
     signIn('super-admin');
+    // Call-through spy (no mockImplementation) — asserts the WIRE behavior
+    // without altering it: the former per-position fan-out issued one
+    // `GET /positions/:id/job-profile` per row; the bulk endpoint issues
+    // exactly one `GET /job-profiles/statuses` for the whole page.
+    const getSpy = vi.spyOn(httpClient, 'get');
     render(renderPage());
 
     const cfoCell = await screen.findByText('Финансовый директор');
@@ -81,6 +86,15 @@ describe('<PositionListPage /> CRUD', () => {
     await waitFor(() =>
       expect(within(ctoRow).getByText(/Отсутствует|Missing/i)).toBeInTheDocument(),
     );
+
+    const statusesCalls = getSpy.mock.calls.filter(([url]) =>
+      String(url).includes('/job-profiles/statuses'),
+    );
+    expect(statusesCalls).toHaveLength(1);
+    const perPositionFanOutCalls = getSpy.mock.calls.filter(([url]) =>
+      /\/positions\/[^/]+\/job-profile$/.test(String(url)),
+    );
+    expect(perPositionFanOutCalls).toHaveLength(0);
   });
 
   it('edit opens the drawer prefilled and renames via updatePosition WITHOUT sending code', async () => {

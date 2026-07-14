@@ -86,6 +86,20 @@ export const JOB_PROFILE_FIELDS: JobProfileLongTextFieldKey[] = [
   'documents_regulations_i18n',
 ];
 
+/**
+ * Lean wire shape returned by the BULK `GET /job-profiles/statuses` endpoint
+ * (one element per position that HAS an active, non-ARCHIVED profile — see
+ * `fetchJobProfileStatusesByPositions`). Deliberately NOT a `Partial<JobProfile>`:
+ * it only ever carries these four fields, and must never be used to seed the
+ * full-profile cache (`jobProfileKeys.byPosition` / `.detail`).
+ */
+export interface JobProfileStatusByPosition {
+  position_id: string;
+  status: JobProfileStatus;
+  job_profile_id: string;
+  revision_number: number;
+}
+
 export interface JobProfileRevisionSummary {
   id: string;
   revision_number: number;

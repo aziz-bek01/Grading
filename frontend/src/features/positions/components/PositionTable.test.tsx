@@ -6,7 +6,7 @@ import { renderWithProviders } from '@/test/testUtils';
 import { signIn } from '@/test/testUtils';
 import type { Position } from '../types/positionTypes';
 import type { Department } from '@/features/organization/types/organizationTypes';
-import type { JobProfile } from '@/features/job-profiles/types';
+import type { JobProfileStatusByPosition } from '@/features/job-profiles/types';
 
 const departments: Department[] = [
   { id: 'd1', project_id: 'p', parent_id: null, code: 'IT', name_i18n: { 'ru-RU': 'ИТ' }, type: 'DIVISION', status: 'ACTIVE', updated_at: '' },
@@ -101,8 +101,13 @@ describe('<PositionTable />', () => {
   });
 
   it('renders job profile status per row when jobProfileByPositionId is provided', () => {
-    const approvedProfile = { status: 'APPROVED' } as JobProfile;
-    const jobProfileByPositionId = new Map<string, JobProfile | null | undefined>([
+    const approvedProfile: JobProfileStatusByPosition = {
+      position_id: 'pos1',
+      status: 'APPROVED',
+      job_profile_id: 'jp-1',
+      revision_number: 1,
+    };
+    const jobProfileByPositionId = new Map<string, JobProfileStatusByPosition | null | undefined>([
       ['pos1', approvedProfile], // has an active profile
       ['pos2', null], // confirmed no active profile
     ]);
@@ -124,7 +129,9 @@ describe('<PositionTable />', () => {
   it('renders a neutral loading placeholder for rows missing from jobProfileByPositionId', () => {
     // pos2 intentionally absent from the map — still "loading" from the
     // caller's perspective; must never be guessed as present or missing.
-    const jobProfileByPositionId = new Map<string, JobProfile | null | undefined>([['pos1', null]]);
+    const jobProfileByPositionId = new Map<string, JobProfileStatusByPosition | null | undefined>([
+      ['pos1', null],
+    ]);
     render(
       renderWithProviders(
         <PositionTable

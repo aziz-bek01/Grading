@@ -532,7 +532,34 @@ function blankProfile(positionId: string, projectId: string): MockJobProfile {
   } as MockJobProfile;
 }
 
-function handleJobProfiles(method: string, path: string, _query: URLSearchParams, config: AxiosRequestConfig): MatchResult | null {
+function handleJobProfiles(method: string, path: string, query: URLSearchParams, config: AxiosRequestConfig): MatchResult | null {
+  // GET /job-profiles/statuses?positionIds=<uuid1>,<uuid2>  (bulk status
+  // lookup for the Position Catalog — mirrors JobProfileController#statuses).
+  // MUST be matched BEFORE the `/job-profiles/:id` detail regex below, since
+  // "statuses" would otherwise be captured as an :id and 404. Returns a BARE
+  // array with one element per position that HAS an active (non-ARCHIVED)
+  // profile; positions with none are simply absent (never an error).
+  if (path === '/job-profiles/statuses' && method === 'GET') {
+    const raw = query.get('positionIds') ?? '';
+    const ids = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (ids.length === 0) {
+      return { status: 400, body: { code: 'VALIDATION_ERROR', message: 'positionIds is required' } };
+    }
+    const idSet = new Set(ids);
+    const items = mockDb.jobProfiles
+      .filter((p) => idSet.has(p.position_id) && p.status !== 'ARCHIVED')
+      .map((p) => ({
+        position_id: p.position_id,
+        status: p.status,
+        job_profile_id: p.id,
+        revision_number: p.revision_number,
+      }));
+    return ok(items);
+  }
+
   // POST /positions/:positionId/job-profile  (create — positionId from path,
   // empty/minimal body; mirrors PositionJobProfileController#create → 201).
   const posCreate = /^\/positions\/([^/]+)\/job-profile$/.exec(path);

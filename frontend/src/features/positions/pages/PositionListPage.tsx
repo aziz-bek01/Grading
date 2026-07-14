@@ -71,9 +71,9 @@ export function PositionListPage() {
   // the sidebar "Job Profiles" entry (and the workflow stepper's JOB_PROFILES
   // stage) — which both route here — land somewhere meaningful instead of a
   // generic position list with no job-profile signal. Bounded to the CURRENT
-  // server page's ids (never the whole project — no bulk backend endpoint
-  // exists; see `useJobProfileStatusesByPositions`). Hidden entirely (UX-only
-  // gate; backend remains source of truth) for users without JOB_PROFILE_READ.
+  // server page's ids (a single bulk `GET /job-profiles/statuses` call — see
+  // `useJobProfileStatusesByPositions`). Hidden entirely (UX-only gate;
+  // backend remains source of truth) for users without JOB_PROFILE_READ.
   const { can } = usePermission();
   const canReadJobProfiles = can(PERMISSIONS.JOB_PROFILE_READ);
   const positionIds = useMemo(() => rows.map((p) => p.id), [rows]);

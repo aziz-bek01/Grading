@@ -10,7 +10,7 @@ import { formatDateSafe } from '@/shared/lib/dates';
 import { routes } from '@/shared/config/routes';
 import type { Position } from '../types/positionTypes';
 import type { Department } from '@/features/organization/types/organizationTypes';
-import type { JobProfile } from '@/features/job-profiles/types';
+import type { JobProfileStatusByPosition } from '@/features/job-profiles/types';
 import { JobProfileStatusBadge } from '@/features/job-profiles/components/JobProfileStatusBadge';
 import { StatusBadge } from '@/shared/components/status/StatusBadge';
 import { PositionStatusBadge } from './PositionStatusBadge';
@@ -27,13 +27,14 @@ interface PositionTableProps {
   /** Opens the archive confirmation for the row. Gated by POSITION_EDIT. */
   onArchive?: (position: Position) => void;
   /**
-   * PAGE-2: job profile status per position id, from
-   * `useJobProfileStatusesByPositions`. Omit entirely to hide the "Job
-   * profile" column (e.g. callers without JOB_PROFILE_READ, or tests that
-   * don't need job-profile context). A missing/`undefined` map entry renders
-   * a loading placeholder; an explicit `null` renders "Missing".
+   * PAGE-2: job profile status per position id, from the SINGLE bulk call in
+   * `useJobProfileStatusesByPositions` (`GET /job-profiles/statuses`). Omit
+   * entirely to hide the "Job profile" column (e.g. callers without
+   * JOB_PROFILE_READ, or tests that don't need job-profile context). A
+   * missing/`undefined` map entry renders a loading placeholder; an explicit
+   * `null` renders "Missing".
    */
-  jobProfileByPositionId?: Map<string, JobProfile | null | undefined>;
+  jobProfileByPositionId?: Map<string, JobProfileStatusByPosition | null | undefined>;
   /**
    * Real server-driven pagination — `rows` is already exactly the current
    * server page (see `PositionListPage`). Forwarded straight to `DataTable`.
@@ -117,10 +118,11 @@ export function PositionTable({
       render: (p) => <PositionStatusBadge status={p.status} />,
       width: '120px',
     },
-    // PAGE-2: only mounted when the caller supplies job-profile data (there is
-    // no bulk backend endpoint — see `useJobProfileStatusesByPositions`).
-    // Omitting the prop (e.g. no JOB_PROFILE_READ, or tests unrelated to job
-    // profiles) hides the column entirely rather than rendering a fake one.
+    // PAGE-2: only mounted when the caller supplies job-profile data, from
+    // the single bulk `GET /job-profiles/statuses` call — see
+    // `useJobProfileStatusesByPositions`. Omitting the prop (e.g. no
+    // JOB_PROFILE_READ, or tests unrelated to job profiles) hides the column
+    // entirely rather than rendering a fake one.
     ...(jobProfileByPositionId
       ? [
           {

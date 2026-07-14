@@ -16,9 +16,6 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
-import uz.hrlab.grading.integration.idp.infrastructure.ZitadelIdpProperties;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -102,7 +99,7 @@ public class ResetLoginUseCase {
     private final GetUserDetailsQuery detailsQuery;
     private final AuditService audit;
     private final IdentityProvisioningPort identityProvisioning;
-    private final ZitadelIdpProperties idpProps;
+    private final IdentityProvisioningToggle idpToggle;
 
     public ResetLoginUseCase(UserManagementPolicy policy,
                              UserRepository userRepo,
@@ -110,14 +107,14 @@ public class ResetLoginUseCase {
                              GetUserDetailsQuery detailsQuery,
                              AuditService audit,
                              IdentityProvisioningPort identityProvisioning,
-                             ZitadelIdpProperties idpProps) {
+                             IdentityProvisioningToggle idpToggle) {
         this.policy = policy;
         this.userRepo = userRepo;
         this.membershipRepo = membershipRepo;
         this.detailsQuery = detailsQuery;
         this.audit = audit;
         this.identityProvisioning = identityProvisioning;
-        this.idpProps = idpProps;
+        this.idpToggle = idpToggle;
     }
 
     @Transactional
@@ -140,7 +137,7 @@ public class ResetLoginUseCase {
 
         // Flag OFF → no credential store; surface the same clear error as PATCH
         // password rather than pretend to have issued a login.
-        if (!idpProps.isEnabled()) {
+        if (!idpToggle.isEnabled()) {
             throw new ValidationException("USER_NO_IDP_ACCOUNT",
                     "Identity provider is disabled, so a login cannot be (re)issued.");
         }

@@ -13,8 +13,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
 import uz.hrlab.grading.integration.idp.infrastructure.ZitadelIdpProperties;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;

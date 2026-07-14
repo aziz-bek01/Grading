@@ -1,4 +1,4 @@
-package uz.hrlab.grading.integration.idp.application;
+package uz.hrlab.grading.access.application;
 
 import uz.hrlab.grading.common.exception.BaseDomainException;
 

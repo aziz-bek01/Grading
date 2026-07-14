@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
+import uz.hrlab.grading.access.application.IdentityProvisioningPort;
 import uz.hrlab.grading.integration.idp.infrastructure.NoOpIdentityProvisioningClient;
 import uz.hrlab.grading.integration.idp.infrastructure.ZitadelIdentityProvisioningClient;
 import uz.hrlab.grading.integration.idp.infrastructure.ZitadelIdpProperties;

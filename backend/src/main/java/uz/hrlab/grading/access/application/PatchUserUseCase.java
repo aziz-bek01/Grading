@@ -15,9 +15,6 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
-import uz.hrlab.grading.integration.idp.infrastructure.ZitadelIdpProperties;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -112,7 +109,7 @@ public class PatchUserUseCase {
     private final GetUserDetailsQuery detailsQuery;
     private final AuditService audit;
     private final IdentityProvisioningPort identityProvisioning;
-    private final ZitadelIdpProperties idpProps;
+    private final IdentityProvisioningToggle idpToggle;
 
     public PatchUserUseCase(UserManagementPolicy policy,
                             UserRepository userRepo,
@@ -120,14 +117,14 @@ public class PatchUserUseCase {
                             GetUserDetailsQuery detailsQuery,
                             AuditService audit,
                             IdentityProvisioningPort identityProvisioning,
-                            ZitadelIdpProperties idpProps) {
+                            IdentityProvisioningToggle idpToggle) {
         this.policy = policy;
         this.userRepo = userRepo;
         this.membershipRepo = membershipRepo;
         this.detailsQuery = detailsQuery;
         this.audit = audit;
         this.identityProvisioning = identityProvisioning;
-        this.idpProps = idpProps;
+        this.idpToggle = idpToggle;
     }
 
     @Transactional
@@ -232,7 +229,7 @@ public class PatchUserUseCase {
         boolean resetPassword = password != null && !password.isBlank();
         if (resetPassword) {
             PasswordPolicy.validate(password, "USER_PASSWORD_WEAK");
-            if (!idpProps.isEnabled() || user.getExternalIdpSubject() == null
+            if (!idpToggle.isEnabled() || user.getExternalIdpSubject() == null
                     || user.getExternalIdpSubject().isBlank()) {
                 // No credential store to write to — surface a clear, actionable error
                 // rather than silently dropping the password.
@@ -277,7 +274,7 @@ public class PatchUserUseCase {
         // (old/old on failure, new/new on success). IdP disabled ⇒ grading only.
         if (emailChangedFrom != null) {
             String subject = user.getExternalIdpSubject();
-            if (idpProps.isEnabled() && subject != null && !subject.isBlank()) {
+            if (idpToggle.isEnabled() && subject != null && !subject.isBlank()) {
                 identityProvisioning.changeEmail(subject, user.getEmail());
             }
             // old→new are not secrets — safe to audit for forensics.
@@ -304,7 +301,7 @@ public class PatchUserUseCase {
      * NEVER rethrow: the in-app status change already succeeded and must stand.
      */
     private void syncIdpStatus(TenantContext ctx, UserJpaEntity user, UserStatus idpTransition) {
-        if (!idpProps.isEnabled()) {
+        if (!idpToggle.isEnabled()) {
             return; // NoOp anyway, but skip the audit noise when IdP is disabled
         }
         String subject = user.getExternalIdpSubject();

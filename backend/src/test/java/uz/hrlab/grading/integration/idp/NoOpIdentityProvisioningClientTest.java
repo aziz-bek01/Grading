@@ -2,7 +2,7 @@ package uz.hrlab.grading.integration.idp;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
+import uz.hrlab.grading.access.application.IdentityProvisioningPort;
 import uz.hrlab.grading.integration.idp.infrastructure.NoOpIdentityProvisioningClient;
 
 import static org.assertj.core.api.Assertions.assertThat;

@@ -2,7 +2,7 @@ package uz.hrlab.grading.integration.idp.infrastructure;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
+import uz.hrlab.grading.access.application.IdentityProvisioningPort;
 
 /**
  * No-op {@link IdentityProvisioningPort} used when

@@ -551,29 +551,40 @@ class ArchitectureTest {
     //  arrow flows project → access only — access is the low-level authorization
     //  kernel every other module depends on.
     //
-    //  SCOPE: the cleaned slice set is {evaluation, methodology, integration,
-    //  reporting} — proven a DAG (reporting → {integration, evaluation} →
-    //  methodology, evaluation → methodology). A whole-app beFreeOfCycles() is
-    //  still RED — the modular monolith carries other pre-existing package cycles.
-    //  NOTE: access ↔ project is now cycle-free, but access CANNOT yet join this
-    //  guarded set because a SEPARATE pre-existing cycle access ↔ integration is
-    //  still open (access → integration via IdentityProvisioningPort /
-    //  ZitadelIdpProperties in the IdP-provisioning use cases; integration →
-    //  access via AbacGate / PermissionCodes) — and integration is already in the
-    //  set, so adding access would surface it and turn this rule RED. Add
-    //  {access, project} here once that access → integration edge is inverted too.
-    //  Widen this set as each further pair is genuinely cleaned; do NOT flip it to
-    //  the whole app until every pair is.
+    //  The access ↔ integration cycle was subsequently broken (arch-hardening
+    //  2026-07-14, follow-up) by inverting the access → integration back-edge in
+    //  the IdP-provisioning use cases (Invite/Patch/ResetLogin/RevokeMembership):
+    //  (1) the provisioning CONTRACT — IdentityProvisioningPort (+ nested
+    //  ProvisionResult) and IdentityProvisioningException — was relocated DOWN
+    //  into access.application (access owns the consumer contract), and the ZITADEL
+    //  + NoOp clients in integration.idp.infrastructure now IMPLEMENT it; (2) the
+    //  grading.idp.zitadel.enabled toggle that drives business branching
+    //  (password validation, INVITED→ACTIVE flip, deactivate/reactivate) is read
+    //  through the new access-owned IdentityProvisioningToggle, which
+    //  ZitadelIdpProperties (a plain, non-proxied @ConfigurationProperties bean)
+    //  implements — returning the same bound flag verbatim. access no longer
+    //  imports anything under integration; the static arrow flows integration →
+    //  access only (integration still uses access AbacGate / PermissionCodes).
+    //
+    //  SCOPE: the cleaned slice set is now {access, project, evaluation,
+    //  methodology, integration, reporting} — proven a DAG. Topological order
+    //  reporting → integration → evaluation → methodology → project → access, with
+    //  access a sink (it depends on none of the other five among this set). A
+    //  whole-app beFreeOfCycles() is still RED — the modular monolith carries other
+    //  pre-existing package cycles. Widen this set as each further pair is
+    //  genuinely cleaned; do NOT flip it to the whole app until every pair is.
     // ---------------------------------------------------------------------
 
     /** Slices whose mutual dependencies are now proven cycle-free and must stay so. */
     private static final DescribedPredicate<Slice> CYCLE_FREE_MODULE_PAIR =
             new DescribedPredicate<>(
-                    "in the cycle-free module set [evaluation, methodology, integration, reporting]") {
+                    "in the cycle-free module set [access, project, evaluation, methodology, "
+                            + "integration, reporting]") {
                 @Override
                 public boolean test(Slice slice) {
                     String module = slice.getNamePart(1);
-                    return "evaluation".equals(module) || "methodology".equals(module)
+                    return "access".equals(module) || "project".equals(module)
+                            || "evaluation".equals(module) || "methodology".equals(module)
                             || "integration".equals(module) || "reporting".equals(module);
                 }
             };
@@ -584,11 +595,15 @@ class ArchitectureTest {
                 .matching(BASE_PACKAGE + ".(*)..")
                 .that(CYCLE_FREE_MODULE_PAIR)
                 .should().beFreeOfCycles()
-                .because("arch-hardening 2026-07-13 — the evaluation ↔ methodology cycle was "
-                        + "inverted via MethodologyReferencePort, and the integration ↔ reporting "
+                .because("arch-hardening 2026-07-13/14 — the evaluation ↔ methodology cycle was "
+                        + "inverted via MethodologyReferencePort, the integration ↔ reporting "
                         + "cycle via the integration-owned ReportDataPort/ReportGenerationPort/"
-                        + "ReportRetryScanPort ports; no new dependency may re-introduce a cycle "
-                        + "among {evaluation, methodology, integration, reporting}.");
+                        + "ReportRetryScanPort ports, the access ↔ project cycle via the access-"
+                        + "owned ProjectReferencePort, and the access ↔ integration cycle via "
+                        + "relocating IdentityProvisioningPort/IdentityProvisioningException into "
+                        + "access.application plus the access-owned IdentityProvisioningToggle; no "
+                        + "new dependency may re-introduce a cycle among {access, project, "
+                        + "evaluation, methodology, integration, reporting}.");
         rule.check(CLASSES);
     }
 

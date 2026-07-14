@@ -29,7 +29,7 @@ import uz.hrlab.grading.common.exception.ResourceNotFoundException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
 import uz.hrlab.grading.common.exception.UnprocessableEntityException;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
+import uz.hrlab.grading.access.application.IdentityProvisioningException;
 import uz.hrlab.grading.project.application.ProjectLockedException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;

@@ -6,8 +6,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
+import uz.hrlab.grading.access.application.IdentityProvisioningException;
+import uz.hrlab.grading.access.application.IdentityProvisioningPort;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;

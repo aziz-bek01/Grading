@@ -1,4 +1,4 @@
-package uz.hrlab.grading.integration.idp.application;
+package uz.hrlab.grading.access.application;
 
 /**
  * Port for provisioning login identities in the external Identity Provider

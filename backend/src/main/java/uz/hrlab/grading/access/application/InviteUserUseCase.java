@@ -19,9 +19,6 @@ import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.ValidationException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
-import uz.hrlab.grading.integration.idp.infrastructure.ZitadelIdpProperties;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
@@ -96,7 +93,7 @@ public class InviteUserUseCase {
     private final GetUserDetailsQuery detailsQuery;
     private final AuditService audit;
     private final IdentityProvisioningPort identityProvisioning;
-    private final ZitadelIdpProperties idpProps;
+    private final IdentityProvisioningToggle idpToggle;
 
     public InviteUserUseCase(UserManagementPolicy policy,
                              UserRepository userRepo,
@@ -107,7 +104,7 @@ public class InviteUserUseCase {
                              GetUserDetailsQuery detailsQuery,
                              AuditService audit,
                              IdentityProvisioningPort identityProvisioning,
-                             ZitadelIdpProperties idpProps) {
+                             IdentityProvisioningToggle idpToggle) {
         this.policy = policy;
         this.userRepo = userRepo;
         this.membershipRepo = membershipRepo;
@@ -117,7 +114,7 @@ public class InviteUserUseCase {
         this.detailsQuery = detailsQuery;
         this.audit = audit;
         this.identityProvisioning = identityProvisioning;
-        this.idpProps = idpProps;
+        this.idpToggle = idpToggle;
     }
 
     /**
@@ -146,7 +143,7 @@ public class InviteUserUseCase {
                     "Target tenant not found");
         }
 
-        boolean idpEnabled = idpProps.isEnabled();
+        boolean idpEnabled = idpToggle.isEnabled();
         // Validate the admin-set password up-front (before any write) ONLY when
         // the IdP will be used. When disabled, the password is ignored entirely.
         if (idpEnabled) {

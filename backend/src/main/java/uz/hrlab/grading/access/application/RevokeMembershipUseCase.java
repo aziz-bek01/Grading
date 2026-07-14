@@ -14,9 +14,6 @@ import uz.hrlab.grading.audit.application.AuditEvent;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.exception.PermissionDeniedException;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
-import uz.hrlab.grading.integration.idp.infrastructure.ZitadelIdpProperties;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
@@ -59,20 +56,20 @@ public class RevokeMembershipUseCase {
     private final UserRepository userRepo;
     private final AuditService audit;
     private final IdentityProvisioningPort identityProvisioning;
-    private final ZitadelIdpProperties idpProps;
+    private final IdentityProvisioningToggle idpToggle;
 
     public RevokeMembershipUseCase(UserManagementPolicy policy,
                                    UserTenantMembershipRepository membershipRepo,
                                    UserRepository userRepo,
                                    AuditService audit,
                                    IdentityProvisioningPort identityProvisioning,
-                                   ZitadelIdpProperties idpProps) {
+                                   IdentityProvisioningToggle idpToggle) {
         this.policy = policy;
         this.membershipRepo = membershipRepo;
         this.userRepo = userRepo;
         this.audit = audit;
         this.identityProvisioning = identityProvisioning;
-        this.idpProps = idpProps;
+        this.idpToggle = idpToggle;
     }
 
     @Transactional
@@ -120,7 +117,7 @@ public class RevokeMembershipUseCase {
      */
     private void maybeDeactivateIdpIfLastMembership(TenantContext ctx, UUID userId,
                                                     UUID revokedMembershipId) {
-        if (!idpProps.isEnabled()) {
+        if (!idpToggle.isEnabled()) {
             return;
         }
         // Re-read all memberships; the just-revoked row is REVOKED in this TX.

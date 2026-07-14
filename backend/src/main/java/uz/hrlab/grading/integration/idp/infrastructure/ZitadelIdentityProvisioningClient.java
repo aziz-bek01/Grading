@@ -12,8 +12,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningException;
-import uz.hrlab.grading.integration.idp.application.IdentityProvisioningPort;
+import uz.hrlab.grading.access.application.IdentityProvisioningException;
+import uz.hrlab.grading.access.application.IdentityProvisioningPort;
 
 import java.time.Duration;
 import java.util.List;

@@ -2,6 +2,7 @@ package uz.hrlab.grading.integration.idp.infrastructure;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import uz.hrlab.grading.access.application.IdentityProvisioningToggle;
 
 /**
  * Configuration for the ZITADEL identity-provisioning adapter —
@@ -25,7 +26,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConfigurationProperties(prefix = "grading.idp.zitadel")
-public class ZitadelIdpProperties {
+public class ZitadelIdpProperties implements IdentityProvisioningToggle {
 
     /** Master switch. When false the provisioning port is a NO-OP. */
     private boolean enabled = false;
@@ -45,6 +46,7 @@ public class ZitadelIdpProperties {
     /** Read timeout in milliseconds for the IdP HTTP client. */
     private int readTimeoutMs = 10_000;
 
+    @Override
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
 

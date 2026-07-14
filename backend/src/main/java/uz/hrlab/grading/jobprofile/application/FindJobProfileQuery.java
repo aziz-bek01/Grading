@@ -15,9 +15,12 @@ import uz.hrlab.grading.position.infrastructure.PositionRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -59,6 +62,15 @@ public class FindJobProfileQuery {
      * {@code abacGate.enforce} call still throw {@link TenantAccessDeniedException}
      * (genuine cross-tenant / position-access failures); only the missing-profile
      * case returns {@link Optional#empty()}.
+     *
+     * <p>M-1 — after loading the active profile, the profile's REAL status is fed
+     * back through {@link AbacGate#enforceCanReadPosition} so
+     * {@code ApprovedEntityFilterPolicy} withholds a DRAFT/UNDER_REVIEW profile
+     * from a Viewer/External-Auditor, exactly as {@code GET /job-profiles/{id}}
+     * already does. A withheld draft is returned as {@link Optional#empty()}
+     * (absent → 204) — indistinguishable from "no profile yet" — rather than
+     * surfaced. Consultant/HR roles are {@code NOT_APPLICABLE} to that filter and
+     * still see drafts.
      */
     @Transactional(readOnly = true)
     public Optional<JobProfile> findActiveByPositionId(UUID positionId) {
@@ -72,6 +84,7 @@ public class FindJobProfileQuery {
                 .findFirstByTenantIdAndProjectIdAndPositionIdAndStatusNot(
                         ctx.tenantId(), position.getProjectId(), position.getId(),
                         JobProfileStatus.ARCHIVED)
+                .filter(profile -> canReadProfileStatus(ctx, position, profile.getStatus()))
                 .map(JobProfileJpaEntity::toDomain);
     }
 
@@ -117,28 +130,65 @@ public class FindJobProfileQuery {
 
         // Per-position ABAC filter reusing the SAME gate as the per-position read.
         // A denial omits the position (never a leak, never a page-wide abort).
-        Set<UUID> readableIds = new LinkedHashSet<>();
+        // Keyed by position id so the profile-status re-check below (M-1) can
+        // resolve each returned profile's owning position.
+        Map<UUID, PositionJpaEntity> readablePositions = new LinkedHashMap<>();
         for (PositionJpaEntity p : found) {
             try {
                 abacGate.enforceCanReadPosition(ctx, p.getId(), p.getProjectId(),
                         p.getDepartmentId(), null);
-                readableIds.add(p.getId());
+                readablePositions.put(p.getId(), p);
             } catch (TenantAccessDeniedException denied) {
                 // Out-of-scope position → omit (indistinguishable from "no profile").
             }
         }
-        if (readableIds.isEmpty()) {
+        if (readablePositions.isEmpty()) {
             return List.of();
         }
 
         // (2) ONE tenant-scoped batch load of the active (non-ARCHIVED) profile per
         //     readable position (partial-unique index ⇒ ≤ 1 row per position).
-        return profiles
+        //     L-1: no projectId predicate here (unlike the singular finder) — the
+        //     positionId IN-list is the readable, per-position ABAC-vetted set,
+        //     tenant_id is pinned, and positionId→projectId is 1:1, so a projectId
+        //     predicate would be tautological (can exclude no row the id-set doesn't).
+        List<JobProfileJpaEntity> active = profiles
                 .findAllByTenantIdAndPositionIdInAndStatusNot(
-                        ctx.tenantId(), readableIds, JobProfileStatus.ARCHIVED)
-                .stream()
-                .map(JobProfileJpaEntity::toDomain)
-                .toList();
+                        ctx.tenantId(), readablePositions.keySet(), JobProfileStatus.ARCHIVED);
+
+        // M-1: apply the approved-status filter with each profile's REAL status so
+        // a Viewer/External-Auditor never sees a DRAFT/UNDER_REVIEW profile (parity
+        // with GET /job-profiles/{id}); a withheld profile is simply omitted.
+        List<JobProfile> result = new ArrayList<>(active.size());
+        for (JobProfileJpaEntity profile : active) {
+            PositionJpaEntity position = readablePositions.get(profile.getPositionId());
+            if (position != null && canReadProfileStatus(ctx, position, profile.getStatus())) {
+                result.add(profile.toDomain());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * M-1 — re-runs the position read gate with a profile's REAL status so the
+     * {@link uz.hrlab.grading.access.domain.ApprovedEntityFilterPolicy} withholds a
+     * non-approved (DRAFT/UNDER_REVIEW) profile from a Viewer/External-Auditor,
+     * consistent with the {@code GET /job-profiles/{id}} path. Returns {@code true}
+     * when the caller may see a profile in that status; a policy denial maps to
+     * {@code false} (the profile is omitted/absent, never surfaced). Roles that are
+     * {@code NOT_APPLICABLE} to the filter (Consultant/HR/…) always see the profile.
+     * The position-level policies were already satisfied by the {@code status=null}
+     * call above, so the only new source of denial here is the status filter.
+     */
+    private boolean canReadProfileStatus(TenantContext ctx, PositionJpaEntity position,
+                                         JobProfileStatus status) {
+        try {
+            abacGate.enforceCanReadPosition(ctx, position.getId(), position.getProjectId(),
+                    position.getDepartmentId(), status);
+            return true;
+        } catch (TenantAccessDeniedException withheld) {
+            return false;
+        }
     }
 
     @Transactional(readOnly = true)

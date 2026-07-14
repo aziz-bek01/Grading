@@ -18,6 +18,7 @@ import uz.hrlab.grading.project.domain.ProjectStatus;
 import uz.hrlab.grading.project.infrastructure.ProjectJpaEntity;
 import uz.hrlab.grading.project.infrastructure.ProjectRepository;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -94,6 +95,48 @@ class Phase3JobProfileIntegrationTest extends AbstractIntegrationTest {
                         tenant, proj.getId(), pos.getId(), JobProfileStatus.ARCHIVED))
                 .map(JobProfileJpaEntity::getId)
                 .contains(active.getId());
+    }
+
+    /**
+     * Anti-BOLA proof for the bulk finder behind
+     * {@link uz.hrlab.grading.jobprofile.application.FindJobProfileQuery#findActiveStatusesByPositionIds}:
+     * even when Tenant B's position id is mixed into the query's IN-list, the
+     * {@code tenant_id} predicate keeps Tenant B's active profile from leaking
+     * into Tenant A's result.
+     */
+    @Test
+    void bulkFinderReturnsOnlyTenantARowsForMixedPositionIdList() {
+        UUID tenantA = newSeededTenantId();
+        UUID tenantB = newSeededTenantId();
+        ProjectJpaEntity projA = projects.save(newProject(tenantA, "PRJ-BA"));
+        ProjectJpaEntity projB = projects.save(newProject(tenantB, "PRJ-BB"));
+        DepartmentJpaEntity dptA = departments.save(newDept(tenantA, projA.getId(), "DPT-BA"));
+        DepartmentJpaEntity dptB = departments.save(newDept(tenantB, projB.getId(), "DPT-BB"));
+        PositionJpaEntity posA1 = positions.save(newPosition(tenantA, projA.getId(),
+                dptA.getId(), "POS-BA1"));
+        PositionJpaEntity posA2 = positions.save(newPosition(tenantA, projA.getId(),
+                dptA.getId(), "POS-BA2"));
+        PositionJpaEntity posB = positions.save(newPosition(tenantB, projB.getId(),
+                dptB.getId(), "POS-BB"));
+
+        JobProfileJpaEntity profA1 = profiles.save(newProfile(tenantA, projA.getId(),
+                posA1.getId(), JobProfileStatus.APPROVED, 1, null));
+        JobProfileJpaEntity profA2 = profiles.save(newProfile(tenantA, projA.getId(),
+                posA2.getId(), JobProfileStatus.DRAFT, 1, null));
+        JobProfileJpaEntity profB = profiles.save(newProfile(tenantB, projB.getId(),
+                posB.getId(), JobProfileStatus.APPROVED, 1, null));
+
+        // Mixed id list deliberately includes Tenant B's position id.
+        List<UUID> mixedIds = List.of(posA1.getId(), posA2.getId(), posB.getId());
+
+        List<JobProfileJpaEntity> rows = profiles.findAllByTenantIdAndPositionIdInAndStatusNot(
+                tenantA, mixedIds, JobProfileStatus.ARCHIVED);
+
+        assertThat(rows).extracting(JobProfileJpaEntity::getId)
+                .containsExactlyInAnyOrder(profA1.getId(), profA2.getId())
+                .doesNotContain(profB.getId());
+        assertThat(rows).extracting(JobProfileJpaEntity::getTenantId)
+                .containsOnly(tenantA);
     }
 
     private ProjectJpaEntity newProject(UUID tenantId, String code) {

@@ -136,6 +136,76 @@ class ImportControllerSecurityTest {
     }
 
     // ------------------------------------------------------------------
+    //  F2/F4 backstop — authenticated-but-wrong-permission → 403.
+    //  Every newly-@PreAuthorize-gated endpoint must deny an authenticated
+    //  caller holding only an irrelevant authority (SOME_OTHER). Mirrors
+    //  ExportControllerSecurityTest#streamingDownloadWithoutExportReadIs403.
+    // ------------------------------------------------------------------
+
+    @Test
+    void uploadWithoutRequiredAuthorityIs403() throws Exception {
+        // @PreAuthorize denies before the method body, so file validation is
+        // never reached — the gate is what returns 403.
+        MockMultipartFile file = new MockMultipartFile("file", "x.xlsx", XLSX_MIME,
+                new byte[]{1});
+        mvc.perform(multipart("/api/v1/imports/upload")
+                        .file(file)
+                        .param("templateCode", "ORG_STRUCTURE_V1")
+                        .param("projectId", UUID.randomUUID().toString())
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void commitWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(post("/api/v1/imports/{id}/commit", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cancelWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(post("/api/v1/imports/{id}/cancel", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(get("/api/v1/imports")
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(get("/api/v1/imports/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void errorsWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(get("/api/v1/imports/{id}/errors", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void downloadEmptyTemplateWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(get("/api/v1/imports/templates/{templateCode}/empty.xlsx", "ORG_STRUCTURE_V1")
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void downloadSampleTemplateWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(get("/api/v1/imports/templates/{templateCode}/sample.xlsx", "ORG_STRUCTURE_V1")
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    // ------------------------------------------------------------------
     //  F3 — Level-1 file validation at the controller boundary.
     //  Each rejection must return 400 with the precise error code AND
     //  must NOT reach the upload use case.

@@ -70,6 +70,43 @@ class WorkerRetryScannerIntegrationTest extends AbstractIntegrationTest {
         }
     }
 
+    @Test
+    void reportScanSelectsOnlyDueUnderMaxRetryableRowsForTheTenant() {
+        UUID tenantA = newSeededTenantId();
+        UUID tenantB = newSeededTenantId();
+        UUID projectA = insertProject(tenantA, "PRJ-RA");
+        UUID projectB = insertProject(tenantB, "PRJ-RB");
+        OffsetDateTime now = OffsetDateTime.now();
+
+        // (1) DUE retryable FAILED reports — picked up.
+        UUID dueNullNext = insertReport(tenantA, projectA, "FAILED", 1, null);
+        UUID duePastNext = insertReport(tenantA, projectA, "FAILED", 2, now.minusMinutes(5));
+        // (2) NOT due yet — skipped.
+        UUID notDue = insertReport(tenantA, projectA, "FAILED", 1, now.plusMinutes(30));
+        // (3) At the bound — skipped.
+        insertReport(tenantA, projectA, "FAILED", WorkerRetryPolicy.MAX_ATTEMPTS, null);
+        // (4) Terminal DEAD_LETTER — never selected.
+        insertReport(tenantA, projectA, "DEAD_LETTER", WorkerRetryPolicy.MAX_ATTEMPTS, null);
+        // (5) Non-failed status — not a retry candidate.
+        insertReport(tenantA, projectA, "GENERATED", 0, null);
+        // (6) Other tenant, due + retryable — must NOT leak into tenant A's scan.
+        insertReport(tenantB, projectB, "FAILED", 1, null);
+
+        TenantContext previous = TenantContextHolder.get();
+        TenantContextHolder.set(new TenantContext(
+                null, tenantA, Set.of(), Set.of(), Set.of(), Set.of(), false, null));
+        try {
+            List<UUID> due = scanner.dueReports(tenantA, now).stream()
+                    .map(WorkerReQueuer.DueRow::id).collect(Collectors.toList());
+
+            assertThat(due).containsExactlyInAnyOrder(dueNullNext, duePastNext);
+            assertThat(due).doesNotContain(notDue);
+        } finally {
+            if (previous == null) TenantContextHolder.clear();
+            else TenantContextHolder.set(previous);
+        }
+    }
+
     private UUID insertProject(UUID tenantId, String code) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
@@ -87,6 +124,19 @@ class WorkerRetryScannerIntegrationTest extends AbstractIntegrationTest {
                         + "status, requested_by, requested_at, contains_salary_data, "
                         + "contains_personal_data, attempt_count, next_attempt_at, version) "
                         + "VALUES (?, ?, ?, 'POSITION_CATALOG', 'XLSX', ?, ?, now(), false, false, ?, ?, 0)",
+                id, tenantId, projectId, status, UUID.randomUUID(), attemptCount, nextAttemptAt);
+        return id;
+    }
+
+    private UUID insertReport(UUID tenantId, UUID projectId, String status,
+                              int attemptCount, OffsetDateTime nextAttemptAt) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO public.reports (id, tenant_id, project_id, report_type, format, "
+                        + "status, title, requested_by, requested_at, contains_salary_data, "
+                        + "contains_personal_data, attempt_count, next_attempt_at, version) "
+                        + "VALUES (?, ?, ?, 'POSITION_CATALOG', 'PDF', ?, 'Test report', ?, now(), "
+                        + "false, false, ?, ?, 0)",
                 id, tenantId, projectId, status, UUID.randomUUID(), attemptCount, nextAttemptAt);
         return id;
     }

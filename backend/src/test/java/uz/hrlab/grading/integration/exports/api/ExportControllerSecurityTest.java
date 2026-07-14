@@ -111,6 +111,43 @@ class ExportControllerSecurityTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // --- F2 backstop: authenticated-but-wrong-permission → 403 ---------------
+    // Each newly-@PreAuthorize-gated endpoint must deny an authenticated caller
+    // holding only an irrelevant authority. Mirrors
+    // streamingDownloadWithoutExportReadIs403.
+
+    @Test
+    void requestWithoutRequiredAuthorityIs403() throws Exception {
+        // Valid body so @Valid passes and the @PreAuthorize gate is what denies.
+        mvc.perform(post("/api/v1/exports/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"export_type\":\"POSITION_CATALOG\",\"format\":\"XLSX\",\"project_id\":\""
+                                + UUID.randomUUID() + "\"}")
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(get("/api/v1/exports")
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(get("/api/v1/exports/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void downloadUrlWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(get("/api/v1/exports/{id}/download-url", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
     // --- Batch 2: backend-proxied streaming download endpoint ----------------
 
     @Test

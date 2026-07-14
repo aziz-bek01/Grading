@@ -143,11 +143,13 @@ class SaveAsTemplateUseCaseTest {
         given(methodologies.findByIdAndTenantId(m.getId(), tenantId)).willReturn(Optional.of(m));
         given(factors.findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(tenantId, v.getId()))
                 .willReturn(List.of(f1, f2));
-        given(levels.findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(tenantId, f1.getId()))
-                .willReturn(List.of(seedLevel(f1.getId(), "L1", 1, "10", "1"),
+        // Batched level load: ONE query returns every factor's levels globally
+        // ordered by level_order ASC; the use case groups by factorId in memory.
+        given(levels.findAllByTenantIdAndFactorIdInOrderByLevelOrderAsc(eq(tenantId), any()))
+                .willReturn(List.of(
+                        seedLevel(f1.getId(), "L1", 1, "10", "1"),
+                        seedLevel(f2.getId(), "L1", 1, "5", null),
                         seedLevel(f1.getId(), "L2", 2, "20", "2")));
-        given(levels.findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(tenantId, f2.getId()))
-                .willReturn(List.of(seedLevel(f2.getId(), "L1", 1, "5", null)));
         given(customTemplates.save(any())).willAnswer(inv -> inv.getArgument(0));
 
         UUID id = useCase.saveAsTemplate(new SaveAsTemplateCommand(

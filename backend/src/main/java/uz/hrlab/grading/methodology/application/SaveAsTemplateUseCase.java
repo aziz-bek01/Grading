@@ -25,7 +25,11 @@ import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -157,12 +161,25 @@ public class SaveAsTemplateUseCase {
     private MethodologyTemplateSnapshot buildSnapshot(UUID tenantId, UUID versionId) {
         List<FactorJpaEntity> srcFactors = factors
                 .findAllByTenantIdAndMethodologyVersionIdOrderBySortOrderAsc(tenantId, versionId);
+        // Batch every factor's levels in ONE tenant-scoped query (was one
+        // findAllByTenantIdAndFactorId per factor → N+1). Global level_order ASC +
+        // group-by-factorId preserves each factor's per-level order byte-for-byte
+        // (BE-26 pattern, as in DefaultReportDataPort).
+        Set<UUID> factorIds = new LinkedHashSet<>();
+        for (FactorJpaEntity f : srcFactors) {
+            factorIds.add(f.getId());
+        }
+        Map<UUID, List<FactorLevelJpaEntity>> levelsByFactor = new HashMap<>();
+        if (!factorIds.isEmpty()) {
+            for (FactorLevelJpaEntity l : levels
+                    .findAllByTenantIdAndFactorIdInOrderByLevelOrderAsc(tenantId, factorIds)) {
+                levelsByFactor.computeIfAbsent(l.getFactorId(), k -> new ArrayList<>()).add(l);
+            }
+        }
         List<MethodologyTemplateSnapshot.FactorSnapshot> factorSnaps = new ArrayList<>();
         for (FactorJpaEntity f : srcFactors) {
-            List<FactorLevelJpaEntity> srcLevels = levels
-                    .findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(tenantId, f.getId());
             List<MethodologyTemplateSnapshot.LevelSnapshot> levelSnaps = new ArrayList<>();
-            for (FactorLevelJpaEntity l : srcLevels) {
+            for (FactorLevelJpaEntity l : levelsByFactor.getOrDefault(f.getId(), List.of())) {
                 levelSnaps.add(new MethodologyTemplateSnapshot.LevelSnapshot(
                         l.getCode(), l.getLevelOrder(), l.getPoints(), l.getScaleValue(),
                         copy(l.getLabelI18n()), copy(l.getDescriptionI18n())));

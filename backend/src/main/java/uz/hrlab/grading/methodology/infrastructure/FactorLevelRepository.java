@@ -39,6 +39,20 @@ public interface FactorLevelRepository
                     UUID tenantId, UUID factorId);
 
     /**
+     * Batch variant of {@link #findAllByTenantIdAndFactorIdAndDeprecatedAtIsNullOrderByLevelOrderAsc}
+     * — loads the ACTIVE levels of a set of factors in ONE tenant-scoped round-trip
+     * (no per-factor N+1 on the new-evaluation preview path,
+     * {@code EvaluationContextLoader#loadActiveLevels}). Excludes soft-deprecated rows
+     * and is globally ordered by {@code level_order ASC} so an in-memory
+     * group-by-factorId preserves each factor's per-level order byte-for-byte, exactly
+     * as the single-factor finder produced (mirrors the BE-26 batch above). Tenant is
+     * pinned.
+     */
+    List<FactorLevelJpaEntity>
+            findAllByTenantIdAndFactorIdInAndDeprecatedAtIsNullOrderByLevelOrderAsc(
+                    UUID tenantId, Collection<UUID> factorIds);
+
+    /**
      * Highest {@code level_order} currently assigned to this factor's levels
      * (tenant-scoped), or {@code null} when the factor has no levels yet. Used
      * by {@code FactorLevelService.add(...)} to compute a collision-free

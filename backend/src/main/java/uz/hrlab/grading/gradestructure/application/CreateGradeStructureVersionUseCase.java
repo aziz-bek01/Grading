@@ -21,7 +21,9 @@ import uz.hrlab.grading.gradestructure.infrastructure.GradeStructureRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -83,6 +85,15 @@ public class CreateGradeStructureVersionUseCase {
         List<GradeJpaEntity> srcGrades = grades
                 .findAllByTenantIdAndGradeStructureIdOrderBySortOrderAsc(
                         ctx.tenantId(), sourceId);
+        // Batch every source grade's band in ONE structure-scoped query (was one
+        // findByTenantIdAndGradeId per grade → N+1). One band per grade (uq on
+        // grade_id), keyed by gradeId; the per-grade clone/insert order below is
+        // unchanged. Mirrors SaveAsGradeTemplateUseCase#buildSnapshot.
+        Map<UUID, GradeBandJpaEntity> bandByGrade = new HashMap<>();
+        for (GradeBandJpaEntity sb : bands
+                .findAllByTenantIdAndGradeStructureIdOrderByMinScoreAsc(ctx.tenantId(), sourceId)) {
+            bandByGrade.put(sb.getGradeId(), sb);
+        }
         for (GradeJpaEntity sg : srcGrades) {
             UUID newGradeId = UUID.randomUUID();
             GradeJpaEntity ng = new GradeJpaEntity(newGradeId, ctx.tenantId(), newId,
@@ -91,12 +102,13 @@ public class CreateGradeStructureVersionUseCase {
             ng.setDescriptionI18n(sg.getDescriptionI18n());
             grades.save(ng);
 
-            bands.findByTenantIdAndGradeId(ctx.tenantId(), sg.getId()).ifPresent(sb -> {
+            GradeBandJpaEntity sb = bandByGrade.get(sg.getId());
+            if (sb != null) {
                 GradeBandJpaEntity nb = new GradeBandJpaEntity(
                         UUID.randomUUID(), ctx.tenantId(), newGradeId, newId,
                         sb.getMinScore(), sb.getMaxScore());
                 bands.save(nb);
-            });
+            }
         }
 
         audit.record(AuditEvent.builder(ctx)

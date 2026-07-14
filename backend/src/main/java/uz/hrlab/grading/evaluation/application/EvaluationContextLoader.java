@@ -8,12 +8,14 @@ import uz.hrlab.grading.methodology.domain.Factor;
 import uz.hrlab.grading.methodology.domain.FactorLevel;
 import uz.hrlab.grading.methodology.domain.MethodologyVersion;
 import uz.hrlab.grading.methodology.infrastructure.FactorJpaEntity;
+import uz.hrlab.grading.methodology.infrastructure.FactorLevelJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.FactorLevelRepository;
 import uz.hrlab.grading.methodology.infrastructure.FactorRepository;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,29 +92,51 @@ public class EvaluationContextLoader {
 
     /** Load ALL levels (incl. deprecated) for the given factors — recompute path. */
     public Map<UUID, List<FactorLevel>> loadLevels(List<Factor> factorList, UUID tenantId) {
-        Map<UUID, List<FactorLevel>> out = new LinkedHashMap<>();
-        for (Factor f : factorList) {
-            var rows = levels.findAllByTenantIdAndFactorIdOrderByLevelOrderAsc(tenantId, f.id());
-            List<FactorLevel> domain = new ArrayList<>(rows.size());
-            for (var row : rows) {
-                domain.add(row.toDomain());
-            }
-            out.put(f.id(), domain);
-        }
-        return out;
+        List<UUID> factorIds = factorIds(factorList);
+        // Batch every factor's levels in ONE tenant-scoped query (was one
+        // findAllByTenantIdAndFactorId per factor → N+1). Global level_order ASC +
+        // group-by-factorId preserves each factor's per-level order (BE-26 pattern).
+        List<FactorLevelJpaEntity> rows = factorIds.isEmpty()
+                ? List.of()
+                : levels.findAllByTenantIdAndFactorIdInOrderByLevelOrderAsc(tenantId, factorIds);
+        return groupByFactor(factorList, rows);
     }
 
     /** Load only ACTIVE levels for the given factors (BE-4) — new-evaluation path. */
     public Map<UUID, List<FactorLevel>> loadActiveLevels(List<Factor> factorList, UUID tenantId) {
+        List<UUID> factorIds = factorIds(factorList);
+        List<FactorLevelJpaEntity> rows = factorIds.isEmpty()
+                ? List.of()
+                : levels.findAllByTenantIdAndFactorIdInAndDeprecatedAtIsNullOrderByLevelOrderAsc(
+                        tenantId, factorIds);
+        return groupByFactor(factorList, rows);
+    }
+
+    private static List<UUID> factorIds(List<Factor> factorList) {
+        List<UUID> ids = new ArrayList<>(factorList.size());
+        for (Factor f : factorList) {
+            ids.add(f.id());
+        }
+        return ids;
+    }
+
+    /**
+     * Regroup globally {@code level_order}-ASC rows into a per-factor map keyed in
+     * {@code factorList} order — a factor with no levels keeps a (mutable) empty list,
+     * exactly as the old per-factor loop produced. Each group's encounter order is the
+     * source query's {@code level_order} ASC, so per-factor level order is preserved.
+     */
+    private static Map<UUID, List<FactorLevel>> groupByFactor(
+            List<Factor> factorList, List<FactorLevelJpaEntity> rows) {
+        Map<UUID, List<FactorLevel>> byFactor = new HashMap<>();
+        for (FactorLevelJpaEntity row : rows) {
+            byFactor.computeIfAbsent(row.getFactorId(), k -> new ArrayList<>())
+                    .add(row.toDomain());
+        }
         Map<UUID, List<FactorLevel>> out = new LinkedHashMap<>();
         for (Factor f : factorList) {
-            var rows = levels.findAllByTenantIdAndFactorIdAndDeprecatedAtIsNullOrderByLevelOrderAsc(
-                    tenantId, f.id());
-            List<FactorLevel> domain = new ArrayList<>(rows.size());
-            for (var row : rows) {
-                domain.add(row.toDomain());
-            }
-            out.put(f.id(), domain);
+            List<FactorLevel> domain = byFactor.get(f.id());
+            out.put(f.id(), domain != null ? domain : new ArrayList<>());
         }
         return out;
     }

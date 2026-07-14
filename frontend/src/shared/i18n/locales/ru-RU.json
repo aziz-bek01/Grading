@@ -875,6 +875,7 @@
     "translation_matrix_subtitle": "Заполните название каждого фактора в каждом языке.",
     "translations_page_title": "Переводы методологии",
     "translations_page_subtitle": "Матрица факторов × 4 языка. Полная заполненность ускоряет приёмку.",
+    "compare_versions": "Сравнить версии",
     "compare_versions_soon": "Сравнение версий появится в MVP 2.",
     "version_panel_title": "Версии",
     "version_label": "Версия {{number}}",

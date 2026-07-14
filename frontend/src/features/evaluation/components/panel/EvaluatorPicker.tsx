@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAllUsers } from '@/features/users-access/hooks/useUsers';
+import { InlineBanner } from '@/shared/components/ui/InlineBanner';
 
 interface BaseProps {
   disabled?: boolean;
@@ -113,16 +114,17 @@ export function EvaluatorPicker(props: Props) {
             before exhausting the tenant's users — say so instead of quietly
             offering an incomplete roster. */}
         {data?.truncated ? (
-          <p
-            className="mt-1 text-xs text-warning-700"
+          <InlineBanner
+            variant="warning"
             role="status"
+            className="mt-1"
             data-testid={`${testIdPrefix}-truncated`}
           >
             {t('dataTable.results_truncated', {
               shown: data.items.length,
               total: data.totalElements,
             })}
-          </p>
+          </InlineBanner>
         ) : null}
       </div>
     );
@@ -157,16 +159,17 @@ export function EvaluatorPicker(props: Props) {
         ))}
       </select>
       {data?.truncated ? (
-        <p
-          className="mt-1 text-xs text-warning-700"
+        <InlineBanner
+          variant="warning"
           role="status"
+          className="mt-1"
           data-testid={`${selectId}-truncated`}
         >
           {t('dataTable.results_truncated', {
             shown: data.items.length,
             total: data.totalElements,
           })}
-        </p>
+        </InlineBanner>
       ) : null}
     </div>
   );

@@ -144,11 +144,13 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
           type="email"
           autoComplete="off"
           {...register('email')}
+          aria-invalid={!!errors.email}
+          aria-describedby={errors.email ? 'invite-email-error' : undefined}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="invite-email"
         />
         {errors.email ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id="invite-email-error" className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.email.message)}
           </p>
         ) : null}
@@ -163,11 +165,13 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
           type="text"
           autoComplete="off"
           {...register('full_name')}
+          aria-invalid={!!errors.full_name}
+          aria-describedby={errors.full_name ? 'invite-fullname-error' : undefined}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="invite-fullname"
         />
         {errors.full_name ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id="invite-fullname-error" className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.full_name.message)}
           </p>
         ) : null}

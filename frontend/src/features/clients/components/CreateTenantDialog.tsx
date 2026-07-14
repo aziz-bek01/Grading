@@ -119,12 +119,14 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
           autoComplete="off"
           spellCheck={false}
           {...register('slug')}
+          aria-invalid={!!errors.slug}
+          aria-describedby={errors.slug ? 'create-tenant-slug-error' : undefined}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm font-mono bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="create-tenant-slug"
         />
         <p className="text-xs text-text-muted mt-1">{t('clients.create.slug_hint')}</p>
         {errors.slug ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id="create-tenant-slug-error" className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.slug.message)}
           </p>
         ) : null}
@@ -139,11 +141,17 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
           type="text"
           autoComplete="off"
           {...register('display_name')}
+          aria-invalid={!!errors.display_name}
+          aria-describedby={errors.display_name ? 'create-tenant-display-name-error' : undefined}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="create-tenant-display-name"
         />
         {errors.display_name ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p
+            id="create-tenant-display-name-error"
+            className="text-xs text-danger-700 mt-1"
+            role="alert"
+          >
             {errKey(errors.display_name.message)}
           </p>
         ) : null}
@@ -158,11 +166,17 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
           type="text"
           autoComplete="off"
           {...register('company_legal_name')}
+          aria-invalid={!!errors.company_legal_name}
+          aria-describedby={errors.company_legal_name ? 'create-tenant-legal-name-error' : undefined}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="create-tenant-legal-name"
         />
         {errors.company_legal_name ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p
+            id="create-tenant-legal-name-error"
+            className="text-xs text-danger-700 mt-1"
+            role="alert"
+          >
             {errKey(errors.company_legal_name.message)}
           </p>
         ) : null}
@@ -178,11 +192,17 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
             type="text"
             autoComplete="off"
             {...register('company_brand_name')}
+            aria-invalid={!!errors.company_brand_name}
+            aria-describedby={errors.company_brand_name ? 'create-tenant-brand-name-error' : undefined}
             className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
             data-testid="create-tenant-brand-name"
           />
           {errors.company_brand_name ? (
-            <p className="text-xs text-danger-700 mt-1" role="alert">
+            <p
+              id="create-tenant-brand-name-error"
+              className="text-xs text-danger-700 mt-1"
+              role="alert"
+            >
               {errKey(errors.company_brand_name.message)}
             </p>
           ) : null}
@@ -196,11 +216,17 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
             type="text"
             autoComplete="off"
             {...register('company_industry')}
+            aria-invalid={!!errors.company_industry}
+            aria-describedby={errors.company_industry ? 'create-tenant-industry-error' : undefined}
             className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
             data-testid="create-tenant-industry"
           />
           {errors.company_industry ? (
-            <p className="text-xs text-danger-700 mt-1" role="alert">
+            <p
+              id="create-tenant-industry-error"
+              className="text-xs text-danger-700 mt-1"
+              role="alert"
+            >
               {errKey(errors.company_industry.message)}
             </p>
           ) : null}

@@ -30,6 +30,28 @@ describe('<CreateTenantDialog />', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('wires aria-invalid + aria-describedby onto a field once it errors', async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    render(renderWithProviders(<CreateTenantDialog open onClose={() => {}} onSubmit={onSubmit} />));
+
+    const slugInput = screen.getByTestId('create-tenant-slug');
+    // Clean before any submit attempt — no error wired yet.
+    expect(slugInput).toHaveAttribute('aria-invalid', 'false');
+    expect(slugInput).not.toHaveAttribute('aria-describedby');
+
+    // Uppercase + too short → invalid per ^[a-z][a-z0-9_]{2,63}$.
+    await user.type(slugInput, 'AB');
+    await user.type(screen.getByTestId('create-tenant-display-name'), 'OzBank');
+    await user.type(screen.getByTestId('create-tenant-legal-name'), 'OzBank JSCB');
+    await user.click(submitButton());
+
+    await waitFor(() => expect(slugInput).toHaveAttribute('aria-invalid', 'true'));
+    const describedBy = slugInput.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveAttribute('role', 'alert');
+  });
+
   it('blocks submission when required fields are missing', async () => {
     const onSubmit = vi.fn();
     const user = userEvent.setup();

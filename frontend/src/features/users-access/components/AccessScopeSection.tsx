@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Info, ListTree, FolderKanban, Save } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { InlineBanner } from '@/shared/components/ui/InlineBanner';
 import { pickLocalized } from '@/shared/lib/localized';
 import { ApiError } from '@/shared/api/apiError';
 import { useProjects } from '@/features/projects/hooks/useProjects';
@@ -232,16 +233,12 @@ export function AccessScopeSection({ userId, tenantId, readOnly }: AccessScopeSe
             instead of quietly offering an incomplete project checklist —
             EPIC-013 (project #21+ must stay grantable). */}
         {projectsQuery.data?.truncated ? (
-          <p
-            className="text-xs text-warning-700"
-            role="status"
-            data-testid="scope-project-truncated"
-          >
+          <InlineBanner variant="warning" role="status" data-testid="scope-project-truncated">
             {t('dataTable.results_truncated', {
               shown: projectsQuery.data.items.length,
               total: projectsQuery.data.total_elements,
             })}
-          </p>
+          </InlineBanner>
         ) : null}
 
         <div className="rounded-md border border-border bg-surface max-h-60 overflow-auto p-2">

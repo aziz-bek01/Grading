@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
 import { Button } from '@/shared/components/ui/Button';
+import { InlineBanner } from '@/shared/components/ui/InlineBanner';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
@@ -126,16 +127,12 @@ export function ProjectListPage() {
               fetchAllPages helper; if its safety cap is ever hit say so rather
               than quietly presenting a partial catalog as the whole list. */}
           {data?.truncated ? (
-            <p
-              className="text-xs text-warning-700"
-              role="status"
-              data-testid="projects-list-truncated"
-            >
+            <InlineBanner variant="warning" role="status" data-testid="projects-list-truncated">
               {t('dataTable.results_truncated', {
                 shown: data.items.length,
                 total: data.total_elements,
               })}
-            </p>
+            </InlineBanner>
           ) : null}
           <ProjectTable
             rows={data?.items ?? []}

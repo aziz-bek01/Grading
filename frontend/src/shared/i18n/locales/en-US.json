@@ -875,6 +875,7 @@
     "translation_matrix_subtitle": "Fill in each factor's name in every language.",
     "translations_page_title": "Methodology translations",
     "translations_page_subtitle": "Factor × 4-locale matrix. Full coverage speeds up approval.",
+    "compare_versions": "Compare versions",
     "compare_versions_soon": "Version comparison ships in MVP 2.",
     "version_panel_title": "Versions",
     "version_label": "Version {{number}}",

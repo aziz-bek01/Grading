@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/shared/components/ui/Card';
+import { Button } from '@/shared/components/ui/Button';
+import { Tooltip } from '@/shared/components/ui/Tooltip';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { MethodologyStatusBadge } from './MethodologyStatusBadge';
 import type { MethodologyVersionSummary } from '../types';
@@ -58,9 +60,26 @@ export function MethodologyVersionPanel({
             })}
         </ul>
       )}
-      <p className="text-xs text-text-muted mt-3" aria-disabled="true">
-        {t('methodology.compare_versions_soon')}
-      </p>
+      {/*
+        "Compare versions" is reserved for MVP 2 (design-foundation §13) — no
+        handler exists yet. Rendered as an `aria-disabled` (not native
+        `disabled`) button so it stays hoverable/focusable and the Tooltip
+        below can actually explain *why* to mouse AND keyboard users; a
+        native `disabled` button cannot receive focus at all in most
+        browsers, which would silently drop the keyboard-focus case.
+      */}
+      <Tooltip content={t('methodology.compare_versions_soon')}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          aria-disabled="true"
+          className="mt-3 text-text-muted cursor-not-allowed"
+          data-testid="methodology-compare-versions"
+        >
+          {t('methodology.compare_versions')}
+        </Button>
+      </Tooltip>
     </Card>
   );
 }

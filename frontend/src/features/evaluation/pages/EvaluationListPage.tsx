@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/shared/components/ui/Card';
+import { InlineBanner } from '@/shared/components/ui/InlineBanner';
 import { Breadcrumbs } from '@/shared/components/layout/Breadcrumbs';
 import { Drawer } from '@/shared/components/layout/Drawer';
 import { DataTable } from '@/shared/components/data-table/DataTable';
@@ -84,16 +85,12 @@ export function EvaluationListPage() {
           exceptionally large project) say so instead of quietly rendering an
           incomplete department/title map and "Add positions" candidate set. */}
       {s.positionsQuery.data?.truncated ? (
-        <p
-          role="status"
-          className="text-xs text-warning-700"
-          data-testid="positions-truncated-banner"
-        >
+        <InlineBanner variant="warning" role="status" data-testid="positions-truncated-banner">
           {t('dataTable.results_truncated', {
             shown: s.positionsQuery.data.items.length,
             total: s.positionsQuery.data.totalElements,
           })}
-        </p>
+        </InlineBanner>
       ) : null}
 
       {/* Mode toggle — hidden for committee scorers (locked to by-factor). */}

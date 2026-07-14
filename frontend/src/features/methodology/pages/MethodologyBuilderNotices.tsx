@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { ShieldAlert } from 'lucide-react';
+import { InlineBanner } from '@/shared/components/ui/InlineBanner';
 
 interface MethodologyBuilderNoticesProps {
   approvedEditMode: boolean;
@@ -13,8 +14,9 @@ interface MethodologyBuilderNoticesProps {
  * approved-edit-mode warning, the soft-deprecate outcome notice (FE-2, with
  * a dismiss control; also auto-dismisses via the state hook), and the
  * save-as-template success toast (auto-dismisses via the state hook).
- * Extracted from `MethodologyBuilderPage` (FE-041); unchanged behaviour and
- * testids.
+ * Extracted from `MethodologyBuilderPage` (FE-041); unchanged testids.
+ * Now built on the shared `InlineBanner` primitive instead of three hand-rolled
+ * notice `<div>`s (dedupe sweep) — same roles/copy/testids, no behaviour change.
  */
 export function MethodologyBuilderNotices({
   approvedEditMode,
@@ -27,49 +29,34 @@ export function MethodologyBuilderNotices({
   return (
     <>
       {/* FE-1 — persistent warning banner: approved-edit mode is visually and
-          semantically distinct from normal DRAFT editing. Reuses the same inline
-          alert pattern as the template-success / missing-required notices. */}
+          semantically distinct from normal DRAFT editing. */}
       {approvedEditMode ? (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-md border border-warning-500/40 bg-warning-50 px-4 py-3 text-sm text-warning-700"
+        <InlineBanner
+          variant="warning"
+          icon={<ShieldAlert size={18} className="mt-0.5 shrink-0" aria-hidden />}
           data-testid="approved-edit-banner"
         >
-          <ShieldAlert size={18} className="mt-0.5 shrink-0" aria-hidden />
-          <div>
-            <p className="font-medium">{t('methodology.approved_edit.banner_title')}</p>
-            <p className="text-warning-700/90">{t('methodology.approved_edit.banner_body')}</p>
-          </div>
-        </div>
+          <p className="font-medium">{t('methodology.approved_edit.banner_title')}</p>
+          <p className="text-warning-700/90">{t('methodology.approved_edit.banner_body')}</p>
+        </InlineBanner>
       ) : null}
 
       {/* FE-2 — non-alarming deprecate outcome notice. */}
       {deprecateNotice ? (
-        <div
-          role="status"
-          className="flex items-start justify-between gap-3 rounded-md border border-info-500/30 bg-info-50 px-4 py-3 text-sm text-info-600"
+        <InlineBanner
+          variant="info"
+          icon={null}
+          onDismiss={onDismissDeprecateNotice}
           data-testid="deprecate-notice"
         >
-          <span>{deprecateNotice}</span>
-          <button
-            type="button"
-            className="text-info-600/70 hover:text-info-600"
-            onClick={onDismissDeprecateNotice}
-            aria-label={t('common.dismiss')}
-          >
-            ×
-          </button>
-        </div>
+          {deprecateNotice}
+        </InlineBanner>
       ) : null}
 
       {templateSuccess ? (
-        <div
-          role="status"
-          className="rounded-md border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700"
-          data-testid="builder-template-success"
-        >
+        <InlineBanner variant="success" icon={null} data-testid="builder-template-success">
           {templateSuccess}
-        </div>
+        </InlineBanner>
       ) : null}
     </>
   );

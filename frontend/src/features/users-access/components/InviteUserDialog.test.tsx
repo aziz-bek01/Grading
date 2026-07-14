@@ -48,6 +48,26 @@ describe('<InviteUserDialog />', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('wires aria-invalid + aria-describedby onto the email field once it errors', async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={onSubmit} />));
+
+    const emailInput = screen.getByTestId('invite-email');
+    expect(emailInput).toHaveAttribute('aria-invalid', 'false');
+    expect(emailInput).not.toHaveAttribute('aria-describedby');
+
+    // Fill name + role only — email missing → Zod must block.
+    await user.type(screen.getByTestId('invite-fullname'), 'Test User');
+    await user.click(await screen.findByTestId('invite-role-VIEWER'));
+    await user.click(screen.getByRole('button', { name: SUBMIT }));
+
+    await waitFor(() => expect(emailInput).toHaveAttribute('aria-invalid', 'true'));
+    const describedBy = emailInput.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveAttribute('role', 'alert');
+  });
+
   it('refuses submission when no role is selected', async () => {
     const onSubmit = vi.fn();
     const user = userEvent.setup();

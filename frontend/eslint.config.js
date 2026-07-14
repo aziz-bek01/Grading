@@ -34,6 +34,32 @@ export default defineConfig([
     },
   },
   {
+    // Architectural import-boundary guardrail: a feature module must not import
+    // another feature's route PAGES. Pages are route targets composed ONLY by
+    // app/router.tsx; reaching into a sibling feature's `pages/` couples routing
+    // and layout across features. Cross-feature reuse must go through `shared/`
+    // or the target feature's hooks/components/types/api — never its pages.
+    // Zero violations today (verified); this is preventive/enforcing going
+    // forward. Scoped to features source only, so app/router.tsx (which composes
+    // pages) and same-feature relative imports are unaffected.
+    files: ['src/features/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/features/*/pages', '@/features/*/pages/**'],
+              message:
+                "Do not import another feature's route pages. Pages are composed by app/router.tsx only; share via shared/ or the feature's hooks/components/types/api instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Playwright E2E specs/fixtures are not React. A fixture's `use()` callback
     // (`async ({ page }, use) => { await use(page) }`) is misread by the
     // react-hooks plugin as the React `use` hook, so disable that rule here;

@@ -56,6 +56,8 @@ export const approvalKeys = {
  *   currentStepOrder   = min(stepOrder where status === 'PENDING')
  *   initiatedByName    = initiated_by_name (if BE later sends it) ?? null
  *   entityLabel        = entity_label_i18n (if present) ?? undefined
+ *   projectLabel       = project_label_i18n (if present) ?? undefined — mapped
+ *                         through the SAME `asI18n` helper as entityLabel
  *   decisions[]        = synthesized from decided steps
  *   step.reason        = localized(reason_i18n) for the active locale
  * ------------------------------------------------------------------ */
@@ -146,6 +148,8 @@ export function normalizeApprovalRequest(input: unknown): ApprovalRequest {
       'JOB_PROFILE') as ApprovalRequestSummary['entityType'],
     entityId: pick(raw, 'entity_id', 'entityId') ?? '',
     entityLabel: asI18n(raw['entity_label_i18n'] ?? raw['entityLabel']),
+    // Mirrors entityLabel exactly — same helper, same NON_NULL omission.
+    projectLabel: asI18n(raw['project_label_i18n'] ?? raw['projectLabel']),
     status: (pick<ApprovalRequestStatus>(raw, 'current_status', 'status') ??
       'PENDING') as ApprovalRequestStatus,
     initiatedByUserId:

@@ -583,6 +583,7 @@
     "filter_entity_type": "Entity type",
     "unknown_entity": "Unnamed item",
     "unknown_user": "Unknown user",
+    "project_label": "Project · {{name}}",
     "steps_title": "Approval steps",
     "decisions_title": "Decision history",
     "decisions_empty": "No decisions yet.",

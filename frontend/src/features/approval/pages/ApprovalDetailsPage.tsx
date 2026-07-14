@@ -51,12 +51,25 @@ export function ApprovalDetailsPage() {
   // via `title`) remains in the subtitle below for traceability (FE-2).
   const entityLabel =
     entityLabelText.length > 0 ? entityLabelText : t('approval.unknown_entity');
+  // Same "which project" fix as the inbox card: render projectLabel (mirrors
+  // entityLabel — same localized map, same pickLocalized call) only when the
+  // backend resolved it.
+  const projectLabelText = r.projectLabel ? pickLocalized(r.projectLabel, i18n.language) : '';
+  const hasProjectLabel = projectLabelText.length > 0;
 
   return (
     <div className="space-y-6" data-testid="approval-details-page">
       <Breadcrumbs />
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
+          {hasProjectLabel ? (
+            <p
+              className="text-xs text-text-muted"
+              data-testid="approval-detail-project-label"
+            >
+              {t('approval.project_label', { name: projectLabelText })}
+            </p>
+          ) : null}
           <h1 className="text-2xl text-text-primary">{entityLabel}</h1>
           <p className="text-sm text-text-secondary mt-1">
             {t(`approval.entityType.${r.entityType}`)} ·{' '}

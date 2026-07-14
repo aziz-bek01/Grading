@@ -583,6 +583,7 @@
     "filter_entity_type": "Объект тури",
     "unknown_entity": "Номсиз объект",
     "unknown_user": "Номаълум фойдаланувчи",
+    "project_label": "Лойиҳа · {{name}}",
     "steps_title": "Тасдиқлаш босқичлари",
     "decisions_title": "Қарорлар тарихи",
     "decisions_empty": "Ҳали қарорлар йўқ.",

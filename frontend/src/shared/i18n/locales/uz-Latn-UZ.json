@@ -583,6 +583,7 @@
     "filter_entity_type": "Obyekt turi",
     "unknown_entity": "Nomsiz obyekt",
     "unknown_user": "Noma'lum foydalanuvchi",
+    "project_label": "Loyiha · {{name}}",
     "steps_title": "Tasdiqlash bosqichlari",
     "decisions_title": "Qarorlar tarixi",
     "decisions_empty": "Hali qarorlar yoʻq.",

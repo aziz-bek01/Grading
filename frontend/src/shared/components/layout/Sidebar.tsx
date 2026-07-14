@@ -9,6 +9,7 @@ import {
   Briefcase,
   ClipboardList,
   ClipboardCheck,
+  ListChecks,
   Scale,
   CheckSquare,
   Layers,
@@ -110,9 +111,13 @@ export function Sidebar({ className }: SidebarProps = {}) {
       // making it unreachable except by typing the URL. Same permission set
       // as the global "approvals" inbox item (governanceItems below) and the
       // router.tsx route guard — mirrors the sibling reports/grades items.
+      // ListChecks (not Inbox) — visually distinct from the global personal
+      // decision queue below ("nav.approvals") so the two surfaces don't read
+      // as duplicates: this is a project-scoped, filterable status list, not
+      // a personal action inbox.
       to: routes.projectApprovals(projectIdForRoutes),
       label: t('nav.project_approvals'),
-      icon: <Inbox size={18} aria-hidden />,
+      icon: <ListChecks size={18} aria-hidden />,
       permission: [
         PERMISSIONS.APPROVAL_REQUEST_CREATE,
         PERMISSIONS.APPROVAL_REQUEST_DECIDE,
@@ -144,6 +149,10 @@ export function Sidebar({ className }: SidebarProps = {}) {
       permission: PERMISSIONS.EVALUATION_PANEL_APPROVE,
     },
     {
+      // Global personal decision queue ("what is waiting on ME, across every
+      // project") — Inbox reads correctly here. Kept distinct from the
+      // per-project approval list above (projectItems), which uses
+      // ListChecks instead of this same icon.
       to: routes.approvalsInbox,
       label: t('nav.approvals'),
       icon: <Inbox size={18} aria-hidden />,

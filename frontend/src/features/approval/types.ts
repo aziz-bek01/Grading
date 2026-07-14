@@ -17,6 +17,12 @@
  * inbox / list — BE-3..BE-6) and consumed by the adapter snake-first. They are
  * OMITTED (`@JsonInclude(NON_NULL)`) when the entity/user is missing or
  * cross-tenant; the components then fall back to a SHORT id via `shortId`.
+ *
+ * `projectLabel` (from `project_label_i18n`) mirrors `entityLabel` EXACTLY —
+ * same localized-map shape, same `@JsonInclude(NON_NULL)` omission when the
+ * project cannot be resolved, mapped through the same `asI18n` helper in the
+ * adapter. It lets the cross-project global inbox (`/app/approvals`) show
+ * WHICH project a card belongs to.
  */
 import type { Locale } from '@/shared/types/common';
 
@@ -75,6 +81,8 @@ export interface ApprovalRequestSummary {
   entityType: ApprovalEntityType;
   entityId: string;
   entityLabel?: Partial<Record<Locale, string>>;
+  /** BE-resolved localized project name (OMITTED when unresolved). See header note. */
+  projectLabel?: Partial<Record<Locale, string>>;
   status: ApprovalRequestStatus;
   initiatedByUserId: string;
   initiatedByName?: string | null;

@@ -192,6 +192,27 @@ describe('normalizeApprovalRequest (wire → domain adapter)', () => {
     expect(enriched.decisions[0].decidedByName).toBe('Dev User');
   });
 
+  // Cross-project inbox fix: project_label_i18n mirrors entity_label_i18n —
+  // mapped through the SAME asI18n helper, same NON_NULL omission semantics.
+  it('maps project_label_i18n to projectLabel (mirrors entity_label_i18n)', () => {
+    const withProject = normalizeApprovalRequest({
+      ...REAL_WIRE_DETAIL,
+      project_label_i18n: {
+        'ru-RU': 'Acme HRTech 2026',
+        'en-US': 'Acme HRTech 2026',
+      },
+    });
+    expect(withProject.projectLabel).toEqual({
+      'ru-RU': 'Acme HRTech 2026',
+      'en-US': 'Acme HRTech 2026',
+    });
+
+    // BE omits project_label_i18n (NON_NULL) when the project cannot be
+    // resolved — the adapter must yield undefined, never throw.
+    const withoutProject = normalizeApprovalRequest(REAL_WIRE_DETAIL);
+    expect(withoutProject.projectLabel).toBeUndefined();
+  });
+
   // FE-1: when a label/name is OMITTED (NON_NULL), the adapter yields null and
   // the consumer falls back to a SHORT id (verified in the shortId + card tests),
   // never a raw full UUID. The adapter itself must keep the raw entityId intact.

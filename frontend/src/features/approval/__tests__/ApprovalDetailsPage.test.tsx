@@ -52,6 +52,29 @@ describe('<ApprovalDetailsPage />', () => {
     expect(screen.getByText('Dev User')).toBeInTheDocument();
   });
 
+  // Cross-project inbox fix: the detail header shows WHICH project the
+  // request belongs to via the BE-resolved project_label_i18n (mirrors
+  // entity_label_i18n), rendered above the entity title.
+  it('renders the localized project label above the entity title', async () => {
+    mountAt('/app/approvals/appr-swe-eval-1');
+    await waitFor(() => {
+      expect(screen.getByTestId('approval-details-page')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('approval-detail-project-label')).toHaveTextContent(
+      'Проект · Acme HRTech 2026',
+    );
+  });
+
+  // ...and gracefully omits the line when the backend has not resolved a
+  // project label for this request (NON_NULL omission, no crash).
+  it('omits the project label line when project_label_i18n is not resolved', async () => {
+    mountAt('/app/approvals/appr-cfo-jp-1');
+    await waitFor(() => {
+      expect(screen.getByTestId('approval-details-page')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('approval-detail-project-label')).toBeNull();
+  });
+
   // AC-2: a 404 (BE maps TenantAccessDeniedException → 404, e.g. a stale inbox
   // row opened after a tenant/context change) surfaces the SAME calm,
   // non-enumerating NoAccessState as a 403 — NOT the retryable "Что-то пошло не

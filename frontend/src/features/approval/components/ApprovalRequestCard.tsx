@@ -28,10 +28,27 @@ export function ApprovalRequestCard({ request }: Props) {
   // Prefer the BE-resolved initiator name; otherwise show a short id, not the
   // full requesting-user UUID (FE-3).
   const initiatedByDisplay = request.initiatedByName ?? shortId(request.initiatedByUserId);
+  // Cross-project global inbox (/app/approvals) previously gave no clue WHICH
+  // project a card belonged to. `projectLabel` mirrors `entityLabel` (same
+  // localized map, same `pickLocalized` call) and is OMITTED by the backend
+  // when unresolved — render it only when present, as a muted eyebrow above
+  // the entity title.
+  const projectLabelText = request.projectLabel
+    ? pickLocalized(request.projectLabel, i18n.language)
+    : '';
+  const hasProjectLabel = projectLabelText.length > 0;
   return (
     <Card compact data-testid="approval-request-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
+          {hasProjectLabel ? (
+            <div
+              className="text-xs text-text-muted truncate"
+              data-testid="approval-card-project-label"
+            >
+              {t('approval.project_label', { name: projectLabelText })}
+            </div>
+          ) : null}
           <Link
             to={routes.approvalDetails(request.id)}
             title={request.entityId}

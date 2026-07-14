@@ -1395,6 +1395,13 @@ export interface MockApprovalRequest {
   current_status: MockApprovalRequestStatus;
   /** BE-resolved human label for the entity (OMITTED when unlabellable). */
   entity_label_i18n?: Partial<Record<Locale, string>>;
+  /**
+   * BE-resolved human label for the project the request belongs to (OMITTED
+   * when unresolved). Mirrors entity_label_i18n exactly — same shape, same
+   * NON_NULL omission — lets the cross-project global inbox show WHICH
+   * project a card belongs to.
+   */
+  project_label_i18n?: Partial<Record<Locale, string>>;
   /** BE-resolved display name for requested_by (OMITTED when unknown). */
   initiated_by_name?: string;
   notes_i18n: Partial<Record<Locale, string>>;
@@ -1446,6 +1453,14 @@ const approvalRequests: MockApprovalRequest[] = [
       'Катта дастурчи · CFO Finance v1',
       'Katta dasturchi · CFO Finance v1',
       'Senior Software Engineer · CFO Finance v1',
+    ),
+    // Cross-project inbox fix: BE-resolved project name, same shape as
+    // entity_label_i18n above.
+    project_label_i18n: I18N(
+      'Acme HRTech 2026',
+      'Acme HRTech 2026',
+      'Acme HRTech 2026',
+      'Acme HRTech 2026',
     ),
     initiated_by_name: 'HRLab Consultant',
     notes_i18n: I18N(

@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uz.hrlab.grading.jobprofile.application.ApproveJobProfileUseCase;
 import uz.hrlab.grading.jobprofile.application.ArchiveJobProfileUseCase;
@@ -20,6 +21,7 @@ import uz.hrlab.grading.jobprofile.application.SubmitJobProfileForReviewUseCase;
 import uz.hrlab.grading.jobprofile.application.UpdateJobProfileCommand;
 import uz.hrlab.grading.jobprofile.application.UpdateJobProfileUseCase;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -59,6 +61,25 @@ public class JobProfileController {
     @PreAuthorize("hasAuthority('JOB_PROFILE_READ')")
     public JobProfileResponse getById(@PathVariable UUID id) {
         return JobProfileResponse.from(findQuery.findById(id));
+    }
+
+    /**
+     * PAGE-2 BE — bulk job-profile status for a page of the Positions Catalog in
+     * ONE request instead of the per-position client fan-out. Only positions
+     * that HAVE an active (non-ARCHIVED) profile appear; a caller who can read a
+     * position's profile can read its status here (same {@code JOB_PROFILE_READ}
+     * gate + same ABAC as {@code GET /positions/{id}/job-profile}). The literal
+     * {@code /statuses} segment takes precedence over {@code /{id}} in Spring's
+     * path matching, so it never collides with {@link #getById}. Empty / &gt;
+     * {@link uz.hrlab.grading.common.api.Pagination#MAX_PAGE_SIZE} input → 400.
+     */
+    @GetMapping("/statuses")
+    @PreAuthorize("hasAuthority('JOB_PROFILE_READ')")
+    public List<PositionJobProfileStatusResponse> statusesByPositionIds(
+            @RequestParam(name = "positionIds", required = false) List<UUID> positionIds) {
+        return findQuery.findActiveStatusesByPositionIds(positionIds).stream()
+                .map(PositionJobProfileStatusResponse::from)
+                .toList();
     }
 
     @PatchMapping("/{id}")

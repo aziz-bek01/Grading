@@ -142,6 +142,36 @@ class JobProfileControllerSecurityTest {
     }
 
     @Test
+    void bulkStatusesWithoutReadIsForbidden() throws Exception {
+        mvc.perform(get("/api/v1/job-profiles/statuses")
+                        .param("positionIds", UUID.randomUUID().toString())
+                        .with(jwt().authorities(() -> "ORG_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void bulkStatusesWithReadReturns200() throws Exception {
+        UUID positionId = UUID.randomUUID();
+        given(findQuery.findActiveStatusesByPositionIds(any()))
+                .willReturn(java.util.List.of(sampleProfile(UUID.randomUUID(), JobProfileStatus.APPROVED)));
+        mvc.perform(get("/api/v1/job-profiles/statuses")
+                        .param("positionIds", positionId.toString())
+                        .with(jwt().authorities(() -> "JOB_PROFILE_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void bulkStatusesRouteDoesNotCollideWithGetById() throws Exception {
+        // "statuses" must hit the /statuses handler, not /{id} (→ would 400 on UUID parse).
+        given(findQuery.findActiveStatusesByPositionIds(any()))
+                .willReturn(java.util.List.of());
+        mvc.perform(get("/api/v1/job-profiles/statuses")
+                        .param("positionIds", UUID.randomUUID().toString())
+                        .with(jwt().authorities(() -> "JOB_PROFILE_READ")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void createOnPositionRequiresJobProfileEdit() throws Exception {
         mvc.perform(post("/api/v1/positions/{positionId}/job-profile", UUID.randomUUID())
                         .with(jwt().authorities(() -> "POSITION_READ"))

@@ -136,6 +136,33 @@ public class ApprovalEntityLabelResolver {
         }
     }
 
+    /**
+     * BE — resolve the human, i18n label for an approval's PROJECT so the GLOBAL
+     * cross-project inbox can show WHICH project a card belongs to (previously the
+     * {@code projects} repo was injected but never used, so the wire only carried
+     * a raw {@code project_id} UUID — Bug 2). Tenant-scoped
+     * ({@code findByIdAndTenantId}); fail-soft — a missing / cross-tenant project
+     * degrades to {@code null} (FE omits the field), NEVER throws (R10). No
+     * sensitive data — a project name only (R7).
+     *
+     * @param tenantId  active tenant (server-derived, never client-supplied)
+     * @param projectId project id off the tenant-loaded approval row (never client)
+     * @return the project's {@code name_i18n} map (4 locales), or {@code null}
+     */
+    public Map<String, String> resolveProjectLabel(UUID tenantId, UUID projectId) {
+        if (tenantId == null || projectId == null) {
+            return null;
+        }
+        try {
+            ProjectJpaEntity p = projects.findByIdAndTenantId(projectId, tenantId).orElse(null);
+            return p == null ? null : nonEmptyCopy(p.getNameI18n());
+        } catch (Exception ex) {
+            // R10 — never let a bad project referent bubble a 500 into the inbox.
+            log.warn("Project label resolution failed (referent unresolved); degrading to id");
+            return null;
+        }
+    }
+
     private Map<String, String> evaluationLabel(UUID tenantId, UUID evaluationId) {
         EvaluationJpaEntity e = evaluations.findByIdAndTenantId(evaluationId, tenantId).orElse(null);
         if (e == null) {
@@ -197,6 +224,11 @@ public class ApprovalEntityLabelResolver {
             String suffix = v == null ? null : "v" + v.getVersionNumber();
             String base = compose(title, method, suffix);
             String marker = averageMarker(locale);
+            // The bare marker is now emitted ONLY when NO position/methodology name
+            // exists in ANY locale (compose returned null despite pick()'s fallback
+            // chain) — the intended, tested degrade. A name present in just one
+            // locale composes real "<position> · <methodology> vN" content here, so
+            // "ўртача"-only cards no longer defeat the client's pickLocalized (Bug 1).
             String label = base == null ? marker : base + " · " + marker;
             out.put(locale, label);
         }
@@ -280,11 +312,44 @@ public class ApprovalEntityLabelResolver {
         return null;
     }
 
+    /**
+     * Resolve a localized value with a FALLBACK CHAIN — requested locale → ru-RU
+     * → en-US → first non-blank entry — so a name stored in only one locale still
+     * composes a real label in EVERY locale slot. Prod fix (Bug 1): a ru-RU-only
+     * position/methodology name used to leave the viewer's locale slot empty, so
+     * {@link #panelLabel} degraded the card to the bare "average" marker
+     * ("ўртача"), and the client {@code pickLocalized} fallback then latched onto
+     * that non-empty-but-useless marker instead of the good ru-RU entry. Mirrors
+     * the same request→ru→en→first order the frontend uses. Returns {@code null}
+     * only when the map has no non-blank value at all.
+     */
     private static String pick(Map<String, String> i18n, String locale) {
-        if (i18n == null) {
+        if (i18n == null || i18n.isEmpty()) {
             return null;
         }
-        return i18n.get(locale);
+        String requested = nonBlank(i18n.get(locale));
+        if (requested != null) {
+            return requested;
+        }
+        String ru = nonBlank(i18n.get(Locale.RU_RU));
+        if (ru != null) {
+            return ru;
+        }
+        String en = nonBlank(i18n.get(Locale.EN_US));
+        if (en != null) {
+            return en;
+        }
+        for (String value : i18n.values()) {
+            String nb = nonBlank(value);
+            if (nb != null) {
+                return nb;
+            }
+        }
+        return null;
+    }
+
+    private static String nonBlank(String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 
     private static Map<String, String> nonEmptyCopy(Map<String, String> i18n) {

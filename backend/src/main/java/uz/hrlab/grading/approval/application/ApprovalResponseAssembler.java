@@ -101,14 +101,20 @@ public class ApprovalResponseAssembler {
 
         // --- BE-6: resolve entity labels per (type, id), tenant-scoped + cached ---
         Map<EntityKey, Map<String, String>> labelCache = new HashMap<>();
+        // Bug 2: resolve the PROJECT label per project id (tenant-scoped + cached)
+        // so the global cross-project inbox shows WHICH project a card belongs to.
+        Map<UUID, Map<String, String>> projectLabelCache = new HashMap<>();
 
         List<ApprovalRequestResponse> out = new ArrayList<>(requests.size());
         for (ApprovalRequest r : requests) {
             Map<String, String> label = labelCache.computeIfAbsent(
                     new EntityKey(r.entityType(), r.entityId()),
                     k -> entityLabels.resolve(tenantId, k.type(), k.id()));
+            Map<String, String> projectLabel = r.projectId() == null ? null
+                    : projectLabelCache.computeIfAbsent(r.projectId(),
+                            pid -> entityLabels.resolveProjectLabel(tenantId, pid));
             String initiatedByName = nameFn.apply(r.requestedBy());
-            out.add(ApprovalRequestResponse.from(r, label, initiatedByName, nameFn));
+            out.add(ApprovalRequestResponse.from(r, label, projectLabel, initiatedByName, nameFn));
         }
         return out;
     }

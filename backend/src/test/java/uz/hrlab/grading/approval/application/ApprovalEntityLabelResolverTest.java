@@ -200,6 +200,84 @@ class ApprovalEntityLabelResolverTest {
     }
 
     @Test
+    void panelLabelWithRuOnlyNamesComposesRealLabelForUzCyrlViewer() {
+        // Bug 1 — position + methodology names exist ONLY in ru-RU. Every locale
+        // slot (incl. uz-Cyrl-UZ) must still compose a REAL "<position> ·
+        // <methodology> vN · <marker>" via pick()'s fallback chain, NOT the bare
+        // "ўртача" marker that used to defeat the client's pickLocalized fallback.
+        UUID panelId = UUID.randomUUID();
+        UUID positionId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        UUID methodologyId = UUID.randomUUID();
+
+        var panel = mock(uz.hrlab.grading.evaluation.infrastructure.EvaluationPanelJpaEntity.class);
+        given(panel.getPositionId()).willReturn(positionId);
+        given(panel.getMethodologyVersionId()).willReturn(versionId);
+        given(panels.findByIdAndTenantId(eq(panelId), eq(tenantA))).willReturn(Optional.of(panel));
+
+        var p = mock(uz.hrlab.grading.position.infrastructure.PositionJpaEntity.class);
+        // ru-RU ONLY — no uz-Cyrl-UZ / uz-Latn-UZ / en-US entries.
+        given(p.getTitleI18n()).willReturn(Map.of("ru-RU", "Главный бухгалтер"));
+        given(positions.findByIdAndTenantId(eq(positionId), eq(tenantA))).willReturn(Optional.of(p));
+
+        var v = mock(uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity.class);
+        given(v.getMethodologyId()).willReturn(methodologyId);
+        given(v.getVersionNumber()).willReturn(3);
+        given(methodologyVersions.findByIdAndTenantId(eq(versionId), eq(tenantA)))
+                .willReturn(Optional.of(v));
+
+        var m = mock(uz.hrlab.grading.methodology.infrastructure.MethodologyJpaEntity.class);
+        given(m.getNameI18n()).willReturn(Map.of("ru-RU", "HR-Lab")); // ru-RU ONLY
+        given(methodologies.findByIdAndTenantId(eq(methodologyId), eq(tenantA)))
+                .willReturn(Optional.of(m));
+
+        Map<String, String> label = resolver.resolve(
+                tenantA, ApprovalEntityType.EVALUATION_PANEL, panelId);
+
+        // uz-Cyrl-UZ viewer: real composed base (from the ru-RU-only names) + the
+        // localized uz-Cyrl marker — NOT the bare "ўртача".
+        assertThat(label).containsEntry("uz-Cyrl-UZ", "Главный бухгалтер · HR-Lab v3 · ўртача");
+        assertThat(label.get("uz-Cyrl-UZ")).isNotEqualTo("ўртача");
+        // Every supported locale slot now carries the real base (not marker-only).
+        assertThat(label).containsEntry("uz-Latn-UZ", "Главный бухгалтер · HR-Lab v3 · o'rtacha");
+        assertThat(label).containsEntry("en-US", "Главный бухгалтер · HR-Lab v3 · average");
+        assertThat(label).containsEntry("ru-RU", "Главный бухгалтер · HR-Lab v3 · среднее");
+    }
+
+    @Test
+    void resolveProjectLabelReturnsTenantScopedNameI18n() {
+        // Bug 2 — the project name_i18n resolves for the inbox "which project" label.
+        UUID projectId = UUID.randomUUID();
+        var project = mock(uz.hrlab.grading.project.infrastructure.ProjectJpaEntity.class);
+        given(project.getNameI18n()).willReturn(Map.of("ru-RU", "Проект Альфа", "en-US", "Project Alpha"));
+        given(projects.findByIdAndTenantId(eq(projectId), eq(tenantA))).willReturn(Optional.of(project));
+
+        Map<String, String> label = resolver.resolveProjectLabel(tenantA, projectId);
+
+        assertThat(label).containsEntry("ru-RU", "Проект Альфа").containsEntry("en-US", "Project Alpha");
+    }
+
+    @Test
+    void resolveProjectLabelIsAbsentNotThrowingWhenProjectMissing() {
+        // Bug 2 — a missing / cross-tenant project degrades to null (fail-soft),
+        // never an exception (R10); the FE omits the field.
+        UUID missingId = UUID.randomUUID();
+        given(projects.findByIdAndTenantId(eq(missingId), eq(tenantA))).willReturn(Optional.empty());
+
+        assertThat(resolver.resolveProjectLabel(tenantA, missingId)).isNull();
+
+        // Repository blowups are swallowed too (never a 500 into the inbox).
+        UUID boomId = UUID.randomUUID();
+        given(projects.findByIdAndTenantId(eq(boomId), eq(tenantA)))
+                .willThrow(new RuntimeException("db down"));
+        assertThat(resolver.resolveProjectLabel(tenantA, boomId)).isNull();
+
+        // Null args are safe.
+        assertThat(resolver.resolveProjectLabel(null, missingId)).isNull();
+        assertThat(resolver.resolveProjectLabel(tenantA, null)).isNull();
+    }
+
+    @Test
     void foreignTenantPanelYieldsNullLabel() {
         UUID foreignPanelId = UUID.randomUUID();
         given(panels.findByIdAndTenantId(eq(foreignPanelId), eq(tenantA)))

@@ -20,6 +20,12 @@ public record ApprovalRequestResponse(
         // entity_label_i18n. NON_NULL: omitted when the entity is missing /
         // cross-tenant / unlabellable (FE falls back to a short id).
         Map<String, String> entityLabelI18n,
+        // Bug 2 — i18n human label for the approval's PROJECT (project name_i18n,
+        // 4 locales). Wire key: project_label_i18n (same _i18n suffix shape as
+        // entity_label_i18n). Lets the GLOBAL cross-project inbox show WHICH
+        // project a card belongs to instead of a raw project_id UUID. NON_NULL:
+        // omitted when the project is missing / cross-tenant (FE falls back).
+        Map<String, String> projectLabelI18n,
         UUID requestedBy,
         // BE-3 — server-resolved display name for requestedBy. Wire key:
         // initiated_by_name. NON_NULL: omitted when unknown / non-member.
@@ -38,7 +44,7 @@ public record ApprovalRequestResponse(
     public static ApprovalRequestResponse from(ApprovalRequest r) {
         return new ApprovalRequestResponse(
                 r.id(), r.projectId(), r.entityType().name(), r.entityId(),
-                null, r.requestedBy(), null, r.requestedAt(), r.currentStatus().name(),
+                null, null, r.requestedBy(), null, r.requestedAt(), r.currentStatus().name(),
                 r.notesI18n(),
                 r.steps().stream().map(ApprovalStepResponse::from).toList());
     }
@@ -49,12 +55,14 @@ public record ApprovalRequestResponse(
      * {@code stepNameFn} maps each step approver/decider id to a name (already
      * batch-resolved by the caller — no per-row queries here).
      *
-     * @param entityLabelI18n i18n label map (may be {@code null} → omitted)
-     * @param initiatedByName initiator display name (may be {@code null} → omitted)
-     * @param stepNameFn      id → name function for approver / decider resolution
+     * @param entityLabelI18n  i18n label map (may be {@code null} → omitted)
+     * @param projectLabelI18n i18n project-name map (may be {@code null} → omitted)
+     * @param initiatedByName  initiator display name (may be {@code null} → omitted)
+     * @param stepNameFn       id → name function for approver / decider resolution
      */
     public static ApprovalRequestResponse from(ApprovalRequest r,
                                                Map<String, String> entityLabelI18n,
+                                               Map<String, String> projectLabelI18n,
                                                String initiatedByName,
                                                Function<UUID, String> stepNameFn) {
         List<ApprovalStepResponse> steps = r.steps().stream()
@@ -62,7 +70,7 @@ public record ApprovalRequestResponse(
                 .toList();
         return new ApprovalRequestResponse(
                 r.id(), r.projectId(), r.entityType().name(), r.entityId(),
-                entityLabelI18n, r.requestedBy(), initiatedByName,
+                entityLabelI18n, projectLabelI18n, r.requestedBy(), initiatedByName,
                 r.requestedAt(), r.currentStatus().name(), r.notesI18n(), steps);
     }
 

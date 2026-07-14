@@ -5,6 +5,7 @@ import { Plus, Download, ChevronDown } from 'lucide-react';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { EmptyState } from '@/shared/components/feedback/EmptyState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
+import { Button } from '@/shared/components/ui/Button';
 import { formatDateSafe } from '@/shared/lib/dates';
 import { useImports } from '../hooks/useImports';
 import { ImportStatusBadge } from '../components/ImportStatusBadge';
@@ -60,14 +61,15 @@ export function ImportListPage() {
         </div>
         <div className="flex items-center gap-2">
           <TemplateDownloadDropdown />
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="compact"
             onClick={() => navigate(`/app/projects/${projectId}/imports/new`)}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary-500 text-text-inverse hover:bg-primary-700 text-sm"
+            leadingIcon={<Plus size={16} />}
             data-testid="import-list-new"
           >
-            <Plus size={16} /> {t('import.list.new')}
-          </button>
+            {t('import.list.new')}
+          </Button>
         </div>
       </header>
 
@@ -163,15 +165,16 @@ function TemplateDownloadDropdown() {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative" data-testid="template-download-dropdown">
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="compact"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border text-sm hover:bg-divider"
+        leadingIcon={<Download size={14} aria-hidden />}
+        trailingIcon={<ChevronDown size={14} aria-hidden />}
         data-testid="template-download-toggle"
       >
-        <Download size={14} aria-hidden /> {t('import.template.dropdown_label')}
-        <ChevronDown size={14} aria-hidden />
-      </button>
+        {t('import.template.dropdown_label')}
+      </Button>
       {open ? (
         <div
           className="absolute right-0 z-10 mt-1 w-72 rounded-md border border-border bg-surface shadow-md"

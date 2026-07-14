@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '@/shared/lib/cn';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
-export type ButtonSize = 'sm' | 'md' | 'lg';
+export type ButtonSize = 'compact' | 'sm' | 'md' | 'lg';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -24,6 +24,11 @@ const variantClass: Record<ButtonVariant, string> = {
 };
 
 const sizeClass: Record<ButtonSize, string> = {
+  // Dense-UI footprint (no fixed height — padding + line-height define it, like
+  // form-adjacent toolbar buttons in wizards/tables). Matches the ad-hoc
+  // `px-3 py-2 text-sm` convention previously hand-rolled across the app so
+  // migrating callers to `size="compact"` doesn't reflow tight layouts.
+  compact: 'px-3 py-2 text-sm rounded-md',
   sm: 'h-8 px-3 text-sm rounded-md',
   md: 'h-10 px-4 text-sm rounded-md',
   lg: 'h-12 px-6 text-md rounded-md',

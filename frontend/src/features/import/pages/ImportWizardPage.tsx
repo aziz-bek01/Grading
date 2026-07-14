@@ -15,6 +15,7 @@ import { useAuthStore } from '@/features/auth/authStore';
 import { PERMISSIONS, type PermissionCode } from '@/shared/types/permissions';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
+import { Button } from '@/shared/components/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import {
   useCancelImport,
@@ -295,15 +296,15 @@ function StepChooseTemplate({
         </div>
       )}
       <div className="flex justify-end">
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="compact"
           disabled={!selected}
           onClick={onNext}
-          className="px-3 py-2 rounded-md bg-primary-500 text-text-inverse text-sm disabled:opacity-50"
           data-testid="wizard-next-1"
         >
           {t('common.continue')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -334,23 +335,18 @@ function StepUploadFile({
       </div>
       <FileDropzone file={file} onFileChange={setFile} disabled={uploading} />
       <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="px-3 py-2 rounded-md border border-border text-sm"
-          disabled={uploading}
-        >
+        <Button variant="secondary" size="compact" onClick={onBack} disabled={uploading}>
           {t('common.back')}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="primary"
+          size="compact"
           onClick={onUpload}
           disabled={!file || !templateCode || uploading}
-          className="px-3 py-2 rounded-md bg-primary-500 text-text-inverse text-sm disabled:opacity-50"
           data-testid="wizard-upload-submit"
         >
           {uploading ? t('common.loading') : t('import.wizard.upload')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -390,22 +386,18 @@ function StepReviewValidation({
       <ImportSummaryCard batch={batch} />
       <ImportErrorsTable errors={errors} loading={loadingErrors} />
       <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-2 rounded-md border border-border text-sm"
-        >
+        <Button variant="secondary" size="compact" onClick={onCancel}>
           {t('import.wizard.cancel')}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="primary"
+          size="compact"
           onClick={onContinue}
           disabled={!canContinue}
-          className="px-3 py-2 rounded-md bg-primary-500 text-text-inverse text-sm disabled:opacity-50"
           data-testid="wizard-continue-commit"
         >
           {t('import.wizard.continue_commit')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -430,30 +422,26 @@ function StepConfirmCommit({
       <ImportSummaryCard batch={batch} />
       {!isCommitted ? (
         <div className="flex justify-end">
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="compact"
             onClick={onCommit}
             disabled={committing}
-            className="px-3 py-2 rounded-md bg-primary-500 text-text-inverse text-sm disabled:opacity-50"
             data-testid="wizard-commit-submit"
           >
             {committing
               ? t('common.loading')
               : t('import.wizard.commit_rows', { count: batch.totalRowCount ?? 0 })}
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="space-y-2">
           <div className="text-sm text-success-700">
             {t('import.wizard.commit_success', { count: batch.committedRowCount ?? 0 })}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-2 rounded-md border border-border text-sm"
-          >
+          <Button variant="secondary" size="compact" onClick={onClose}>
             {t('common.close')}
-          </button>
+          </Button>
         </div>
       )}
     </div>

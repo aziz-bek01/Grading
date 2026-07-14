@@ -2,6 +2,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
+import { Button } from '@/shared/components/ui/Button';
 import { formatDateSafe } from '@/shared/lib/dates';
 import {
   useCancelImport,
@@ -57,13 +58,13 @@ export function ImportDetailsPage() {
             </span>
           </div>
         </div>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="compact"
           onClick={() => navigate(`/app/projects/${projectId}/imports`)}
-          className="px-3 py-2 rounded-md border border-border text-sm"
         >
           {t('common.back')}
-        </button>
+        </Button>
       </header>
 
       <ImportProgressIndicator status={batch.status} />
@@ -72,26 +73,26 @@ export function ImportDetailsPage() {
 
       <div className="flex items-center justify-end gap-2">
         {canCancel ? (
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="compact"
             onClick={() => cancel.mutate()}
             disabled={cancel.isPending}
-            className="px-3 py-2 rounded-md border border-border text-sm disabled:opacity-50"
             data-testid="import-details-cancel"
           >
             {t('import.wizard.cancel')}
-          </button>
+          </Button>
         ) : null}
         {canCommit ? (
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="compact"
             onClick={() => commit.mutate()}
             disabled={commit.isPending}
-            className="px-3 py-2 rounded-md bg-primary-500 text-text-inverse text-sm disabled:opacity-50"
             data-testid="import-details-commit"
           >
             {t('import.wizard.commit_rows', { count: batch.totalRowCount ?? 0 })}
-          </button>
+          </Button>
         ) : null}
       </div>
     </section>

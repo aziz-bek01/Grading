@@ -36,8 +36,9 @@ describe('<CreateTenantDialog />', () => {
     render(renderWithProviders(<CreateTenantDialog open onClose={() => {}} onSubmit={onSubmit} />));
 
     const slugInput = screen.getByTestId('create-tenant-slug');
-    // Clean before any submit attempt — no error wired yet.
-    expect(slugInput).toHaveAttribute('aria-invalid', 'false');
+    // Clean before any submit attempt — aria-invalid must not appear at all
+    // (not just "false") until the field actually has an error.
+    expect(slugInput).not.toHaveAttribute('aria-invalid');
     expect(slugInput).not.toHaveAttribute('aria-describedby');
 
     // Uppercase + too short → invalid per ^[a-z][a-z0-9_]{2,63}$.

@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import { UpdateTenantSchema, type UpdateTenantInput } from '../schemas/clientSchemas';
 import type { TenantDetail, UpdateTenantPayload } from '../types/clientTypes';
 
@@ -74,11 +75,12 @@ export function EditTenantDialog({ open, tenant, onClose, onSubmit }: EditTenant
           type="text"
           autoComplete="off"
           {...register('display_name')}
+          {...fieldA11y('edit-tenant-name', !!errors.display_name)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="edit-tenant-display-name"
         />
         {errors.display_name ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('edit-tenant-name')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.display_name.message)}
           </p>
         ) : null}

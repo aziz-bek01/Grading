@@ -22,6 +22,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { ApiError } from '@/shared/api/apiError';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import { CreateTenantSchema, type CreateTenantInput } from '../schemas/clientSchemas';
 import type { CreateTenantPayload } from '../types/clientTypes';
 
@@ -119,14 +120,13 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
           autoComplete="off"
           spellCheck={false}
           {...register('slug')}
-          aria-invalid={!!errors.slug}
-          aria-describedby={errors.slug ? 'create-tenant-slug-error' : undefined}
+          {...fieldA11y('create-tenant-slug', !!errors.slug)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm font-mono bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="create-tenant-slug"
         />
         <p className="text-xs text-text-muted mt-1">{t('clients.create.slug_hint')}</p>
         {errors.slug ? (
-          <p id="create-tenant-slug-error" className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('create-tenant-slug')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.slug.message)}
           </p>
         ) : null}
@@ -141,14 +141,13 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
           type="text"
           autoComplete="off"
           {...register('display_name')}
-          aria-invalid={!!errors.display_name}
-          aria-describedby={errors.display_name ? 'create-tenant-display-name-error' : undefined}
+          {...fieldA11y('create-tenant-display-name', !!errors.display_name)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="create-tenant-display-name"
         />
         {errors.display_name ? (
           <p
-            id="create-tenant-display-name-error"
+            id={fieldErrorId('create-tenant-display-name')}
             className="text-xs text-danger-700 mt-1"
             role="alert"
           >
@@ -166,14 +165,13 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
           type="text"
           autoComplete="off"
           {...register('company_legal_name')}
-          aria-invalid={!!errors.company_legal_name}
-          aria-describedby={errors.company_legal_name ? 'create-tenant-legal-name-error' : undefined}
+          {...fieldA11y('create-tenant-legal-name', !!errors.company_legal_name)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="create-tenant-legal-name"
         />
         {errors.company_legal_name ? (
           <p
-            id="create-tenant-legal-name-error"
+            id={fieldErrorId('create-tenant-legal-name')}
             className="text-xs text-danger-700 mt-1"
             role="alert"
           >
@@ -192,14 +190,13 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
             type="text"
             autoComplete="off"
             {...register('company_brand_name')}
-            aria-invalid={!!errors.company_brand_name}
-            aria-describedby={errors.company_brand_name ? 'create-tenant-brand-name-error' : undefined}
+            {...fieldA11y('create-tenant-brand-name', !!errors.company_brand_name)}
             className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
             data-testid="create-tenant-brand-name"
           />
           {errors.company_brand_name ? (
             <p
-              id="create-tenant-brand-name-error"
+              id={fieldErrorId('create-tenant-brand-name')}
               className="text-xs text-danger-700 mt-1"
               role="alert"
             >
@@ -216,14 +213,13 @@ export function CreateTenantDialog({ open, onClose, onSubmit }: CreateTenantDial
             type="text"
             autoComplete="off"
             {...register('company_industry')}
-            aria-invalid={!!errors.company_industry}
-            aria-describedby={errors.company_industry ? 'create-tenant-industry-error' : undefined}
+            {...fieldA11y('create-tenant-industry', !!errors.company_industry)}
             className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
             data-testid="create-tenant-industry"
           />
           {errors.company_industry ? (
             <p
-              id="create-tenant-industry-error"
+              id={fieldErrorId('create-tenant-industry')}
               className="text-xs text-danger-700 mt-1"
               role="alert"
             >

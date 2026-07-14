@@ -4,6 +4,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { LocalizedNameTabs } from './LocalizedNameTabs';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import { ProjectCreateSchema, type ProjectCreateInput } from '../schemas/projectSchemas';
 import type { Project } from '../types/projectTypes';
 
@@ -100,6 +101,7 @@ export function ProjectFormDrawer({ open, initial, readOnly, error, onClose, onS
           disabled={codeReadOnly}
           aria-readonly={codeReadOnly || undefined}
           {...register('code')}
+          {...fieldA11y('project-code', !!errors.code)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-divider disabled:text-text-secondary"
           data-testid="project-code"
         />
@@ -108,7 +110,11 @@ export function ProjectFormDrawer({ open, initial, readOnly, error, onClose, onS
               in create mode keep the original formatting hint. */}
           {isEdit ? t('projects.code_immutable_hint') : t('projects.field_code_hint')}
         </p>
-        {errors.code ? <p className="text-xs text-danger-700 mt-1" role="alert">{errors.code.message}</p> : null}
+        {errors.code ? (
+          <p id={fieldErrorId('project-code')} className="text-xs text-danger-700 mt-1" role="alert">
+            {errors.code.message}
+          </p>
+        ) : null}
       </div>
 
       <Controller
@@ -161,10 +167,11 @@ export function ProjectFormDrawer({ open, initial, readOnly, error, onClose, onS
             type="date"
             disabled={readOnly}
             {...register('end_date')}
+            {...fieldA11y('project-end', !!errors.end_date)}
             className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface"
           />
           {errors.end_date ? (
-            <p className="text-xs text-danger-700 mt-1" role="alert">
+            <p id={fieldErrorId('project-end')} className="text-xs text-danger-700 mt-1" role="alert">
               {errMessage(errors.end_date.message)}
             </p>
           ) : null}

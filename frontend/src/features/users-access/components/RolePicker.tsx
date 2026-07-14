@@ -55,6 +55,9 @@ interface SingleProps extends BaseProps {
   onChange: (next: string) => void;
   /** Native <select> id for the label's htmlFor. */
   selectId: string;
+  /** Error a11y wiring for the underlying <select> — see `shared/lib/fieldA11y`. */
+  'aria-invalid'?: true;
+  'aria-describedby'?: string;
 }
 
 type RolePickerProps = MultiProps | SingleProps;
@@ -105,6 +108,8 @@ export function RolePicker(props: RolePickerProps) {
           id={selectId}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          aria-invalid={props['aria-invalid']}
+          aria-describedby={props['aria-describedby']}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid={selectId}
         >

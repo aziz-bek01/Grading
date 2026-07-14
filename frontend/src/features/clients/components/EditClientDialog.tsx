@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import {
   UpdateClientCompanySchema,
   type UpdateClientCompanyInput,
@@ -88,11 +89,12 @@ export function EditClientDialog({ open, client, onClose, onSubmit }: EditClient
           type="text"
           autoComplete="off"
           {...register('legal_name')}
+          {...fieldA11y('edit-client-legal', !!errors.legal_name)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="edit-client-legal-name"
         />
         {errors.legal_name ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('edit-client-legal')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.legal_name.message)}
           </p>
         ) : null}
@@ -107,11 +109,12 @@ export function EditClientDialog({ open, client, onClose, onSubmit }: EditClient
           type="text"
           autoComplete="off"
           {...register('brand_name')}
+          {...fieldA11y('edit-client-brand', !!errors.brand_name)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="edit-client-brand-name"
         />
         {errors.brand_name ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('edit-client-brand')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.brand_name.message)}
           </p>
         ) : null}
@@ -142,10 +145,11 @@ export function EditClientDialog({ open, client, onClose, onSubmit }: EditClient
             maxLength={2}
             placeholder="UZ"
             {...register('country_code')}
+            {...fieldA11y('edit-client-country', !!errors.country_code)}
             className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm uppercase bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
           {errors.country_code ? (
-            <p className="text-xs text-danger-700 mt-1" role="alert">
+            <p id={fieldErrorId('edit-client-country')} className="text-xs text-danger-700 mt-1" role="alert">
               {errKey(errors.country_code.message)}
             </p>
           ) : null}

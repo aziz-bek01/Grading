@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PositionFormDrawer } from './PositionFormDrawer';
 import { renderWithProviders } from '@/test/testUtils';
@@ -56,6 +56,44 @@ describe('<PositionFormDrawer />', () => {
     );
     await user.type(screen.getByTestId('pos-code'), 'SWE');
     await user.click(screen.getByRole('button', { name: /Сохранить|Save/i }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('wires aria-invalid + aria-describedby onto the department select and code field once they error', async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    render(
+      renderWithProviders(
+        <PositionFormDrawer
+          open
+          projectId="p"
+          departments={departments}
+          onClose={() => {}}
+          onSubmit={onSubmit}
+        />,
+      ),
+    );
+
+    const departmentSelect = screen.getByTestId('pos-department-select');
+    const codeInput = screen.getByTestId('pos-code');
+    // Clean before any submit attempt — aria-invalid must not appear at all.
+    expect(departmentSelect).not.toHaveAttribute('aria-invalid');
+    expect(codeInput).not.toHaveAttribute('aria-invalid');
+
+    // Leave department empty and the code too short (min 2) → both fields error.
+    await user.type(codeInput, 'S');
+    await user.click(screen.getByRole('button', { name: /Сохранить|Save/i }));
+
+    await waitFor(() => expect(departmentSelect).toHaveAttribute('aria-invalid', 'true'));
+    const deptDescribedBy = departmentSelect.getAttribute('aria-describedby');
+    expect(deptDescribedBy).toBeTruthy();
+    expect(document.getElementById(deptDescribedBy!)).toHaveAttribute('role', 'alert');
+
+    await waitFor(() => expect(codeInput).toHaveAttribute('aria-invalid', 'true'));
+    const codeDescribedBy = codeInput.getAttribute('aria-describedby');
+    expect(codeDescribedBy).toBeTruthy();
+    expect(document.getElementById(codeDescribedBy!)).toHaveAttribute('role', 'alert');
+
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

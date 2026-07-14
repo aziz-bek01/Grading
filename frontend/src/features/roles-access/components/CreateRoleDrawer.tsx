@@ -23,6 +23,7 @@ import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { ApiError } from '@/shared/api/apiError';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import { SUPPORTED_LOCALES } from '@/shared/i18n';
 import type { LocalizedString } from '@/shared/types/common';
 import { useAuthStore } from '@/features/auth/authStore';
@@ -174,16 +175,27 @@ export function CreateRoleDrawer({ open, onClose, onCreated }: CreateRoleDrawerP
           autoComplete="off"
           spellCheck={false}
           {...register('code')}
+          {...fieldA11y('role-code', !!errors.code || !!codeServerError)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="role-create-code"
         />
         <p className="text-xs text-text-muted mt-1">{t('roles.create.codeHelper')}</p>
         {errors.code ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert" data-testid="role-create-code-error">
+          <p
+            id={fieldErrorId('role-code')}
+            className="text-xs text-danger-700 mt-1"
+            role="alert"
+            data-testid="role-create-code-error"
+          >
             {errKey(errors.code.message)}
           </p>
         ) : codeServerError ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert" data-testid="role-create-code-error">
+          <p
+            id={fieldErrorId('role-code')}
+            className="text-xs text-danger-700 mt-1"
+            role="alert"
+            data-testid="role-create-code-error"
+          >
             {t(codeServerError.key)}
           </p>
         ) : null}
@@ -204,11 +216,19 @@ export function CreateRoleDrawer({ open, onClose, onCreated }: CreateRoleDrawerP
               type="text"
               autoComplete="off"
               {...register(`name_i18n.${loc}` as const)}
+              {...(loc === 'ru-RU'
+                ? fieldA11y('role-name-ru-RU', !!errors.name_i18n?.['ru-RU'])
+                : {})}
               className="mt-1 w-full h-9 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
               data-testid={`role-create-name-${loc}`}
             />
             {loc === 'ru-RU' && errors.name_i18n?.['ru-RU'] ? (
-              <p className="text-xs text-danger-700 mt-1" role="alert" data-testid="role-create-name-error">
+              <p
+                id={fieldErrorId('role-name-ru-RU')}
+                className="text-xs text-danger-700 mt-1"
+                role="alert"
+                data-testid="role-create-name-error"
+              >
                 {errKey(errors.name_i18n['ru-RU']?.message)}
               </p>
             ) : null}

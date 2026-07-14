@@ -4,6 +4,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { LocalizedNameTabs } from '@/features/projects/components/LocalizedNameTabs';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import { PositionCreateSchema, type PositionCreateInput } from '../schemas/positionSchemas';
 import type { Position } from '../types/positionTypes';
 import type { Department } from '@/features/organization/types/organizationTypes';
@@ -125,6 +126,7 @@ export function PositionFormDrawer({
                 value={field.value ?? ''}
                 onChange={(e) => field.onChange(e.target.value)}
                 disabled={readOnly}
+                {...fieldA11y('pos-department', !!fieldState.error)}
                 className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface"
                 data-testid="pos-department-select"
               >
@@ -138,7 +140,7 @@ export function PositionFormDrawer({
                   ))}
               </select>
               {fieldState.error ? (
-                <p className="text-xs text-danger-700 mt-1" role="alert">
+                <p id={fieldErrorId('pos-department')} className="text-xs text-danger-700 mt-1" role="alert">
                   {tr(fieldState.error.message)}
                 </p>
               ) : null}
@@ -157,13 +159,18 @@ export function PositionFormDrawer({
           disabled={codeReadOnly}
           aria-readonly={codeReadOnly || undefined}
           {...register('code')}
+          {...fieldA11y('pos-code', !!errors.code)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-divider disabled:text-text-secondary"
           data-testid="pos-code"
         />
         <p className="text-xs text-text-secondary mt-1">
           {isEdit ? t('positions.code_immutable_hint') : t('positions.field_code_hint')}
         </p>
-        {errors.code ? <p className="text-xs text-danger-700 mt-1" role="alert">{errors.code.message}</p> : null}
+        {errors.code ? (
+          <p id={fieldErrorId('pos-code')} className="text-xs text-danger-700 mt-1" role="alert">
+            {errors.code.message}
+          </p>
+        ) : null}
       </div>
 
       <Controller

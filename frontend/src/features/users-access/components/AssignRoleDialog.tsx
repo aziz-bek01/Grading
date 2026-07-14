@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import type { RoleCode } from '@/shared/auth/authTypes';
 import { RolePicker } from './RolePicker';
 import { AddRoleSchema, type AddRoleInput } from '../schemas/userSchemas';
@@ -78,11 +79,12 @@ export function AssignRoleDialog({
               onChange={field.onChange}
               excludeCodes={alreadyAssigned}
               testIdPrefix="assign-role"
+              {...fieldA11y('assign-role-code', !!errors.role_code)}
             />
           )}
         />
         {errors.role_code ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('assign-role-code')} className="text-xs text-danger-700 mt-1" role="alert">
             {t('users.assignRole.validation_roles_min')}
           </p>
         ) : null}

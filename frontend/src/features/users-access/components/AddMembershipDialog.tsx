@@ -19,6 +19,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { ApiError } from '@/shared/api/apiError';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import { useAuthStore } from '@/features/auth/authStore';
 import { RolePicker } from './RolePicker';
 import { AddMembershipSchema, type AddMembershipInput } from '../schemas/userSchemas';
@@ -112,6 +113,7 @@ export function AddMembershipDialog({
         <select
           id="add-membership-tenant"
           {...register('tenant_id')}
+          {...fieldA11y('add-membership-tenant', !!errors.tenant_id)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="add-membership-tenant"
           disabled={availableTenants.length === 0}
@@ -129,7 +131,7 @@ export function AddMembershipDialog({
           <p className="text-xs text-text-muted mt-1">{t('users.addMembership.noneLeftHint')}</p>
         ) : null}
         {errors.tenant_id ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('add-membership-tenant')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.tenant_id.message)}
           </p>
         ) : null}
@@ -139,7 +141,10 @@ export function AddMembershipDialog({
         control={control}
         name="role_codes"
         render={({ field, fieldState }) => (
-          <fieldset className="border border-border rounded-md p-3">
+          <fieldset
+            className="border border-border rounded-md p-3"
+            {...fieldA11y('add-membership-roles', !!fieldState.error)}
+          >
             <legend className="text-sm font-medium text-text-primary px-1">
               {t('users.addMembership.roles')} <span className="text-danger-700">*</span>
             </legend>
@@ -151,7 +156,7 @@ export function AddMembershipDialog({
               testIdPrefix="add-membership-role"
             />
             {fieldState.error ? (
-              <p className="text-xs text-danger-700 mt-2" role="alert">
+              <p id={fieldErrorId('add-membership-roles')} className="text-xs text-danger-700 mt-2" role="alert">
                 {errKey(fieldState.error.message)}
               </p>
             ) : null}

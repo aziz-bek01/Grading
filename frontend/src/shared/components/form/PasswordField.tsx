@@ -8,9 +8,14 @@
  * `data-testid` values genuinely differed between the three, so those are
  * the only injected props. The markup, classes, and the show/hide +
  * generate wiring are now defined once.
+ *
+ * Error a11y is wired here ONCE (via the shared {@link fieldA11y} helper) so
+ * every caller's password input gets `aria-invalid` / `aria-describedby`
+ * pointing at the rendered error `<p>` for free.
  */
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import { Eye, EyeOff, Wand2 } from 'lucide-react';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 
 export interface PasswordFieldProps {
   /** `id` for the `<input>`, also used as its `htmlFor` target. */
@@ -68,6 +73,7 @@ export function PasswordField({
             type={showPassword ? 'text' : 'password'}
             autoComplete="new-password"
             {...registration}
+            {...fieldA11y(id, !!error)}
             className="w-full h-10 pl-3 pr-10 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
             data-testid={testId}
           />
@@ -94,7 +100,7 @@ export function PasswordField({
       </div>
       {hint ? <p className="text-xs text-text-muted mt-1">{hint}</p> : null}
       {error ? (
-        <p className="text-xs text-danger-700 mt-1" role="alert">
+        <p id={fieldErrorId(id)} className="text-xs text-danger-700 mt-1" role="alert">
           {error}
         </p>
       ) : null}

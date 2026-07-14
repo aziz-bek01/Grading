@@ -24,6 +24,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { PasswordField } from '@/shared/components/form/PasswordField';
 import { ApiError } from '@/shared/api/apiError';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import { useAuthStore } from '@/features/auth/authStore';
 import { RolePicker } from './RolePicker';
 import {
@@ -144,13 +145,12 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
           type="email"
           autoComplete="off"
           {...register('email')}
-          aria-invalid={!!errors.email}
-          aria-describedby={errors.email ? 'invite-email-error' : undefined}
+          {...fieldA11y('invite-email', !!errors.email)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="invite-email"
         />
         {errors.email ? (
-          <p id="invite-email-error" className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('invite-email')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.email.message)}
           </p>
         ) : null}
@@ -165,13 +165,12 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
           type="text"
           autoComplete="off"
           {...register('full_name')}
-          aria-invalid={!!errors.full_name}
-          aria-describedby={errors.full_name ? 'invite-fullname-error' : undefined}
+          {...fieldA11y('invite-fullname', !!errors.full_name)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="invite-fullname"
         />
         {errors.full_name ? (
-          <p id="invite-fullname-error" className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('invite-fullname')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.full_name.message)}
           </p>
         ) : null}
@@ -241,7 +240,10 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
         control={control}
         name="role_codes"
         render={({ field, fieldState }) => (
-          <fieldset className="border border-border rounded-md p-3">
+          <fieldset
+            className="border border-border rounded-md p-3"
+            {...fieldA11y('invite-roles', !!fieldState.error)}
+          >
             <legend className="text-sm font-medium text-text-primary px-1">
               {t('users.invite.roles')} <span className="text-danger-700">*</span>
             </legend>
@@ -253,7 +255,7 @@ export function InviteUserDialog({ open, onClose, onSubmit }: InviteUserDialogPr
               testIdPrefix="invite-role"
             />
             {fieldState.error ? (
-              <p className="text-xs text-danger-700 mt-2" role="alert">
+              <p id={fieldErrorId('invite-roles')} className="text-xs text-danger-700 mt-2" role="alert">
                 {errKey(fieldState.error.message)}
               </p>
             ) : null}

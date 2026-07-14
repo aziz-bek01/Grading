@@ -54,7 +54,9 @@ describe('<InviteUserDialog />', () => {
     render(renderWithProviders(<InviteUserDialog open onClose={() => {}} onSubmit={onSubmit} />));
 
     const emailInput = screen.getByTestId('invite-email');
-    expect(emailInput).toHaveAttribute('aria-invalid', 'false');
+    // aria-invalid must not appear at all (not just "false") until the field
+    // actually has an error.
+    expect(emailInput).not.toHaveAttribute('aria-invalid');
     expect(emailInput).not.toHaveAttribute('aria-describedby');
 
     // Fill name + role only — email missing → Zod must block.

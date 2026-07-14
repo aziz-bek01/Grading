@@ -34,6 +34,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { PasswordField } from '@/shared/components/form/PasswordField';
 import { ApiError } from '@/shared/api/apiError';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import {
   EDITABLE_USER_STATUSES,
   UpdateUserSchema,
@@ -190,11 +191,12 @@ export function EditUserDialog({ open, user, onClose, onSubmit }: EditUserDialog
           type="text"
           autoComplete="off"
           {...register('full_name')}
+          {...fieldA11y('edit-fullname', !!errors.full_name)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="edit-fullname"
         />
         {errors.full_name ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('edit-fullname')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.full_name.message)}
           </p>
         ) : null}
@@ -209,11 +211,12 @@ export function EditUserDialog({ open, user, onClose, onSubmit }: EditUserDialog
           type="email"
           autoComplete="off"
           {...register('email')}
+          {...fieldA11y('edit-email', !!errors.email)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="edit-email"
         />
         {errors.email ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('edit-email')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.email.message)}
           </p>
         ) : null}
@@ -260,6 +263,7 @@ export function EditUserDialog({ open, user, onClose, onSubmit }: EditUserDialog
         <select
           id="edit-status"
           {...register('status')}
+          {...fieldA11y('edit-status', !!errors.status)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid="edit-status"
         >
@@ -271,7 +275,7 @@ export function EditUserDialog({ open, user, onClose, onSubmit }: EditUserDialog
         </select>
         <p className="text-xs text-text-muted mt-1">{t('users.edit.statusHint')}</p>
         {errors.status ? (
-          <p className="text-xs text-danger-700 mt-1" role="alert">
+          <p id={fieldErrorId('edit-status')} className="text-xs text-danger-700 mt-1" role="alert">
             {errKey(errors.status.message)}
           </p>
         ) : null}

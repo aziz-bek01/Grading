@@ -117,6 +117,33 @@ describe('<AssignRoleDialog />', () => {
     expect(onSubmit).not.toHaveBeenCalled();
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
+
+  it('wires aria-invalid + aria-describedby onto the role select once it errors', async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    render(
+      renderWithProviders(
+        <AssignRoleDialog
+          open
+          alreadyAssigned={[]}
+          tenantBrand="ACME Holdings"
+          onClose={() => {}}
+          onSubmit={onSubmit}
+        />,
+      ),
+    );
+    const select = await findRoleSelect();
+    // Clean before any submit attempt — aria-invalid must not appear at all.
+    expect(select).not.toHaveAttribute('aria-invalid');
+    expect(select).not.toHaveAttribute('aria-describedby');
+
+    await user.click(screen.getByRole('button', { name: SUBMIT }));
+
+    await waitFor(() => expect(select).toHaveAttribute('aria-invalid', 'true'));
+    const describedBy = select.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveAttribute('role', 'alert');
+  });
 });
 
 describe('<AssignRoleDialog /> as client admin (non-super)', () => {

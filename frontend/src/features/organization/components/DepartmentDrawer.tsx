@@ -4,6 +4,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { DrawerForm } from '@/shared/components/data-table/DrawerForm';
 import { LocalizedNameTabs } from '@/features/projects/components/LocalizedNameTabs';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import { collectDescendantIds } from '../lib/tree';
 import { DepartmentCreateSchema, type DepartmentCreateInput } from '../schemas/departmentSchemas';
 import type { Department, DepartmentType } from '../types/organizationTypes';
@@ -133,10 +134,15 @@ export function DepartmentDrawer({
           type="text"
           disabled={readOnly}
           {...register('code')}
+          {...fieldA11y('dep-code', !!errors.code)}
           className="mt-1 w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface"
           data-testid="dep-code"
         />
-        {errors.code ? <p className="text-xs text-danger-700 mt-1" role="alert">{errors.code.message}</p> : null}
+        {errors.code ? (
+          <p id={fieldErrorId('dep-code')} className="text-xs text-danger-700 mt-1" role="alert">
+            {errors.code.message}
+          </p>
+        ) : null}
       </div>
 
       <Controller

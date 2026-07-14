@@ -85,4 +85,19 @@ describe('<PasswordField />', () => {
     render(<Wrapper {...baseProps} />);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('wires aria-invalid + aria-describedby onto the input once an error is set', () => {
+    const { rerender } = render(<Wrapper {...baseProps} />);
+    const input = screen.getByTestId('pw-input');
+    // Clean — aria-invalid must not appear at all (not just "false").
+    expect(input).not.toHaveAttribute('aria-invalid');
+    expect(input).not.toHaveAttribute('aria-describedby');
+
+    rerender(<Wrapper {...baseProps} error="Too weak" />);
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveAttribute('role', 'alert');
+    expect(document.getElementById(describedBy!)).toHaveTextContent('Too weak');
+  });
 });

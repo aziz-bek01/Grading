@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Circle } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
+import { fieldA11y, fieldErrorId } from '@/shared/lib/fieldA11y';
 import type { Locale, LocalizedString } from '@/shared/types/common';
 
 const LOCALES: Locale[] = ['ru-RU', 'uz-Cyrl-UZ', 'uz-Latn-UZ', 'en-US'];
@@ -89,12 +90,21 @@ export function LocalizedNameTabs({
           value={value?.[loc] ?? ''}
           onChange={(e) => onChange({ ...value, [loc]: e.target.value })}
           placeholder={t('common.name')}
+          {...(inputId ? fieldA11y(inputId, !!error) : {})}
           className="w-full h-10 px-3 border border-border-strong rounded-md text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary-500"
           data-testid={`locale-input-${loc}`}
         />
       ))}
       {hint ? <p className="text-xs text-text-secondary">{hint}</p> : null}
-      {error ? <p className="text-xs text-danger-700" role="alert">{error}</p> : null}
+      {error ? (
+        <p
+          id={inputId ? fieldErrorId(inputId) : undefined}
+          className="text-xs text-danger-700"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

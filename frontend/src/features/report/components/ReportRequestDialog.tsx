@@ -16,8 +16,9 @@ import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X } from 'lucide-react';
-import { ApiError } from '@/shared/api/apiError';
+import { describeRequestError } from '@/shared/lib/requestErrorMapper';
 import { Modal } from '@/shared/components/ui/Modal';
+import { RequestDialogFooter } from '@/shared/components/form/RequestDialogFooter';
 import { DateRangeFields } from '@/shared/components/form/DateRangeFields';
 import { EvaluatorPicker } from '@/features/evaluation/components/panel/EvaluatorPicker';
 import { useRequestReport } from '../hooks/useReports';
@@ -111,7 +112,18 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
         // happened"). Map the known request-time filter codes to friendly copy;
         // fall back to a generic message that carries the code + correlation id so
         // the failure is reportable.
-        setServerError(describeRequestError(err, t));
+        setServerError(
+          describeRequestError(err, t, {
+            permissionDeniedKey: 'report.error.permission_denied',
+            genericFailedKey: 'report.error.request_failed',
+            knownCodes: {
+              REPORT_FILTER_INVALID_METHODOLOGY: 'report.error.invalid_methodology',
+              REPORT_FILTER_METHODOLOGY_REQUIRED: 'report.error.methodology_required',
+              REPORT_FILTER_INVALID_DATE_RANGE: 'report.error.invalid_date_range',
+              REPORT_FILTER_MALFORMED: 'report.error.malformed_filter',
+            },
+          }),
+        );
       } finally {
         setSubmitting(false);
       }
@@ -287,69 +299,16 @@ export function ReportRequestDialog({ projectId, open, onClose, onCreated }: Pro
             </div>
           ) : null}
 
-          {serverError ? (
-            <p
-              className="text-sm text-danger-700 border border-danger-200 bg-danger-50 rounded-md px-3 py-2"
-              role="alert"
-              data-testid="report-request-error"
-            >
-              {serverError}
-            </p>
-          ) : null}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-md border border-border text-sm"
-              disabled={submitting}
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-3 py-1.5 rounded-md bg-primary-500 text-text-inverse text-sm disabled:opacity-50"
-              data-testid="report-request-submit"
-            >
-              {submitting ? t('common.loading') : t('report.request_submit')}
-            </button>
-          </div>
+          <RequestDialogFooter
+            serverError={serverError}
+            errorTestId="report-request-error"
+            submitting={submitting}
+            onCancel={onClose}
+            submitLabel={t('report.request_submit')}
+            submitTestId="report-request-submit"
+          />
         </form>
       </>
     </Modal>
   );
-}
-
-/**
- * Map a failed report-request to localized copy. Known request-time filter
- * codes (mirrors {@code EvaluationReportFilterValidator}) get friendly,
- * actionable messages; everything else falls back to a generic message that
- * still carries the backend error code + correlation id so the failure is
- * reportable (the dialog previously swallowed all of this).
- */
-function describeRequestError(
-  err: unknown,
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string {
-  if (err instanceof ApiError) {
-    if (err.isForbidden()) return t('report.error.permission_denied');
-    if (err.code === 'REPORT_FILTER_INVALID_METHODOLOGY') {
-      return t('report.error.invalid_methodology');
-    }
-    if (err.code === 'REPORT_FILTER_METHODOLOGY_REQUIRED') {
-      return t('report.error.methodology_required');
-    }
-    if (err.code === 'REPORT_FILTER_INVALID_DATE_RANGE') {
-      return t('report.error.invalid_date_range');
-    }
-    if (err.code === 'REPORT_FILTER_MALFORMED') {
-      return t('report.error.malformed_filter');
-    }
-    return t('report.error.request_failed', {
-      code: err.code,
-      ref: err.correlationId ?? err.traceId ?? '—',
-    });
-  }
-  return t('report.error.request_failed', { code: 'NETWORK', ref: '—' });
 }

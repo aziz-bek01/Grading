@@ -1646,7 +1646,8 @@
       "filter_params": "Параметры фильтра (JSON)",
       "filter_placeholder": "{}",
       "submit": "Запросить",
-      "salary_warning": "Этот тип экспорта содержит данные о зарплате. Требуется право SALARY_EXPORT."
+      "salary_warning": "Этот тип экспорта содержит данные о зарплате. Требуется право SALARY_EXPORT.",
+      "type_unavailable_salary": "недоступно — требуется право SALARY_EXPORT"
     },
     "download": {
       "cta": "Скачать",
@@ -1701,7 +1702,10 @@
       "DOCX": "Word (.docx)"
     },
     "error": {
-      "project_required": "Проект обязателен."
+      "project_required": "Проект обязателен.",
+      "request_failed": "Не удалось создать запрос экспорта (код: {{code}}). Идентификатор: {{ref}}.",
+      "permission_denied": "У вас нет прав для запроса экспорта.",
+      "validation_blocked": "Не удалось отправить запрос — некоторые поля заполнены неверно: {{fields}}. Проверьте ввод и повторите попытку."
     }
   },
   "report": {

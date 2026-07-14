@@ -1646,7 +1646,8 @@
       "filter_params": "Сараловчи параметрлари (JSON)",
       "filter_placeholder": "{}",
       "submit": "Сўраш",
-      "salary_warning": "Бу экспорт тури маош маълумотларини ўз ичига олади. SALARY_EXPORT ҳуқуқи талаб қилинади."
+      "salary_warning": "Бу экспорт тури маош маълумотларини ўз ичига олади. SALARY_EXPORT ҳуқуқи талаб қилинади.",
+      "type_unavailable_salary": "мавжуд эмас — SALARY_EXPORT ҳуқуқи талаб қилинади"
     },
     "download": {
       "cta": "Юклаб олиш",
@@ -1701,7 +1702,10 @@
       "DOCX": "Word (.docx)"
     },
     "error": {
-      "project_required": "Лойиҳа талаб қилинади."
+      "project_required": "Лойиҳа талаб қилинади.",
+      "request_failed": "Экспорт сўровини яратиб бўлмади (код: {{code}}). Ҳавола: {{ref}}.",
+      "permission_denied": "Экспорт сўраш учун рухсатингиз йўқ.",
+      "validation_blocked": "Сўровни юбориб бўлмади — баъзи майдонлар нотўғри: {{fields}}. Маълумотларни текшириб, қайта уриниб кўринг."
     }
   },
   "report": {

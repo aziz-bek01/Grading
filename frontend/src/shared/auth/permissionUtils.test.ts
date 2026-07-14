@@ -3,6 +3,7 @@ import {
   can,
   canAll,
   canAny,
+  canExportSalaryData,
   canViewSalary,
   canViewAudit,
   canManageMethodology,
@@ -82,5 +83,25 @@ describe('permissionUtils', () => {
     // role short-circuits the SALARY_VIEW permission check.
     expect(canViewSalary({ user: makeUser([], false, ['HRLAB_SUPER_ADMIN']) })).toBe(false);
     expect(canViewSalary({ user: makeUser([], true, ['HRLAB_SUPER_ADMIN']) })).toBe(true);
+  });
+
+  it('canExportSalaryData() requires the explicit SALARY_EXPORT permission', () => {
+    expect(canExportSalaryData({ user: null })).toBe(false);
+    expect(canExportSalaryData({ user: makeUser([]) })).toBe(false);
+    expect(canExportSalaryData({ user: makeUser([PERMISSIONS.SALARY_EXPORT]) })).toBe(true);
+  });
+
+  it('canExportSalaryData() is NOT relaxed by the super-admin bypass', () => {
+    // The backend grants HRLAB_SUPER_ADMIN every permission EXCEPT the
+    // salary-data trio — a super admin without an explicit SALARY_EXPORT
+    // grant must stay gated, even though the role short-circuits `can()`.
+    expect(
+      canExportSalaryData({ user: makeUser([], false, ['HRLAB_SUPER_ADMIN']) }),
+    ).toBe(false);
+    expect(
+      canExportSalaryData({
+        user: makeUser([PERMISSIONS.SALARY_EXPORT], false, ['HRLAB_SUPER_ADMIN']),
+      }),
+    ).toBe(true);
   });
 });

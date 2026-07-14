@@ -52,6 +52,21 @@ export function canExport(ctx: PermissionContext): boolean {
   return canAny(ctx, [PERMISSIONS.EXPORT_GENERAL, PERMISSIONS.REPORT_EXPORT]);
 }
 
+/**
+ * Salary-bearing EXPORT types (SALARY_RANGES / RED_GREEN_CIRCLE /
+ * COMPENSATION_SCENARIOS) require SALARY_EXPORT. Like {@link canViewSalary},
+ * this is deliberately NOT short-circuited by `isSuperAdmin` — the backend
+ * grants HRLAB_SUPER_ADMIN every permission EXCEPT the salary-data trio
+ * (SALARY_VIEW / SALARY_EDIT / SALARY_EXPORT), so a plain `can()` check would
+ * let a super admin pick a salary export type they cannot actually run (a
+ * silent 403). Salary access stays a hard gate on the explicit permission
+ * grant even for a super admin.
+ */
+export function canExportSalaryData(ctx: PermissionContext): boolean {
+  if (!ctx.user) return false;
+  return ctx.user.permissions.includes(PERMISSIONS.SALARY_EXPORT);
+}
+
 export function canViewAudit(ctx: PermissionContext): boolean {
   return canAny(ctx, [PERMISSIONS.AUDIT_READ, PERMISSIONS.AUDIT_READ_CROSS_TENANT]);
 }

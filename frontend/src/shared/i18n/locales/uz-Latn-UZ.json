@@ -1646,7 +1646,8 @@
       "filter_params": "Saralovchi parametrlari (JSON)",
       "filter_placeholder": "{}",
       "submit": "Soʻrash",
-      "salary_warning": "Bu eksport turi maosh maʼlumotlarini oʻz ichiga oladi. SALARY_EXPORT huquqi talab qilinadi."
+      "salary_warning": "Bu eksport turi maosh maʼlumotlarini oʻz ichiga oladi. SALARY_EXPORT huquqi talab qilinadi.",
+      "type_unavailable_salary": "mavjud emas — SALARY_EXPORT huquqi talab qilinadi"
     },
     "download": {
       "cta": "Yuklab olish",
@@ -1701,7 +1702,10 @@
       "DOCX": "Word (.docx)"
     },
     "error": {
-      "project_required": "Loyiha talab qilinadi."
+      "project_required": "Loyiha talab qilinadi.",
+      "request_failed": "Eksport soʻrovini yaratib boʻlmadi (kod: {{code}}). Havola: {{ref}}.",
+      "permission_denied": "Eksport soʻrash uchun ruxsatingiz yoʻq.",
+      "validation_blocked": "Soʻrovni yuborib boʻlmadi — baʼzi maydonlar notoʻgʻri: {{fields}}. Maʼlumotlarni tekshirib, qayta urinib koʻring."
     }
   },
   "report": {

@@ -1646,7 +1646,8 @@
       "filter_params": "Filter parameters (JSON)",
       "filter_placeholder": "{}",
       "submit": "Request export",
-      "salary_warning": "This export type contains salary data. SALARY_EXPORT permission is required server-side."
+      "salary_warning": "This export type contains salary data. SALARY_EXPORT permission is required server-side.",
+      "type_unavailable_salary": "unavailable — SALARY_EXPORT permission required"
     },
     "download": {
       "cta": "Download",
@@ -1701,7 +1702,10 @@
       "DOCX": "Word (.docx)"
     },
     "error": {
-      "project_required": "Project is required."
+      "project_required": "Project is required.",
+      "request_failed": "Couldn't create the export request (code: {{code}}). Reference: {{ref}}.",
+      "permission_denied": "You don't have permission to request exports.",
+      "validation_blocked": "Couldn't submit the request — some fields are invalid: {{fields}}. Please check your inputs and try again."
     }
   },
   "report": {

@@ -17,7 +17,6 @@ import { I18nProvider } from '@/app/providers/I18nProvider';
 const APPROVAL_PERMS = [
   PERMISSIONS.APPROVAL_REQUEST_CREATE,
   PERMISSIONS.APPROVAL_REQUEST_DECIDE,
-  PERMISSIONS.APPROVAL_STEP_APPROVE,
 ];
 
 function renderInbox() {

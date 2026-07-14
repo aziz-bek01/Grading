@@ -17,6 +17,7 @@ import { Routes, Route } from 'react-router-dom';
 import type { AxiosAdapter } from 'axios';
 import { renderWithProviders, signIn, signOut } from '@/test/testUtils';
 import { httpClient } from '@/shared/api/httpClient';
+import { ApiError } from '@/shared/api/apiError';
 import { createMockAdapter } from '@/shared/api/mocks/handlers';
 import { mockDb, type MockPosition } from '@/shared/api/mocks/fixtures';
 import * as positionApi from '../api/positionApi';
@@ -95,6 +96,32 @@ describe('<PositionListPage /> CRUD', () => {
       /\/positions\/[^/]+\/job-profile$/.test(String(url)),
     );
     expect(perPositionFanOutCalls).toHaveLength(0);
+  });
+
+  // QA (Medium): `useJobProfileStatusesByPositions` used to collapse "still
+  // loading" and "the bulk request failed" into the SAME `undefined` map
+  // entry, so a 500 on `/job-profiles/statuses` left the whole "Job profile"
+  // column showing an indefinite loading placeholder forever. It must now
+  // render a distinguishable error affordance instead.
+  it('renders a "load error" affordance in the Job profile column (not an indefinite loading placeholder) when the bulk status request fails', async () => {
+    signIn('super-admin');
+    const realGet = httpClient.get.bind(httpClient);
+    vi.spyOn(httpClient, 'get').mockImplementation((url: string, config?: unknown) => {
+      if (String(url).includes('/job-profiles/statuses')) {
+        return Promise.reject(new ApiError(500, { code: 'INTERNAL_ERROR', message: 'boom' }));
+      }
+      return realGet(url, config as never);
+    });
+
+    render(renderPage());
+
+    const cfoCell = await screen.findByText('Финансовый директор');
+    const cfoRow = cfoCell.closest('tr')!;
+    await waitFor(() =>
+      expect(within(cfoRow).getByTestId('position-job-profile-error-pos-cfo')).toBeInTheDocument(),
+    );
+    // Every row shows the error affordance, never the neutral "…" loading dots.
+    expect(screen.queryByText('…')).not.toBeInTheDocument();
   });
 
   it('edit opens the drawer prefilled and renames via updatePosition WITHOUT sending code', async () => {

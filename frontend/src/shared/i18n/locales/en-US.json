@@ -291,6 +291,8 @@
     "column_job_level": "Job level",
     "column_status": "Status",
     "column_job_profile": "Job profile",
+    "job_profile_status_error": "Load error",
+    "job_profile_status_error_tooltip": "Couldn't load job profile status. Refresh the page or try again shortly.",
     "column_updated": "Updated",
     "filter_department": "Department",
     "filter_job_family": "Job family",
@@ -346,7 +348,7 @@
     "responsible": "Responsible",
     "last_activity": "Last activity: {{time}} ({{actor}})",
     "open_stage": "Open stage",
-    "activity_requires_audit": "The activity log is visible only to users with the AUDIT_READ permission.",
+    "activity_requires_audit": "The activity log is visible only to administrators and auditors.",
     "open_audit_full": "Open full audit log"
   },
   "audit": {

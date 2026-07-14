@@ -291,6 +291,8 @@
     "column_job_level": "Даража",
     "column_status": "Ҳолат",
     "column_job_profile": "Лавозим профили",
+    "job_profile_status_error": "Юклашда хатолик",
+    "job_profile_status_error_tooltip": "Лавозим профили ҳолатини юклаб бўлмади. Саҳифани янгиланг ёки бироздан сўнг қайта уриниб кўринг.",
     "column_updated": "Янгиланган",
     "filter_department": "Бўлим",
     "filter_job_family": "Оила",
@@ -346,7 +348,7 @@
     "responsible": "Масъул",
     "last_activity": "Сўнгги фаолият: {{time}} ({{actor}})",
     "open_stage": "Босқичга ўтиш",
-    "activity_requires_audit": "Фаолият журнали фақат AUDIT_READ ҳуқуқига эга фойдаланувчиларга кўринади.",
+    "activity_requires_audit": "Фаолият журнали фақат администраторлар ва аудиторларга кўринади.",
     "open_audit_full": "Тўлиқ аудит журналини очиш"
   },
   "audit": {

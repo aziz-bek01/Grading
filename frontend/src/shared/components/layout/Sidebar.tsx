@@ -116,7 +116,6 @@ export function Sidebar({ className }: SidebarProps = {}) {
       permission: [
         PERMISSIONS.APPROVAL_REQUEST_CREATE,
         PERMISSIONS.APPROVAL_REQUEST_DECIDE,
-        PERMISSIONS.APPROVAL_STEP_APPROVE,
       ],
     },
   ].map((item) => ({
@@ -153,7 +152,6 @@ export function Sidebar({ className }: SidebarProps = {}) {
         // Decider-only roles (e.g. CLIENT_HR_DIRECTOR) hold the canonical
         // APPROVAL_REQUEST_DECIDE — the nav item must be reachable for them.
         PERMISSIONS.APPROVAL_REQUEST_DECIDE,
-        PERMISSIONS.APPROVAL_STEP_APPROVE,
       ],
       badge: inboxCount,
     },
@@ -386,7 +384,6 @@ function useApprovalInboxCount(permissions: PermissionCode[] | undefined): numbe
   const canApprove =
     !!permissions &&
     (permissions.includes(PERMISSIONS.APPROVAL_REQUEST_DECIDE) ||
-      permissions.includes(PERMISSIONS.APPROVAL_STEP_APPROVE) ||
       permissions.includes(PERMISSIONS.APPROVAL_REQUEST_CREATE));
   if (!canApprove) return 0;
   return inbox.data?.length ?? 0;

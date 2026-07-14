@@ -291,6 +291,8 @@
     "column_job_level": "Daraja",
     "column_status": "Holat",
     "column_job_profile": "Lavozim profili",
+    "job_profile_status_error": "Yuklashda xatolik",
+    "job_profile_status_error_tooltip": "Lavozim profili holatini yuklab bo'lmadi. Sahifani yangilang yoki birozdan so'ng qayta urinib ko'ring.",
     "column_updated": "Yangilangan",
     "filter_department": "Boʻlim",
     "filter_job_family": "Oila",
@@ -346,7 +348,7 @@
     "responsible": "Masʼul",
     "last_activity": "Soʻnggi faoliyat: {{time}} ({{actor}})",
     "open_stage": "Bosqichga oʻtish",
-    "activity_requires_audit": "Faoliyat jurnali faqat AUDIT_READ huquqiga ega foydalanuvchilarga koʻrinadi.",
+    "activity_requires_audit": "Faoliyat jurnali faqat administratorlar va auditorlarga koʻrinadi.",
     "open_audit_full": "Toʻliq audit jurnalini ochish"
   },
   "audit": {

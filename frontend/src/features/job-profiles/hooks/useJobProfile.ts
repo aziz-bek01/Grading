@@ -34,6 +34,26 @@ export function useJobProfileByPosition(positionId: string | undefined) {
 }
 
 /**
+ * Return shape of {@link useJobProfileStatusesByPositions} — a small result
+ * object (rather than a bare `Map`) so callers can tell "still loading" apart
+ * from "the bulk request failed" instead of both collapsing into the same
+ * `undefined` map entries forever.
+ */
+export interface JobProfileStatusesByPositionsResult {
+  /** 3-state per-id map — see the state contract documented on the hook. */
+  statuses: Map<string, JobProfileStatusByPosition | null | undefined>;
+  /** The bulk request is in flight (first fetch, or ids changed). */
+  isLoading: boolean;
+  /**
+   * The bulk request settled with a failure (after any retries) — every id
+   * still maps to `undefined` in `statuses`, but callers should render a
+   * distinguishable "couldn't load" affordance instead of an indefinite
+   * loading placeholder.
+   */
+  isError: boolean;
+}
+
+/**
  * Bulk job-profile STATUS lookup for a bounded set of position ids — e.g. one
  * server page of the Position Catalog (PAGE-2 fix). Backed by a SINGLE call
  * to `GET /job-profiles/statuses?positionIds=...` (one request total, not one
@@ -49,10 +69,12 @@ export function useJobProfileByPosition(positionId: string | undefined) {
  * `JobProfile`, so writing it into those caches would corrupt them for any
  * consumer expecting the complete shape (e.g. the Job Profile editor tab).
  *
- * Map values preserve the SAME 3-state contract the fan-out version had:
- *  - `undefined` = still loading, OR the fetch failed — render a neutral
- *    placeholder, never guess. Every requested id maps to `undefined` until
- *    the single query resolves successfully (`query.isSuccess`).
+ * `statuses` map values preserve the SAME 3-state contract the fan-out
+ * version had:
+ *  - `undefined` = still loading, OR the fetch failed (check the sibling
+ *    `isError` flag to tell the two apart) — every requested id maps to
+ *    `undefined` until the single query resolves successfully
+ *    (`query.isSuccess`).
  *  - `null` = confirmed no active profile — the id was requested but is
  *    ABSENT from the bulk response (backend omits positions with no active,
  *    non-ARCHIVED profile, or outside the caller's ABAC scope).
@@ -61,21 +83,21 @@ export function useJobProfileByPosition(positionId: string | undefined) {
  */
 export function useJobProfileStatusesByPositions(
   positionIds: string[],
-): Map<string, JobProfileStatusByPosition | null | undefined> {
+): JobProfileStatusesByPositionsResult {
   const query = useQuery({
     queryKey: jobProfileKeys.statusesByPositions(positionIds),
     queryFn: () => fetchJobProfileStatusesByPositions(positionIds),
     enabled: positionIds.length > 0,
   });
 
-  const byPositionId = new Map<string, JobProfileStatusByPosition | null | undefined>();
+  const statuses = new Map<string, JobProfileStatusByPosition | null | undefined>();
   if (!query.isSuccess) {
-    positionIds.forEach((id) => byPositionId.set(id, undefined));
-    return byPositionId;
+    positionIds.forEach((id) => statuses.set(id, undefined));
+    return { statuses, isLoading: query.isLoading, isError: query.isError };
   }
   const byId = new Map(query.data.map((entry) => [entry.position_id, entry] as const));
-  positionIds.forEach((id) => byPositionId.set(id, byId.get(id) ?? null));
-  return byPositionId;
+  positionIds.forEach((id) => statuses.set(id, byId.get(id) ?? null));
+  return { statuses, isLoading: false, isError: false };
 }
 
 export function useJobProfileRevisions(positionId: string | undefined) {

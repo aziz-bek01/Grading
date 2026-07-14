@@ -145,6 +145,34 @@ describe('<PositionTable />', () => {
     expect(screen.getByTestId('position-job-profile-loading-pos2')).toBeInTheDocument();
   });
 
+  // QA (Medium): a failed bulk `GET /job-profiles/statuses` request must be
+  // distinguishable from "still loading" — both leave every id `undefined`
+  // in the map, so the table needs the sibling `jobProfileStatusError` flag
+  // to tell them apart instead of showing an indefinite "…" placeholder.
+  it('renders a distinguishable "load error" affordance (not the loading placeholder) when jobProfileStatusError is true', () => {
+    // Every id is STILL undefined in the map — exactly what the hook returns
+    // once the bulk request has failed (the 3-state contract never guesses).
+    const jobProfileByPositionId = new Map<string, JobProfileStatusByPosition | null | undefined>();
+    render(
+      renderWithProviders(
+        <PositionTable
+          projectId="p"
+          rows={rows}
+          departments={departments}
+          jobProfileByPositionId={jobProfileByPositionId}
+          jobProfileStatusError
+        />,
+      ),
+    );
+    expect(screen.getByTestId('position-job-profile-error-pos1')).toBeInTheDocument();
+    expect(screen.getByTestId('position-job-profile-error-pos2')).toBeInTheDocument();
+    // The neutral loading placeholder must NOT appear once the request has
+    // actually errored — that would be indistinguishable from "still loading".
+    expect(screen.queryByTestId('position-job-profile-loading-pos1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('position-job-profile-loading-pos2')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Ошибка загрузки|Load error/i).length).toBeGreaterThanOrEqual(1);
+  });
+
   it('shows dash instead of action buttons for ARCHIVED rows', () => {
     signIn('super-admin');
     render(

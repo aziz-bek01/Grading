@@ -77,9 +77,8 @@ export function PositionListPage() {
   const { can } = usePermission();
   const canReadJobProfiles = can(PERMISSIONS.JOB_PROFILE_READ);
   const positionIds = useMemo(() => rows.map((p) => p.id), [rows]);
-  const jobProfileByPositionId = useJobProfileStatusesByPositions(
-    canReadJobProfiles ? positionIds : [],
-  );
+  const { statuses: jobProfileByPositionId, isError: jobProfileStatusError } =
+    useJobProfileStatusesByPositions(canReadJobProfiles ? positionIds : []);
 
   const filters: FilterDefinition[] = useMemo(
     () => [
@@ -222,6 +221,7 @@ export function PositionListPage() {
           loading={positions.isFetching}
           onEdit={openEdit}
           jobProfileByPositionId={canReadJobProfiles ? jobProfileByPositionId : undefined}
+          jobProfileStatusError={canReadJobProfiles ? jobProfileStatusError : false}
           onArchive={(p) => {
             setArchiveError(null);
             setArchiveTarget(p);

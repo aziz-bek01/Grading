@@ -274,7 +274,6 @@ export function AppRouter() {
                     PERMISSIONS.APPROVAL_REQUEST_CREATE,
                     // Canonical decide code (BE gates getById/inbox/decide on it).
                     PERMISSIONS.APPROVAL_REQUEST_DECIDE,
-                    PERMISSIONS.APPROVAL_STEP_APPROVE,
                   ]}
                   mode="any"
                 />
@@ -304,7 +303,6 @@ export function AppRouter() {
                 permissions={[
                   PERMISSIONS.APPROVAL_REQUEST_CREATE,
                   PERMISSIONS.APPROVAL_REQUEST_DECIDE,
-                  PERMISSIONS.APPROVAL_STEP_APPROVE,
                 ]}
                 mode="any"
               />

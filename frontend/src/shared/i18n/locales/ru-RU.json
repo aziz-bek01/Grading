@@ -291,6 +291,8 @@
     "column_job_level": "Уровень",
     "column_status": "Статус",
     "column_job_profile": "Должностной профиль",
+    "job_profile_status_error": "Ошибка загрузки",
+    "job_profile_status_error_tooltip": "Не удалось загрузить статус должностного профиля. Обновите страницу или повторите попытку позже.",
     "column_updated": "Обновлено",
     "filter_department": "Подразделение",
     "filter_job_family": "Семейство",
@@ -346,7 +348,7 @@
     "responsible": "Ответственный",
     "last_activity": "Последняя активность: {{time}} ({{actor}})",
     "open_stage": "Перейти к этапу",
-    "activity_requires_audit": "Журнал активности доступен только пользователям с правом AUDIT_READ.",
+    "activity_requires_audit": "Журнал активности доступен только администраторам и аудиторам.",
     "open_audit_full": "Открыть полный журнал аудита"
   },
   "audit": {

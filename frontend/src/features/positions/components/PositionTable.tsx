@@ -4,6 +4,7 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable';
 import { PermissionGate } from '@/shared/components/access/PermissionGate';
 import { IconButton } from '@/shared/components/ui/IconButton';
+import { Tooltip } from '@/shared/components/ui/Tooltip';
 import { PERMISSIONS } from '@/shared/types/permissions';
 import { pickLocalized } from '@/shared/lib/localized';
 import { formatDateSafe } from '@/shared/lib/dates';
@@ -36,6 +37,16 @@ interface PositionTableProps {
    */
   jobProfileByPositionId?: Map<string, JobProfileStatusByPosition | null | undefined>;
   /**
+   * True once the bulk `GET /job-profiles/statuses` request in
+   * `useJobProfileStatusesByPositions` has settled with a failure. Every id
+   * still maps to `undefined` in `jobProfileByPositionId` in that case (see
+   * the hook's 3-state contract), so this flag is what tells the "Job
+   * profile" cell to render a distinguishable "couldn't load" affordance
+   * instead of the neutral loading placeholder — a failed bulk request must
+   * never look identical to "still loading" indefinitely.
+   */
+  jobProfileStatusError?: boolean;
+  /**
    * Real server-driven pagination — `rows` is already exactly the current
    * server page (see `PositionListPage`). Forwarded straight to `DataTable`.
    */
@@ -66,6 +77,7 @@ export function PositionTable({
   onEdit,
   onArchive,
   jobProfileByPositionId,
+  jobProfileStatusError,
   serverPagination,
 }: PositionTableProps) {
   const { t, i18n } = useTranslation();
@@ -131,6 +143,26 @@ export function PositionTable({
             render: (p: Position) => {
               const profile = jobProfileByPositionId.get(p.id);
               if (profile === undefined) {
+                // The bulk request failed (not just "still loading") — render
+                // a distinguishable affordance so the column never reads as an
+                // indefinite spinner. See `jobProfileStatusError` doc above.
+                if (jobProfileStatusError) {
+                  return (
+                    <Tooltip content={t('positions.job_profile_status_error_tooltip')}>
+                      <span
+                        tabIndex={0}
+                        className="inline-flex"
+                        data-testid={`position-job-profile-error-${p.id}`}
+                      >
+                        <StatusBadge
+                          tone="needs-attention"
+                          outline
+                          label={t('positions.job_profile_status_error')}
+                        />
+                      </span>
+                    </Tooltip>
+                  );
+                }
                 return (
                   <span className="text-text-muted text-xs" data-testid={`position-job-profile-loading-${p.id}`}>
                     …

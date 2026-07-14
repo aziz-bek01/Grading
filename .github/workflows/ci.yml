@@ -264,6 +264,14 @@ jobs:
           npm ci --no-audit --no-fund
           npm run lint
 
+      # Copy-paste guardrail: fails only if source duplication exceeds the
+      # .jscpd.json threshold (3%). Current baseline is ~0.9%, so this passes
+      # with ~3x headroom and trips only on a large new copy-paste regression —
+      # it does not block normal development. Tests/mocks are excluded (config).
+      - name: Duplication gate (jscpd)
+        working-directory: frontend
+        run: npm run dup:check
+
   # ===========================================================================
   # Stage 6 — Backend unit tests (no integration, no @Tag("integration"))
   # ===========================================================================

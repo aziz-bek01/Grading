@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "dup:check": "jscpd src --config .jscpd.json",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui"
   },
@@ -47,6 +48,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "jest-axe": "^10.0.0",
+    "jscpd": "4.0.5",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.15",
     "prettier": "^3.8.3",

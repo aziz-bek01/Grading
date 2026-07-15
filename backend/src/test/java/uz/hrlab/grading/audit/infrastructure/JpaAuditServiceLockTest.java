@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import uz.hrlab.grading.audit.application.AuditAction;
 import uz.hrlab.grading.audit.application.AuditEvent;
+import uz.hrlab.grading.audit.application.AuditHashCalculator;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -40,7 +41,7 @@ class JpaAuditServiceLockTest {
 
     @BeforeEach
     void setUp() {
-        service = new JpaAuditService(repository, new ObjectMapper());
+        service = new JpaAuditService(repository, new AuditHashCalculator(new ObjectMapper()));
     }
 
     @Test

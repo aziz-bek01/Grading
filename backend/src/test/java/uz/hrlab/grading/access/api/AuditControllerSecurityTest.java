@@ -15,6 +15,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.test.web.servlet.MockMvc;
 import uz.hrlab.grading.access.application.AuditQueryFilter;
 import uz.hrlab.grading.access.application.ListAuditEventsQuery;
+import uz.hrlab.grading.access.application.VerifyAuditIntegrityQuery;
 import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.GlobalExceptionHandler;
 import uz.hrlab.grading.common.api.WebMvcSecurityTestConfig;
@@ -50,6 +51,7 @@ class AuditControllerSecurityTest {
     @Autowired MockMvc mvc;
 
     @MockBean ListAuditEventsQuery listAuditEvents;
+    @MockBean VerifyAuditIntegrityQuery verifyAuditIntegrity;
     @MockBean AuditService auditService; // required by GlobalExceptionHandler
 
     // ---------- 1) Anonymous → 401 ----------
@@ -141,5 +143,87 @@ class AuditControllerSecurityTest {
     private void givenStubReturnsRows(List<AuditEventResponse> rows) {
         Page<AuditEventResponse> page = new PageImpl<>(rows);
         given(listAuditEvents.list(any(AuditQueryFilter.class))).willReturn(page);
+    }
+
+    // =====================================================================
+    //  MVP1-E10-1 — GET /api/v1/audit/integrity edge security. Stricter than
+    //  the reader: AUDIT_READ ONLY (no AUDIT_VIEW alias).
+    // =====================================================================
+
+    // ---------- integrity: anonymous → 401 ----------
+    @Test
+    void integrityAnonymousIsUnauthorized() throws Exception {
+        mvc.perform(get("/api/v1/audit/integrity"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- integrity: wrong authority → 403 ----------
+    @Test
+    void integrityWithoutAuditReadReturns403() throws Exception {
+        mvc.perform(get("/api/v1/audit/integrity")
+                        .with(jwt().authorities(() -> "PROJECT_READ")))
+                .andExpect(status().isForbidden());
+    }
+
+    // ---------- integrity: AUDIT_VIEW alone is NOT enough → 403 ----------
+    @Test
+    void integrityWithOnlyAuditViewReturns403() throws Exception {
+        mvc.perform(get("/api/v1/audit/integrity")
+                        .with(jwt().authorities(() -> "AUDIT_VIEW")))
+                .andExpect(status().isForbidden());
+    }
+
+    // ---------- integrity: AUDIT_READ → 200 + body shape ----------
+    @Test
+    void integrityWithAuditReadReturns200AndBody() throws Exception {
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        given(verifyAuditIntegrity.verify(any(), any(), any()))
+                .willReturn(new AuditIntegrityResponse(
+                        tenantId, "INTACT", true, 42L, 42L, 40L, 2L,
+                        OffsetDateTime.parse("2026-07-15T00:00:00Z"),
+                        OffsetDateTime.parse("2026-07-15T09:41:12.512874Z"),
+                        null, null, false, 50000, null,
+                        OffsetDateTime.parse("2026-07-15T09:42:03.114Z")));
+
+        mvc.perform(get("/api/v1/audit/integrity")
+                        .with(jwt().authorities(() -> "AUDIT_READ")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenant_id").value(tenantId.toString()))
+                .andExpect(jsonPath("$.status").value("INTACT"))
+                .andExpect(jsonPath("$.intact").value(true))
+                .andExpect(jsonPath("$.checked_count").value(42))
+                .andExpect(jsonPath("$.chain_length").value(42))
+                .andExpect(jsonPath("$.independently_verified_count").value(40))
+                .andExpect(jsonPath("$.legacy_unverifiable_count").value(2))
+                .andExpect(jsonPath("$.verifiable_from").value("2026-07-15T00:00:00Z"))
+                .andExpect(jsonPath("$.max_rows").value(50000))
+                .andExpect(jsonPath("$.first_break").doesNotExist());
+    }
+
+    // ---------- integrity: BROKEN result carries first_break ----------
+    @Test
+    void integrityBrokenResultCarriesFirstBreak() throws Exception {
+        UUID tenantId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID rowId    = UUID.fromString("9f2caaaa-0000-0000-0000-000000000001");
+        AuditIntegrityResponse.Break brk = new AuditIntegrityResponse.Break(
+                rowId, OffsetDateTime.parse("2026-07-14T18:03:00Z"),
+                "HASH_MISMATCH", "a1b2expected", "deadbeefactual");
+        given(verifyAuditIntegrity.verify(any(), any(), any()))
+                .willReturn(new AuditIntegrityResponse(
+                        tenantId, "BROKEN", false, 7L, 100L, 7L, 0L,
+                        OffsetDateTime.parse("2026-07-14T17:00:00Z"),
+                        OffsetDateTime.parse("2026-07-14T18:02:00Z"),
+                        null, null, false, 50000, brk,
+                        OffsetDateTime.parse("2026-07-15T09:42:03.114Z")));
+
+        mvc.perform(get("/api/v1/audit/integrity")
+                        .with(jwt().authorities(() -> "AUDIT_READ")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("BROKEN"))
+                .andExpect(jsonPath("$.intact").value(false))
+                .andExpect(jsonPath("$.first_break.row_id").value(rowId.toString()))
+                .andExpect(jsonPath("$.first_break.break_type").value("HASH_MISMATCH"))
+                .andExpect(jsonPath("$.first_break.expected_hash").value("a1b2expected"))
+                .andExpect(jsonPath("$.first_break.actual_hash").value("deadbeefactual"));
     }
 }

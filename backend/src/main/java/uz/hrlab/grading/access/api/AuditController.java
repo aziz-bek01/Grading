@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uz.hrlab.grading.access.application.AuditQueryFilter;
 import uz.hrlab.grading.access.application.ListAuditEventsQuery;
+import uz.hrlab.grading.access.application.VerifyAuditIntegrityQuery;
 import uz.hrlab.grading.common.api.PageResponse;
 
 import java.time.OffsetDateTime;
@@ -45,9 +46,12 @@ import java.util.UUID;
 public class AuditController {
 
     private final ListAuditEventsQuery listAuditEvents;
+    private final VerifyAuditIntegrityQuery verifyAuditIntegrity;
 
-    public AuditController(ListAuditEventsQuery listAuditEvents) {
+    public AuditController(ListAuditEventsQuery listAuditEvents,
+                           VerifyAuditIntegrityQuery verifyAuditIntegrity) {
         this.listAuditEvents = listAuditEvents;
+        this.verifyAuditIntegrity = verifyAuditIntegrity;
     }
 
     @GetMapping
@@ -87,5 +91,31 @@ public class AuditController {
     @PreAuthorize("hasAnyAuthority('AUDIT_READ','AUDIT_VIEW')")
     public AuditEventResponse getById(@PathVariable UUID id) {
         return listAuditEvents.findById(id);
+    }
+
+    /**
+     * MVP1-E10-1 — verify the integrity of the caller's tenant audit hash chain
+     * (security-blueprint §9.2). Recomputes every row's {@code hash_current}
+     * with the writer's own hashing and reports whether the chain is INTACT or,
+     * if BROKEN, the first offending row + break type.
+     *
+     * <p><b>Stricter gate than the reader:</b> {@code AUDIT_READ} ONLY (no
+     * {@code AUDIT_VIEW} alias) — held by HRLAB_SUPER_ADMIN + EXTERNAL_AUDITOR.
+     * Tenant is taken from {@code TenantContext}; there is no cross-tenant
+     * verification. Read-only, but emits ONE {@code AUDIT_INTEGRITY_VERIFIED}
+     * forensic row per run (see {@link VerifyAuditIntegrityQuery}).
+     *
+     * <p>Optional {@code from}/{@code to} verify a slice; {@code maxRows} caps a
+     * single run (defaults + hard ceiling enforced by {@code AuditChainVerifier}).
+     */
+    @GetMapping("/integrity")
+    @PreAuthorize("hasAuthority('AUDIT_READ')")
+    public AuditIntegrityResponse integrity(
+            @RequestParam(required = false)
+                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
+            @RequestParam(required = false)
+                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+            @RequestParam(required = false) Integer maxRows) {
+        return verifyAuditIntegrity.verify(from, to, maxRows);
     }
 }

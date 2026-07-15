@@ -1,22 +1,17 @@
 package uz.hrlab.grading.audit.infrastructure;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.audit.application.AuditEvent;
+import uz.hrlab.grading.audit.application.AuditHashCalculator;
+import uz.hrlab.grading.audit.application.AuditHashInput;
 import uz.hrlab.grading.audit.application.AuditService;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
-import java.util.HexFormat;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
@@ -26,21 +21,21 @@ import java.util.UUID;
  *
  * <p>Always runs in {@link Propagation#REQUIRES_NEW} so an audit insert is
  * never rolled back by a caller's transaction failure (architecture §8.5).
+ *
+ * <p>The hash itself is computed by the shared {@link AuditHashCalculator} —
+ * the SAME component the read-side {@code AuditChainVerifier} uses — so the
+ * writer and the integrity verifier can never diverge.
  */
 @Service
 public class JpaAuditService implements AuditService {
 
-    private static final Logger log = LoggerFactory.getLogger(JpaAuditService.class);
-
     private final SystemAuditLogRepository repository;
-    private final ObjectMapper objectMapper;
+    private final AuditHashCalculator hashCalculator;
 
     @Autowired
-    public JpaAuditService(SystemAuditLogRepository repository, ObjectMapper objectMapper) {
+    public JpaAuditService(SystemAuditLogRepository repository, AuditHashCalculator hashCalculator) {
         this.repository = repository;
-        // Order keys deterministically so the hash is reproducible.
-        this.objectMapper = objectMapper.copy()
-                .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
+        this.hashCalculator = hashCalculator;
     }
 
     /**
@@ -60,11 +55,26 @@ public class JpaAuditService implements AuditService {
         repository.acquireTenantAuditChainLock(lockKey(event.tenantId()));
 
         UUID id = UUID.randomUUID();
-        OffsetDateTime createdAt = OffsetDateTime.now();
-        String beforeJson = serialize(event.beforeJson());
-        String afterJson = serialize(event.afterJson());
+        // UTC + microsecond precision so the value STORED in TIMESTAMPTZ and the
+        // value HASHED describe the identical instant — the audit chain verifier
+        // recomputes from the stored value and must land on the same hash.
+        OffsetDateTime createdAt = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
+        String beforeJson = hashCalculator.canonicalJson(event.beforeJson());
+        String afterJson = hashCalculator.canonicalJson(event.afterJson());
         String prevHash = repository.findLastHash(event.tenantId()).orElse(null);
-        String currentHash = computeHash(id, event, beforeJson, afterJson, createdAt, prevHash);
+        String currentHash = hashCalculator.compute(new AuditHashInput(
+                id,
+                event.tenantId(),
+                event.projectId(),
+                event.actorUserId(),
+                event.action(),
+                event.entityType(),
+                event.entityId(),
+                beforeJson,
+                afterJson,
+                createdAt,
+                AuditHashCalculator.HASH_FORMAT_VERSION,
+                prevHash));
 
         SystemAuditLogJpaEntity row = new SystemAuditLogJpaEntity(
                 id,
@@ -83,7 +93,8 @@ public class JpaAuditService implements AuditService {
                 event.traceId(),
                 createdAt,
                 prevHash,
-                currentHash
+                currentHash,
+                AuditHashCalculator.HASH_FORMAT_VERSION
         );
         repository.save(row);
     }
@@ -91,43 +102,5 @@ public class JpaAuditService implements AuditService {
     /** Advisory-lock key for a tenant chain — null tenant maps to a fixed sentinel. */
     private String lockKey(UUID tenantId) {
         return tenantId == null ? CONTROL_PLANE_LOCK_KEY : tenantId.toString();
-    }
-
-    private String serialize(JsonNode node) {
-        if (node == null) return null;
-        try {
-            return objectMapper.writeValueAsString(node);
-        } catch (Exception ex) {
-            log.warn("Audit JSON serialize failed: {}", ex.getMessage());
-            return null;
-        }
-    }
-
-    private String computeHash(UUID id, AuditEvent event, String beforeJson, String afterJson,
-                               OffsetDateTime createdAt, String prevHash) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(id);
-        sb.append('|').append(safe(event.tenantId()));
-        sb.append('|').append(safe(event.projectId()));
-        sb.append('|').append(safe(event.actorUserId()));
-        sb.append('|').append(event.action() == null ? "" : event.action());
-        sb.append('|').append(event.entityType() == null ? "" : event.entityType());
-        sb.append('|').append(safe(event.entityId()));
-        sb.append('|').append(beforeJson == null ? "" : beforeJson);
-        sb.append('|').append(afterJson == null ? "" : afterJson);
-        sb.append('|').append(createdAt);
-        sb.append('|').append(prevHash == null ? "" : prevHash);
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException ex) {
-            // SHA-256 is mandatory in every JDK; if missing fail closed.
-            throw new IllegalStateException("SHA-256 missing", ex);
-        }
-    }
-
-    private String safe(Object obj) {
-        return obj == null ? "" : obj.toString();
     }
 }

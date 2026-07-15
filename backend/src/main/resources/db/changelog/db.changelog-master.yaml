@@ -54,6 +54,13 @@ databaseChangeLog:
   - include:
       file: control-plane/010-rbac-reverse-fk-indexes.yaml
       relativeToChangelogFile: true
+  # MVP1-E10-1 — hash-format versioning on system_audit_log so the audit hash-
+  # chain integrity verifier reports pre-hardening (v1) rows as linkage-intact
+  # but not independently content-verifiable, instead of falsely BROKEN. Purely
+  # additive column; must run AFTER 006 (partitioned parent exists).
+  - include:
+      file: control-plane/011-audit-hash-format-version.yaml
+      relativeToChangelogFile: true
   - include:
       file: seeds/001-default-permissions.yaml
       relativeToChangelogFile: true

@@ -8,6 +8,8 @@ import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -62,11 +64,95 @@ public interface SystemAuditLogRepository extends Repository<SystemAuditLogJpaEn
             "order by sa.createdAt desc limit 1")
     Optional<SystemAuditLogJpaEntity> findFirstByTenantIdOrderByCreatedAtDesc(@Param("tenantId") UUID tenantId);
 
-    /** Last hash for the chain (per tenant or null tenant for platform events). */
+    /**
+     * Last hash for the chain (per tenant or null tenant for platform events).
+     *
+     * <p><b>M1 (deterministic tiebreak):</b> ordered by {@code created_at DESC,
+     * id DESC}. {@code created_at} is now UTC/microsecond-truncated, so two
+     * appends in the same microsecond are possible; without a stable secondary
+     * key the writer could read the wrong predecessor under the advisory lock and
+     * FORK the chain. The {@code id} tiebreak makes "the newest row" a total,
+     * deterministic order that the verifier's link walk agrees with.
+     */
     @Query("select sa.hashCurrent from SystemAuditLogJpaEntity sa " +
             "where (:tenantId is null and sa.tenantId is null) or sa.tenantId = :tenantId " +
-            "order by sa.createdAt desc limit 1")
+            "order by sa.createdAt desc, sa.id desc limit 1")
     Optional<String> findLastHash(@Param("tenantId") UUID tenantId);
+
+    /**
+     * MVP1-E10-1 — audit hash-chain integrity verifier, PASS 1 (chain-order
+     * reconstruction). Returns a LIGHTWEIGHT projection (NO payload) of one
+     * keyset page of a tenant's chain. The verifier loads the whole bounded chain
+     * this way to build the {@code hash_prev → hash_current} link map — chain
+     * order is derived from the LINKS, not wall-clock — then fetches payloads a
+     * page at a time in pass 2, so payload memory stays O(page).
+     *
+     * <p>The {@code created_at ASC, id ASC} order is used ONLY to page the load
+     * deterministically and to pick a stable "earliest" offender for reports; the
+     * authoritative sequence is the link walk, so same-microsecond ties and clock
+     * backsteps cannot misorder the verification.
+     *
+     * <p><b>Tenant isolation:</b> {@code system_audit_log} is a control-plane
+     * table with a nullable {@code tenant_id} and NO row-level security
+     * (database-blueprint §15.3), so the explicit {@code sa.tenantId = :tenantId}
+     * predicate is the isolation boundary — identical to the Audit Reader API
+     * ({@code ListAuditEventsQuery}). The caller always supplies the tenant id
+     * from {@code TenantContext}, never from request input.
+     *
+     * <p><b>Bounds are always non-null</b> ({@code fromInclusive}/{@code
+     * toInclusive} windowing + {@code cursor*} keyset) — never binding a NULL to
+     * a {@code TIMESTAMPTZ} comparison side-steps PostgreSQL's "could not
+     * determine data type of parameter" on untyped nulls.
+     */
+    @Query("""
+            select new uz.hrlab.grading.audit.infrastructure.AuditChainNode(
+                       sa.id, sa.hashPrev, sa.hashCurrent, sa.hashFormatVersion, sa.createdAt)
+            from SystemAuditLogJpaEntity sa
+            where sa.tenantId = :tenantId
+              and sa.createdAt >= :fromInclusive
+              and sa.createdAt <= :toInclusive
+              and (sa.createdAt > :cursorCreatedAt
+                   or (sa.createdAt = :cursorCreatedAt and sa.id > :cursorId))
+            order by sa.createdAt asc, sa.id asc
+            """)
+    List<AuditChainNode> findChainNodes(
+            @Param("tenantId")        UUID tenantId,
+            @Param("fromInclusive")   OffsetDateTime fromInclusive,
+            @Param("toInclusive")     OffsetDateTime toInclusive,
+            @Param("cursorCreatedAt") OffsetDateTime cursorCreatedAt,
+            @Param("cursorId")        UUID cursorId,
+            Pageable pageable);
+
+    /**
+     * MVP1-E10-1 — verifier PASS 2. Full rows (incl. {@code before_json}/{@code
+     * after_json}) for a page of ids in the authoritative link order, so content
+     * recompute reads payload memory O(page). Tenant-scoped (defence in depth).
+     */
+    @Query("""
+            select sa from SystemAuditLogJpaEntity sa
+            where sa.tenantId = :tenantId
+              and sa.id in :ids
+            """)
+    List<SystemAuditLogJpaEntity> findPayloadsByIds(
+            @Param("tenantId") UUID tenantId,
+            @Param("ids")      Collection<UUID> ids);
+
+    /**
+     * MVP1-E10-1 — total rows in a tenant's chain within {@code [fromInclusive,
+     * toInclusive]}. Used by the verifier to report {@code chain_length} and to
+     * decide whether a run was truncated by the max-rows cap. Same non-null
+     * bound rationale as {@link #findChainNodes}.
+     */
+    @Query("""
+            select count(sa) from SystemAuditLogJpaEntity sa
+            where sa.tenantId = :tenantId
+              and sa.createdAt >= :fromInclusive
+              and sa.createdAt <= :toInclusive
+            """)
+    long countChain(
+            @Param("tenantId")      UUID tenantId,
+            @Param("fromInclusive") OffsetDateTime fromInclusive,
+            @Param("toInclusive")   OffsetDateTime toInclusive);
 
     /**
      * P2-FIX (Task 4) — serialize hash-chain appends WITHIN a tenant.

@@ -102,6 +102,16 @@ public class SystemAuditLogJpaEntity {
     @Column(name = "hash_current", columnDefinition = "text", nullable = false, updatable = false)
     private String hashCurrent;
 
+    /**
+     * MVP1-E10-1 — canonical hash format of {@link #hashCurrent}. {@code 1} =
+     * legacy (pre-E10; content not independently recomputable from storage, but
+     * linkage still valid). {@code 2} = key-sorted JSON + UTC/microsecond
+     * timestamp (recomputable by the integrity verifier). New rows are stamped
+     * {@link uz.hrlab.grading.audit.application.AuditHashCalculator#HASH_FORMAT_VERSION}.
+     */
+    @Column(name = "hash_format_version", nullable = false, updatable = false)
+    private short hashFormatVersion;
+
     protected SystemAuditLogJpaEntity() { }
 
     public SystemAuditLogJpaEntity(UUID id, UUID tenantId, UUID projectId, UUID actorUserId,
@@ -109,7 +119,8 @@ public class SystemAuditLogJpaEntity {
                                    String beforeJson, String afterJson, String reason,
                                    String ipAddress, String userAgent,
                                    String correlationId, String traceId,
-                                   OffsetDateTime createdAt, String hashPrev, String hashCurrent) {
+                                   OffsetDateTime createdAt, String hashPrev, String hashCurrent,
+                                   short hashFormatVersion) {
         this.id = id;
         this.tenantId = tenantId;
         this.projectId = projectId;
@@ -127,6 +138,7 @@ public class SystemAuditLogJpaEntity {
         this.createdAt = createdAt;
         this.hashPrev = hashPrev;
         this.hashCurrent = hashCurrent;
+        this.hashFormatVersion = hashFormatVersion;
     }
 
     public UUID getId() { return id; }
@@ -136,6 +148,10 @@ public class SystemAuditLogJpaEntity {
     public String getAction() { return action; }
     public String getEntityType() { return entityType; }
     public UUID getEntityId() { return entityId; }
+    /** Exposed for the hash-chain integrity verifier (MVP1-E10-1) — part of the
+     *  hashed payload. Read-only; the audit log stays append-only. */
+    public String getBeforeJson() { return beforeJson; }
+    public String getAfterJson() { return afterJson; }
     public String getReason() { return reason; }
     public String getIpAddress() { return ipAddress; }
     public String getUserAgent() { return userAgent; }
@@ -144,4 +160,5 @@ public class SystemAuditLogJpaEntity {
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public String getHashPrev() { return hashPrev; }
     public String getHashCurrent() { return hashCurrent; }
+    public short getHashFormatVersion() { return hashFormatVersion; }
 }

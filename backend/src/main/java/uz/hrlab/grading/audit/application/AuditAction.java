@@ -335,6 +335,16 @@ public final class AuditAction {
     public static final String CROSS_TENANT_PLATFORM_ACCESS
             = "CROSS_TENANT_PLATFORM_ACCESS";
 
+    /**
+     * MVP1-E10-1 — an integrity verification of the tenant's audit hash chain
+     * was RUN (GET /api/v1/audit/integrity). Read-only forensic action: it makes
+     * no change to any row, but leaves an append-only record of WHO verified the
+     * chain, WHEN, and the OUTCOME (status + rows checked in the reason). Held to
+     * AUDIT_READ (HRLAB_SUPER_ADMIN + EXTERNAL_AUDITOR). tenant_id = the verified
+     * chain; entity_type = {@code AuditChain}.
+     */
+    public static final String AUDIT_INTEGRITY_VERIFIED = "AUDIT_INTEGRITY_VERIFIED";
+
     // Workflow (MVP 2 Phase 1)
     public static final String WORKFLOW_STAGE_ADVANCED = "WORKFLOW_STAGE_ADVANCED";
     public static final String WORKFLOW_RECOMPUTED     = "WORKFLOW_RECOMPUTED";

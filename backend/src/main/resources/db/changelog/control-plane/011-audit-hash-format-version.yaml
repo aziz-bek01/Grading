@@ -1,0 +1,54 @@
+# MVP1-E10-1 (audit hash-chain integrity verifier) — hash-format versioning.
+#
+# WHY:
+#   The integrity verifier recomputes each row's hash_current from the stored
+#   payload and compares it to the stored value. To make that recomputation
+#   deterministic across a PostgreSQL round-trip, the writer's canonical hashing
+#   was hardened (recursively KEY-SORTED JSON + UTC/microsecond timestamp) — call
+#   this hash format v2. Rows written by the PRE-hardening code (v1) hashed the
+#   JSON in ObjectNode insertion order and the timestamp in the JVM zone at
+#   nanosecond precision; neither is recoverable from the jsonb/timestamptz
+#   columns, so a v1 row can NEVER be content-recomputed from storage.
+#
+#   Without a version marker the verifier would recompute a legacy (v1) row,
+#   find recomputed != stored, and FALSELY report the chain BROKEN at the first
+#   pre-existing row — every existing tenant would light up as "tampered". That
+#   is a false compliance alarm and unacceptable.
+#
+# WHAT:
+#   Add hash_format_version to system_audit_log. Existing rows backfill to 1
+#   (DEFAULT). The application writer (JpaAuditService / AuditHashCalculator)
+#   stamps NEW rows = 2. The verifier ALWAYS checks append-only LINKAGE
+#   (hash_prev == prior stored hash_current — format-independent, so a genuine
+#   linkage break is still caught for v1 AND v2), and ADDITIONALLY content-
+#   recomputes ONLY v2 rows. v1 rows are reported as "linkage-intact but not
+#   independently content-verifiable", never as tampered.
+#
+# APPEND-ONLY SAFETY:
+#   This is purely additive DDL on the partitioned parent (propagates to every
+#   monthly child). A constant DEFAULT gives existing rows the value 1 via
+#   PostgreSQL's fast-default (no row rewrite) — no existing audit row's
+#   content, hash_prev or hash_current is ever modified, so the chain and the
+#   REVOKE UPDATE/DELETE lockdown (005/006/009) are untouched.
+databaseChangeLog:
+
+  - changeSet:
+      id: 011-add-hash-format-version-system-audit-log
+      author: backend-engineer
+      context: control-plane
+      labels: mvp1,audit,hash-chain,e10
+      comment: |
+        Add hash_format_version SMALLINT NOT NULL DEFAULT 1 to the partitioned
+        public.system_audit_log parent. Legacy rows = 1 (content not independently
+        verifiable); the writer stamps new rows = 2 (recomputable canonical format).
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE public.system_audit_log
+                ADD COLUMN hash_format_version SMALLINT NOT NULL DEFAULT 1;
+              COMMENT ON COLUMN public.system_audit_log.hash_format_version IS
+                'Canonical hash format of hash_current. 1 = legacy (pre-E10; content not independently recomputable, linkage still valid). 2 = key-sorted JSON + UTC/microsecond timestamp (recomputable by AuditChainVerifier). Owned by AuditHashCalculator.HASH_FORMAT_VERSION.';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE public.system_audit_log DROP COLUMN IF EXISTS hash_format_version;

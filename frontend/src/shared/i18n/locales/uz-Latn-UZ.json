@@ -363,6 +363,40 @@
     "hash_chain_unverified": "Mustaqil tekshirilmagan",
     "hash_chain_unverified_hint": "Ushbu hodisaning xesh zanjiri mustaqil tekshirilmagan. Toʻliq kriptografik tekshiruv hozircha mavjud boʻlmagan backend xizmati orqali amalga oshiriladi.",
     "hash_chain_broken": "Xesh zanjiri buzilgan",
+    "integrity": {
+      "title": "Zanjir yaxlitligi",
+      "subtitle": "Faol kompaniya-mijoz uchun audit xesh zanjirini talab boʻyicha mustaqil qayta tekshirish.",
+      "action_verify": "Yaxlitlikni tekshirish",
+      "action_verifying": "Tekshirilmoqda…",
+      "not_verified": "Ushbu sessiyada hali tekshirilmagan. Mustaqil tasdiqlangan dalil olish uchun tekshiruvni ishga tushiring.",
+      "error": "Yaxlitlik tekshiruvi amalga oshmadi. Qayta urinib koʻring.",
+      "error_forbidden": "Audit yaxlitligini tekshirish uchun sizda huquq yoʻq.",
+      "verified_at": "Tekshirildi: {{time}}",
+      "status": {
+        "INTACT": "Yaxlitlik tasdiqlandi",
+        "PARTIAL": "Qisman tekshirildi",
+        "BROKEN": "Yaxlitlik tekshiruvi muvaffaqiyatsiz",
+        "EMPTY": "Hozircha tekshirish uchun audit yozuvlari yoʻq."
+      },
+      "intact_detail": "{{chain}} tadan {{verified}} qator mustaqil ravishda qayta xeshlandi.",
+      "legacy_detail": "{{count}} ta eski qator (bogʻlanishi tekshirilgan, lekin mazmuni qayta hisoblanmaydi).",
+      "partial_detail": "Qisman tekshirildi ({{chain}} tadan dastlabki {{checked}} qator).",
+      "partial_hint": "{{maxRows}} qatorlik chegaradan tashqaridagi qatorlar ushbu tekshiruvda koʻrib chiqilmadi. Sana oraligʻini torayting yoki zanjirning koʻproq qismini qamrab olish uchun qayta ishga tushiring.",
+      "broken_detail": "Audit zanjirida yaxlitlik buzilishi aniqlandi.",
+      "break": {
+        "row": "Qator",
+        "detected_at": "Aniqlangan vaqti",
+        "type": "Buzilish turi",
+        "expected_hash": "Kutilgan xesh",
+        "actual_hash": "Haqiqiy xesh"
+      },
+      "break_type": {
+        "HASH_MISMATCH": "Yozilgandan keyin mazmun oʻzgargan (xesh mos kelmaydi)",
+        "BROKEN_PREV_LINK": "Zanjir bogʻlanishi buzilgan (qator oldingi qatorga bogʻlanmagan)",
+        "GAP": "Oldingi yozuv yoʻq (zanjirda uzilish)",
+        "VERSION_REGRESSION": "Xesh format versiyasi pasaytirilgan (buzgʻunchilik boʻlishi mumkin)"
+      }
+    },
     "filter": {
       "from": "Sanadan",
       "to": "Sanagacha",
@@ -392,6 +426,12 @@
       "ip": "IP-manzil",
       "user_agent": "User Agent",
       "hash_chain": "Xesh zanjiri",
+      "hash_chain_verified": "Mustaqil tasdiqlandi: {{chain}} tadan {{verified}} qator, {{time}}",
+      "hash_chain_verified_hint": "{{legacy}} ta eski qator: bogʻlanishi tekshirilgan, lekin mazmuni mustaqil qayta hisoblanmaydi.",
+      "hash_chain_partial": "Qisman tekshirildi: {{chain}} tadan dastlabki {{checked}} qator, {{time}}",
+      "hash_chain_partial_hint": "Tekshiruv chegarasidan tashqaridagi qatorlar ushbu ishga tushirishda koʻrib chiqilmadi.",
+      "hash_chain_broken_hint": "{{time}} sanasidagi soʻnggi tekshiruvda yaxlitlik buzilishi aniqlandi. Tafsilotlar uchun zanjir yaxlitligi panelini oching.",
+      "hash_chain_empty_evidence": "Soʻnggi tekshiruv vaqtida audit yozuvlari mavjud emas edi, {{time}}",
       "reason": "Sabab",
       "metadata": "Meta-maʼlumotlar",
       "before": "Oʻzgarishdan oldin",

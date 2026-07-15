@@ -108,11 +108,43 @@ function handleDetail(id: string): MatchResult {
   return ok(e);
 }
 
+/**
+ * MVP1-E10-1 — mock for `GET /audit/integrity`. Recomputes a plausible
+ * result from the in-memory fixture chain for the caller's mock tenant:
+ * every seed row is treated as "current format" (fully independently
+ * re-hashable) and the run is never bounded, so the default dev experience
+ * is an honest full INTACT pass. Individual component tests override this
+ * with `vi.spyOn(httpClient, 'get')` to exercise BROKEN / partial / empty.
+ */
+function handleIntegrity(config: AxiosRequestConfig): MatchResult {
+  const tenantId = resolveMockTenantId(config);
+  const rows = auditDb.events.filter((e) => e.tenantId === tenantId || e.tenantId == null);
+  const chainLength = rows.length;
+  const sorted = [...rows].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  const now = new Date().toISOString();
+  return ok({
+    tenant_id: tenantId,
+    status: chainLength === 0 ? 'EMPTY' : 'INTACT',
+    intact: true,
+    checked_count: chainLength,
+    chain_length: chainLength,
+    independently_verified_count: chainLength,
+    legacy_unverifiable_count: 0,
+    verifiable_from: sorted[0]?.createdAt ?? null,
+    verified_through: sorted[sorted.length - 1]?.createdAt ?? null,
+    bounded: false,
+    max_rows: 50000,
+    first_break: null,
+    verified_at: now,
+  });
+}
+
 export function handleAudit(config: AxiosRequestConfig): MatchResult | null {
   const method = (config.method ?? 'get').toUpperCase();
   const url = config.url ?? '';
   const { path, query } = parseUrl(url, config.params as Record<string, unknown> | undefined);
 
+  if (path === '/audit/integrity' && method === 'GET') return handleIntegrity(config);
   if (path === '/audit' && method === 'GET') return handleList(query, config);
 
   const detail = /^\/audit\/([^/]+)$/.exec(path);

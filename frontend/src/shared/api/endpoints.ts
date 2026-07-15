@@ -67,6 +67,12 @@ export const endpoints = {
   audit: {
     list: '/audit',
     detail: (id: string) => `/audit/${id}`,
+    /**
+     * MVP1-E10-1 — `GET /api/v1/audit/integrity`. Recomputes the tenant hash
+     * chain server-side (AUDIT_READ only, no request params — tenant is
+     * derived from TenantContext). See `useVerifyAuditIntegrity`.
+     */
+    integrity: '/audit/integrity',
   },
   auditAlerts: '/audit-logs',
   workflow: {

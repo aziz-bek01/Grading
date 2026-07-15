@@ -35,6 +35,7 @@ import { useAuditEvents } from '../hooks/useAuditEvents';
 import { AuditFilterBar } from '../components/AuditFilterBar';
 import { AuditDetailsDrawer } from '../components/AuditDetailsDrawer';
 import { AuditCsvExportButton } from '../components/AuditCsvExportButton';
+import { AuditIntegrityPanel } from '../components/AuditIntegrityPanel';
 import { ActionIcon } from '../components/AuditEventRow';
 import { actionIconKind } from '../components/auditActionIcon';
 import type { AuditEvent, AuditQuery } from '../types/auditTypes';
@@ -187,6 +188,8 @@ export function AuditListPage() {
           <p className="text-sm text-text-secondary mt-1">{subtitle}</p>
         </div>
       </header>
+
+      <AuditIntegrityPanel />
 
       <Card>
         {error ? (

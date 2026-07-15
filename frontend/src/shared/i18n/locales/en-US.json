@@ -363,6 +363,40 @@
     "hash_chain_unverified": "Not independently verified",
     "hash_chain_unverified_hint": "The frontend does not verify the hash chain. Cryptographic verification requires a backend endpoint that does not exist yet.",
     "hash_chain_broken": "Hash chain broken",
+    "integrity": {
+      "title": "Chain integrity",
+      "subtitle": "Independently re-verify the audit hash chain for the active company-client on demand.",
+      "action_verify": "Verify integrity",
+      "action_verifying": "Verifying…",
+      "not_verified": "Not verified yet this session. Run a check to get independently-verified evidence.",
+      "error": "The integrity check failed. Try again.",
+      "error_forbidden": "You do not have permission to verify audit integrity.",
+      "verified_at": "Checked {{time}}",
+      "status": {
+        "INTACT": "Verified intact",
+        "PARTIAL": "Partially verified",
+        "BROKEN": "Integrity check failed",
+        "EMPTY": "No audit records to verify yet."
+      },
+      "intact_detail": "{{verified}} of {{chain}} rows independently re-hashed.",
+      "legacy_detail": "{{count}} legacy rows (linkage-checked, not content-recomputable).",
+      "partial_detail": "Partially verified (first {{checked}} of {{chain}} rows).",
+      "partial_hint": "The remaining rows beyond the {{maxRows}}-row cap were not verified in this run. Narrow the date range or run again to cover more of the chain.",
+      "broken_detail": "An integrity break was detected in the audit chain.",
+      "break": {
+        "row": "Row",
+        "detected_at": "Detected at",
+        "type": "Break type",
+        "expected_hash": "Expected hash",
+        "actual_hash": "Actual hash"
+      },
+      "break_type": {
+        "HASH_MISMATCH": "Content changed after write (hash mismatch)",
+        "BROKEN_PREV_LINK": "Chain link broken (row does not connect to a prior row)",
+        "GAP": "Missing predecessor (chain gap)",
+        "VERSION_REGRESSION": "Hash format downgraded (possible tamper)"
+      }
+    },
     "filter": {
       "from": "From",
       "to": "To",
@@ -392,6 +426,12 @@
       "ip": "IP address",
       "user_agent": "User Agent",
       "hash_chain": "Hash chain",
+      "hash_chain_verified": "Independently verified: {{verified}} of {{chain}} rows, {{time}}",
+      "hash_chain_verified_hint": "{{legacy}} legacy rows are linkage-checked but not independently content-recomputable.",
+      "hash_chain_partial": "Partially verified: first {{checked}} of {{chain}} rows, {{time}}",
+      "hash_chain_partial_hint": "The remaining rows beyond the verification cap were not checked in this run.",
+      "hash_chain_broken_hint": "An integrity break was detected during the last check on {{time}}. See the chain integrity panel for details.",
+      "hash_chain_empty_evidence": "No audit records existed at the last check, {{time}}",
       "reason": "Reason",
       "metadata": "Metadata",
       "before": "Before change",

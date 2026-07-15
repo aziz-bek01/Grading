@@ -119,28 +119,33 @@ class AuditChainIntegrityIntegrationTest extends AbstractIntegrationTest {
     @Test
     void legacyFormatRowIsLinkageIntactButNotContentVerified() {
         UUID tenant = UUID.randomUUID();
-        writeEvent(tenant, AuditAction.TENANT_CREATED, tenant);
-        writeEvent(tenant, AuditAction.PROJECT_CREATED, UUID.randomUUID());
 
-        // Simulate a pre-hardening (v1) row appended to the chain: valid linkage,
-        // arbitrary stored hash_current, hash_format_version = 1. The verifier
-        // must NOT recompute it and must NOT flag it — chain stays INTACT.
-        SystemAuditLogJpaEntity newest =
-                repository.findFirstByTenantIdOrderByCreatedAtDesc(tenant).orElseThrow();
+        // A pre-hardening (v1) row is the OLD GENESIS of the chain: valid linkage
+        // (hash_prev NULL), an arbitrary stored hash_current, hash_format_version = 1.
+        // This mirrors production: the migration stamps EVERY existing row v1 and
+        // every NEW row v2, so v1 rows are always the EARLIEST in link order and the
+        // version is non-decreasing (v1 -> v2). The verifier must NOT recompute the
+        // v1 row and must NOT flag it — the chain stays INTACT with the later
+        // writer-produced v2 rows content-verified.
         UUID legacyId = UUID.randomUUID();
-        OffsetDateTime legacyTs = newest.getCreatedAt().plusSeconds(1);
+        OffsetDateTime legacyTs = OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(10);
         jdbcTemplate.update(
                 "INSERT INTO public.system_audit_log "
                         + "(id, tenant_id, action, entity_type, entity_id, created_at, hash_prev, hash_current, hash_format_version) "
-                        + "VALUES (?, ?, 'POSITION_CREATED', 'Tenant', ?, ?, ?, 'legacy-format-hash', 1)",
-                legacyId, tenant, UUID.randomUUID(), legacyTs, newest.getHashCurrent());
+                        + "VALUES (?, ?, 'POSITION_CREATED', 'Tenant', ?, ?, NULL, 'legacy-format-hash', 1)",
+                legacyId, tenant, UUID.randomUUID(), legacyTs);
+
+        // New writer-produced v2 rows chain off the legacy genesis (the writer reads
+        // its hash_current as the prev-link) — link order is v1 -> v2 -> v2.
+        writeEvent(tenant, AuditAction.PROJECT_CREATED, UUID.randomUUID());
+        writeEvent(tenant, AuditAction.POSITION_CREATED, UUID.randomUUID());
 
         asAuditor(tenant, () -> {
             AuditIntegrityResponse result = verifyAuditIntegrity.verify(null, null, null);
             assertThat(result.status()).isEqualTo("INTACT");
             assertThat(result.checkedCount()).isEqualTo(3);
             assertThat(result.independentlyVerifiedCount()).isEqualTo(2); // the two v2 rows
-            assertThat(result.legacyUnverifiableCount()).isEqualTo(1);    // the simulated v1 row
+            assertThat(result.legacyUnverifiableCount()).isEqualTo(1);    // the legacy v1 genesis
             assertThat(result.firstBreak()).isNull();
         });
     }

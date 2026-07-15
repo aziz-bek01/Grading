@@ -302,12 +302,17 @@ jobs:
           IMAGE_TAG: ${{ needs.build-images.outputs.image_tag }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_ACTOR: ${{ github.actor }}
+          # OPT-IN durable object storage (Variant A). When these repo secrets are
+          # set, the roll writes them into .env.prod so the MinIO block below turns
+          # on; when UNSET they are empty and the roll is unchanged (local-FS).
+          MINIO_ROOT_USER: ${{ secrets.MINIO_ROOT_USER }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
-          envs: IMAGE_TAG,GHCR_TOKEN,GHCR_ACTOR
+          envs: IMAGE_TAG,GHCR_TOKEN,GHCR_ACTOR,MINIO_ROOT_USER,MINIO_ROOT_PASSWORD
           command_timeout: 30m
           script: |
             set -euo pipefail
@@ -322,6 +327,30 @@ jobs:
               sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" .env.prod
             else
               echo "IMAGE_TAG=${IMAGE_TAG}" >> .env.prod
+            fi
+
+            # --- #5 (Variant A): opt-in durable object storage from CI secrets ---
+            # If the MinIO credential secrets are configured in GitHub, upsert them
+            # (and flip the storage type) into .env.prod so the MinIO block further
+            # down activates. If the secrets are UNSET they arrive empty and this is
+            # a pure no-op — .env.prod is untouched and the roll is EXACTLY as before
+            # (default local-FS). printf writes the value literally (no sed escaping)
+            # so a password with & | / \ is safe; `cat > file` truncates in place so
+            # the file keeps its perms/owner. No value is ever echoed to the logs.
+            upsert_env() {                        # $1=key  $2=value (written literally)
+              _tmp="$(mktemp)"
+              grep -v "^$1=" .env.prod > "$_tmp" || true
+              printf '%s=%s\n' "$1" "$2" >> "$_tmp"
+              cat "$_tmp" > .env.prod
+              rm -f "$_tmp"
+            }
+            if [ -n "${MINIO_ROOT_USER:-}" ] && [ -n "${MINIO_ROOT_PASSWORD:-}" ]; then
+              echo '== MinIO credentials provided via CI secrets — enabling durable object storage =='
+              upsert_env GRADING_STORAGE_TYPE minio
+              upsert_env MINIO_ROOT_USER "${MINIO_ROOT_USER}"
+              upsert_env MINIO_ROOT_PASSWORD "${MINIO_ROOT_PASSWORD}"
+            else
+              echo '== MinIO CI secrets not set — object storage config unchanged (default local-FS) =='
             fi
 
             # Bounded retry helper for TRANSIENT network operations ONLY (GHCR

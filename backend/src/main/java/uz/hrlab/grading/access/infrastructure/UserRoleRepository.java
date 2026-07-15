@@ -1,6 +1,8 @@
 package uz.hrlab.grading.access.infrastructure;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -35,4 +37,33 @@ public interface UserRoleRepository extends JpaRepository<UserRoleJpaEntity, UUI
     boolean existsByRoleId(UUID roleId);
 
     long deleteByIdAndMembershipId(UUID id, UUID membershipId);
+
+    /**
+     * Fix A (platform super-admin cross-tenant switch) — the DB-derived
+     * platform-super-admin predicate. TRUE when {@code userId} holds the given
+     * SYSTEM role code (e.g. {@code HRLAB_SUPER_ADMIN}) via a {@code user_roles}
+     * row attached to at least one ACTIVE {@code user_tenant_memberships} row.
+     *
+     * <p>SECURITY: computed PURELY from the user's REAL role grants
+     * ({@code user_roles → roles}) on REAL ACTIVE memberships — NEVER from a JWT
+     * claim, request header, or the requested/target tenant — so it cannot be
+     * spoofed by a client. It is scoped to the SINGLE role code the caller passes
+     * (never widened to another role), and {@code r.isSystem = true} pins it to the
+     * seeded PLATFORM role: a tenant CUSTOM role can never reuse a system code
+     * (rejected in {@code CustomRoleUseCase}), so this is defense in depth against
+     * a look-alike custom role. A REVOKED/SUSPENDED membership does not count
+     * ({@code m.status = ACTIVE}), so revoking the super admin's membership
+     * immediately revokes the predicate.
+     */
+    @Query("""
+            select (count(ur) > 0) from UserRoleJpaEntity ur
+            join UserTenantMembershipJpaEntity m on m.id = ur.membershipId
+            join RoleJpaEntity r on r.id = ur.roleId
+            where m.userId = :userId
+              and m.status = uz.hrlab.grading.access.domain.MembershipStatus.ACTIVE
+              and r.code = :roleCode
+              and r.isSystem = true
+            """)
+    boolean existsActiveSystemRoleHolder(@Param("userId") UUID userId,
+                                         @Param("roleCode") String roleCode);
 }

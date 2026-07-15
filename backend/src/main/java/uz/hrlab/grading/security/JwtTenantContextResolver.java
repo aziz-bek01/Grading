@@ -9,6 +9,8 @@ import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import uz.hrlab.grading.access.application.MembershipAuthorityResolver;
+import uz.hrlab.grading.access.application.PlatformSuperAdminChecker;
+import uz.hrlab.grading.access.application.RoleCodes;
 import uz.hrlab.grading.access.application.UserScopeExpander;
 import uz.hrlab.grading.access.domain.MembershipStatus;
 import uz.hrlab.grading.access.infrastructure.UserJpaEntity;
@@ -16,8 +18,11 @@ import uz.hrlab.grading.access.infrastructure.UserRepository;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
+import uz.hrlab.grading.tenancy.domain.TenantStatus;
+import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -64,15 +69,21 @@ public class JwtTenantContextResolver {
     private final UserTenantMembershipRepository memberships;
     private final MembershipAuthorityResolver authorityResolver;
     private final UserScopeExpander scopeExpander;
+    private final PlatformSuperAdminChecker superAdminChecker;
+    private final TenantRepository tenants;
 
     public JwtTenantContextResolver(UserRepository users,
                                     UserTenantMembershipRepository memberships,
                                     MembershipAuthorityResolver authorityResolver,
-                                    UserScopeExpander scopeExpander) {
+                                    UserScopeExpander scopeExpander,
+                                    PlatformSuperAdminChecker superAdminChecker,
+                                    TenantRepository tenants) {
         this.users = users;
         this.memberships = memberships;
         this.authorityResolver = authorityResolver;
         this.scopeExpander = scopeExpander;
+        this.superAdminChecker = superAdminChecker;
+        this.tenants = tenants;
     }
 
     public TenantContext resolve(Jwt jwt) {
@@ -113,8 +124,39 @@ public class JwtTenantContextResolver {
                 memberships.findAllByUserId(userId).stream()
                         .filter(m -> m.getStatus() == MembershipStatus.ACTIVE)
                         .toList();
+        UUID headerTenantId = readActiveTenantHeader();
         UserTenantMembershipJpaEntity activeMembership =
-                pickActiveMembership(activeMemberships, claimTenantId, readActiveTenantHeader());
+                pickActiveMembership(activeMemberships, claimTenantId, headerTenantId);
+
+        // ---- Fix A: platform Super-Admin cross-tenant activation ----------------
+        // This is the ONLY path by which the resolved tenantId may be a tenant the
+        // user is NOT a member of. It is gated STRICTLY on ALL of:
+        //   (1) an EXPLICIT requested tenant — the X-Active-Tenant-Id header, else
+        //       the active_tenant_id claim — that is NOT one of the user's ACTIVE
+        //       memberships (a member tenant is already handled by
+        //       pickActiveMembership, unchanged);
+        //   (2) the DB-derived platform-super-admin predicate (never a JWT/claim
+        //       role, never the target tenant, only HRLAB_SUPER_ADMIN);
+        //   (3) the target tenant being ACTIVE (never PROVISIONING/SUSPENDED/
+        //       ARCHIVED).
+        // Every other role fails (2) → falls through to the unchanged member-only
+        // resolution. It never auto-picks a tenant (requestedTenant must be
+        // present). Authority is expanded from the super admin's OWN platform
+        // HRLAB_SUPER_ADMIN membership — NEVER from a target-tenant membership.
+        // Checked BEFORE using activeMembership so a SINGLE-membership super admin
+        // can still switch AWAY into another company (the "single membership
+        // default" must not trap them in their home tenant).
+        UUID requestedTenant = headerTenantId != null ? headerTenantId : claimTenantId;
+        if (requestedTenant != null
+                && findActiveByTenant(activeMemberships, requestedTenant) == null
+                && superAdminChecker.isPlatformSuperAdmin(userId)
+                && isActiveTenant(requestedTenant)) {
+            log.info("Fix A: platform super-admin cross-tenant activation userId={} "
+                            + "targetTenantId={} (no membership; tenant ACTIVE) — synthesizing "
+                            + "context from the caller's platform HRLAB_SUPER_ADMIN role.",
+                    userId, requestedTenant);
+            return synthesizeSuperAdminContext(userId, locale, requestedTenant, activeMemberships);
+        }
 
         // 4) Expand roles + permissions for the active (user, tenant). When the
         //    token already carried roles/permissions claims we keep them (the
@@ -159,6 +201,72 @@ public class JwtTenantContextResolver {
 
         return new TenantContext(userId, tenantId, resolvedProjectIds, resolvedRoles,
                 resolvedPermissions, resolvedDepartmentScope, salaryPerm, locale);
+    }
+
+    /**
+     * True iff {@code tenantId} exists and is {@link TenantStatus#ACTIVE}. This is
+     * a control-plane read ({@code public.tenants} carries no {@code tenant_id} and
+     * is not RLS-scoped). The ACTIVE gate is what confines the Fix A carve-out to
+     * live tenants only — a super admin can NEVER activate a PROVISIONING /
+     * SUSPENDED / ARCHIVED tenant they lack a membership in.
+     */
+    private boolean isActiveTenant(UUID tenantId) {
+        if (tenantId == null) {
+            return false;
+        }
+        return tenants.findById(tenantId)
+                .map(t -> t.getStatus() == TenantStatus.ACTIVE)
+                .orElse(false);
+    }
+
+    /**
+     * Build the synthesized cross-tenant context for a platform super admin acting
+     * in {@code targetTenantId} (Fix A). The {@code tenantId} IS the target, so the
+     * RLS GUC ({@code app.tenant_id}) binds to it and every read stays scoped to
+     * that tenant. Roles/permissions/salary are expanded from the super admin's OWN
+     * platform HRLAB_SUPER_ADMIN membership — NEVER from a target-tenant membership
+     * (there is none). ABAC scope is intentionally EMPTY: the super admin holds no
+     * project/department assignments in the target tenant, and their reach there is
+     * ROLE-based (HRLAB_SUPER_ADMIN tenant-wide bypass in
+     * {@code DepartmentScopePolicy}), not scope-based.
+     *
+     * <p>F-3 (hardening): salaryPermission is FORCED to {@code false} for a
+     * cross-tenant synthesized context — the super admin may see grades/structure
+     * across tenants but NOT salary in a tenant they are not a member of, honouring
+     * the product's strict salary-separation rule. Their salary access in tenants
+     * they ARE a member of is unaffected (that path never reaches this method — it
+     * carries the real membership's salary flag). This {@code false} is the
+     * fail-safe default pending a DPO ruling on cross-tenant salary visibility.
+     */
+    private TenantContext synthesizeSuperAdminContext(
+            UUID userId, String locale, UUID targetTenantId,
+            List<UserTenantMembershipJpaEntity> activeMemberships) {
+        MembershipAuthorityResolver.Authority authority =
+                expandPlatformSuperAdminAuthority(activeMemberships);
+        return new TenantContext(userId, targetTenantId, Set.of(),
+                authority.roleCodes(), authority.permissionCodes(), Set.of(),
+                false, locale);
+    }
+
+    /**
+     * Deterministically pick the caller's ACTIVE membership that actually carries
+     * HRLAB_SUPER_ADMIN and expand THAT ONE membership's authority — never unions
+     * permissions across tenants (the invariant {@link MembershipAuthorityResolver}
+     * documents). The predicate already proved such a membership exists; the
+     * defensive {@code empty()} fallback keeps this fail-closed if it somehow does
+     * not (yields a permission-empty context, not another tenant's rights).
+     */
+    private MembershipAuthorityResolver.Authority expandPlatformSuperAdminAuthority(
+            List<UserTenantMembershipJpaEntity> activeMemberships) {
+        return activeMemberships.stream()
+                .sorted(Comparator
+                        .comparing(UserTenantMembershipJpaEntity::getCreatedAt,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(UserTenantMembershipJpaEntity::getTenantId))
+                .map(authorityResolver::expand)
+                .filter(a -> a.roleCodes().contains(RoleCodes.HRLAB_SUPER_ADMIN))
+                .findFirst()
+                .orElse(MembershipAuthorityResolver.Authority.empty());
     }
 
     /**

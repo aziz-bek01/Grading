@@ -321,6 +321,19 @@ public final class AuditAction {
      */
     public static final String ACCESS_DENIED_BY_ABAC
             = "ACCESS_DENIED_BY_ABAC";
+    /**
+     * Fix A — a platform Super Admin ({@code HRLAB_SUPER_ADMIN}) acted in an
+     * ACTIVE tenant they hold NO {@code user_tenant_memberships} row in
+     * (cross-tenant platform access via the top-bar switcher / clients page). This
+     * is a LEGITIMATE but privileged path — unlike {@link #TENANT_MEMBERSHIP_MISMATCH}
+     * (which 403s) it is allowed — so every such request leaves an append-only,
+     * hash-chained trail. {@code tenant_id} = the target tenant, {@code actor} =
+     * the super admin, {@code entity_type} = {@code TENANT}, {@code entity_id} =
+     * the target tenant id, {@code reason} = method + path. Emitted by
+     * {@code TenantContextFilter} on the F-205 super-admin carve-out.
+     */
+    public static final String CROSS_TENANT_PLATFORM_ACCESS
+            = "CROSS_TENANT_PLATFORM_ACCESS";
 
     // Workflow (MVP 2 Phase 1)
     public static final String WORKFLOW_STAGE_ADVANCED = "WORKFLOW_STAGE_ADVANCED";

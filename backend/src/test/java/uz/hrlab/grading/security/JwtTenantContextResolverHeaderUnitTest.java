@@ -10,6 +10,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.security.oauth2.jwt.Jwt;
 import uz.hrlab.grading.access.application.MembershipAuthorityResolver;
+import uz.hrlab.grading.access.application.PlatformSuperAdminChecker;
+import uz.hrlab.grading.access.application.RoleCodes;
 import uz.hrlab.grading.access.application.UserScopeExpander;
 import uz.hrlab.grading.access.domain.MembershipStatus;
 import uz.hrlab.grading.access.infrastructure.UserJpaEntity;
@@ -17,6 +19,9 @@ import uz.hrlab.grading.access.infrastructure.UserRepository;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
 import uz.hrlab.grading.tenancy.application.TenantContext;
+import uz.hrlab.grading.tenancy.domain.TenantStatus;
+import uz.hrlab.grading.tenancy.infrastructure.TenantJpaEntity;
+import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
 
 import java.time.Instant;
 import java.util.List;
@@ -50,6 +55,8 @@ class JwtTenantContextResolverHeaderUnitTest {
     @Mock UserTenantMembershipRepository memberships;
     @Mock MembershipAuthorityResolver authorityResolver;
     @Mock UserScopeExpander scopeExpander;
+    @Mock PlatformSuperAdminChecker superAdminChecker;
+    @Mock TenantRepository tenants;
 
     @AfterEach
     void cleanup() {
@@ -62,7 +69,12 @@ class JwtTenantContextResolverHeaderUnitTest {
         given(scopeExpander.resolveDepartmentScope(any(), any(), any())).willReturn(Set.of());
         given(authorityResolver.expand(any()))
                 .willReturn(new MembershipAuthorityResolver.Authority(Set.of(), Set.of(), false));
-        return new JwtTenantContextResolver(users, memberships, authorityResolver, scopeExpander);
+        // These header/precedence scenarios are all NON-super-admins, so the Fix A
+        // predicate is false — the cross-tenant carve-out never opens and every
+        // fail-closed assertion below is the UNCHANGED member-only path.
+        given(superAdminChecker.isPlatformSuperAdmin(any())).willReturn(false);
+        return new JwtTenantContextResolver(
+                users, memberships, authorityResolver, scopeExpander, superAdminChecker, tenants);
     }
 
     private UUID stubUserWithMemberships(String email, UUID... tenantIds) {
@@ -196,5 +208,125 @@ class JwtTenantContextResolverHeaderUnitTest {
         assertThat(ctx.tenantId())
                 .as("header precedence: the SPA tenant switcher (header) wins over a stale claim")
                 .isEqualTo(tenantB);
+    }
+
+    // =====================================================================
+    // Fix A — platform super-admin cross-tenant activation (fast, mocked).
+    // =====================================================================
+
+    private void stubTenant(UUID tenantId, TenantStatus status) {
+        TenantJpaEntity t = org.mockito.Mockito.mock(TenantJpaEntity.class);
+        given(t.getStatus()).willReturn(status);
+        given(tenants.findById(tenantId)).willReturn(Optional.of(t));
+    }
+
+    /**
+     * A platform super admin with a home membership sends {@code X-Active-Tenant-Id}
+     * for an ACTIVE tenant they are NOT a member of → the resolver synthesizes a
+     * context PINNED to that target tenant (so the RLS GUC binds there), with the
+     * roles/permissions expanded from their OWN HRLAB_SUPER_ADMIN membership.
+     */
+    @Test
+    void platformSuperAdminActivatesActiveNonMemberTenantViaHeader() {
+        UUID home = UUID.randomUUID();
+        UUID target = UUID.randomUUID(); // ACTIVE, super admin is NOT a member
+        UUID userId = stubUserWithMemberships("sa@hrlab.uz", home);
+        JwtTenantContextResolver resolver = newResolver();
+
+        // Real predicate holds (DB-derived) + the target is ACTIVE + the home
+        // membership carries HRLAB_SUPER_ADMIN (so authority expands to it).
+        given(superAdminChecker.isPlatformSuperAdmin(userId)).willReturn(true);
+        stubTenant(target, TenantStatus.ACTIVE);
+        given(authorityResolver.expand(any())).willReturn(
+                new MembershipAuthorityResolver.Authority(
+                        Set.of(RoleCodes.HRLAB_SUPER_ADMIN), Set.of("PROJECT_READ"), false));
+
+        ActiveTenantHeaderHolder.set(target);
+        TenantContext ctx = resolver.resolve(emailOnlyToken("sa@hrlab.uz"));
+
+        assertThat(ctx.userId()).isEqualTo(userId);
+        assertThat(ctx.tenantId())
+                .as("super admin activates the ACTIVE non-member target tenant")
+                .isEqualTo(target);
+        assertThat(ctx.roles()).contains(RoleCodes.HRLAB_SUPER_ADMIN);
+        assertThat(ctx.permissions()).contains("PROJECT_READ");
+    }
+
+    /**
+     * The SAME super admin sends a header for a NON-member tenant that is NOT
+     * ACTIVE (e.g. PROVISIONING/SUSPENDED) → the carve-out does NOT open; they are
+     * NOT activated into it. With a single home membership they fall back to home;
+     * the assertion is simply "never the requested non-active tenant".
+     */
+    @Test
+    void platformSuperAdminDeniedForNonActiveNonMemberTenant() {
+        UUID home = UUID.randomUUID();
+        UUID target = UUID.randomUUID(); // NON-member, NON-active
+        UUID userId = stubUserWithMemberships("sa2@hrlab.uz", home);
+        JwtTenantContextResolver resolver = newResolver();
+
+        given(superAdminChecker.isPlatformSuperAdmin(userId)).willReturn(true);
+        stubTenant(target, TenantStatus.SUSPENDED);
+
+        ActiveTenantHeaderHolder.set(target);
+        TenantContext ctx = resolver.resolve(emailOnlyToken("sa2@hrlab.uz"));
+
+        assertThat(ctx.tenantId())
+                .as("a non-ACTIVE tenant is never activated via the Fix A carve-out")
+                .isNotEqualTo(target);
+    }
+
+    /**
+     * F-3 (hardening): the synthesized cross-tenant context defaults
+     * {@code salaryPermission} to FALSE even when the super admin holds the salary
+     * gate on their HOME membership — the strict salary-separation rule means they
+     * do not see salary in a tenant they are not a member of. (Their salary access
+     * in tenants they ARE a member of never reaches synthesize, so is unaffected.)
+     */
+    @Test
+    void synthesizedCrossTenantContextForcesSalaryPermissionOff() {
+        UUID home = UUID.randomUUID();
+        UUID target = UUID.randomUUID(); // ACTIVE, non-member
+        UUID userId = stubUserWithMemberships("sa-sal@hrlab.uz", home);
+        JwtTenantContextResolver resolver = newResolver();
+
+        given(superAdminChecker.isPlatformSuperAdmin(userId)).willReturn(true);
+        stubTenant(target, TenantStatus.ACTIVE);
+        // The HOME membership carries salary permission == TRUE.
+        given(authorityResolver.expand(any())).willReturn(
+                new MembershipAuthorityResolver.Authority(
+                        Set.of(RoleCodes.HRLAB_SUPER_ADMIN), Set.of("PROJECT_READ"), true));
+
+        ActiveTenantHeaderHolder.set(target);
+        TenantContext ctx = resolver.resolve(emailOnlyToken("sa-sal@hrlab.uz"));
+
+        assertThat(ctx.tenantId()).isEqualTo(target);
+        assertThat(ctx.salaryPermission())
+                .as("cross-tenant synthesized context must default salary OFF (F-3)")
+                .isFalse();
+    }
+
+    /**
+     * A NON-super-admin with a header for an ACTIVE non-member tenant is NEVER
+     * activated into it — the predicate is false so the carve-out cannot open,
+     * proving no other role can ride Fix A into another tenant.
+     */
+    @Test
+    void nonSuperAdminNeverActivatesActiveNonMemberTenant() {
+        UUID home = UUID.randomUUID();
+        UUID target = UUID.randomUUID(); // ACTIVE, but caller is not a super admin
+        stubUserWithMemberships("nonsa@hrlab.uz", home);
+        JwtTenantContextResolver resolver = newResolver(); // predicate stubbed false
+
+        // Even if the tenant IS active, the false predicate must block activation.
+        stubTenant(target, TenantStatus.ACTIVE);
+
+        ActiveTenantHeaderHolder.set(target);
+        TenantContext ctx = resolver.resolve(emailOnlyToken("nonsa@hrlab.uz"));
+
+        assertThat(ctx.tenantId())
+                .as("no non-super-admin may be activated into a non-member tenant")
+                .isNotEqualTo(target)
+                .isEqualTo(home); // single membership → their own tenant, unchanged
     }
 }

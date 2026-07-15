@@ -15,6 +15,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import uz.hrlab.grading.access.application.PlatformSuperAdminChecker;
 import uz.hrlab.grading.access.application.UserScopeExpander;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipJpaEntity;
 import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
@@ -24,6 +25,8 @@ import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.ErrorResponse;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
+import uz.hrlab.grading.tenancy.domain.TenantStatus;
+import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
 
 import java.io.IOException;
 import java.util.Set;
@@ -52,17 +55,23 @@ public class TenantContextFilter extends OncePerRequestFilter {
     private final UserScopeExpander scopeExpander;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    private final PlatformSuperAdminChecker superAdminChecker;
+    private final TenantRepository tenants;
 
     public TenantContextFilter(JwtTenantContextResolver jwtResolver,
                                UserTenantMembershipRepository memberships,
                                UserScopeExpander scopeExpander,
                                AuditService auditService,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               PlatformSuperAdminChecker superAdminChecker,
+                               TenantRepository tenants) {
         this.jwtResolver = jwtResolver;
         this.memberships = memberships;
         this.scopeExpander = scopeExpander;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.superAdminChecker = superAdminChecker;
+        this.tenants = tenants;
     }
 
     @Override
@@ -83,17 +92,59 @@ public class TenantContextFilter extends OncePerRequestFilter {
                 // ConsultantTenantAssignmentPolicy does not issue N+1 EXISTS
                 // queries on every ABAC evaluation. One SELECT per request.
                 context = withMemberships(context);
-                // F-205 fail-closed: if the authenticated user carries an
-                // active_tenant_id that is NOT in their user_tenant_memberships
-                // set, the token is forged/stale — reject with 403 BEFORE any
-                // controller runs. Membership cache may be null when the load
-                // itself failed (defense in depth: in that case downstream
-                // policies still enforce per-call).
-                if (context.tenantId() != null
-                        && context.tenantMemberships() != null
-                        && !context.tenantMemberships().contains(context.tenantId())) {
-                    rejectMembershipMismatch(request, response, context, correlationId);
-                    return;
+                // F-205 fail-closed. Only tenant-scoped requests (tenantId != null)
+                // are checked here; the no-tenant path (control-plane / ambiguous
+                // multi-tenant) is intentionally left to proceed and fail closed on
+                // its own downstream (requireActive / RLS zero-rows).
+                if (context.tenantId() != null) {
+                    Set<UUID> tenantMemberships = context.tenantMemberships();
+                    if (tenantMemberships == null) {
+                        // F-2 (hardening): the membership set could NOT be resolved
+                        // (withMemberships failed / never populated) on a request that
+                        // DOES carry an active tenant. We cannot verify the caller
+                        // belongs to it (nor safely evaluate the super-admin carve-out
+                        // without their memberships), so FAIL CLOSED — deny rather than
+                        // silently pass through unchecked, which previously skipped
+                        // both the F-205 check and the cross-tenant audit.
+                        log.warn("Tenant-scoped request with UNRESOLVED membership set — "
+                                        + "failing closed. userId={} tenantId={} path={} cid={}",
+                                context.userId(), context.tenantId(),
+                                request.getRequestURI(), correlationId);
+                        writePermissionDenied(response, correlationId);
+                        return;
+                    }
+                    // F-205: active_tenant_id NOT in the user's memberships → normally
+                    // a forged/stale token, reject with 403 BEFORE any controller runs.
+                    if (!tenantMemberships.contains(context.tenantId())) {
+                        // Fix A carve-out: a platform Super Admin MAY act in an ACTIVE
+                        // tenant they have no membership row in (cross-tenant platform
+                        // access via the switcher / clients page). Both conditions are
+                        // re-verified HERE — independently of the resolver (defense in
+                        // depth) — and gated STRICTLY on the DB-derived super-admin
+                        // predicate + ACTIVE tenant status. EVERY other role, and a
+                        // super admin targeting a non-ACTIVE tenant, still 403s exactly
+                        // as before (unchanged F-205 fail-closed).
+                        if (superAdminChecker.isPlatformSuperAdmin(context.userId())
+                                && isActiveTenant(context.tenantId())) {
+                            // F-1 (hardening): the CROSS_TENANT_PLATFORM_ACCESS audit row
+                            // is the ONLY compensating control that makes an
+                            // un-membershipped cross-tenant read acceptable. If it cannot
+                            // be persisted, FAIL CLOSED — deny the unaudited access rather
+                            // than let it proceed.
+                            if (!recordCrossTenantPlatformAccess(request, context, correlationId)) {
+                                log.error("CROSS_TENANT_PLATFORM_ACCESS audit could not be "
+                                                + "persisted — failing closed (denying the unaudited "
+                                                + "cross-tenant read). userId={} tenantId={} cid={}",
+                                        context.userId(), context.tenantId(), correlationId);
+                                writePermissionDenied(response, correlationId);
+                                return;
+                            }
+                            // audited — fall through, bind the context, continue the chain.
+                        } else {
+                            rejectMembershipMismatch(request, response, context, correlationId);
+                            return;
+                        }
+                    }
                 }
                 TenantContextHolder.set(context);
                 if (context.tenantId() != null) {
@@ -189,6 +240,18 @@ public class TenantContextFilter extends OncePerRequestFilter {
             log.error("Failed to persist TENANT_MEMBERSHIP_MISMATCH audit row cid={}",
                     correlationId, persistFailure);
         }
+        writePermissionDenied(response, correlationId);
+    }
+
+    /**
+     * Write the canonical 403 {@code PERMISSION_DENIED} {@link ErrorResponse}
+     * envelope. Shared by every fail-closed deny path in this filter
+     * ({@link #rejectMembershipMismatch}, the F-1 unaudited-cross-tenant deny, and
+     * the F-2 unresolved-membership deny) so they all render an identical
+     * permission error rather than a generic 500.
+     */
+    private void writePermissionDenied(HttpServletResponse response, String correlationId)
+            throws IOException {
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
@@ -196,6 +259,61 @@ public class TenantContextFilter extends OncePerRequestFilter {
                 "PERMISSION_DENIED", "Action not permitted",
                 correlationId, MDC.get("traceId"));
         response.getWriter().write(objectMapper.writeValueAsString(body));
+    }
+
+    /**
+     * True iff {@code tenantId} exists and is {@link TenantStatus#ACTIVE}. Reads
+     * the control-plane {@code public.tenants} row directly (it carries no
+     * {@code tenant_id} and is not RLS-scoped). Independent re-verification of the
+     * Fix A ACTIVE gate at the filter layer — even if the resolver ever mis-set a
+     * non-ACTIVE tenant, the F-205 carve-out will not open for it.
+     */
+    private boolean isActiveTenant(UUID tenantId) {
+        if (tenantId == null) {
+            return false;
+        }
+        return tenants.findById(tenantId)
+                .map(t -> t.getStatus() == TenantStatus.ACTIVE)
+                .orElse(false);
+    }
+
+    /**
+     * Fix A — append-only trail for a platform Super Admin acting in an ACTIVE
+     * tenant they hold NO membership in. Unlike {@link #rejectMembershipMismatch}
+     * this path is ALLOWED, so the audit row is the ONLY compensating control that
+     * makes an un-membershipped cross-tenant read acceptable (target tenant + actor
+     * + method/path). Emitted per request the super admin makes in the foreign
+     * tenant.
+     *
+     * <p>F-1 (hardening): returns {@code true} only when the audit row was
+     * persisted. On failure it returns {@code false} so the caller FAILS CLOSED and
+     * denies the request — an unaudited cross-tenant read must never proceed. (This
+     * differs from the DENY-path audit in {@link #rejectMembershipMismatch}, which
+     * may fail open: there the request is already being rejected.)
+     */
+    private boolean recordCrossTenantPlatformAccess(HttpServletRequest request,
+                                                    TenantContext ctx,
+                                                    String correlationId) {
+        log.info("CROSS_TENANT_PLATFORM_ACCESS userId={} tenantId={} path={} cid={} — "
+                        + "platform super admin acting in an ACTIVE tenant with no membership row",
+                ctx.userId(), ctx.tenantId(), request.getRequestURI(), correlationId);
+        try {
+            auditService.record(AuditEvent.builder(ctx)
+                    .action(AuditAction.CROSS_TENANT_PLATFORM_ACCESS)
+                    .entityType("TENANT")
+                    .entityId(ctx.tenantId())
+                    .reason(request.getMethod() + " " + request.getRequestURI())
+                    .ipAddress(clientIp(request))
+                    .userAgent(request.getHeader("User-Agent"))
+                    .correlationId(correlationId)
+                    .traceId(MDC.get("traceId"))
+                    .build());
+            return true;
+        } catch (Exception persistFailure) {
+            log.error("Failed to persist CROSS_TENANT_PLATFORM_ACCESS audit row cid={}",
+                    correlationId, persistFailure);
+            return false;
+        }
     }
 
     private static String clientIp(HttpServletRequest req) {

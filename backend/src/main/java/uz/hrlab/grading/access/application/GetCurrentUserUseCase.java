@@ -1,5 +1,6 @@
 package uz.hrlab.grading.access.application;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.hrlab.grading.access.api.CurrentUserResponse;
@@ -12,6 +13,7 @@ import uz.hrlab.grading.access.infrastructure.UserTenantMembershipRepository;
 import uz.hrlab.grading.common.exception.ResourceNotFoundException;
 import uz.hrlab.grading.tenancy.application.TenantContext;
 import uz.hrlab.grading.tenancy.application.TenantContextHolder;
+import uz.hrlab.grading.tenancy.domain.TenantStatus;
 import uz.hrlab.grading.tenancy.infrastructure.ClientCompanyJpaEntity;
 import uz.hrlab.grading.tenancy.infrastructure.ClientCompanyRepository;
 import uz.hrlab.grading.tenancy.infrastructure.TenantJpaEntity;
@@ -19,6 +21,8 @@ import uz.hrlab.grading.tenancy.infrastructure.TenantRepository;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -66,17 +70,20 @@ public class GetCurrentUserUseCase {
     private final TenantRepository tenantRepository;
     private final ClientCompanyRepository clientCompanyRepository;
     private final MembershipAuthorityResolver authorityResolver;
+    private final PlatformSuperAdminChecker superAdminChecker;
 
     public GetCurrentUserUseCase(UserRepository userRepository,
                                  UserTenantMembershipRepository membershipRepository,
                                  TenantRepository tenantRepository,
                                  ClientCompanyRepository clientCompanyRepository,
-                                 MembershipAuthorityResolver authorityResolver) {
+                                 MembershipAuthorityResolver authorityResolver,
+                                 PlatformSuperAdminChecker superAdminChecker) {
         this.userRepository = userRepository;
         this.membershipRepository = membershipRepository;
         this.tenantRepository = tenantRepository;
         this.clientCompanyRepository = clientCompanyRepository;
         this.authorityResolver = authorityResolver;
+        this.superAdminChecker = superAdminChecker;
     }
 
     @Transactional(readOnly = true)
@@ -97,7 +104,7 @@ public class GetCurrentUserUseCase {
                 .filter(m -> m.getStatus() != MembershipStatus.REVOKED)
                 .toList();
 
-        List<TenantMembershipSummary> tenantCards = buildTenantCards(memberships);
+        List<TenantMembershipSummary> tenantCards = buildTenantCards(userId, memberships);
 
         // Default: the context already pinned an active tenant; its roles/
         // permissions are scoped to that tenant by the resolver. Use them verbatim.
@@ -162,48 +169,104 @@ public class GetCurrentUserUseCase {
                 .orElse(null);
     }
 
-    private List<TenantMembershipSummary> buildTenantCards(List<UserTenantMembershipJpaEntity> memberships) {
-        if (memberships.isEmpty()) {
+    /**
+     * Build the tenant switcher cards.
+     *
+     * <p>Fix A read side: a platform Super Admin's switcher lists ALL {@code ACTIVE}
+     * tenants (mirrors {@code ListTenantsQuery}'s {@code canListAcrossTenants}
+     * branch — the SAME {@code tenantRepository.search} query), UNIONED with the
+     * caller's own memberships so nothing is lost and there are no duplicates. The
+     * super-admin signal is the DB-derived {@link PlatformSuperAdminChecker}
+     * predicate (never {@code ctx.roles()}, which is empty when the active tenant
+     * is ambiguous on the first header-less {@code /me}). For EVERY other user the
+     * output is byte-for-byte unchanged — their own memberships only, in the same
+     * order, with the same status + salary fields.
+     */
+    private List<TenantMembershipSummary> buildTenantCards(
+            UUID userId, List<UserTenantMembershipJpaEntity> memberships) {
+
+        boolean superAdmin = superAdminChecker.isPlatformSuperAdmin(userId);
+        if (memberships.isEmpty() && !superAdmin) {
             return List.of();
         }
-        Set<UUID> tenantIds = memberships.stream()
-                .map(UserTenantMembershipJpaEntity::getTenantId)
-                .collect(Collectors.toSet());
 
-        // Single round-trip per table — no N+1 (security-blueprint §5.2 caching pattern).
-        Map<UUID, TenantJpaEntity> tenantsById = tenantRepository.findAllById(tenantIds).stream()
-                .collect(Collectors.toMap(TenantJpaEntity::getId, t -> t));
+        // Index the caller's REAL memberships by tenant id — these carry the
+        // membership status badge + the per-tenant salary gate on the card.
+        Map<UUID, UserTenantMembershipJpaEntity> membershipByTenant = new HashMap<>();
+        for (UserTenantMembershipJpaEntity m : memberships) {
+            membershipByTenant.putIfAbsent(m.getTenantId(), m);
+        }
+        Set<UUID> membershipTenantIds = membershipByTenant.keySet();
 
-        // PERF (P1) — resolve client companies for ALL membership tenants in ONE
-        // tenant-scoped batch query (was one findByTenantId per membership →
-        // N+1), mirroring the already-batched tenantRepository.findAllById above.
-        // findAllByTenantIdIn keeps tenant_id pinned and the table carries
-        // UNIQUE(tenant_id), so the map collects one row per tenant without leakage.
+        // For a platform super admin, additionally source ALL ACTIVE tenants
+        // (mirror ListTenantsQuery.canListAcrossTenants — reuse the same query).
+        List<TenantJpaEntity> allActiveTenants = superAdmin
+                ? tenantRepository.search(null, TenantStatus.ACTIVE, Pageable.unpaged()).getContent()
+                : List.of();
+
+        // One round-trip for the membership tenants (unchanged path). Union with
+        // the all-active set (super admin only) — dedupe by tenant id.
+        Map<UUID, TenantJpaEntity> tenantsById = new HashMap<>();
+        tenantRepository.findAllById(membershipTenantIds)
+                .forEach(t -> tenantsById.put(t.getId(), t));
+        allActiveTenants.forEach(t -> tenantsById.putIfAbsent(t.getId(), t));
+
+        if (tenantsById.isEmpty()) {
+            return List.of();
+        }
+
+        // PERF (P1) — client companies for every tenant we will render in ONE
+        // tenant-scoped batch query. findAllByTenantIdIn keeps tenant_id pinned and
+        // the table carries UNIQUE(tenant_id), so the map collects one row per
+        // tenant without leakage.
         Map<UUID, ClientCompanyJpaEntity> companiesByTenant =
-                clientCompanyRepository.findAllByTenantIdIn(tenantIds).stream()
+                clientCompanyRepository.findAllByTenantIdIn(tenantsById.keySet()).stream()
                         .collect(Collectors.toMap(ClientCompanyJpaEntity::getTenantId, c -> c));
 
-        List<TenantMembershipSummary> out = new ArrayList<>(memberships.size());
+        List<TenantMembershipSummary> out = new ArrayList<>(tenantsById.size());
+        Set<UUID> emitted = new HashSet<>();
+
+        // 1) Membership cards FIRST, in the ORIGINAL membership iteration order —
+        //    byte-for-byte unchanged for every user (status + salary flag intact).
         for (UserTenantMembershipJpaEntity m : memberships) {
             TenantJpaEntity tenant = tenantsById.get(m.getTenantId());
             if (tenant == null) {
                 // Membership references a missing tenant — skip rather than 500.
                 continue;
             }
-            ClientCompanyJpaEntity company = companiesByTenant.get(m.getTenantId());
-            String brand = company != null && company.getBrandName() != null
-                    ? company.getBrandName()
-                    : tenant.getDisplayName();
-            out.add(new TenantMembershipSummary(
-                    tenant.getId(),
-                    tenant.getSlug(),
-                    brand,
-                    computeFingerprintHue(tenant.getSlug()),
-                    m.getStatus() != null ? m.getStatus().name() : null,
-                    m.isSalaryDataPermission()
-            ));
+            if (emitted.add(tenant.getId())) {
+                out.add(toCard(tenant, companiesByTenant.get(tenant.getId()),
+                        m.getStatus() != null ? m.getStatus().name() : null,
+                        m.isSalaryDataPermission()));
+            }
+        }
+
+        // 2) Super-admin ONLY: append the remaining ACTIVE tenants the caller is
+        //    NOT a member of. These carry NO membership badge (null status → omitted
+        //    by NON_NULL) and NO salary gate (no membership → no per-tenant salary
+        //    permission). The frontend renders them as switchable cards.
+        if (superAdmin) {
+            for (TenantJpaEntity tenant : allActiveTenants) {
+                if (!membershipTenantIds.contains(tenant.getId()) && emitted.add(tenant.getId())) {
+                    out.add(toCard(tenant, companiesByTenant.get(tenant.getId()), null, false));
+                }
+            }
         }
         return out;
+    }
+
+    private TenantMembershipSummary toCard(TenantJpaEntity tenant, ClientCompanyJpaEntity company,
+                                           String membershipStatus, boolean salaryDataPermission) {
+        String brand = company != null && company.getBrandName() != null
+                ? company.getBrandName()
+                : tenant.getDisplayName();
+        return new TenantMembershipSummary(
+                tenant.getId(),
+                tenant.getSlug(),
+                brand,
+                computeFingerprintHue(tenant.getSlug()),
+                membershipStatus,
+                salaryDataPermission);
     }
 
     /**

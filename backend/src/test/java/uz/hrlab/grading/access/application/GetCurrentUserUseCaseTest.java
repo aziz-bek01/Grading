@@ -179,8 +179,95 @@ class GetCurrentUserUseCaseTest extends AbstractIntegrationTest {
         assertThat(resp.permissions())
                 .as("multi-membership super admin must get full permissions for the shell")
                 .contains("PROJECT_READ", "POSITION_READ", "METHODOLOGY_READ", "EVALUATION_READ");
-        // Both memberships still surface in the switcher.
-        assertThat(resp.tenants()).hasSize(2);
+        // Fix A: this user is now a REAL (DB-seeded) platform super admin, so the
+        // switcher lists ALL ACTIVE tenants — but BOTH of the user's memberships
+        // still surface (nothing lost). The shared Testcontainers DB carries other
+        // seeded tenants, so assert containment rather than an exact count.
+        assertThat(resp.tenants()).extracting(TenantMembershipSummary::id)
+                .contains(acme, beta);
+    }
+
+    /**
+     * Fix A read side — a platform Super Admin's switcher lists ALL ACTIVE tenants,
+     * INCLUDING one they have no membership in (the production bug: a newly-created
+     * ACTIVE client the super admin can see on the clients page but could not
+     * switch into). The non-member card carries NO membership badge.
+     */
+    @Test
+    void superAdminSeesAllActiveTenantsIncludingNonMemberOnes() {
+        UUID home = seedTenant(UUID.randomUUID());
+        UUID foreign = seedTenant(UUID.randomUUID()); // ACTIVE, super admin is NOT a member
+
+        UUID userId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'ru-RU', 0)",
+                userId, userId + "@dev.local", "Platform Super Admin");
+        UUID membershipId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                membershipId, userId, home);
+        jdbcTemplate.update(
+                "INSERT INTO public.user_roles (id, user_tenant_membership_id, role_id) "
+                        + "SELECT ?, ?, r.id FROM public.roles r WHERE r.code = 'HRLAB_SUPER_ADMIN'",
+                UUID.randomUUID(), membershipId);
+
+        TenantContextHolder.set(new TenantContext(userId, home, Set.of(),
+                Set.of("HRLAB_SUPER_ADMIN"), Set.of("PROJECT_READ"),
+                Set.of(), false, "ru-RU"));
+
+        CurrentUserResponse resp = getCurrentUserUseCase.currentUser();
+
+        assertThat(resp.tenants()).extracting(TenantMembershipSummary::id)
+                .as("super admin's switcher includes the foreign ACTIVE tenant")
+                .contains(home, foreign);
+        // The foreign (non-member) card carries no membership badge.
+        TenantMembershipSummary foreignCard = resp.tenants().stream()
+                .filter(t -> t.id().equals(foreign)).findFirst().orElseThrow();
+        assertThat(foreignCard.membershipStatus())
+                .as("a non-member platform-access card carries no membership status")
+                .isNull();
+        assertThat(foreignCard.salaryDataPermission()).isFalse();
+    }
+
+    /**
+     * Fix A read side (negative) — a NON-super-admin (holds a client role) sees
+     * ONLY the tenants they are a member of. A foreign ACTIVE tenant must NOT
+     * appear in their switcher — proving the all-tenants source is gated strictly
+     * on the platform-super-admin predicate.
+     */
+    @Test
+    void nonSuperAdminSeesOnlyOwnMemberships() {
+        UUID own = seedTenant(UUID.randomUUID());
+        UUID foreign = seedTenant(UUID.randomUUID()); // ACTIVE, but not a member
+
+        UUID userId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO public.users (id, email, full_name, status, default_locale, version) "
+                        + "VALUES (?, ?, ?, 'ACTIVE', 'ru-RU', 0)",
+                userId, userId + "@dev.local", "Client HR Director");
+        UUID membershipId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO public.user_tenant_memberships (id, user_id, tenant_id, status, "
+                        + "salary_data_permission, version) VALUES (?, ?, ?, 'ACTIVE', false, 0)",
+                membershipId, userId, own);
+        // A client role — decidedly NOT a platform super admin.
+        jdbcTemplate.update(
+                "INSERT INTO public.user_roles (id, user_tenant_membership_id, role_id) "
+                        + "SELECT ?, ?, r.id FROM public.roles r WHERE r.code = 'CLIENT_HR_DIRECTOR'",
+                UUID.randomUUID(), membershipId);
+
+        TenantContextHolder.set(new TenantContext(userId, own, Set.of(),
+                Set.of("CLIENT_HR_DIRECTOR"), Set.of("POSITION_READ"),
+                Set.of(), false, "ru-RU"));
+
+        CurrentUserResponse resp = getCurrentUserUseCase.currentUser();
+
+        assertThat(resp.tenants()).extracting(TenantMembershipSummary::id)
+                .as("non-super-admin sees only their membership tenant")
+                .contains(own)
+                .doesNotContain(foreign);
     }
 
     /**

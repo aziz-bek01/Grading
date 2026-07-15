@@ -7,7 +7,6 @@ import {
   FolderKanban,
   Network as Sitemap,
   Briefcase,
-  ClipboardList,
   ClipboardCheck,
   ListChecks,
   Scale,
@@ -99,8 +98,12 @@ export function Sidebar({ className }: SidebarProps = {}) {
   const projectItems: NavItem[] = [
     { to: routes.projectWorkspace(projectIdForRoutes), label: t('nav.workspace'), icon: <FolderKanban size={18} aria-hidden />, permission: PERMISSIONS.PROJECT_READ },
     { to: routes.projectOrganization(projectIdForRoutes), label: t('nav.organization'), icon: <Sitemap size={18} aria-hidden />, permission: PERMISSIONS.ORG_READ },
+    // Positions & job profiles are ONE destination (PositionListPage already shows
+    // a JOB_PROFILE_READ-gated job-profile status column). Merged to a single nav
+    // entry — every role holds POSITION_READ+JOB_PROFILE_READ identically, and the
+    // two-entry version pointed at the same URL (duplicate active-highlight +
+    // duplicate React key). Gated on POSITION_READ only, matching the route guard.
     { to: routes.projectPositions(projectIdForRoutes), label: t('nav.positions'), icon: <Briefcase size={18} aria-hidden />, permission: PERMISSIONS.POSITION_READ },
-    { to: routes.projectPositions(projectIdForRoutes), label: t('nav.job_profiles'), icon: <ClipboardList size={18} aria-hidden />, permission: PERMISSIONS.JOB_PROFILE_READ },
     { to: routes.projectMethodology(projectIdForRoutes), label: t('nav.methodology'), icon: <Scale size={18} aria-hidden />, permission: PERMISSIONS.METHODOLOGY_READ },
     { to: routes.projectEvaluation(projectIdForRoutes), label: t('nav.evaluation'), icon: <CheckSquare size={18} aria-hidden />, permission: PERMISSIONS.EVALUATION_READ },
     { to: routes.projectGrades(projectIdForRoutes), label: t('nav.grades'), icon: <Layers size={18} aria-hidden />, permission: PERMISSIONS.GRADE_READ },

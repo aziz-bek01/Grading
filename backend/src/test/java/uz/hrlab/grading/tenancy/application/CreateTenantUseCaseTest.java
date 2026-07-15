@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import uz.hrlab.grading.access.application.RoleCodes;
+import uz.hrlab.grading.access.application.SuperAdminRoleAuditor;
 import uz.hrlab.grading.access.domain.MembershipStatus;
 import uz.hrlab.grading.access.domain.RoleScope;
 import uz.hrlab.grading.access.infrastructure.RoleJpaEntity;
@@ -60,6 +61,9 @@ class CreateTenantUseCaseTest {
     private final UserRoleRepository userRoleRepo = mock(UserRoleRepository.class);
     private final RoleRepository roleRepo = mock(RoleRepository.class);
     private final AuditService audit = mock(AuditService.class);
+    // Real auditor over the mocked AuditService so the self-mirror super-admin
+    // grant path is exercised end-to-end (records via the same mock).
+    private final SuperAdminRoleAuditor superAdminAuditor = new SuperAdminRoleAuditor(audit);
 
     @AfterEach
     void tearDown() {
@@ -70,7 +74,7 @@ class CreateTenantUseCaseTest {
         TenancyProperties props = new TenancyProperties();
         props.setMode(mode);
         return new CreateTenantUseCase(tenantRepo, companyRepo, membershipRepo,
-                userRoleRepo, roleRepo, props, audit);
+                userRoleRepo, roleRepo, props, audit, superAdminAuditor);
     }
 
     private static CreateTenantCommand command() {
@@ -109,6 +113,15 @@ class CreateTenantUseCaseTest {
         // (3) Creator gets their HRLab platform role mirrored into the new tenant.
         verify(userRoleRepo).save(org.mockito.ArgumentMatchers.argThat(ur ->
                 ur.getRoleId().equals(SUPER_ADMIN_ROLE_ID)));
+
+        // (4) Blast-radius control: the self-mirror of HRLAB_SUPER_ADMIN emits the
+        // distinct PLATFORM_SUPER_ADMIN_GRANTED audit action (Task #6) on top of
+        // the generic USER_ROLE_ASSIGNED row.
+        verify(audit).record(org.mockito.ArgumentMatchers.argThat(e ->
+                uz.hrlab.grading.audit.application.AuditAction.PLATFORM_SUPER_ADMIN_GRANTED
+                        .equals(e.action())
+                        && CREATOR_ID.equals(e.actorUserId())
+                        && CREATOR_ID.equals(e.entityId())));
     }
 
     @Test

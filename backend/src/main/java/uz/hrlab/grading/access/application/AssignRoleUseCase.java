@@ -36,19 +36,22 @@ public class AssignRoleUseCase {
     private final RoleRepository roleRepo;
     private final GetUserDetailsQuery detailsQuery;
     private final AuditService audit;
+    private final SuperAdminRoleAuditor superAdminAuditor;
 
     public AssignRoleUseCase(UserManagementPolicy policy,
                              UserTenantMembershipRepository membershipRepo,
                              UserRoleRepository userRoleRepo,
                              RoleRepository roleRepo,
                              GetUserDetailsQuery detailsQuery,
-                             AuditService audit) {
+                             AuditService audit,
+                             SuperAdminRoleAuditor superAdminAuditor) {
         this.policy = policy;
         this.membershipRepo = membershipRepo;
         this.userRoleRepo = userRoleRepo;
         this.roleRepo = roleRepo;
         this.detailsQuery = detailsQuery;
         this.audit = audit;
+        this.superAdminAuditor = superAdminAuditor;
     }
 
     @Transactional
@@ -77,6 +80,10 @@ public class AssignRoleUseCase {
                     .entityId(ur.getId())
                     .reason("roleCode=" + role.getCode() + " userId=" + userId)
                     .build());
+            // Blast-radius control: additive audit + alert if this was the
+            // cross-tenant super-admin role (NO-OP for any other role).
+            superAdminAuditor.onRoleGranted(ctx.userId(), tenantId, userId,
+                    role.getCode(), ur.getId(), "assign-role");
         }
         return detailsQuery.byId(userId);
     }
@@ -111,6 +118,10 @@ public class AssignRoleUseCase {
                 .reason("roleCode=" + (role == null ? "?" : role.getCode())
                         + " userId=" + userId)
                 .build());
+        // Blast-radius control: additive audit + alert if this removed the
+        // cross-tenant super-admin role (NO-OP for any other role).
+        superAdminAuditor.onRoleRevoked(ctx.userId(), tenantId, userId,
+                role == null ? null : role.getCode(), userRole.getId(), "remove-role");
         return detailsQuery.byId(userId);
     }
 }

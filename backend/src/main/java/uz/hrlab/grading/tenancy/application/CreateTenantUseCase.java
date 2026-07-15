@@ -2,6 +2,7 @@ package uz.hrlab.grading.tenancy.application;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uz.hrlab.grading.access.application.SuperAdminRoleAuditor;
 import uz.hrlab.grading.access.domain.MembershipStatus;
 import uz.hrlab.grading.access.domain.RoleScope;
 import uz.hrlab.grading.access.infrastructure.RoleJpaEntity;
@@ -60,6 +61,7 @@ public class CreateTenantUseCase {
     private final RoleRepository roleRepository;
     private final TenancyProperties tenancyProperties;
     private final AuditService auditService;
+    private final SuperAdminRoleAuditor superAdminAuditor;
 
     public CreateTenantUseCase(TenantRepository tenantRepository,
                                ClientCompanyRepository clientCompanyRepository,
@@ -67,7 +69,8 @@ public class CreateTenantUseCase {
                                UserRoleRepository userRoleRepository,
                                RoleRepository roleRepository,
                                TenancyProperties tenancyProperties,
-                               AuditService auditService) {
+                               AuditService auditService,
+                               SuperAdminRoleAuditor superAdminAuditor) {
         this.tenantRepository = tenantRepository;
         this.clientCompanyRepository = clientCompanyRepository;
         this.membershipRepository = membershipRepository;
@@ -75,6 +78,7 @@ public class CreateTenantUseCase {
         this.roleRepository = roleRepository;
         this.tenancyProperties = tenancyProperties;
         this.auditService = auditService;
+        this.superAdminAuditor = superAdminAuditor;
     }
 
     @Transactional
@@ -193,6 +197,13 @@ public class CreateTenantUseCase {
                         .reason("auto-role on tenant creation; roleCode=" + role.getCode()
                                 + " userId=" + creatorId)
                         .build());
+                // Blast-radius control: the creator's platform roles are mirrored
+                // into the new tenant — this materialises a fresh HRLAB_SUPER_ADMIN
+                // user_role row when the creator is a super admin (self-mirror,
+                // actor == target), so it is audited + alerted like any other
+                // super-admin grant. NO-OP for any other role.
+                superAdminAuditor.onRoleGranted(creatorId, tenantId, creatorId,
+                        role.getCode(), userRole.getId(), "tenant-create-self-mirror");
             }
         }
     }

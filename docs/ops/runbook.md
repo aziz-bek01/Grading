@@ -309,6 +309,47 @@ host's ACME/cert tooling. If a public TLS warning fires:
 `curl -vI https://grading.hrlab.uz 2>&1 | grep -i 'expire\|issuer'` and check the
 outer proxy's cert renewal. This is outside the grading compose stack.
 
+### 3.9 Platform super-admin granted/revoked (blast-radius control)
+**Means:** the platform super-admin role (`HRLAB_SUPER_ADMIN`) was just granted to
+or revoked from a user. This is the **highest-blast-radius** authorization change
+in the system — a super admin can act in **every ACTIVE tenant** (cross-tenant
+switcher, "Fix A"). Every such transition emits, on top of the normal
+`USER_ROLE_ASSIGNED`/`USER_ROLE_REMOVED` row:
+- an **append-only audit action** — `PLATFORM_SUPER_ADMIN_GRANTED` /
+  `PLATFORM_SUPER_ADMIN_REVOKED` (actor = who did it, `entity_type=User`,
+  `entity_id` = the target user, reason carries the `user_role` id + code path);
+- a **WARN-level, greppable log line** for alerting (no email/pager infra):
+  ```
+  marker=SUPER_ADMIN_GRANT PLATFORM_SUPER_ADMIN granted actorUserId=… targetUserId=… tenantId=… context=…
+  ```
+  (revoke uses `marker=SUPER_ADMIN_REVOKE`). Ids only — no PII/secrets.
+
+**Alert rule (recommend):** fire on any log matching `marker=SUPER_ADMIN_GRANT`
+(Loki: `{app="grading-api"} |= "marker=SUPER_ADMIN_GRANT"`). Treat every grant as
+a change to review: confirm the actor and target were expected and that a change
+ticket exists. Cross-check the audit trail:
+```
+docker exec -it grading-postgres-prod \
+  psql -U grading_audit_reader -d grading_control_db \
+  -c "SELECT created_at, tenant_id, actor_user_id, entity_id, reason
+      FROM <audit_table>
+      WHERE action IN ('PLATFORM_SUPER_ADMIN_GRANTED','PLATFORM_SUPER_ADMIN_REVOKED')
+      ORDER BY created_at DESC LIMIT 50;"
+```
+An **unexpected** grant is a potential privilege-escalation → **SEV1** (page
+security); freeze the actor and review the hash-chained trail.
+
+**MFA is enforced at the IdP (Zitadel), not the app.** `HRLAB_SUPER_ADMIN`
+accounts **MUST** have multi-factor authentication **required by a Zitadel login
+policy**. The grading API is an **OIDC resource server** — it only *validates*
+already-issued access tokens; it does **not** run the login/MFA flow and therefore
+**cannot** itself enforce MFA. The enforcement point is Zitadel's login policy
+(org/instance-level "force MFA"), so every super-admin's second factor is a
+prerequisite the IdP owns. Operators must verify, when provisioning or reviewing a
+super admin, that the IdP login policy that applies to that account requires MFA.
+Do not treat the app's role-grant audit/alert as an MFA control — it records the
+grant; the IdP guarantees the login is MFA-protected.
+
 ---
 
 ## 4. Backup, PITR & restore

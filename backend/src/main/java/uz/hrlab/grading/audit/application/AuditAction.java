@@ -48,6 +48,20 @@ public final class AuditAction {
     public static final String USER_SALARY_PERMISSION_REVOKED     = "USER_SALARY_PERMISSION_REVOKED";
     public static final String CROSS_TENANT_USER_ACCESS_ATTEMPT   = "CROSS_TENANT_USER_ACCESS_ATTEMPT";
 
+    // Platform super-admin blast-radius control (Task #6). The ONE cross-tenant
+    // role, HRLAB_SUPER_ADMIN, lets its holder act in EVERY active tenant
+    // (see PlatformSuperAdminChecker + the Fix A super-admin switcher). Granting
+    // it is the highest-blast-radius action in the system, so every grant/revoke
+    // of THIS role emits a DISTINCT, separately-searchable audit action IN
+    // ADDITION to the normal USER_ROLE_ASSIGNED / USER_ROLE_REMOVED row the same
+    // path already writes (SIEM can isolate super-admin transitions without
+    // parsing role-code reason JSON, and alert on _GRANTED specifically).
+    // actor = who did it; entity_type = User, entity_id = the target user who
+    // received/lost the role; reason carries the user_role id + the code path.
+    // Emitted through the single SuperAdminRoleAuditor choke point.
+    public static final String PLATFORM_SUPER_ADMIN_GRANTED       = "PLATFORM_SUPER_ADMIN_GRANTED";
+    public static final String PLATFORM_SUPER_ADMIN_REVOKED       = "PLATFORM_SUPER_ADMIN_REVOKED";
+
     // Role → permission admin (E2 — admin grant/revoke of a role's permission
     // set via PUT /api/v1/roles/{roleId}/permissions). One row per individual
     // permission change so SIEM can reconstruct the exact delta of a replace-set

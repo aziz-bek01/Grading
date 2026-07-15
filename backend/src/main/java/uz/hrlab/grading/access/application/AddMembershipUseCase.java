@@ -43,6 +43,7 @@ public class AddMembershipUseCase {
     private final TenantRepository tenantRepo;
     private final GetUserDetailsQuery detailsQuery;
     private final AuditService audit;
+    private final SuperAdminRoleAuditor superAdminAuditor;
 
     public AddMembershipUseCase(UserManagementPolicy policy,
                                 UserRepository userRepo,
@@ -51,7 +52,8 @@ public class AddMembershipUseCase {
                                 RoleRepository roleRepo,
                                 TenantRepository tenantRepo,
                                 GetUserDetailsQuery detailsQuery,
-                                AuditService audit) {
+                                AuditService audit,
+                                SuperAdminRoleAuditor superAdminAuditor) {
         this.policy = policy;
         this.userRepo = userRepo;
         this.membershipRepo = membershipRepo;
@@ -60,6 +62,7 @@ public class AddMembershipUseCase {
         this.tenantRepo = tenantRepo;
         this.detailsQuery = detailsQuery;
         this.audit = audit;
+        this.superAdminAuditor = superAdminAuditor;
     }
 
     @Transactional
@@ -121,6 +124,10 @@ public class AddMembershipUseCase {
                         .entityId(ur.getId())
                         .reason("roleCode=" + role.getCode() + " userId=" + userId)
                         .build());
+                // Blast-radius control: additive audit + alert for a super-admin
+                // grant (NO-OP for any other role).
+                superAdminAuditor.onRoleGranted(ctx.userId(), tenantId, userId,
+                        role.getCode(), ur.getId(), "membership-add");
             }
         }
 

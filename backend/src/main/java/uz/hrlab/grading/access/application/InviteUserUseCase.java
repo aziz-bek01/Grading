@@ -94,6 +94,7 @@ public class InviteUserUseCase {
     private final AuditService audit;
     private final IdentityProvisioningPort identityProvisioning;
     private final IdentityProvisioningToggle idpToggle;
+    private final SuperAdminRoleAuditor superAdminAuditor;
 
     public InviteUserUseCase(UserManagementPolicy policy,
                              UserRepository userRepo,
@@ -104,7 +105,8 @@ public class InviteUserUseCase {
                              GetUserDetailsQuery detailsQuery,
                              AuditService audit,
                              IdentityProvisioningPort identityProvisioning,
-                             IdentityProvisioningToggle idpToggle) {
+                             IdentityProvisioningToggle idpToggle,
+                             SuperAdminRoleAuditor superAdminAuditor) {
         this.policy = policy;
         this.userRepo = userRepo;
         this.membershipRepo = membershipRepo;
@@ -115,6 +117,7 @@ public class InviteUserUseCase {
         this.audit = audit;
         this.identityProvisioning = identityProvisioning;
         this.idpToggle = idpToggle;
+        this.superAdminAuditor = superAdminAuditor;
     }
 
     /**
@@ -204,6 +207,10 @@ public class InviteUserUseCase {
                 userRoleRepo.save(ur);
                 audit(ctx, tenantId, user.getId(), AuditAction.USER_ROLE_ASSIGNED,
                         "roleCode=" + role.getCode() + " membershipId=" + membership.getId());
+                // Blast-radius control: additive audit + alert for a super-admin
+                // grant (NO-OP for any other role).
+                superAdminAuditor.onRoleGranted(ctx.userId(), tenantId, user.getId(),
+                        role.getCode(), ur.getId(), "invite");
             }
         }
 

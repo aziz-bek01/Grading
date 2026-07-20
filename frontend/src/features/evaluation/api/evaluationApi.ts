@@ -39,6 +39,14 @@ export const evaluationKeys = {
   all: ['evaluations'] as const,
   list: (filters: EvaluationListFilters) =>
     ['evaluations', 'list', filters] as const,
+  /**
+   * Full project-wide set (every page aggregated, no status/evaluator cut) —
+   * backs the by-position table + the AddPositionsDialog candidate diff.
+   * Lives under the 'evaluations' root so the mutation-side invalidate()
+   * (evaluationKeys.all) refreshes it like every other list.
+   */
+  listAll: (projectId: string) =>
+    ['evaluations', 'list-all', projectId] as const,
   detail: (id: string) => ['evaluations', 'detail', id] as const,
   scores: (id: string) => ['evaluations', 'scores', id] as const,
   calibrationHistory: (id: string) =>
@@ -63,6 +71,14 @@ export async function createEvaluation(
 }
 
 /**
+ * Server-side cap on `items` per bulk-create call (BE
+ * BulkCreateEvaluationRequest @Size = EvaluationController.MAX_PAGE_SIZE).
+ * Above this the backend answers 400 VALIDATION_FAILED, so larger selections
+ * are chunked client-side in {@link bulkCreateEvaluations}.
+ */
+export const MAX_BULK_CREATE_ITEMS = 200;
+
+/**
  * Bulk-create one DRAFT evaluation per row (Item 1, BE-1).
  *
  * Backend contract:
@@ -74,15 +90,25 @@ export async function createEvaluation(
  * `created` (count) + `failed[]` keyed on `position_id` (NOT an evaluation id,
  * since no evaluation was created for a failed row). NO tenant_id on the wire —
  * the backend derives the active tenant from the JWT (security blueprint API-13).
+ *
+ * Selections above {@link MAX_BULK_CREATE_ITEMS} are split into sequential
+ * chunks (sequential, not parallel, so the per-row duplicate guard sees each
+ * prior chunk committed) and the per-chunk results are merged into one
+ * `{ created, failed }` — callers see the same shape regardless of size.
  */
 export async function bulkCreateEvaluations(
   payload: BulkCreateEvaluationPayload,
 ): Promise<BulkCreateEvaluationResult> {
-  const res = await httpClient.post<BulkCreateEvaluationResult>(
-    `${base}/bulk-create`,
-    payload,
-  );
-  return res.data;
+  const merged: BulkCreateEvaluationResult = { created: 0, failed: [] };
+  for (let i = 0; i < payload.items.length; i += MAX_BULK_CREATE_ITEMS) {
+    const res = await httpClient.post<BulkCreateEvaluationResult>(
+      `${base}/bulk-create`,
+      { items: payload.items.slice(i, i + MAX_BULK_CREATE_ITEMS) },
+    );
+    merged.created += res.data.created;
+    merged.failed.push(...res.data.failed);
+  }
+  return merged;
 }
 
 /**
@@ -121,6 +147,28 @@ export async function fetchEvaluations(
     },
   });
   return res.data;
+}
+
+/**
+ * Fetch EVERY evaluation matching the filters by walking all pages at the
+ * server cap (200/page — EvaluationController.MAX_PAGE_SIZE).
+ *
+ * Needed wherever a COMPLETE project-wide set is required — the by-position
+ * list + the AddPositionsDialog candidate diff (a partial set makes
+ * already-added positions reappear as addable). Defaults omit `page`/`size`
+ * from the caller; the loop drives them. Hard-capped at 50 pages (10k rows)
+ * as a runaway guard.
+ */
+export async function fetchAllEvaluations(
+  filters: Omit<EvaluationListFilters, 'page' | 'size'>,
+): Promise<Evaluation[]> {
+  const all: Evaluation[] = [];
+  for (let page = 0; page < 50; page++) {
+    const env = await fetchEvaluations({ ...filters, page, size: 200 });
+    all.push(...env.items);
+    if (env.items.length === 0 || page >= env.total_pages - 1) break;
+  }
+  return all;
 }
 
 /**

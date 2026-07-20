@@ -24,6 +24,7 @@ import {
   deleteEvaluation,
   evaluationKeys,
   fetchCalibrationHistory,
+  fetchAllEvaluations,
   fetchEvaluation,
   fetchEvaluationScores,
   fetchEvaluations,
@@ -51,6 +52,23 @@ export function useEvaluations(filters: EvaluationListFilters) {
     queryKey: evaluationKeys.list(filters),
     queryFn: () => fetchEvaluations(filters),
     enabled: !!filters.projectId,
+  });
+}
+
+/**
+ * EVERY evaluation of the project (all pages aggregated, no status/evaluator
+ * cut). Backs the by-position list — status/mine/methodology filters are
+ * applied client-side there — and the AddPositionsDialog candidate diff,
+ * which needs the COMPLETE set: a partial (single-page or filtered) set makes
+ * already-added positions reappear as addable.
+ */
+export function useAllEvaluations(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectId
+      ? evaluationKeys.listAll(projectId)
+      : ['evaluations', 'list-all', null],
+    queryFn: () => fetchAllEvaluations({ projectId: projectId! }),
+    enabled: !!projectId,
   });
 }
 

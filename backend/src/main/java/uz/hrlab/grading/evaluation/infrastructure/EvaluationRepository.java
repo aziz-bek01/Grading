@@ -212,10 +212,19 @@ public interface EvaluationRepository
      *
      * <p>Tenant scoping is enforced by the {@code :tenantId} bind parameter
      * (defense in depth — TenantContext provides the value; never trust input).
+     *
+     * <p>NON-PANEL (standalone) sheets — created via "Add positions" bulk-create
+     * with {@code panel_id IS NULL} — ARE part of the grid: they are the
+     * single-evaluator scoring flow. The only NULL-panel rows excluded are
+     * ORPHANS of a deleted panel that has since been REPLACED: when the same
+     * position already has a live (non-ARCHIVED) panel sheet in this
+     * (tenant, project, version) scope, the detached duplicate is hidden so a
+     * position never shows twice (the original orphan-duplication defect). A
+     * blanket {@code panelId IS NOT NULL} predicate here previously blanked the
+     * whole K-sheet for projects using the standalone flow.
      */
     // DB-23 — grid projection (id/positionId/methodologyVersionId/status only), so
-    // the K-sheet never selects the wide methodology_basis_snapshot JSONB. WHERE
-    // clause is UNCHANGED from the prior entity variant.
+    // the K-sheet never selects the wide methodology_basis_snapshot JSONB.
     @Query("""
            SELECT e.id AS id, e.positionId AS positionId,
                   e.methodologyVersionId AS methodologyVersionId, e.status AS status
@@ -223,7 +232,15 @@ public interface EvaluationRepository
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
-             AND e.panelId IS NOT NULL
+             AND (e.panelId IS NOT NULL OR NOT EXISTS (
+                   SELECT 1 FROM EvaluationJpaEntity sib
+                   WHERE sib.tenantId = :tenantId
+                     AND sib.projectId = :projectId
+                     AND sib.methodologyVersionId = :methodologyVersionId
+                     AND sib.positionId = e.positionId
+                     AND sib.panelId IS NOT NULL
+                     AND sib.status <> uz.hrlab.grading.evaluation.domain.EvaluationStatus.ARCHIVED
+             ))
              AND (:status IS NULL OR e.status = :status)
              AND (:departmentId IS NULL OR e.positionId IN (
                    SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
@@ -246,6 +263,13 @@ public interface EvaluationRepository
      * drives the JPA count, so pagination reflects only the caller's visible rows
      * (no count leak). When the caller holds CAMPAIGN_RESULTS_VIEW the query
      * layer passes a non-confining path (see {@link #findForFactorGrid}).
+     *
+     * <p>Standalone ({@code panel_id IS NULL}) sheets are included; the caller's
+     * own detached orphan is hidden only when the caller ALSO has a live
+     * (non-ARCHIVED) panel sheet for the same position — see
+     * {@link #findForFactorGrid}. The sibling probe is confined to the SAME
+     * evaluator here: another member's panel sheet must not blank the caller's
+     * only visible (standalone) row.
      */
     @Query("""
            SELECT e.id AS id, e.positionId AS positionId,
@@ -254,7 +278,16 @@ public interface EvaluationRepository
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
-             AND e.panelId IS NOT NULL
+             AND (e.panelId IS NOT NULL OR NOT EXISTS (
+                   SELECT 1 FROM EvaluationJpaEntity sib
+                   WHERE sib.tenantId = :tenantId
+                     AND sib.projectId = :projectId
+                     AND sib.methodologyVersionId = :methodologyVersionId
+                     AND sib.positionId = e.positionId
+                     AND sib.evaluatorUserId = :ownEvaluatorUserId
+                     AND sib.panelId IS NOT NULL
+                     AND sib.status <> uz.hrlab.grading.evaluation.domain.EvaluationStatus.ARCHIVED
+             ))
              AND e.evaluatorUserId = :ownEvaluatorUserId
              AND (:status IS NULL OR e.status = :status)
              AND (:departmentId IS NULL OR e.positionId IN (
@@ -341,7 +374,15 @@ public interface EvaluationRepository
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
-             AND e.panelId IS NOT NULL
+             AND (e.panelId IS NOT NULL OR NOT EXISTS (
+                   SELECT 1 FROM EvaluationJpaEntity sib
+                   WHERE sib.tenantId = :tenantId
+                     AND sib.projectId = :projectId
+                     AND sib.methodologyVersionId = :methodologyVersionId
+                     AND sib.positionId = e.positionId
+                     AND sib.panelId IS NOT NULL
+                     AND sib.status <> uz.hrlab.grading.evaluation.domain.EvaluationStatus.ARCHIVED
+             ))
              AND (:status IS NULL OR e.status = :status)
              AND e.positionId IN (
                    SELECT p.id FROM uz.hrlab.grading.position.infrastructure.PositionJpaEntity p
@@ -373,7 +414,16 @@ public interface EvaluationRepository
            WHERE e.tenantId = :tenantId
              AND e.projectId = :projectId
              AND e.methodologyVersionId = :methodologyVersionId
-             AND e.panelId IS NOT NULL
+             AND (e.panelId IS NOT NULL OR NOT EXISTS (
+                   SELECT 1 FROM EvaluationJpaEntity sib
+                   WHERE sib.tenantId = :tenantId
+                     AND sib.projectId = :projectId
+                     AND sib.methodologyVersionId = :methodologyVersionId
+                     AND sib.positionId = e.positionId
+                     AND sib.evaluatorUserId = :ownEvaluatorUserId
+                     AND sib.panelId IS NOT NULL
+                     AND sib.status <> uz.hrlab.grading.evaluation.domain.EvaluationStatus.ARCHIVED
+             ))
              AND e.evaluatorUserId = :ownEvaluatorUserId
              AND (:status IS NULL OR e.status = :status)
              AND e.positionId IN (

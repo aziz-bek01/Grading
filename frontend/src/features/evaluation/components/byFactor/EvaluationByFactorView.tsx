@@ -181,6 +181,7 @@ export function EvaluationByFactorView(props: EvaluationByFactorViewProps) {
         bulkSet={s.bulkSet}
         canEdit={s.canEdit}
         canSeePoints={s.canSeePoints}
+        scoringMode={s.scoringMode}
         allSelected={s.allSelected}
         onToggleAll={s.toggleAll}
         onScoreChange={s.handleScoreChange}
@@ -209,6 +210,7 @@ export function EvaluationByFactorView(props: EvaluationByFactorViewProps) {
         factor={s.activeFactor}
         selectedCount={s.bulkSet.size}
         canSeePoints={s.canSeePoints}
+        scoringMode={s.scoringMode}
         onClose={() => s.setBulkScoreOpen(false)}
         onConfirm={async (factorLevelId, reason) => {
           const result = await s.bulkScoreMutation.mutateAsync({

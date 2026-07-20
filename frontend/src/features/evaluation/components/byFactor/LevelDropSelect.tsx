@@ -4,7 +4,11 @@ import { Check, ChevronDown, X } from 'lucide-react';
 import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
-import type { Factor, FactorLevel } from '@/features/methodology/types';
+import {
+  effectiveLevelPoints,
+  formatLevelPoints,
+} from '@/features/methodology/lib/levelPoints';
+import type { Factor, FactorLevel, ScoringMode } from '@/features/methodology/types';
 
 interface LevelDropSelectProps {
   /** Active factor whose levels populate the drop. */
@@ -25,6 +29,13 @@ interface LevelDropSelectProps {
    * evaluators NEVER receive `true` (anchoring-bias guard).
    */
   canSeePoints?: boolean;
+  /**
+   * Scoring mode of the methodology version — drives WHICH field a level's
+   * point badge shows (see {@link effectiveLevelPoints}): raw `points` for
+   * DIRECT/WEIGHTED_POINTS vs `weight × scale_value` for WEIGHTED_SCALE
+   * (where `points` is always 0). Optional: absent falls back to raw points.
+   */
+  scoringMode?: ScoringMode;
   /**
    * Optional position context shown as the modal title (e.g. the position
    * title from PositionScoreRow) so an evaluator knows WHICH position they are
@@ -48,6 +59,7 @@ function LevelOptionList({
   levels,
   selectedLevelId,
   canSeePoints,
+  pointsOf,
   testIdSuffix,
   ariaLabel,
   onPick,
@@ -55,6 +67,8 @@ function LevelOptionList({
   levels: FactorLevel[];
   selectedLevelId: string | null;
   canSeePoints: boolean;
+  /** Mode-aware point label for a level (see {@link effectiveLevelPoints}). */
+  pointsOf: (lvl: FactorLevel) => string;
   testIdSuffix: string;
   ariaLabel?: string;
   onPick: (id: string) => void;
@@ -118,7 +132,7 @@ function LevelOptionList({
                   className="mt-0.5 shrink-0 tabular-nums text-[11px] text-text-muted"
                   data-testid={`level-drop-option-points-${lvl.code}${suffix}`}
                 >
-                  {lvl.points}
+                  {pointsOf(lvl)}
                 </span>
               ) : null}
               {selected ? (
@@ -164,6 +178,7 @@ export function LevelDropSelect({
   onSelect,
   disabled = false,
   canSeePoints = false,
+  scoringMode,
   contextTitle,
   testIdSuffix,
   className,
@@ -173,6 +188,11 @@ export function LevelDropSelect({
   const [open, setOpen] = useState(false);
 
   const suffix = testIdSuffix ? `-${testIdSuffix}` : '';
+
+  // Mode-aware point label — raw `points` is 0 for every level of a
+  // WEIGHTED_SCALE methodology (the value lives in scale_value × weight).
+  const pointsOf = (lvl: FactorLevel): string =>
+    formatLevelPoints(effectiveLevelPoints(scoringMode, factor, lvl));
 
   const sortedLevels = useMemo(
     () => [...factor.levels].sort((a, b) => a.level_order - b.level_order),
@@ -240,7 +260,7 @@ export function LevelDropSelect({
                 className="mt-0.5 shrink-0 tabular-nums text-[11px] text-text-muted"
                 data-testid={`level-drop-points${suffix}`}
               >
-                {selectedLevel.points}
+                {pointsOf(selectedLevel)}
               </span>
             ) : null}
           </>
@@ -300,6 +320,7 @@ export function LevelDropSelect({
               levels={sortedLevels}
               selectedLevelId={selectedLevelId}
               canSeePoints={canSeePoints}
+              pointsOf={pointsOf}
               testIdSuffix={testIdSuffix ?? ''}
               ariaLabel={ariaLabel}
               onPick={handlePick}

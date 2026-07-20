@@ -10,7 +10,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Lock } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
-import type { Factor } from '@/features/methodology/types';
+import type { Factor, ScoringMode } from '@/features/methodology/types';
 import type {
   EvaluationByFactorRow,
   EvaluationStatus,
@@ -34,6 +34,8 @@ interface PositionScoreRowProps {
    * plain evaluators receive `false` (anchoring-bias guard).
    */
   canSeePoints: boolean;
+  /** Scoring mode of the version — mode-aware point badge in the drop. */
+  scoringMode?: ScoringMode;
   /**
    * Score-set callback. The parent invokes the upsert mutation and
    * handles optimistic rollback via TanStack Query.
@@ -73,6 +75,7 @@ function PositionScoreRowBase({
   bulkSelected,
   canEdit,
   canSeePoints,
+  scoringMode,
   onScoreChange,
   onCommentChange,
   onRowSelect,
@@ -242,6 +245,7 @@ function PositionScoreRowBase({
             onSelect={handleLevelPick}
             disabled={disabled}
             canSeePoints={canSeePoints}
+            scoringMode={scoringMode}
             contextTitle={row.position_title}
             testIdSuffix={row.position_code}
             className="w-full max-w-none"
@@ -316,6 +320,7 @@ export const PositionScoreRow = memo(PositionScoreRowBase, (prev, next) => {
     prev.selected === next.selected &&
     prev.bulkSelected === next.bulkSelected &&
     prev.canEdit === next.canEdit &&
-    prev.canSeePoints === next.canSeePoints
+    prev.canSeePoints === next.canSeePoints &&
+    prev.scoringMode === next.scoringMode
   );
 });

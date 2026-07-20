@@ -3,7 +3,7 @@ import { Card } from '@/shared/components/ui/Card';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { EmptyState } from '@/shared/components/feedback/EmptyState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
-import type { Factor } from '@/features/methodology/types';
+import type { Factor, ScoringMode } from '@/features/methodology/types';
 import type { EvaluationByFactorRow } from '../../types';
 import { PositionScoreRow } from './PositionScoreRow';
 
@@ -17,6 +17,8 @@ interface ByFactorTableProps {
   bulkSet: Set<string>;
   canEdit: boolean;
   canSeePoints: boolean;
+  /** Scoring mode of the version — mode-aware point badge in the drop. */
+  scoringMode?: ScoringMode;
   allSelected: boolean;
   onToggleAll: () => void;
   onScoreChange: (row: EvaluationByFactorRow, factorLevelId: string) => Promise<void> | void;
@@ -45,6 +47,7 @@ export function ByFactorTable({
   bulkSet,
   canEdit,
   canSeePoints,
+  scoringMode,
   allSelected,
   onToggleAll,
   onScoreChange,
@@ -122,6 +125,7 @@ export function ByFactorTable({
                     bulkSelected={bulkSet.has(row.evaluation_id)}
                     canEdit={canEdit}
                     canSeePoints={canSeePoints}
+                    scoringMode={scoringMode}
                     onScoreChange={(lvlId) => onScoreChange(row, lvlId)}
                     onCommentChange={(c) => onCommentChange(row, c)}
                     onRowSelect={() => onRowSelect(row.evaluation_id)}

@@ -5,7 +5,7 @@ import { Button } from '@/shared/components/ui/Button';
 import { Modal } from '@/shared/components/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { pickLocalized } from '@/shared/lib/localized';
-import type { Factor } from '@/features/methodology/types';
+import type { Factor, ScoringMode } from '@/features/methodology/types';
 import type { BulkOperationResult } from '../../types';
 import { LevelDropSelect } from './LevelDropSelect';
 
@@ -20,6 +20,8 @@ interface BulkScoreDialogProps {
    * evaluators receive `false` (anchoring-bias guard).
    */
   canSeePoints: boolean;
+  /** Scoring mode of the version — mode-aware point badge in the drop. */
+  scoringMode?: ScoringMode;
   /**
    * Submit handler. Returns the backend result so the dialog can show
    * partial failures inline before closing.
@@ -51,6 +53,7 @@ function BulkScoreDialogBody({
   factor,
   selectedCount,
   canSeePoints,
+  scoringMode,
   onConfirm,
   onClose,
 }: Omit<BulkScoreDialogProps, 'open'>) {
@@ -118,6 +121,7 @@ function BulkScoreDialogBody({
             selectedLevelId={levelId || null}
             onSelect={(id) => setLevelId(id)}
             canSeePoints={canSeePoints}
+            scoringMode={scoringMode}
             disabled={submitting}
             testIdSuffix="bulk"
             className="max-w-none"

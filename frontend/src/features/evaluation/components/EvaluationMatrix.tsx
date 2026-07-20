@@ -8,6 +8,10 @@ import type {
   FactorLevel,
   MethodologyVersion,
 } from '@/features/methodology/types';
+import {
+  effectiveLevelPoints,
+  formatLevelPoints,
+} from '@/features/methodology/lib/levelPoints';
 import { ScorePreviewBanner } from './ScorePreviewBanner';
 import { usePreviewScore } from '../hooks/useEvaluation';
 import type { EvaluationScore, EvaluationStatus } from '../types';
@@ -239,7 +243,10 @@ export function EvaluationMatrix({
                             <div className="font-mono">{lvl.code}</div>
                             <div>{pickLocalized(lvl.label_i18n, i18n.language)}</div>
                             <div className="text-text-muted">
-                              {lvl.points} pts
+                              {formatLevelPoints(
+                                effectiveLevelPoints(version.scoring_mode, f, lvl),
+                              )}{' '}
+                              pts
                             </div>
                           </div>
                         );
@@ -261,7 +268,12 @@ export function EvaluationMatrix({
                         >
                           <div className="font-mono">{lvl.code}</div>
                           <div>{pickLocalized(lvl.label_i18n, i18n.language)}</div>
-                          <div className="text-text-muted">{lvl.points} pts</div>
+                          <div className="text-text-muted">
+                            {formatLevelPoints(
+                              effectiveLevelPoints(version.scoring_mode, f, lvl),
+                            )}{' '}
+                            pts
+                          </div>
                         </button>
                       );
                     })}

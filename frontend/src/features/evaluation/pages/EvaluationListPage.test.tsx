@@ -200,7 +200,16 @@ vi.mock('../hooks/useEvaluation', async () => {
   );
   return {
     ...actual,
-    useEvaluations: () => ({ data: { items: evaluations }, isLoading: false }),
+    // The page now consumes the full aggregated set (useAllEvaluations
+    // returns an AllPagesResult — {items, totalElements, truncated}).
+    useAllEvaluations: () => ({
+      data: {
+        items: evaluations,
+        totalElements: evaluations.length,
+        truncated: false,
+      },
+      isLoading: false,
+    }),
     useBulkCreateEvaluations: () => ({ mutateAsync: bulkCreateSpy }),
     useDeleteEvaluation: () => ({ mutateAsync: deleteSpy }),
   };

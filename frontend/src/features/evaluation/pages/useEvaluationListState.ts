@@ -9,9 +9,9 @@ import { useMethodologies } from '@/features/methodology/hooks/useMethodology';
 import { useAllPositions } from '@/features/positions/hooks/usePositions';
 import { useDepartmentTree } from '@/features/organization/hooks/useDepartmentTree';
 import {
+  useAllEvaluations,
   useBulkCreateEvaluations,
   useDeleteEvaluation,
-  useEvaluations,
 } from '../hooks/useEvaluation';
 import { useBulkCreatePanels, usePanels } from '../hooks/usePanels';
 import type { RosterSeed } from '../components/panel/OpenPanelDialog';
@@ -182,18 +182,25 @@ export function useEvaluationListState() {
     [chipIncomplete, searchParams, setSearchParams],
   );
 
-  // The effective status for the BE query: chip_incomplete wins over dropdown
+  // The effective status filter: chip_incomplete wins over dropdown
   // because the chip is more specific (forces INCOMPLETE); if neither active,
   // use the dropdown value.
   const effectiveStatus: EvaluationStatus | undefined =
     chipIncomplete ? 'INCOMPLETE' : statusFilter || undefined;
 
-  const evalsQuery = useEvaluations({
-    projectId,
-    status: effectiveStatus,
-    // evaluatorUserId is a supported BE param (EvaluationController.java line 141)
-    evaluatorUserId: chipMineUserId,
-  });
+  // The COMPLETE project-wide evaluation set (all pages aggregated via the
+  // shared fetchAllPages helper, no server-side status/evaluator cut) — same
+  // EPIC-013 pattern as useAllPositions below. One source of truth for the
+  // table (status/mine/methodology filters applied client-side in `rows`),
+  // the CompletionBar, AND the AddPositionsDialog candidate diff. Before,
+  // existingEvalKeys was built from ONE filtered backend page (default size
+  // 20), so on large projects already-added positions reappeared as addable
+  // and the table silently truncated.
+  const evalsQuery = useAllEvaluations(projectId);
+  const allEvaluations = useMemo(
+    () => evalsQuery.data?.items ?? [],
+    [evalsQuery.data],
+  );
 
   // Position lookup for the department/title map, the "Add positions"
   // candidate picker, and the completion bar — ALL of it needs the FULL
@@ -276,12 +283,12 @@ export function useEvaluationListState() {
   // already have a NON-archived evaluation.
   const existingEvalKeys = useMemo(() => {
     const set = new Set<string>();
-    for (const e of evalsQuery.data?.items ?? []) {
+    for (const e of allEvaluations) {
       if (e.status === 'ARCHIVED') continue;
       set.add(`${e.position_id}|${e.methodology_version_id}`);
     }
     return set;
-  }, [evalsQuery.data]);
+  }, [allEvaluations]);
 
   const methodologyMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -323,14 +330,23 @@ export function useEvaluationListState() {
   }, [methodologyParam, methodologiesQuery.data]);
 
   const rows = useMemo(() => {
-    let items = evalsQuery.data?.items ?? [];
+    let items = allEvaluations;
+    // Status + "mine" cuts moved client-side (the query is now the full
+    // project-wide set); both are stored BE enums/ids, so this matches the
+    // previous server-side filtering exactly.
+    if (effectiveStatus) {
+      items = items.filter((e) => e.status === effectiveStatus);
+    }
+    if (chipMineUserId) {
+      items = items.filter((e) => e.evaluator_user_id === chipMineUserId);
+    }
     if (methodologyFilter) {
       items = items.filter(
         (e) => versionToMeth.get(e.methodology_version_id)?.id === methodologyFilter,
       );
     }
     return items;
-  }, [evalsQuery.data, methodologyFilter, versionToMeth]);
+  }, [allEvaluations, effectiveStatus, chipMineUserId, methodologyFilter, versionToMeth]);
 
   // Whether any quick-filter chip is active — drives "Clear filters" affordance.
   const anyChipActive = chipIncomplete || chipMine;

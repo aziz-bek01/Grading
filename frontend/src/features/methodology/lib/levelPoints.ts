@@ -7,9 +7,13 @@ import type { Factor, FactorLevel, ScoringMode } from '../types';
  *     (meaningful as-is; WEIGHTED_POINTS only normalises it by
  *     max_points × weight at total-computation time — backend
  *     EvaluationScoringEngine).
- *   WEIGHTED_SCALE: `weight × level.scale_value` — the engine's actual
- *     per-factor contribution. In this mode `level.points` is unused and
- *     stays 0, so rendering it showed "0" next to EVERY level.
+ *   WEIGHTED_SCALE: the authored `level.scale_value` AS-IS — the same
+ *     number the methodology editor's "Шкала қиймати" field holds. NOT
+ *     multiplied by the factor weight (product-owner decision: the weight
+ *     is a factor-wide property; the per-level badge must show the plain
+ *     scale value; the engine applies weight × scale_value only when
+ *     computing totals). In this mode `level.points` is unused and stays
+ *     0, so rendering it showed "0" next to EVERY level.
  *
  * Every UI that surfaces a level's point worth (LevelDropSelect's
  * admin-only badge, EvaluationMatrix level cards) MUST go through this.
@@ -18,11 +22,11 @@ import type { Factor, FactorLevel, ScoringMode } from '../types';
  */
 export function effectiveLevelPoints(
   mode: ScoringMode | undefined,
-  factor: Factor,
+  _factor: Factor,
   level: FactorLevel,
 ): number {
   if (mode === 'WEIGHTED_SCALE') {
-    return round2((factor.weight ?? 0) * (level.scale_value ?? 0));
+    return round2(level.scale_value ?? 0);
   }
   return level.points ?? 0;
 }

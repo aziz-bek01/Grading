@@ -28,12 +28,18 @@
 
         <!-- SEC-009 SCA-gate overrides of spring-boot-dependencies 3.5.14 pins that
              sit BELOW the Trivy "fixed" threshold. These re-pin every managed
-             artifact in their family (tomcat-embed-*, org.postgresql:*, jackson-*).
-             Only raise, never lower — spring-framework 6.2.18 / spring-security
-             6.5.10 already clear their thresholds and stay BOM-managed. Re-check
-             these on each Boot bump. -->
+             artifact in their family (tomcat-embed-*, org.postgresql:*, jackson-*,
+             spring-*). Only raise, never lower — spring-security 6.5.10 already
+             clears its threshold and stays BOM-managed. Re-check these on each
+             Boot bump. -->
         <tomcat.version>10.1.55</tomcat.version>       <!-- BOM 10.1.54 → clears CVE set (incl. 3 CRITICAL) -->
         <postgresql.version>42.7.11</postgresql.version> <!-- BOM 42.7.10 → 42.7.11 -->
+        <!-- spring-framework: BOM 6.2.18 stays vulnerable to CVE-2026-41850
+             (spring-expression SpEL DoS), CVE-2026-41842 and CVE-2026-41845
+             (spring-webmvc DoS/XSS) — all fixed in 6.2.19. Spring Boot honors
+             this property to re-pin every spring-* framework module (spring-core,
+             spring-web, spring-webmvc, spring-expression, ...) in lockstep. -->
+        <spring-framework.version>6.2.19</spring-framework.version>
         <!-- jackson: the minio 8.6.0 transitive drags jackson-databind up to
              2.21.2, but CVE-2026-54512/54513 are only fixed at 2.21.4 in the
              2.21 branch (2.19.0–2.21.3 stay vulnerable). Pin the whole jackson

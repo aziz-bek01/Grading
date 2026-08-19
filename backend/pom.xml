@@ -33,7 +33,11 @@
              clears its threshold and stays BOM-managed. Re-check these on each
              Boot bump. -->
         <tomcat.version>10.1.55</tomcat.version>       <!-- BOM 10.1.54 → clears CVE set (incl. 3 CRITICAL) -->
-        <postgresql.version>42.7.11</postgresql.version> <!-- BOM 42.7.10 → 42.7.11 -->
+        <postgresql.version>42.7.12</postgresql.version> <!-- BOM 42.7.10 → 42.7.12 (CVE-2026-54291 SCRAM-SHA-256-PLUS downgrade) -->
+        <!-- micrometer: BOM 1.15.11 stays vulnerable to CVE-2026-40983 / CVE-2026-40984
+             (micrometer-core DoS via crafted gRPC / HTTP requests) — fixed in 1.15.12.
+             Re-pins the whole micrometer family in lockstep. -->
+        <micrometer.version>1.15.12</micrometer.version>
         <!-- spring-framework: BOM 6.2.18 stays vulnerable to CVE-2026-41850
              (spring-expression SpEL DoS), CVE-2026-41842 and CVE-2026-41845
              (spring-webmvc DoS/XSS) — all fixed in 6.2.19. Spring Boot honors
@@ -58,13 +62,24 @@
                 <scope>import</scope>
             </dependency>
             <!-- SEC-009 — force Bouncy Castle up from the 1.78.1 that docx4j
-                 (docx4j-JAXB-ReferenceImpl 11.5.1) drags in transitively. 1.78.1
+                 (docx4j-JAXB-ReferenceImpl) drags in transitively. 1.78.1
                  carries a CRITICAL CVE; 1.81.1 clears it. docx4j only uses BC for
                  optional signing paths we do not exercise, so the bump is API-safe. -->
             <dependency>
                 <groupId>org.bouncycastle</groupId>
                 <artifactId>bcprov-jdk18on</artifactId>
                 <version>1.81.1</version>
+            </dependency>
+            <!-- SEC-009 — spring-data-commons 3.5.11 (BOM-managed by Spring Boot
+                 3.5.14) is vulnerable to CVE-2026-41695 / CVE-2026-41716 (DoS via a
+                 crafted property path / cache). Pin to 3.5.12 — the fix on the 3.5.x
+                 line; NOT the 4.0.6 fix, which is a major bump incompatible with
+                 Boot 3.5. dependencyManagement wins over the imported spring-data-bom
+                 and keeps spring-data-jpa (3.5.11) compatible within the 3.5.x train. -->
+            <dependency>
+                <groupId>org.springframework.data</groupId>
+                <artifactId>spring-data-commons</artifactId>
+                <version>3.5.12</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -256,7 +271,8 @@
         <dependency>
             <groupId>org.docx4j</groupId>
             <artifactId>docx4j-core</artifactId>
-            <version>11.5.1</version>
+            <version>11.5.14</version> <!-- 11.5.1 → 11.5.14: CVE-2026-53752 (cyclic w:basedOn style-chain stack-overflow DoS) -->
+
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
@@ -267,7 +283,7 @@
         <dependency>
             <groupId>org.docx4j</groupId>
             <artifactId>docx4j-JAXB-ReferenceImpl</artifactId>
-            <version>11.5.1</version>
+            <version>11.5.14</version>
         </dependency>
     </dependencies>
 

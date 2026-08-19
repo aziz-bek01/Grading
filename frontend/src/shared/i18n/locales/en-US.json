@@ -1563,7 +1563,8 @@
       "title": "Imports",
       "subtitle": "Excel uploads to bring data into this project.",
       "new": "+ New import",
-      "empty": "No import batches yet."
+      "empty": "No import batches yet.",
+      "show_archived": "Show archived"
     },
     "wizard": {
       "title": "New import",
@@ -1609,7 +1610,21 @@
       "error_rows": "Errors",
       "commit_ready": "Ready to commit.",
       "commit_blocked": "Commit blocked — fix errors first.",
+      "committed_all": "{{count}} rows committed.",
+      "committed_partial": "{{committed}} committed, {{failed}} failed.",
       "contains_salary": "Contains salary data"
+    },
+    "details": {
+      "archive": "Archive",
+      "cancel_success": "Import cancelled.",
+      "archive_success": "Import archived.",
+      "error": {
+        "permission_denied": "You don't have permission to manage this import.",
+        "cancel_failed": "Couldn't cancel the import (code: {{code}}). Reference: {{ref}}.",
+        "commit_failed": "Couldn't commit the import (code: {{code}}). Reference: {{ref}}.",
+        "archive_failed": "Couldn't archive the import (code: {{code}}). Reference: {{ref}}.",
+        "transition_rejected": "This import can't be changed right now: {{reason}}"
+      }
     },
     "pipeline": {
       "aria_label": "5-level validation pipeline",

@@ -140,3 +140,14 @@ export async function cancelImport(id: string): Promise<ImportBatch> {
   const res = await httpClient.post<unknown>(`/imports/${id}/cancel`, {});
   return normalizeImportBatch(res.data);
 }
+
+/**
+ * Archive is the non-destructive, retention-only terminal action for a batch
+ * cancel can no longer touch (COMMITTED / PARTIALLY_COMMITTED / CANCELLED /
+ * FAILED / SCAN_FAILED / VALIDATION_FAILED) — it never mutates already-
+ * committed rows, it only removes the batch from the default imports list.
+ */
+export async function archiveImport(id: string): Promise<ImportBatch> {
+  const res = await httpClient.post<unknown>(`/imports/${id}/archive`, {});
+  return normalizeImportBatch(res.data);
+}

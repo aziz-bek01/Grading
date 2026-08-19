@@ -29,11 +29,14 @@
  *   POST   /positions
  *   PATCH  /positions/:id
  *   POST   /positions/:id/archive
+ *   POST   /imports/:id/cancel
+ *   POST   /imports/:id/archive
  */
 import type { AxiosAdapter, AxiosResponse, AxiosRequestConfig } from 'axios';
 import { handleUsers } from '@/features/users-access/mocks/userHandlers';
 import { handleAudit } from '@/features/audit/mocks/auditHandlers';
 import { handleClients } from '@/features/clients/mocks/clientHandlers';
+import { canArchiveImportStatus, canCancelImportStatus } from '@/features/import/types';
 import {
   mockDb,
   type MockCalibrationEvent,
@@ -4183,18 +4186,45 @@ function handleImports(
     return ok(b);
   }
 
-  // POST /imports/:id/cancel
+  // POST /imports/:id/cancel — mirrors ImportBatchStatusTransitionPolicy /
+  // CancelImportBatchUseCase exactly via the SAME shared status-gate helper
+  // the FE details page uses, so the mock can never silently diverge from
+  // what the real backend allows (the original prod bug: FE showed a Cancel
+  // button the backend had already stopped honouring for PARTIALLY_COMMITTED).
   const cancel = /^\/imports\/([^/]+)\/cancel$/.exec(path);
   if (cancel && method === 'POST') {
     const b = mockDb.importBatches.find((x) => x.id === cancel[1]);
     if (!b) return notFound();
-    if (['COMMITTED', 'CANCELLED', 'ARCHIVED'].includes(b.status)) {
+    if (!canCancelImportStatus(b.status)) {
       return {
         status: 409,
-        body: { code: 'INVALID_TRANSITION', message: `Cannot cancel ${b.status}` },
+        body: {
+          code: 'IMPORT_BATCH_TRANSITION_REJECTED',
+          message: `Illegal status transition: ${b.status} -> CANCELLED`,
+        },
       };
     }
     b.status = 'CANCELLED';
+    return ok(b);
+  }
+
+  // POST /imports/:id/archive — non-destructive, retention-only terminal
+  // action (mirrors ArchiveImportBatchUseCase). Never mutates already-
+  // committed rows; only flips the batch's own status.
+  const archive = /^\/imports\/([^/]+)\/archive$/.exec(path);
+  if (archive && method === 'POST') {
+    const b = mockDb.importBatches.find((x) => x.id === archive[1]);
+    if (!b) return notFound();
+    if (!canArchiveImportStatus(b.status)) {
+      return {
+        status: 409,
+        body: {
+          code: 'IMPORT_BATCH_TRANSITION_REJECTED',
+          message: `Illegal status transition: ${b.status} -> ARCHIVED`,
+        },
+      };
+    }
+    b.status = 'ARCHIVED';
     return ok(b);
   }
 

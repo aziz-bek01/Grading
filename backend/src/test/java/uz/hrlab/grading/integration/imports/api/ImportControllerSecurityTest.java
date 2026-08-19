@@ -18,6 +18,7 @@ import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.GlobalExceptionHandler;
 import uz.hrlab.grading.common.api.WebMvcSecurityTestConfig;
 import uz.hrlab.grading.common.exception.TenantAccessDeniedException;
+import uz.hrlab.grading.integration.imports.application.ArchiveImportBatchUseCase;
 import uz.hrlab.grading.integration.imports.application.CancelImportBatchUseCase;
 import uz.hrlab.grading.integration.imports.application.CommitImportBatchUseCase;
 import uz.hrlab.grading.integration.imports.application.ImportBatchQueries;
@@ -59,6 +60,7 @@ class ImportControllerSecurityTest {
     @MockBean ImportBatchQueries queries;
     @MockBean CommitImportBatchUseCase commit;
     @MockBean CancelImportBatchUseCase cancel;
+    @MockBean ArchiveImportBatchUseCase archive;
     @MockBean AuditService audit;
     @MockBean uz.hrlab.grading.integration.imports.application.ImportTemplateSamples templateSamples;
     @MockBean uz.hrlab.grading.integration.imports.application.ImportTemplateRegistry templateRegistry;
@@ -107,6 +109,12 @@ class ImportControllerSecurityTest {
     @Test
     void cancelAnonymousIs401() throws Exception {
         mvc.perform(post("/api/v1/imports/{id}/cancel", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void archiveAnonymousIs401() throws Exception {
+        mvc.perform(post("/api/v1/imports/{id}/archive", UUID.randomUUID()))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -168,6 +176,22 @@ class ImportControllerSecurityTest {
         mvc.perform(post("/api/v1/imports/{id}/cancel", UUID.randomUUID())
                         .with(jwt().authorities(() -> "SOME_OTHER")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void archiveWithoutRequiredAuthorityIs403() throws Exception {
+        mvc.perform(post("/api/v1/imports/{id}/archive", UUID.randomUUID())
+                        .with(jwt().authorities(() -> "SOME_OTHER")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void archiveAuthenticatedHits200() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(archive.archive(eq(id))).willReturn(ImportBatchResponse.from(stubBatch(id)));
+        mvc.perform(post("/api/v1/imports/{id}/archive", id)
+                        .with(jwt().authorities(() -> "ORG_IMPORT")))
+                .andExpect(status().isOk());
     }
 
     @Test

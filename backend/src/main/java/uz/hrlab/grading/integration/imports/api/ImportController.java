@@ -22,6 +22,7 @@ import uz.hrlab.grading.audit.application.AuditService;
 import uz.hrlab.grading.common.api.PageResponse;
 import uz.hrlab.grading.common.api.Pagination;
 import uz.hrlab.grading.common.exception.ValidationException;
+import uz.hrlab.grading.integration.imports.application.ArchiveImportBatchUseCase;
 import uz.hrlab.grading.integration.imports.application.CancelImportBatchUseCase;
 import uz.hrlab.grading.integration.imports.application.CommitImportBatchUseCase;
 import uz.hrlab.grading.integration.imports.application.ImportBatchQueries;
@@ -56,6 +57,7 @@ public class ImportController {
     private final ImportBatchQueries queries;
     private final CommitImportBatchUseCase commitUseCase;
     private final CancelImportBatchUseCase cancelUseCase;
+    private final ArchiveImportBatchUseCase archiveUseCase;
     private final FileUploadValidator fileValidator;
     private final AuditService audit;
     private final ImportTemplateSamples templateSamples;
@@ -65,6 +67,7 @@ public class ImportController {
                             ImportBatchQueries queries,
                             CommitImportBatchUseCase commitUseCase,
                             CancelImportBatchUseCase cancelUseCase,
+                            ArchiveImportBatchUseCase archiveUseCase,
                             FileUploadValidator fileValidator,
                             AuditService audit,
                             ImportTemplateSamples templateSamples,
@@ -73,6 +76,7 @@ public class ImportController {
         this.queries = queries;
         this.commitUseCase = commitUseCase;
         this.cancelUseCase = cancelUseCase;
+        this.archiveUseCase = archiveUseCase;
         this.fileValidator = fileValidator;
         this.audit = audit;
         this.templateSamples = templateSamples;
@@ -232,5 +236,15 @@ public class ImportController {
     @PreAuthorize("hasAnyAuthority('IMPORT_CANCEL','ORG_IMPORT')")
     public ImportBatchResponse cancel(@PathVariable("id") UUID id) {
         return cancelUseCase.cancel(id);
+    }
+
+    // Retention-only terminal action for batches CancelImportBatchUseCase can no
+    // longer touch (COMMITTED / PARTIALLY_COMMITTED / CANCELLED / FAILED /
+    // SCAN_FAILED / VALIDATION_FAILED) — never mutates already-committed rows.
+    // Backstop (F2) mirrors ArchiveImportBatchUseCase#requireAny(IMPORT_CANCEL, ORG_IMPORT).
+    @PostMapping("/{id}/archive")
+    @PreAuthorize("hasAnyAuthority('IMPORT_CANCEL','ORG_IMPORT')")
+    public ImportBatchResponse archive(@PathVariable("id") UUID id) {
+        return archiveUseCase.archive(id);
     }
 }

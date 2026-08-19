@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, type InitialEntry } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nProvider } from '@/app/providers/I18nProvider';
 import { useAuthStore } from '@/features/auth/authStore';
@@ -16,7 +16,11 @@ export function createTestQueryClient() {
 
 export function renderWithProviders(
   children: ReactNode,
-  initialEntries: string[] = ['/'],
+  // Reuses react-router's own `InitialEntry` (`string | Partial<Location>`)
+  // instead of a plain `string[]` so a test can seed router `state` (e.g. a
+  // post-navigation flash message) — every existing `string[]` call site
+  // stays valid since `string` is one of the union members.
+  initialEntries: InitialEntry[] = ['/'],
   client: QueryClient = createTestQueryClient(),
 ) {
   return (

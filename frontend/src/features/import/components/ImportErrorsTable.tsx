@@ -32,6 +32,19 @@ export function ImportErrorsTable({ errors, level, onLevelChange, loading }: Pro
   const visibleErrors = effectiveLevel
     ? errors.filter((e) => e.errorLevel === effectiveLevel)
     : errors;
+  // Counted from the FULL (unfiltered) set so every filter button always
+  // shows the true total for that level — regardless of which tab is
+  // currently selected. Without this, a batch that lands on (or is left on)
+  // a level with zero rows reads as "no problems", hiding real BLOCKER/ERROR
+  // rows that live under a different tab (prod bug: 4 real row failures were
+  // invisible while the "Info" tab happened to be selected).
+  const countByLevel = ALL_LEVELS.reduce<Record<ImportErrorLevel, number>>(
+    (acc, lvl) => {
+      acc[lvl] = errors.filter((e) => e.errorLevel === lvl).length;
+      return acc;
+    },
+    { BLOCKER: 0, ERROR: 0, WARNING: 0, INFO: 0 },
+  );
 
   return (
     <div className="space-y-2" data-testid="import-errors-table">
@@ -49,8 +62,9 @@ export function ImportErrorsTable({ errors, level, onLevelChange, loading }: Pro
               ? 'bg-primary-50 text-primary-700 border-primary-500/30'
               : 'bg-surface text-text-secondary border-border hover:bg-divider',
           )}
+          data-testid="import-errors-filter-all"
         >
-          {t('common.all')}
+          {t('common.all')} ({errors.length})
         </button>
         {ALL_LEVELS.map((lvl) => (
           <button
@@ -65,9 +79,13 @@ export function ImportErrorsTable({ errors, level, onLevelChange, loading }: Pro
               effectiveLevel === lvl
                 ? 'bg-primary-50 text-primary-700 border-primary-500/30'
                 : 'bg-surface text-text-secondary border-border hover:bg-divider',
+              (lvl === 'BLOCKER' || lvl === 'ERROR') && countByLevel[lvl] > 0
+                ? 'border-danger-500/40'
+                : null,
             )}
+            data-testid={`import-errors-filter-${lvl}`}
           >
-            {t(`import.error_level.${lvl}`)}
+            {t(`import.error_level.${lvl}`)} ({countByLevel[lvl]})
           </button>
         ))}
       </div>

@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Plus, Download, ChevronDown } from 'lucide-react';
 import { LoadingState } from '@/shared/components/feedback/LoadingState';
 import { EmptyState } from '@/shared/components/feedback/EmptyState';
 import { ErrorState } from '@/shared/components/feedback/ErrorState';
 import { Button } from '@/shared/components/ui/Button';
+import { InlineBanner } from '@/shared/components/ui/InlineBanner';
 import { formatDateSafe } from '@/shared/lib/dates';
 import { useImports } from '../hooks/useImports';
 import { ImportStatusBadge } from '../components/ImportStatusBadge';
@@ -41,9 +42,24 @@ const ALL_TEMPLATES: ImportTemplateCode[] = [
 export function ImportListPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { projectId = '' } = useParams<{ projectId: string }>();
   const [status, setStatus] = useState<ImportBatchStatus | ''>('');
   const [templateCode, setTemplateCode] = useState<ImportTemplateCode | ''>('');
+  // ARCHIVED batches are retention-only noise once cleared by the user — hide
+  // them from the default ("All statuses") view so archiving actually clears
+  // the clutter, while an explicit toggle keeps them reachable (and the
+  // existing status-filter dropdown still lets a user pick ARCHIVED directly).
+  const [showArchived, setShowArchived] = useState(false);
+  // One-shot flash message forwarded from ImportDetailsPage after a
+  // successful archive (the batch is gone from THIS list's default view, so
+  // the confirmation has to travel with the navigation instead of staying on
+  // a page the user just left).
+  const [flashMessage] = useState<string | null>(
+    (location.state as { flashMessageKey?: string } | null)?.flashMessageKey
+      ? t((location.state as { flashMessageKey: string }).flashMessageKey)
+      : null,
+  );
   const query = useImports({
     projectId,
     status: status || undefined,
@@ -51,6 +67,17 @@ export function ImportListPage() {
     page: 0,
     size: 50,
   });
+  const items = (query.data?.items ?? []).filter(
+    (b) => showArchived || status || b.status !== 'ARCHIVED',
+  );
+
+  // Consume the flash message once so a browser back/forward or refresh into
+  // this same history entry doesn't keep re-showing it.
+  useEffect(() => {
+    if (!(location.state as { flashMessageKey?: string } | null)?.flashMessageKey) return;
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <section className="p-6 space-y-4" data-testid="import-list-page">
@@ -73,7 +100,13 @@ export function ImportListPage() {
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-3">
+      {flashMessage ? (
+        <InlineBanner variant="success" data-testid="import-list-flash">
+          {flashMessage}
+        </InlineBanner>
+      ) : null}
+
+      <div className="flex flex-wrap items-end gap-3">
         <label className="text-xs">
           <span className="block text-text-muted mb-1">{t('common.status')}</span>
           <select
@@ -106,13 +139,22 @@ export function ImportListPage() {
             ))}
           </select>
         </label>
+        <label className="flex items-center gap-1.5 text-xs text-text-secondary pb-1.5">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+            data-testid="import-list-show-archived"
+          />
+          {t('import.list.show_archived')}
+        </label>
       </div>
 
       {query.isError ? (
         <ErrorState onRetry={() => query.refetch()} />
       ) : query.isLoading ? (
         <LoadingState />
-      ) : !query.data || query.data.items.length === 0 ? (
+      ) : items.length === 0 ? (
         <EmptyState body={t('import.list.empty')} />
       ) : (
         <div className="border border-border rounded-md overflow-x-auto">
@@ -128,7 +170,7 @@ export function ImportListPage() {
               </tr>
             </thead>
             <tbody>
-              {query.data.items.map((b) => (
+              {items.map((b) => (
                 <tr key={b.id} className="border-t border-border hover:bg-divider">
                   <td className="px-3 py-2">
                     <Link

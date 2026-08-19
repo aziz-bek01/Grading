@@ -7,6 +7,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  archiveImport,
   cancelImport,
   commitImport,
   fetchImport,
@@ -94,6 +95,17 @@ export function useCancelImport(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => cancelImport(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: importKeys.all });
+      qc.invalidateQueries({ queryKey: importKeys.detail(id) });
+    },
+  });
+}
+
+export function useArchiveImport(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => archiveImport(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: importKeys.all });
       qc.invalidateQueries({ queryKey: importKeys.detail(id) });

@@ -21,6 +21,49 @@ export type ImportBatchStatus =
   | 'CANCELLED'
   | 'ARCHIVED';
 
+/**
+ * Statuses from which a batch may be CANCELLED — MUST mirror the backend
+ * state machine exactly (`ImportBatchStatusTransitionPolicy`,
+ * integration-blueprint §8.1). Once rows are committed (PARTIALLY_COMMITTED /
+ * COMMITTED) or the batch is already terminal, cancel is no longer a legal
+ * transition — the backend rejects it with `IMPORT_BATCH_TRANSITION_REJECTED`
+ * (409). Centralized here (not scattered across pages) so the FE gate can
+ * never silently drift from the BE policy again.
+ */
+const CANCELLABLE_IMPORT_STATUSES: ReadonlySet<ImportBatchStatus> = new Set([
+  'UPLOADED',
+  'SCANNING',
+  'PARSING',
+  'VALIDATING',
+  'READY_FOR_REVIEW',
+  'READY_TO_COMMIT',
+  'VALIDATION_FAILED',
+]);
+
+/**
+ * Statuses from which a batch may be ARCHIVED — the non-destructive,
+ * retention-only terminal action (mirrors the same backend policy). Archiving
+ * NEVER touches already-committed rows; it only removes the batch record from
+ * the default imports list. VALIDATION_FAILED intentionally appears in BOTH
+ * sets — the backend allows cancelling OR archiving it directly.
+ */
+const ARCHIVABLE_IMPORT_STATUSES: ReadonlySet<ImportBatchStatus> = new Set([
+  'COMMITTED',
+  'PARTIALLY_COMMITTED',
+  'CANCELLED',
+  'FAILED',
+  'SCAN_FAILED',
+  'VALIDATION_FAILED',
+]);
+
+export function canCancelImportStatus(status: ImportBatchStatus): boolean {
+  return CANCELLABLE_IMPORT_STATUSES.has(status);
+}
+
+export function canArchiveImportStatus(status: ImportBatchStatus): boolean {
+  return ARCHIVABLE_IMPORT_STATUSES.has(status);
+}
+
 export type ImportTemplateCode =
   | 'ORG_STRUCTURE_V1'
   | 'POSITION_CATALOG_V1'

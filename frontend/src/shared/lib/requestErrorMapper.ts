@@ -31,6 +31,14 @@ export interface DescribeRequestErrorOptions {
  * Maps a failed request-a-job mutation to a localized, user-facing message.
  * Feature dialogs pass their own i18n keys (and, optionally, a table of
  * known backend error codes) rather than duplicating this branching logic.
+ *
+ * Every i18n key is interpolated with `{{code}}`, `{{ref}}` AND `{{reason}}`
+ * (the raw `ApiError.message` — e.g. a domain transition-rejected exception's
+ * "Illegal status transition: X -> Y" text). Keys that don't reference
+ * `{{reason}}` simply ignore it, so this is backward compatible with every
+ * existing `knownCodes`/`genericFailedKey` table; a feature that wants to
+ * surface the backend's exact reason (e.g. import cancel/archive transition
+ * rejections) can opt in by adding `{{reason}}` to its i18n string.
  */
 export function describeRequestError(
   err: unknown,
@@ -39,12 +47,11 @@ export function describeRequestError(
 ): string {
   if (err instanceof ApiError) {
     if (err.isForbidden()) return t(permissionDeniedKey);
+    const ref = err.correlationId ?? err.traceId ?? '—';
+    const reason = err.message || ref;
     const mappedKey = knownCodes?.[err.code];
-    if (mappedKey) return t(mappedKey);
-    return t(genericFailedKey, {
-      code: err.code,
-      ref: err.correlationId ?? err.traceId ?? '—',
-    });
+    if (mappedKey) return t(mappedKey, { code: err.code, ref, reason });
+    return t(genericFailedKey, { code: err.code, ref, reason });
   }
-  return t(genericFailedKey, { code: 'NETWORK', ref: '—' });
+  return t(genericFailedKey, { code: 'NETWORK', ref: '—', reason: '—' });
 }

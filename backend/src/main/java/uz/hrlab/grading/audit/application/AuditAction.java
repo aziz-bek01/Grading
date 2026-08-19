@@ -390,6 +390,8 @@ public final class AuditAction {
     public static final String IMPORT_PARTIALLY_COMMITTED = "IMPORT_PARTIALLY_COMMITTED";
     public static final String IMPORT_FAILED            = "IMPORT_FAILED";
     public static final String IMPORT_CANCELLED         = "IMPORT_CANCELLED";
+    /** Retention-only terminal transition — never touches already-committed rows. */
+    public static final String IMPORT_ARCHIVED          = "IMPORT_ARCHIVED";
     /** Batch-4: a batch's transient failures exhausted the bounded retry budget. Terminal. */
     public static final String IMPORT_DEAD_LETTER       = "IMPORT_DEAD_LETTER";
     /** Batch-4: re-queuer re-dispatched a retryable batch (one per re-dispatch). */

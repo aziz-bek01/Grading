@@ -1624,7 +1624,11 @@
         "commit_failed": "Импортни тасдиқлаб бўлмади (код: {{code}}). Ҳавола: {{ref}}.",
         "archive_failed": "Импортни архивлаб бўлмади (код: {{code}}). Ҳавола: {{ref}}.",
         "transition_rejected": "Бу амал ҳозир импорт учун мавжуд эмас: {{reason}}"
-      }
+      },
+      "open_organization": "Ташкилий тузилмани очиш",
+      "open_positions": "Лавозимларни очиш",
+      "open_grades": "Грейдларни очиш",
+      "open_methodology": "Методологияни очиш"
     },
     "pipeline": {
       "aria_label": "5-даражали текширув қувури",

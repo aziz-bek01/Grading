@@ -1624,7 +1624,11 @@
         "commit_failed": "Couldn't commit the import (code: {{code}}). Reference: {{ref}}.",
         "archive_failed": "Couldn't archive the import (code: {{code}}). Reference: {{ref}}.",
         "transition_rejected": "This import can't be changed right now: {{reason}}"
-      }
+      },
+      "open_organization": "Open organization structure",
+      "open_positions": "Open positions",
+      "open_grades": "Open grades",
+      "open_methodology": "Open methodology"
     },
     "pipeline": {
       "aria_label": "5-level validation pipeline",

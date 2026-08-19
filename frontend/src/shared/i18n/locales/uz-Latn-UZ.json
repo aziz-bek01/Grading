@@ -1624,7 +1624,11 @@
         "commit_failed": "Importni tasdiqlab boʻlmadi (kod: {{code}}). Havola: {{ref}}.",
         "archive_failed": "Importni arxivlab boʻlmadi (kod: {{code}}). Havola: {{ref}}.",
         "transition_rejected": "Bu amal hozir import uchun mavjud emas: {{reason}}"
-      }
+      },
+      "open_organization": "Tashkiliy tuzilmani ochish",
+      "open_positions": "Lavozimlarni ochish",
+      "open_grades": "Greydlarni ochish",
+      "open_methodology": "Metodologiyani ochish"
     },
     "pipeline": {
       "aria_label": "5-darajali tekshiruv quvuri",

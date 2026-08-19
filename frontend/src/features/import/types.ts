@@ -64,6 +64,32 @@ export function canArchiveImportStatus(status: ImportBatchStatus): boolean {
   return ARCHIVABLE_IMPORT_STATUSES.has(status);
 }
 
+/**
+ * Where a COMMITTED import's data actually lands — the project sub-route the
+ * import materialized into, plus the i18n label for a "go there" link. Imported
+ * domain data is ALWAYS project-scoped (a methodology import creates a DRAFT
+ * methodology under the batch's project, never at the company level), so after a
+ * commit the detail page links the user straight to it — closing the "I imported
+ * it, where did it go?" gap. Returns null for templates with no dedicated view.
+ */
+export function importResultDestination(
+  templateCode: ImportTemplateCode | string,
+): { pathSuffix: string; labelKey: string } | null {
+  switch (templateCode) {
+    case 'ORG_STRUCTURE_V1':
+      return { pathSuffix: 'organization', labelKey: 'import.details.open_organization' };
+    case 'POSITION_CATALOG_V1':
+    case 'JOB_PROFILE_V1':
+      return { pathSuffix: 'positions', labelKey: 'import.details.open_positions' };
+    case 'GRADE_BANDS_V1':
+      return { pathSuffix: 'grades', labelKey: 'import.details.open_grades' };
+    case 'METHODOLOGY_FACTORS_V1':
+      return { pathSuffix: 'methodology', labelKey: 'import.details.open_methodology' };
+    default:
+      return null;
+  }
+}
+
 export type ImportTemplateCode =
   | 'ORG_STRUCTURE_V1'
   | 'POSITION_CATALOG_V1'

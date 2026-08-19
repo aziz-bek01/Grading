@@ -19,7 +19,7 @@ import { ImportProgressIndicator } from '../components/ImportProgressIndicator';
 import { ImportSummaryCard } from '../components/ImportSummaryCard';
 import { ImportErrorsTable } from '../components/ImportErrorsTable';
 import { ImportTemplateBadge } from '../components/ImportTemplateBadge';
-import { canArchiveImportStatus, canCancelImportStatus } from '../types';
+import { canArchiveImportStatus, canCancelImportStatus, importResultDestination } from '../types';
 
 type ImportAction = 'commit' | 'cancel' | 'archive';
 
@@ -80,6 +80,13 @@ export function ImportDetailsPage() {
   // those terminal states instead.
   const canCancel = canCancelImportStatus(batch.status);
   const canArchive = canArchiveImportStatus(batch.status);
+  // After a commit the imported data is live but PROJECT-SCOPED (a methodology
+  // import creates a DRAFT methodology under THIS project, never at the company
+  // level), so surface a direct link to where it landed — the user should never
+  // have to hunt for "where did my imported methodology go?".
+  const isCommitted =
+    batch.status === 'COMMITTED' || batch.status === 'PARTIALLY_COMMITTED';
+  const resultDest = isCommitted ? importResultDestination(batch.templateCode) : null;
 
   function runAction(action: ImportAction, mutateAsync: () => Promise<unknown>) {
     setActionError(null);
@@ -155,6 +162,16 @@ export function ImportDetailsPage() {
       ) : null}
 
       <div className="flex items-center justify-end gap-2">
+        {resultDest ? (
+          <Button
+            variant="primary"
+            size="compact"
+            onClick={() => navigate(`/app/projects/${projectId}/${resultDest.pathSuffix}`)}
+            data-testid="import-details-open-result"
+          >
+            {t(resultDest.labelKey)}
+          </Button>
+        ) : null}
         {canCancel ? (
           <Button
             variant="secondary"

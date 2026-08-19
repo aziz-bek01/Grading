@@ -28,6 +28,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -533,6 +534,128 @@ class MethodologyFactorsRowCommitterTest {
         ArgumentCaptor<MethodologyJpaEntity> cap = ArgumentCaptor.forClass(MethodologyJpaEntity.class);
         verify(methodologies).save(cap.capture());
         assertThat(cap.getValue().getTenantId()).isEqualTo(tenantId);
+    }
+
+    // ------------------------------------------------------------- localization
+
+    /**
+     * The whole point of the optional per-locale columns: ONE upload fills a
+     * methodology in every supported language. Before them, every text write was
+     * {@code Map.of("ru-RU", …)}, so a bilingual (RU + UZ) methodology could not
+     * be imported at all — the translation-matrix UI covers factor NAMES only,
+     * never level labels or descriptions.
+     */
+    @Test
+    void localeColumns_populateEverySupportedLocale_onCreate() {
+        Map<String, String> row = baseRow();
+        row.put("methodology_name_uz", "ACME грейдлаш");
+        row.put("factor_name_uz", "Билим");
+        row.put("factor_name_uz_latn", "Bilim");
+        row.put("factor_name_en", "Knowledge");
+        row.put("level_name_uz", "1-даража");
+        row.put("level_description_uz", "Билим — бошланғич даража");
+
+        committer.commit(row, ctx);
+
+        ArgumentCaptor<MethodologyJpaEntity> mCap = ArgumentCaptor.forClass(MethodologyJpaEntity.class);
+        verify(methodologies).save(mCap.capture());
+        assertThat(mCap.getValue().getNameI18n())
+                .containsEntry("ru-RU", "ACME grading")
+                .containsEntry("uz-Cyrl-UZ", "ACME грейдлаш");
+
+        ArgumentCaptor<FactorJpaEntity> fCap = ArgumentCaptor.forClass(FactorJpaEntity.class);
+        verify(factors).save(fCap.capture());
+        assertThat(fCap.getValue().getNameI18n()).containsOnly(
+                entry("ru-RU", "Knowledge"),
+                entry("uz-Cyrl-UZ", "Билим"),
+                entry("uz-Latn-UZ", "Bilim"),
+                entry("en-US", "Knowledge"));
+
+        ArgumentCaptor<FactorLevelJpaEntity> lCap = ArgumentCaptor.forClass(FactorLevelJpaEntity.class);
+        verify(levels).save(lCap.capture());
+        assertThat(lCap.getValue().getLabelI18n())
+                .containsEntry("ru-RU", "Basic")
+                .containsEntry("uz-Cyrl-UZ", "1-даража");
+        assertThat(lCap.getValue().getDescriptionI18n())
+                .containsEntry("ru-RU", "Knowledge - Basic")
+                .containsEntry("uz-Cyrl-UZ", "Билим — бошланғич даража");
+    }
+
+    /** {@code _uz_cyrl} is the explicit spelling of the {@code _uz} alias. */
+    @Test
+    void uzCyrlSuffix_isAcceptedAsExplicitAliasOfUz() {
+        Map<String, String> row = baseRow();
+        row.put("factor_name_uz_cyrl", "Билим");
+
+        committer.commit(row, ctx);
+
+        ArgumentCaptor<FactorJpaEntity> fCap = ArgumentCaptor.forClass(FactorJpaEntity.class);
+        verify(factors).save(fCap.capture());
+        assertThat(fCap.getValue().getNameI18n()).containsEntry("uz-Cyrl-UZ", "Билим");
+    }
+
+    /** A blank locale cell must not write an empty translation over nothing. */
+    @Test
+    void blankLocaleCell_isSkipped_notStoredAsEmptyTranslation() {
+        Map<String, String> row = baseRow();
+        row.put("factor_name_uz", "   ");
+
+        committer.commit(row, ctx);
+
+        ArgumentCaptor<FactorJpaEntity> fCap = ArgumentCaptor.forClass(FactorJpaEntity.class);
+        verify(factors).save(fCap.capture());
+        assertThat(fCap.getValue().getNameI18n()).containsOnlyKeys("ru-RU");
+    }
+
+    /**
+     * Locale maps MERGE. A correction file that carries only the Russian columns
+     * must not wipe Uzbek text loaded by an earlier upload — the pre-existing
+     * {@code Map.of(PRIMARY_LOCALE, …)} writes did exactly that, silently
+     * destroying translation work on every re-import.
+     */
+    @Test
+    void russianOnlyReimport_preservesPreviouslyImportedUzbekTranslations() {
+        MethodologyJpaEntity m = mock(MethodologyJpaEntity.class);
+        given(m.getId()).willReturn(UUID.randomUUID());
+        given(m.getMethodologyType()).willReturn(MethodologyType.CLASSIC_8_FACTOR);
+        given(m.getNameI18n()).willReturn(Map.of("ru-RU", "Old", "uz-Cyrl-UZ", "Эски"));
+        given(methodologies.findByTenantIdAndProjectIdAndCode(any(), any(), any()))
+                .willReturn(Optional.of(m));
+        MethodologyVersionJpaEntity v = mock(MethodologyVersionJpaEntity.class);
+        given(v.getId()).willReturn(UUID.randomUUID());
+        given(v.getStatus()).willReturn(MethodologyVersionStatus.DRAFT);
+        given(v.getScoringMode()).willReturn(ScoringMode.WEIGHTED_POINTS);
+        given(v.getTargetTotalPoints()).willReturn(new BigDecimal("1000"));
+        given(versions.findFirstByTenantIdAndMethodologyIdOrderByVersionNumberDesc(any(), any()))
+                .willReturn(Optional.of(v));
+
+        FactorJpaEntity existingFactor = mock(FactorJpaEntity.class);
+        given(existingFactor.getId()).willReturn(UUID.randomUUID());
+        given(existingFactor.getMaxPoints()).willReturn(new BigDecimal("200"));
+        given(existingFactor.getNameI18n())
+                .willReturn(Map.of("ru-RU", "Knowledge", "uz-Cyrl-UZ", "Билим"));
+        given(factors.findByTenantIdAndMethodologyVersionIdAndCode(any(), any(), eq("KNOWLEDGE")))
+                .willReturn(Optional.of(existingFactor));
+
+        FactorLevelJpaEntity existingLevel = mock(FactorLevelJpaEntity.class);
+        given(existingLevel.getId()).willReturn(UUID.randomUUID());
+        given(existingLevel.getLabelI18n())
+                .willReturn(Map.of("ru-RU", "Basic", "uz-Cyrl-UZ", "1-даража"));
+        given(existingLevel.getDescriptionI18n())
+                .willReturn(Map.of("ru-RU", "old desc", "uz-Cyrl-UZ", "эски таъриф"));
+        given(levels.findByTenantIdAndFactorIdAndCode(any(), any(), eq("L1")))
+                .willReturn(Optional.of(existingLevel));
+
+        // baseRow() carries ru-RU columns ONLY — no _uz siblings at all.
+        committer.commit(baseRow(), ctx);
+
+        verify(m).setNameI18n(Map.of("ru-RU", "ACME grading", "uz-Cyrl-UZ", "Эски"));
+        verify(existingFactor).setNameI18n(
+                Map.of("ru-RU", "Knowledge", "uz-Cyrl-UZ", "Билим"));
+        verify(existingLevel).setLabelI18n(
+                Map.of("ru-RU", "Basic", "uz-Cyrl-UZ", "1-даража"));
+        verify(existingLevel).setDescriptionI18n(
+                Map.of("ru-RU", "Knowledge - Basic", "uz-Cyrl-UZ", "эски таъриф"));
     }
 
     // --------------------------------------------------------------------- helper

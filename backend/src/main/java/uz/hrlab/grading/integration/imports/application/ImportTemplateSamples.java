@@ -270,6 +270,8 @@ public class ImportTemplateSamples {
         String scoringMode = "WEIGHTED_POINTS";
         String targetTotalPoints = "1000";
 
+        String methodologyNameUz = "ACME грейдлаш методологияси";
+
         String[] factors = {
                 "KNOWLEDGE",        "Knowledge",
                 "EXPERIENCE",       "Experience",
@@ -280,7 +282,18 @@ public class ImportTemplateSamples {
                 "COMMUNICATION",    "Communication",
                 "WORKING_CONDITIONS","Working conditions",
         };
+        // Uzbek (Cyrillic) siblings of the factor names above, same order — they
+        // demonstrate the optional `_uz` columns so a downloaded template shows
+        // HR exactly where the second language goes.
+        String[] factorsUz = {
+                "Билим", "Тажриба", "Мураккаблик", "Масъулият",
+                "Мустақиллик", "Таъсир", "Коммуникация", "Меҳнат шароити",
+        };
         String[] levels = { "L1 Basic", "L2 Beginning", "L3 Intermediate", "L4 Advanced", "L5 Expert" };
+        String[] levelsUz = {
+                "1-даража (бошланғич)", "2-даража (базавий)", "3-даража (ўрта)",
+                "4-даража (юқори)", "5-даража (эксперт)",
+        };
         int[]    points = { 40, 80, 120, 160, 200 };
         String   weight = "12.5"; // 8 × 12.5 = 100 → valid WEIGHTED_POINTS sum
 
@@ -293,22 +306,26 @@ public class ImportTemplateSamples {
                 // Methodology-level metadata (same on every row).
                 r.put("methodology_code", methodologyCode);
                 r.put("methodology_name", methodologyName);
+                r.put("methodology_name_uz", methodologyNameUz);
                 r.put("methodology_type", methodologyType);
                 r.put("scoring_mode", scoringMode);
                 r.put("target_total_points", targetTotalPoints);
                 // Per-factor/level columns.
                 r.put("factor_code", code);
                 r.put("factor_name", name);
+                r.put("factor_name_uz", factorsUz[f / 2]);
                 // Registry-required columns for METHODOLOGY_FACTORS_V1.
                 r.put("weight", weight);
                 r.put("score", String.valueOf(points[l]));
                 r.put("level_code", "L" + (l + 1));
                 r.put("level_name", levels[l]);
+                r.put("level_name_uz", levelsUz[l]);
                 // Duplicate informational columns (kept in sync with weight/score).
                 r.put("factor_weight", weight);
                 r.put("level_points", String.valueOf(points[l]));
                 r.put("level_order", String.valueOf(l + 1));
                 r.put("level_description", name + " - " + levels[l]);
+                r.put("level_description_uz", factorsUz[f / 2] + " — " + levelsUz[l]);
                 out.add(r);
             }
         }

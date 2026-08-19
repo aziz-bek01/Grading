@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
  * Catalog of supported import templates (integration-blueprint §5.1).
@@ -18,6 +19,36 @@ import java.util.Optional;
  */
 @Component
 public class ImportTemplateRegistry {
+
+    /**
+     * Column suffixes that mark a per-locale sibling of a text column, in the
+     * order they are offered in the downloadable template. Kept in sync with
+     * {@code MethodologyFactorsRowCommitter.LOCALE_SUFFIXES}: {@code _uz} is the
+     * friendly alias for {@code uz-Cyrl-UZ} and is the one HR actually fills in,
+     * so the rarely-used {@code _uz_cyrl} alias is not shipped as a header.
+     */
+    private static final List<String> LOCALE_COLUMN_SUFFIXES =
+            List.of("_uz", "_uz_latn", "_en");
+
+    /**
+     * METHODOLOGY_FACTORS_V1 text columns whose content is free HR prose: each
+     * accepts per-locale siblings AND is a formula-injection candidate.
+     */
+    private static final List<String> METHODOLOGY_TEXT_COLUMNS =
+            List.of("methodology_name", "factor_name", "level_name", "level_description");
+
+    /** {@code base} → {@code base_uz}, {@code base_uz_latn}, {@code base_en}. */
+    private static List<String> localeSiblings(List<String> bases) {
+        return bases.stream()
+                .flatMap(base -> LOCALE_COLUMN_SUFFIXES.stream().map(sfx -> base + sfx))
+                .toList();
+    }
+
+    /** The base text columns plus every localized sibling of them. */
+    private static List<String> userInputTextColumns(List<String> bases) {
+        return Stream.concat(bases.stream(), localeSiblings(bases).stream())
+                .toList();
+    }
 
     private final Map<String, ImportTemplateDefinition> templates = new LinkedHashMap<>();
 
@@ -60,7 +91,14 @@ public class ImportTemplateRegistry {
                 List.of("methodology_code", "methodology_name", "methodology_type",
                         "scoring_mode", "target_total_points",
                         "factor_code", "factor_name", "level_code", "level_name", "weight", "score"),
-                List.of(),
+                // Optional columns: the scoring extras first (so the numeric block
+                // stays together), then the base description, then the per-locale
+                // siblings of every text column — ONE upload fills a methodology in
+                // all four supported languages instead of leaving ru-RU-only
+                // content for manual translation.
+                Stream.concat(
+                        Stream.of("scale_value", "level_order", "level_description"),
+                        localeSiblings(METHODOLOGY_TEXT_COLUMNS).stream()).toList(),
                 // requiredFields (Level-3 blank-cell check) includes weight + score:
                 // the committer requires both on every row, so catch a blank cell at
                 // upload time rather than surfacing it as a per-row commit failure.
@@ -68,7 +106,9 @@ public class ImportTemplateRegistry {
                         "scoring_mode", "target_total_points",
                         "factor_code", "factor_name", "level_code", "level_name",
                         "weight", "score"),
-                List.of("methodology_name", "factor_name", "level_name"),
+                // Every text column is a formula-injection candidate — including
+                // the localized siblings, which carry the same free HR prose.
+                userInputTextColumns(METHODOLOGY_TEXT_COLUMNS),
                 "METHODOLOGY_IMPORT",
                 "Methodology",
                 false));

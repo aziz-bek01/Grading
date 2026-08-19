@@ -415,7 +415,31 @@ public class ImportTemplateGuide {
                         "Матн / Текст",
                         "Эркин матн / Свободный текст",
                         "Билим — бошланғич даража",
-                        "—"));
+                        "—"),
+                localized("methodology_name", "ACME грейдлаш методологияси"),
+                localized("factor_name", "Билим"),
+                localized("level_name", "1-даража (бошланғич)"),
+                localized("level_description", "Билим — бошланғич даража"));
+    }
+
+    /**
+     * Guidance row for the OPTIONAL per-locale siblings of one text column.
+     * The four base text columns of METHODOLOGY_FACTORS_V1 each accept
+     * {@code _uz} (uz-Cyrl-UZ), {@code _uz_latn} (uz-Latn-UZ) and {@code _en}
+     * (en-US) variants; one combined row keeps the guide sheet readable instead
+     * of repeating twelve near-identical entries.
+     */
+    private static ColumnSpec localized(String base, String example) {
+        return new ColumnSpec(base + "_uz / " + base + "_uz_latn / " + base + "_en", false,
+                "Матн / Текст. «" + base + "» устунининг бошқа тиллардаги нусхаси. "
+                        + "Перевод колонки «" + base + "» на другие языки.",
+                "_uz → ўзбекча (кирилл), _uz_latn → oʻzbekcha (lotin), _en → English",
+                example,
+                "Асосий устун (" + base + ") ru-RU бўлиб қолади ва мажбурий — бу устунлар "
+                        + "уни алмаштирмайди, устига қўшилади. Бўш қолдирилган тил ЎЧИРИЛМАЙДИ "
+                        + "(олдин юкланган таржима сақланади). Базовая колонка (" + base + ") "
+                        + "остаётся ru-RU и обязательна — эти колонки её не заменяют, а дополняют. "
+                        + "Пустой язык НЕ стирается (ранее загруженный перевод сохраняется).");
     }
 
     /** GRADE_BANDS_V1 — see {@code GradeBandsRowCommitter}. */

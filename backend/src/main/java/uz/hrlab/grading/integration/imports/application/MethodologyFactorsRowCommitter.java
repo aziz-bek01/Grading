@@ -20,6 +20,7 @@ import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionJpaEntity;
 import uz.hrlab.grading.methodology.infrastructure.MethodologyVersionRepository;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -74,6 +75,24 @@ import java.util.UUID;
  * last-wins; and the existing DRAFT methodology's ru-RU {@code name_i18n} resyncs
  * last-wins — so re-uploading a corrected file (fixed weight / name typo) takes
  * effect instead of being silently dropped.
+ *
+ * <p><b>Localization (multi-locale import):</b> the base text columns
+ * ({@code methodology_name}, {@code factor_name}, {@code level_name},
+ * {@code level_description}) carry the REQUIRED primary locale ({@code ru-RU}).
+ * Every one of them additionally accepts OPTIONAL per-locale siblings suffixed
+ * with the locale key — {@code _uz_cyrl} ({@code uz-Cyrl-UZ}, alias {@code _uz}),
+ * {@code _uz_latn} ({@code uz-Latn-UZ}), {@code _en} ({@code en-US}) and the
+ * explicit {@code _ru} alias for the base — so ONE upload populates a
+ * methodology in every language instead of leaving translators to fill 4 locales
+ * × N levels by hand (the translation matrix UI covers factor NAMES only, never
+ * level labels/descriptions).
+ *
+ * <p>Locale maps are <b>merged, not replaced</b>: a re-import that carries only
+ * {@code ru-RU} corrects the Russian text and LEAVES existing Uzbek/English
+ * translations intact. Only the locales actually present in the file are
+ * overwritten (last-wins per locale). Before this, every write did
+ * {@code Map.of(PRIMARY_LOCALE, …)}, so any re-import silently wiped the other
+ * three locales.
  *
  * <p><b>Scoring modes:</b> {@code DIRECT_POINTS} / {@code WEIGHTED_POINTS} score
  * off level {@code points}; {@code WEIGHTED_SCALE} scores off a per-level
@@ -143,6 +162,7 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
     private Metadata parseMetadata(Map<String, String> row) {
         String code = req(row, "methodology_code");
         String name = req(row, "methodology_name");
+        Map<String, String> nameI18n = localeColumns(row, "methodology_name");
 
         String typeRaw = req(row, "methodology_type");
         MethodologyType type;
@@ -172,7 +192,7 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
             throw new ImportRowCommitException("INVALID_TOTAL_POINTS",
                     "target_total_points is not a valid number: " + totalRaw);
         }
-        return new Metadata(code, name, type, mode, totalPoints);
+        return new Metadata(code, name, nameI18n, type, mode, totalPoints);
     }
 
     // -----------------------------------------------------------------
@@ -205,10 +225,12 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
                         "Methodology '" + meta.code() + "' already exists with different "
                                 + "type/scoring_mode/target_total_points than the imported file");
             }
-            // Resync the mutable ru-RU name last-wins so a re-import corrects a
-            // methodology-name typo (identity fields above stay frozen).
-            if (!meta.name().equals(m.getNameI18n().get(PRIMARY_LOCALE))) {
-                m.setNameI18n(Map.of(PRIMARY_LOCALE, meta.name()));
+            // Resync the mutable name last-wins so a re-import corrects a
+            // methodology-name typo (identity fields above stay frozen). Merged
+            // per locale: locales absent from the file keep their existing text.
+            Map<String, String> merged = mergeI18n(m.getNameI18n(), meta.nameI18n());
+            if (!merged.equals(m.getNameI18n())) {
+                m.setNameI18n(merged);
                 methodologies.save(m);
             }
             return latest;
@@ -220,7 +242,7 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
         MethodologyJpaEntity m = new MethodologyJpaEntity(
                 methodologyId, ctx.tenantId(), ctx.projectId(), meta.code(),
                 meta.type(), MethodologyStatus.ACTIVE);
-        m.setNameI18n(Map.of(PRIMARY_LOCALE, meta.name()));
+        m.setNameI18n(meta.nameI18n());
         methodologies.save(m);
 
         UUID versionId = UUID.randomUUID();
@@ -241,7 +263,8 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
     private FactorJpaEntity resolveFactor(Map<String, String> row, UUID versionId,
                                           BigDecimal levelPoints, ImportRowCommitContext ctx) {
         String factorCode = req(row, "factor_code");
-        String factorName = req(row, "factor_name");
+        req(row, "factor_name"); // primary-locale name is mandatory
+        Map<String, String> nameI18n = localeColumns(row, "factor_name");
         BigDecimal weight = parseWeight(row);
 
         Optional<FactorJpaEntity> existing = factors
@@ -253,7 +276,7 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
             // name typo. maxPoints is inferred as the max level.points seen for
             // the factor (no max_points column): keep the running max across rows.
             f.setWeight(weight);
-            f.setNameI18n(Map.of(PRIMARY_LOCALE, factorName));
+            f.setNameI18n(mergeI18n(f.getNameI18n(), nameI18n));
             if (levelPoints.compareTo(f.getMaxPoints()) > 0) {
                 f.setMaxPoints(levelPoints);
             }
@@ -267,7 +290,7 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
         UUID id = UUID.randomUUID();
         FactorJpaEntity f = new FactorJpaEntity(
                 id, ctx.tenantId(), versionId, factorCode, weight, levelPoints, sortOrder, true);
-        f.setNameI18n(Map.of(PRIMARY_LOCALE, factorName));
+        f.setNameI18n(nameI18n);
         factors.save(f);
         audit(ctx, AuditAction.FACTOR_CREATED, "Factor", id);
         return f;
@@ -281,8 +304,11 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
                                      BigDecimal levelPoints, BigDecimal scaleValue,
                                      ImportRowCommitContext ctx) {
         String levelCode = req(row, "level_code");
-        String levelName = req(row, "level_name");
-        String levelDescription = opt(row, "level_description");
+        req(row, "level_name"); // primary-locale label is mandatory
+        Map<String, String> labelI18n = localeColumns(row, "level_name");
+        // Description is optional overall, but any locale may supply it — an
+        // empty map means "no description column in this file" (leave as-is).
+        Map<String, String> descriptionI18n = localeColumns(row, "level_description");
         Integer levelOrder = parseOptionalOrder(row);
 
         Optional<FactorLevelJpaEntity> existing = levels
@@ -295,9 +321,9 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
             if (levelOrder != null) {
                 l.setLevelOrder(levelOrder);
             }
-            l.setLabelI18n(Map.of(PRIMARY_LOCALE, levelName));
-            if (levelDescription != null) {
-                l.setDescriptionI18n(Map.of(PRIMARY_LOCALE, levelDescription));
+            l.setLabelI18n(mergeI18n(l.getLabelI18n(), labelI18n));
+            if (!descriptionI18n.isEmpty()) {
+                l.setDescriptionI18n(mergeI18n(l.getDescriptionI18n(), descriptionI18n));
             }
             levels.save(l);
             audit(ctx, AuditAction.FACTOR_LEVEL_UPDATED, "FactorLevel", l.getId());
@@ -308,9 +334,9 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
         UUID id = UUID.randomUUID();
         FactorLevelJpaEntity l = new FactorLevelJpaEntity(
                 id, ctx.tenantId(), factor.getId(), levelCode, order, levelPoints, scaleValue);
-        l.setLabelI18n(Map.of(PRIMARY_LOCALE, levelName));
-        if (levelDescription != null) {
-            l.setDescriptionI18n(Map.of(PRIMARY_LOCALE, levelDescription));
+        l.setLabelI18n(labelI18n);
+        if (!descriptionI18n.isEmpty()) {
+            l.setDescriptionI18n(descriptionI18n);
         }
         levels.save(l);
         audit(ctx, AuditAction.FACTOR_LEVEL_CREATED, "FactorLevel", id);
@@ -380,6 +406,64 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
         }
     }
 
+    /**
+     * Column-suffix → locale key. The suffix-less base column is always the
+     * primary locale ({@code ru-RU}); {@code _ru} is accepted as its explicit
+     * alias, and {@code _uz} as a friendly alias for Cyrillic Uzbek (the script
+     * Uzbek HR documents are written in). Iteration order is deterministic so a
+     * file that supplies BOTH {@code _uz} and {@code _uz_cyrl} resolves to the
+     * more specific column last.
+     */
+    private static final Map<String, String> LOCALE_SUFFIXES = new LinkedHashMap<>();
+
+    static {
+        LOCALE_SUFFIXES.put("_ru", "ru-RU");
+        LOCALE_SUFFIXES.put("_uz", "uz-Cyrl-UZ");
+        LOCALE_SUFFIXES.put("_uz_cyrl", "uz-Cyrl-UZ");
+        LOCALE_SUFFIXES.put("_uz_latn", "uz-Latn-UZ");
+        LOCALE_SUFFIXES.put("_en", "en-US");
+    }
+
+    /**
+     * Assembles the locale map for one logical text field from its base column
+     * ({@code ru-RU}) plus every optional {@code <base>_<suffix>} sibling present
+     * in the row. Blank cells are skipped — a locale column left empty on some
+     * rows never writes an empty translation.
+     *
+     * @return a map keyed by supported locale code; empty when the row carries
+     *         no non-blank value for this field at all
+     */
+    private static Map<String, String> localeColumns(Map<String, String> row, String base) {
+        Map<String, String> out = new LinkedHashMap<>();
+        String primary = opt(row, base);
+        if (primary != null) {
+            out.put(PRIMARY_LOCALE, primary);
+        }
+        for (Map.Entry<String, String> e : LOCALE_SUFFIXES.entrySet()) {
+            String v = opt(row, base + e.getKey());
+            if (v != null) {
+                out.put(e.getValue(), v);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Merges imported locale text onto whatever the entity already holds:
+     * locales present in the file win (last-wins correction), locales absent
+     * from the file are preserved. This is what keeps a Russian-only re-import
+     * from wiping previously imported Uzbek/English translations.
+     */
+    private static Map<String, String> mergeI18n(Map<String, String> existing,
+                                                 Map<String, String> imported) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (existing != null) {
+            out.putAll(existing);
+        }
+        out.putAll(imported);
+        return out;
+    }
+
     private static Integer parseOptionalOrder(Map<String, String> row) {
         String raw = opt(row, "level_order");
         if (raw == null) {
@@ -433,7 +517,13 @@ public class MethodologyFactorsRowCommitter implements ImportRowCommitter {
                 .build());
     }
 
-    /** Parsed methodology-level metadata carried identically on every file row. */
-    private record Metadata(String code, String name, MethodologyType type,
-                            ScoringMode mode, BigDecimal totalPoints) { }
+    /**
+     * Parsed methodology-level metadata carried identically on every file row.
+     * {@code name} is the required {@code ru-RU} text; {@code nameI18n} is the
+     * full locale map assembled from {@code methodology_name} + its optional
+     * per-locale siblings.
+     */
+    private record Metadata(String code, String name, Map<String, String> nameI18n,
+                            MethodologyType type, ScoringMode mode,
+                            BigDecimal totalPoints) { }
 }
